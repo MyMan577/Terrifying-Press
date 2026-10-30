@@ -47,12 +47,31 @@
     if (!window.ort) window.ort = { Tensor: class { constructor(type, data, dims) { this.type = type; this.data = data; this.dims = dims; } } };
     NP.addListener('download', e => { if (curStatus) curStatus('Downloading ' + e.id.replace(/^sp4?_/, '') + ' ' + e.percent + '%'); });
   }
-  const toB64 = f32 => {
+  const toB64Slow = f32 => {
     const u = new Uint8Array(f32.buffer, f32.byteOffset, f32.byteLength); let s = '';
     for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
     return btoa(s);
   };
-  const fromB64 = b64 => { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Float32Array(u.buffer); };
+  const fromB64Slow = b64 => { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Float32Array(u.buffer); };
+  // Base64 done by the browser's own native code instead of a JavaScript loop over every byte (these tensors are megabytes).
+  // If the WebView refuses either trick it switches to the loops above and stays there.
+  let b64Fast = true;
+  const toB64 = async f32 => {
+    if (b64Fast) {
+      try {
+        const url = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = () => rej(fr.error); fr.readAsDataURL(new Blob([f32])); });
+        const i = url.indexOf(','); if (i > 0) return url.slice(i + 1);
+      } catch (e) { b64Fast = false; }
+    }
+    return toB64Slow(f32);
+  };
+  const fromB64 = async b64 => {
+    if (b64Fast) {
+      try { const buf = await (await fetch('data:application/octet-stream;base64,' + b64)).arrayBuffer(); if (buf.byteLength % 4 === 0) return new Float32Array(buf); }
+      catch (e) { b64Fast = false; }
+    }
+    return fromB64Slow(b64);
+  };
   async function nativeFetch(key, file, status) {
     const urls = /^https?:/.test(file) ? [file] : [HF_BASE + file, SP4 + file];   // same fallback as the web path
     let last = null;
@@ -64,16 +83,18 @@
     throw new Error('Download failed for ' + file + ': ' + errText(last));
   }
   // NNAPI (phone GPU/NPU) for everything except Demucs, whose transformer ops run better on CPU. The Java side falls back to CPU by itself.
-  const wantNnapi = key => { if (/^demucs/.test(key)) return false; try { return localStorage.getItem('ppvNnapi') !== '0'; } catch (e) { return true; } };
+  // The tiny classifier heads (a few hundred KB) lose time compiling for NNAPI and copying data over: CPU is faster for them.
+  const wantNnapi = key => { if (/^demucs/.test(key) || /^(tgh_|tg_hinst$|tg_hvoice$|tg_hgenre$)/.test(key)) return false; try { return localStorage.getItem('ppvNnapi') !== '0'; } catch (e) { return true; } };
   async function nativeSession(key) {
-    const info = await NP.load({ id: key, nnapi: wantNnapi(key) });
+    const SHAPES = { tg_effnet: [64, 128, 96], tg_mn10: [1, 160000] };   // lets the native side time NNAPI vs CPU once and keep the winner
+    const info = await NP.load({ id: key, nnapi: wantNnapi(key), shape: SHAPES[key] });
     window.__ppLastSep = ' (on ' + info.accel + ')';
     return {
       inputNames: [info.inputName], outputNames: [info.outputName],
       run: async feed => {
         const t = Object.values(feed)[0];
-        const r = await NP.run({ id: key, data: toB64(t.data), dims: Array.from(t.dims) });
-        return { [r.outputName]: { data: fromB64(r.data), dims: r.dims } };
+        const r = await NP.run({ id: key, data: await toB64(t.data), dims: Array.from(t.dims) });
+        return { [r.outputName]: { data: await fromB64(r.data), dims: r.dims } };
       },
       release: () => { NP.unload({ id: key }).catch(() => {}); }
     };
@@ -131,6 +152,81 @@
     }
   }
   const tick = () => new Promise(r => setTimeout(r));
+
+  // ---------- pacing: rest when the phone is hot ----------
+  // Call after a unit of heavy work (a batch, a slice, a track). Sleeps a share of that unit's own time when the phone is warm.
+  // In the Android app the thermal reading comes from the native side. Anywhere else (no thermal data) it watches for the chip slowing
+  // down: a unit much slower than the fastest unit of the same kind (per `size`) means throttling, so it rests.
+  const EASE_BEST = {}; let thermalDead = false;
+  async function ease(workMs, rest, key, size) {
+    let f = rest || 0;
+    if (NATIVE && NP && !thermalDead) { try { f = Math.max(f, (await NP.thermal()).factor || 0); } catch (e) { thermalDead = true; } }
+    if (key && workMs > 400) {
+      const per = workMs / (size || 1), b = EASE_BEST[key];
+      if (!b || per < b) EASE_BEST[key] = per;
+      else if (per > b * 1.6) f = Math.max(f, Math.min(1, (per / b - 1.6) / 1.4));
+    }
+    const ms = Math.min(8000, workMs * f);
+    if (ms > 20) await new Promise(r => setTimeout(r, ms));
+  }
+
+  // 2:1 decimation 32 kHz -> 16 kHz with a 63-tap half-band low-pass (only 33 taps are non-zero), so ONE decode feeds both taggers.
+  const HB = (() => {
+    const n = 63, c = 31, ix = [], w = []; let sum = 0;
+    for (let i = 0; i < n; i++) {
+      const k = i - c; if (k !== 0 && k % 2 === 0) continue;                  // every even tap but the centre is exactly zero
+      const h = (k === 0 ? 0.5 : Math.sin(Math.PI * k / 2) / (Math.PI * k)) * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (n - 1)));
+      ix.push(k); w.push(h); sum += h;
+    }
+    return { ix: Int16Array.from(ix), w: Float32Array.from(w.map(v => v / sum)) };
+  })();
+  function down2(a, start, n) {                                                // n output samples; output i sits at input sample start + 2i
+    const out = new Float32Array(n), L = a.length, ix = HB.ix, w = HB.w, T = ix.length;
+    for (let i = 0; i < n; i++) {
+      const p = start + 2 * i; let s = 0;
+      if (p >= 31 && p + 31 < L) for (let t = 0; t < T; t++) s += a[p + ix[t]] * w[t];
+      else for (let t = 0; t < T; t++) { const j = p + ix[t]; if (j >= 0 && j < L) s += a[j] * w[t]; }
+      out[i] = s;
+    }
+    return out;
+  }
+  // The few 5 s windows the AudioSet tagger looks at (same positions as before), cut from an already decoded 32 kHz track.
+  function audiosetWindows(x) {
+    const W = 160000, nW = Math.max(1, Math.min(6, Math.floor(x.length / W))), out = [];
+    for (let w = 0; w < nW; w++) {
+      const wav = new Float32Array(W), st = x.length > W ? Math.floor((x.length - W) * (w + 0.5) / nW) : 0;
+      wav.set(x.subarray(st, st + W)); out.push(wav);
+    }
+    return out;
+  }
+  // Finds the stretches of a clip that hold speech or singing, so silence (intros, gaps, instrumental breaks) is never sent to Whisper.
+  // Returns [[startSec, endSec], ...]. Gaps under 4 s stay inside a stretch, each stretch gets 1.5 s of padding, and if less than
+  // 10% would be skipped (or the clip is too quiet to judge) the whole clip is returned unchanged.
+  function speechRegions(x, sr) {
+    const dur = x.length / sr, F = Math.round(sr * 0.5), n = Math.floor(x.length / F);
+    if (n < 16) return [[0, dur]];
+    const rms = new Float32Array(n);
+    for (let i = 0; i < n; i++) { let s = 0; const a = i * F; for (let j = 0; j < F; j++) { const v = x[a + j]; s += v * v; } rms[i] = Math.sqrt(s / F); }
+    const ref = Array.from(rms).sort((u, v) => u - v)[Math.floor(n * 0.9)];
+    if (!(ref > 0.002)) return [[0, dur]];
+    const thr = ref * 0.035, HOLD = 8, PAD = 3, spans = [];
+    let a = -1, last = -1;
+    for (let i = 0; i < n; i++) {
+      if (rms[i] <= thr) continue;
+      if (a >= 0 && i - last > HOLD) { spans.push([a, last]); a = -1; }
+      if (a < 0) a = i;
+      last = i;
+    }
+    if (a >= 0) spans.push([a, last]);
+    if (!spans.length) return [[0, dur]];
+    const out = [];
+    for (const [u, v] of spans) {
+      const s0 = Math.max(0, u - PAD) * 0.5, s1 = v + PAD + 1 >= n ? dur : Math.min(dur, (v + PAD + 1) * 0.5);
+      if (out.length && s0 <= out[out.length - 1][1] + 0.01) out[out.length - 1][1] = Math.max(out[out.length - 1][1], s1); else out.push([s0, s1]);
+    }
+    const kept = out.reduce((m, r) => m + r[1] - r[0], 0);
+    return kept > dur * 0.9 ? [[0, dur]] : out;
+  }
 
   // pcm: [L, R] Float32Array at 44.1k. Finished audio is streamed to sink(vocals:[L,R], accomp:[L,R], startSample) one
   // segment at a time, so peak RAM stays flat. Without a sink it collects everything and returns {vocals, accomp}.
@@ -515,7 +611,7 @@
     const saved = await SS.writeInput({ name: 'track-' + Date.now() + '.audio', data: b64 });
     window.__ppLastSep = '';
     const h = await NP.addListener('progress', e => { onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
-    const base = { input: saved.path, stems: wanted, nnapi: opts.nnapi !== false };
+    const base = { input: saved.path, stems: wanted, nnapi: opts.nnapi !== false, duty: opts.lv ? ({ Light: 0, Medium: 0.2, Max: 0.5 }[opts.lv.name] || 0) : 0 };
     let out;
     try {
       status('Loading models… (the first run on a phone also times NNAPI vs CPU)');
@@ -663,12 +759,14 @@
     if (bank.length !== NB * K) throw new Error('melbank has the wrong size');
     const w = new Float64Array(M); for (let i = 0; i < M; i++) w[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (M - 1));   // symmetric Hann
     const mel = new Float32Array(nF * NB), re = new Float64Array(M), im = new Float64Array(M), pw = new Float64Array(K);
+    const blo = new Int32Array(NB), bhi = new Int32Array(NB);                // where each mel filter is non-zero: skip the rest of the 257 bins
+    for (let b = 0; b < NB; b++) { let lo = K, hi = -1; for (let k = 0; k < K; k++) if (bank[b * K + k] !== 0) { if (k < lo) lo = k; hi = k; } blo[b] = lo; bhi[b] = hi; }
     for (let f = 0; f < nF; f++) {
       const st = f * H - H;                                           // frame centred on f*256 (256 zeros in front)
       for (let j = 0; j < M; j++) { const q = st + j; re[j] = (q >= 0 && q < x.length ? x[q] : 0) * w[j]; im[j] = 0; }
       fftS(re, im);
       for (let k = 0; k < K; k++) pw[k] = re[k] * re[k] + im[k] * im[k];
-      for (let b = 0; b < NB; b++) { let a = 0; const o = b * K; for (let k = 0; k < K; k++) a += bank[o + k] * pw[k]; mel[f * NB + b] = Math.log10(1 + 10000 * a); }
+      for (let b = 0; b < NB; b++) { let a = 0; const o = b * K, hi = bhi[b]; for (let k = blo[b]; k <= hi; k++) a += bank[o + k] * pw[k]; mel[f * NB + b] = Math.log10(1 + 10000 * a); }
       if (f % 300 === 299) await tick();
     }
     return mel;
@@ -878,13 +976,16 @@
       if (opt.cache) return opt.cache[key] || (opt.cache[key] = await makeSession(key, false, lv));
       const s = await makeSession(key, false, lv); own.push(s); return s;
     };
+    let tagWins = null;                                           // the AudioSet windows, cut out of the single decode below
     // 1) Discogs-EffNet (+ heads, tempo, key, vocal timeline, embedding)
     try {
       status('Listening (1 of 2)…');
-      let x = await decodeMono(url, 16000);
-      r.dur = x.length / 16000;
-      const SEC = 140 * 16000; let off = 0;
-      if (!opt.deep && x.length > SEC) { off = (x.length - SEC) >> 1; x = x.slice(off, off + SEC); }   // the middle ~2 minutes is plenty
+      let full = await decodeMono(url, 32000);                    // decoded ONCE: EffNet (16 kHz) and the AudioSet windows (32 kHz) both come from this
+      r.dur = full.length / 32000;
+      tagWins = audiosetWindows(full);                            // cut out now, so the long array can go
+      const SEC = 140 * 16000, n16 = full.length >> 1, mid = !opt.deep && n16 > SEC; let off = 0;
+      if (mid) off = (n16 - SEC) >> 1;                            // the middle ~2 minutes is plenty
+      let x = down2(full, off * 2, mid ? SEC : n16); full = null;
       const whole = !!opt.deep || r.dur <= 142;
       status('Finding the key…'); await tick();
       try { const k = await chromaKey(x); if (k) { r.key = k.name; r.camelot = k.camelot; r.keyConf = k.conf; } } catch (e) { r.errors.push('Key: ' + e.message); }
@@ -903,7 +1004,7 @@
       const inst = new Float32Array(40), g400 = new Float32Array(400), embSum = new Float64Array(1280), hacc = heads.map(() => null), pv = [];
       let voice = 0, rows = 0, gotG = false;
       for (let b = 0; b < take; b += 64) {
-        const cnt = Math.min(64, take - b), X = new Float32Array(64 * 128 * 96);      // the graph wants exactly 64 patches
+        const tb0 = performance.now(), cnt = Math.min(64, take - b), X = new Float32Array(64 * 128 * 96);      // the graph wants exactly 64 patches
         for (let i = 0; i < cnt; i++) { const s0 = idx[b + i] * 62 * 96; X.set(mel.subarray(s0, Math.min(mel.length, s0 + 128 * 96)), i * 128 * 96); }
         status('Listening… ' + Math.min(b + 64, take) + ' of ' + take + ' patches'); P(0.25 + 0.6 * b / take); await tick();
         const res = await eff.run({ [eff.inputNames[0]]: new ort.Tensor('float32', X, [64, 128, 96]) });
@@ -931,6 +1032,7 @@
           if (yg) { gotG = true; for (let c = 0; c < 400; c++) g400[c] += yg[i * 400 + c]; }
         }
         rows += cnt; await tick();
+        await ease(performance.now() - tb0, opt.rest, 'eff', cnt);
       }
       r.voice = voice / rows;
       r.inst = INST40.map((n, i) => [n, inst[i]]);
@@ -962,19 +1064,18 @@
     // 2) AudioSet tagger
     try {
       status('Listening (2 of 2)…');
-      let x = await decodeMono(url, 32000);
-      const W = 160000, nW = Math.max(1, Math.min(6, Math.floor(x.length / W))), probs = new Float32Array(527);
+      const wins = tagWins || audiosetWindows(await decodeMono(url, 32000)); tagWins = null;   // normally already cut out during the first pass
+      const W = 160000, nW = wins.length, probs = new Float32Array(527);
       const sess = await S('tg_mn10');
       try {
         for (let w = 0; w < nW; w++) {
-          const wav = new Float32Array(W), st = x.length > W ? Math.floor((x.length - W) * (w + 0.5) / nW) : 0;
-          wav.set(x.subarray(st, st + W));
+          const tw0 = performance.now(), wav = wins[w];
           const y = (await sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', wav, [1, W]) }))[sess.outputNames[0]].data;
           for (let c = 0; c < 527; c++) probs[c] += y[c] / nW;
           status('Listening (2 of 2)… ' + (w + 1) + ' of ' + nW); P(0.85 + 0.15 * (w + 1) / nW); await tick();
+          await ease(performance.now() - tw0, opt.rest, 'mn', 1);
         }
       } finally { own.forEach(s => s.release && s.release()); own.length = 0; }
-      x = null;
       const pick = (lo, hi) => { const o = []; for (let i = lo; i <= hi; i++) o.push([AUDIOSET[i], probs[i]]); return o; };
       r.genre = pick(AS_GENRE[0], AS_GENRE[1]); r.mood = pick(AS_MOOD[0], AS_MOOD[1]); r.music = probs[137];
       r.inst2 = []; for (let i = 140; i <= 213; i++) if (asInst(i)) r.inst2.push([AUDIOSET[i], probs[i]]);
@@ -1154,14 +1255,23 @@
   const WH = { tiny: ['Xenova/whisper-tiny', 'Tiny (~40 MB, fastest)'], base: ['Xenova/whisper-base', 'Base (~75 MB, better)'], small: ['Xenova/whisper-small', 'Small (~250 MB, best, slow)'] };
   const LANGS = [['', 'Auto-detect'], ['english', 'English'], ['spanish', 'Spanish'], ['french', 'French'], ['german', 'German'], ['italian', 'Italian'], ['portuguese', 'Portuguese'], ['dutch', 'Dutch'], ['russian', 'Russian'], ['polish', 'Polish'], ['turkish', 'Turkish'], ['arabic', 'Arabic'], ['hindi', 'Hindi'], ['japanese', 'Japanese'], ['korean', 'Korean'], ['chinese', 'Chinese'], ['indonesian', 'Indonesian'], ['swedish', 'Swedish'], ['ukrainian', 'Ukrainian']];
   let tfMod = null, asr = null, asrId = '';
+  // Optional: run Whisper on the phone's GPU (WebGPU). Off unless ticked in the Whisper panel; any failure drops back to the CPU for the rest of the session.
+  let wGpuFailed = false;
+  const wGpu = () => { try { return !wGpuFailed && !!navigator.gpu && localStorage.getItem('ppvWGpu') === '1'; } catch (e) { return false; } };
   async function getAsr(id, status) {
-    if (asr && asrId === id) return asr;
+    const dev = wGpu() ? 'webgpu' : 'wasm', key = id + '|' + dev;
+    if (asr && asrId === key) return asr;
     if (asr) { try { await asr.dispose(); } catch (e) {} asr = null; asrId = ''; }
     if (!tfMod) { status('Loading Whisper…'); tfMod = await import(TF_URL); }
-    asr = await tfMod.pipeline('automatic-speech-recognition', id, {
-      progress_callback: p => { if (p && p.status === 'progress' && p.file) status('Downloading ' + p.file.split('/').pop() + ' ' + Math.round(p.progress || 0) + '%'); else if (p && p.status === 'ready') status('Whisper ready.'); }
-    });
-    asrId = id; return asr;
+    const cb = p => { if (p && p.status === 'progress' && p.file) status('Downloading ' + p.file.split('/').pop() + ' ' + Math.round(p.progress || 0) + '%'); else if (p && p.status === 'ready') status('Whisper ready.'); };
+    if (dev === 'webgpu') {
+      try {
+        asr = await tfMod.pipeline('automatic-speech-recognition', id, { device: 'webgpu', dtype: { encoder_model: 'fp32', decoder_model_merged: 'q4' }, progress_callback: cb });
+        asrId = key; return asr;
+      } catch (e) { console.warn('Whisper on the GPU failed, using the CPU', e); wGpuFailed = true; status('GPU not available here, using the CPU…'); }
+    }
+    asr = await tfMod.pipeline('automatic-speech-recognition', id, { progress_callback: cb });
+    asrId = id + '|wasm'; return asr;
   }
   const pad2 = n => String(n).padStart(2, '0');
   const toLrc = cues => cues.map(c => '[' + pad2(Math.floor(c.start / 60)) + ':' + (c.start % 60).toFixed(2).padStart(5, '0') + ']' + c.text).join('\n');
@@ -1185,26 +1295,165 @@
     return res;
   }
   // o: {size, lang, task, clean, model, strength, lv}. Returns [{start,end,text}].
+  // ---------- Native Whisper (Android app) ----------
+  // int8 Whisper on the phone's CPU cores through native ONNX Runtime, with KV-cache decoding in Java, instead of single-threaded WebAssembly.
+  // JavaScript only prepares the log-mel features, walks the audio window by window and turns token ids back into text.
+  // Any failure drops back to the web version for the rest of the session. To switch it off: localStorage.ppvWNative = '0'.
+  const WHN = { tiny: 'wh_tiny', base: 'wh_base', small: 'wh_small' };
+  const WH_CODE = { english: 'en', spanish: 'es', french: 'fr', german: 'de', italian: 'it', portuguese: 'pt', dutch: 'nl', russian: 'ru', polish: 'pl', turkish: 'tr', arabic: 'ar', hindi: 'hi', japanese: 'ja', korean: 'ko', chinese: 'zh', indonesian: 'id', swedish: 'sv', ukrainian: 'uk' };
+  let wNativeFailed = false;
+  const whNativeOn = () => { try { return !!NATIVE && !wNativeFailed && localStorage.getItem('ppvWNative') !== '0'; } catch (e) { return !!NATIVE && !wNativeFailed; } };
+  async function whNativeFiles(size, status) {
+    const base = 'https://huggingface.co/' + WH[size][0] + '/resolve/main/onnx/';
+    for (const [k, f] of [[WHN[size] + '_enc', 'encoder_model_quantized.onnx'], [WHN[size] + '_dec', 'decoder_model_merged_quantized.onnx']]) {
+      if ((await NP.exists({ id: k })).ready) continue;
+      status('Downloading ' + f + '…'); await nativeFetch(k, base + f, status);
+    }
+  }
+  const whCfg = {};
+  async function whConfig(size) {                                       // token ids come from the model's own generation_config.json
+    if (whCfg[size]) return whCfg[size];
+    const g = await (await fetch('https://huggingface.co/' + WH[size][0] + '/resolve/main/generation_config.json')).json();
+    const c = { sot: g.decoder_start_token_id, eot: g.eos_token_id, noTs: g.no_timestamps_token_id, suppress: g.suppress_tokens || [], beginSuppress: g.begin_suppress_tokens || [], lang: g.lang_to_id || null, task: g.task_to_id || null };
+    if (!(c.sot > 0 && c.eot > 0 && c.noTs > 0)) throw new Error('unusable generation_config');
+    c.tsBegin = c.noTs + 1;
+    return (whCfg[size] = c);
+  }
+  let whTok = null, whTokId = '';
+  async function whTokenizer(repo, status) {
+    if (whTok && whTokId === repo) return whTok;
+    if (!tfMod) { status('Loading text tools…'); tfMod = await import(TF_URL); }
+    whTok = await tfMod.AutoTokenizer.from_pretrained(repo); whTokId = repo; return whTok;
+  }
+  let whBankCache = null, whFft = null, whWin = null;
+  function whBank(nMel) {                                               // Slaney mel filters, exactly as Whisper's feature extractor builds them
+    if (whBankCache && whBankCache.n === nMel) return whBankCache;
+    const sr = 16000, nF = 201, f2m = f => f < 1000 ? 3 * f / 200 : 15 + Math.log(f / 1000) * 27 / Math.log(6.4);
+    const m2f = m => m < 15 ? 200 * m / 3 : 1000 * Math.exp(Math.log(6.4) / 27 * (m - 15));
+    const m0 = f2m(0), m1 = f2m(sr / 2), fr = new Float64Array(nMel + 2);
+    for (let i = 0; i < nMel + 2; i++) fr[i] = m2f(m0 + (m1 - m0) * i / (nMel + 1));
+    const w = new Float32Array(nMel * nF), lo = new Int32Array(nMel), hi = new Int32Array(nMel);
+    for (let m = 0; m < nMel; m++) {
+      const d1 = fr[m + 1] - fr[m], d2 = fr[m + 2] - fr[m + 1], en = 2 / (fr[m + 2] - fr[m]); let l = nF, h = -1;
+      for (let k = 0; k < nF; k++) {
+        const f = k * (sr / 2) / (nF - 1), v = Math.max(0, Math.min((f - fr[m]) / d1, (fr[m + 2] - f) / d2)) * en;
+        w[m * nF + k] = v; if (v > 0) { if (k < l) l = k; h = k; }
+      }
+      lo[m] = l; hi[m] = h;
+    }
+    return (whBankCache = { n: nMel, w, lo, hi });
+  }
+  function whMel(x, start, end, nMel) {                                 // log-mel [nMel, 3000] of the 30 s that start at sample `start` (zero-padded)
+    const N = 480000, M = 400, H = 160, NFR = 3000, K = 201, bk = whBank(nMel);
+    if (!whFft) { whFft = makeFFT(M); whWin = new Float64Array(M); for (let i = 0; i < M; i++) whWin[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / M); }
+    const a = new Float32Array(N), e = Math.min(end, start + N, x.length); if (e > start) a.set(x.subarray(start, e));
+    const at = j => a[j < 0 ? -j : j >= N ? 2 * (N - 1) - j : j];       // reflect padding, like torch.stft(center=True)
+    const re = new Float64Array(M), im = new Float64Array(M), pw = new Float64Array(K), out = new Float32Array(nMel * NFR);
+    let mx = -Infinity;
+    for (let f = 0; f < NFR; f++) {
+      const b0 = f * H - M / 2;
+      for (let j = 0; j < M; j++) { re[j] = at(b0 + j) * whWin[j]; im[j] = 0; }
+      whFft(re, im);
+      for (let k = 0; k < K; k++) pw[k] = re[k] * re[k] + im[k] * im[k];
+      for (let m = 0; m < nMel; m++) {
+        let sum = 0; const o = m * K, h = bk.hi[m];
+        for (let k = bk.lo[m]; k <= h; k++) sum += bk.w[o + k] * pw[k];
+        const v = Math.log10(Math.max(sum, 1e-10)); out[m * NFR + f] = v; if (v > mx) mx = v;
+      }
+    }
+    const fl = mx - 8;
+    for (let i = 0; i < out.length; i++) { const v = out[i] < fl ? fl : out[i]; out[i] = (v + 4) / 4; }
+    return out;
+  }
+  function whParse(toks, tsB) {                                         // token ids -> [{s, e, ids}] (e is null if the window ended mid-line)
+    const segs = []; let s = null, ids = [];
+    for (const t of toks) {
+      if (t >= tsB) {
+        const ts = (t - tsB) * 0.02;
+        if (s === null) { s = ts; ids = []; }
+        else if (ids.length) { segs.push({ s, e: ts, ids }); s = null; ids = []; }
+        else s = ts;
+      } else { if (s === null) s = segs.length ? segs[segs.length - 1].e : 0; ids.push(t); }
+    }
+    if (s !== null && ids.length) segs.push({ s, e: null, ids });
+    return segs;
+  }
+  async function whisperNative(x, regs, o, status) {
+    const size = o.size, k = WHN[size], nMel = 80;
+    status('Preparing native Whisper…');
+    const [c, tok] = await Promise.all([whConfig(size), whTokenizer(WH[size][0], status)]);
+    await whNativeFiles(size, status);
+    const code = o.lang ? WH_CODE[o.lang] : '';
+    let langId = c.lang && code ? (c.lang['<|' + code + '|>'] || 0) : 0;   // 0 = let the model detect it on the first window, then keep it
+    const langIds = c.lang ? Object.values(c.lang) : [], taskId = c.task ? (o.task === 'translate' ? c.task.translate : c.task.transcribe) : 0;
+    const total = regs.reduce((n, r) => n + r[1] - r[0], 0) || 1, raw = []; let done = 0;
+    for (const [ra, rb] of regs) {
+      let seek = ra;
+      while (seek < rb - 0.3) {
+        const t0 = performance.now(), wl = Math.min(30, rb - seek);
+        status('Transcribing… ' + Math.round((done + seek - ra) / total * 100) + '%'); await tick();
+        const mel = whMel(x, Math.floor(seek * 16000), Math.floor((seek + wl) * 16000), nMel);
+        const r = await NP.whisperRun({ enc: k + '_enc', dec: k + '_dec', mel: await toB64(mel), dims: [1, nMel, 3000], sot: c.sot, eot: c.eot, noTs: c.noTs, tsBegin: c.tsBegin, useLang: !!c.lang, lang: langId, langIds: langId ? [] : langIds, task: taskId, suppress: c.suppress, beginSuppress: c.beginSuppress, timestamps: true, maxTokens: 224 });
+        if (r.lang) langId = r.lang;
+        const segs = whParse(r.tokens || [], c.tsBegin), complete = segs.filter(g => g.e != null);
+        let adv = wl;                                                   // next window starts where the last finished line ended, so no line is cut in half
+        if (complete.length) { const le = complete[complete.length - 1].e; if (le >= 1 && le < wl - 0.5) adv = le; }
+        for (const g of (adv < wl ? complete : segs)) {
+          const text = tok.decode(g.ids, { skip_special_tokens: true });
+          if (text && text.trim()) raw.push({ start: seek + g.s, end: g.e == null ? 0 : seek + g.e, text });
+        }
+        seek += adv;
+        await ease(performance.now() - t0, 0, 'whn', wl);
+      }
+      done += rb - ra;
+    }
+    return raw;
+  }
+
   async function transcribe(t, o, status) {
-    const pipe = await getAsr(WH[o.size][0], status);
+    let pipe = null;
     let x;
     if (o.clean) {                                                    // pull the vocals out first: far fewer made-up lines on songs
       await downloadModel(o.model, status, !!(o.lv && o.lv.blob));
-      status('Decoding audio…'); let pcm = await decode(t.url);
-      const res = await run(o.model, pcm, ['Vocals'], { strength: o.strength, gpu: false, lv: o.lv, quality: 1, gate: 0 }, status, f => status('Separating vocals… ' + Math.round(f * 100) + '%'));
+      // In the app the whole separation runs natively (no JavaScript copy of the song, no JavaScript FFTs); elsewhere it runs in the page.
+      const nat = NATIVE && ['spleeter2', 'spleeter4', 'mdx_voc', 'demucs4', 'demucs6'].includes(o.model);
+      status('Decoding audio…'); let pcm = nat ? null : await decode(t.url);
+      const res = await run(o.model, pcm, ['Vocals'], { strength: o.strength, gpu: false, lv: o.lv, quality: 1, gate: 0, track: t, nnapi: NATIVE ? wantNnapi(o.model) : false }, status, f => status('Separating vocals… ' + Math.round(f * 100) + '%'));
       pcm = null; const e = res.Vocals.blob ? res.Vocals : encode(res.Vocals);
       const u = URL.createObjectURL(e.blob); try { x = await decodeMono(u, 16000); } finally { URL.revokeObjectURL(u); }
     } else { status('Decoding audio…'); x = await decodeMono(t.url, 16000); }
-    const dur = x.length / 16000, SL = 300 * 16000, raw = [];
-    for (let off = 0; off < x.length; off += SL) {
-      status('Transcribing… ' + Math.round(off / x.length * 100) + '%'); await tick();
+    const dur = x.length / 16000, SL = 90, OV = 4, raw = [];
+    // Only the parts with speech or singing go to Whisper. Each part is cut into 90 s pieces that overlap by 4 s, and a line belongs to the
+    // piece it starts in, so nothing is cut at a seam. Between pieces it can rest if the phone is hot.
+    const regs = speechRegions(x, 16000);
+    if (whNativeOn()) {                                                // Android app: native Whisper first
+      try { return cleanCues(await whisperNative(x, regs, o, status), dur); }
+      catch (e) { console.warn('Native Whisper failed, using the web version', e); wNativeFailed = true; status('Native Whisper unavailable, using the web version…'); }
+    }
+    pipe = await getAsr(WH[o.size][0], status);
+    const pieces = [];
+    for (const [ra, rb] of regs) for (let q = ra; q < rb - 0.01; q += SL) pieces.push({ own0: q, own1: Math.min(rb, q + SL), ra, rb });
+    const total = pieces.reduce((n, p) => n + p.own1 - p.own0, 0) || 1; let doneS = 0;
+    for (const p of pieces) {
+      const t0 = performance.now();
+      status('Transcribing… ' + Math.round(doneS / total * 100) + '%'); await tick();
+      const s0 = Math.max(p.ra, p.own0 - OV), s1 = Math.min(p.rb, p.own1 + OV), last = p.own1 >= p.rb - 1e-6;
       const kw = { return_timestamps: true, chunk_length_s: 30, stride_length_s: 5, task: o.task || 'transcribe' };
       if (o.lang) kw.language = o.lang;
-      const out = await pipe(x.subarray(off, Math.min(x.length, off + SL)), kw);
-      for (const c of (out.chunks || [])) {
-        const a = c.timestamp && c.timestamp[0] != null ? c.timestamp[0] : 0, b = c.timestamp && c.timestamp[1] != null ? c.timestamp[1] : null;
-        raw.push({ start: a + off / 16000, end: b == null ? 0 : b + off / 16000, text: c.text });
+      const part = x.subarray(Math.floor(s0 * 16000), Math.min(x.length, Math.ceil(s1 * 16000)));
+      let out;
+      try { out = await pipe(part, kw); }
+      catch (e) {                                                     // the GPU path broke mid-run: finish on the CPU instead of failing
+        if (!/webgpu$/.test(asrId)) throw e;
+        console.warn('Whisper GPU run failed, retrying on the CPU', e); wGpuFailed = true; pipe = await getAsr(WH[o.size][0], status); out = await pipe(part, kw);
       }
+      for (const c of (out.chunks || [])) {
+        const a = c.timestamp && c.timestamp[0] != null ? c.timestamp[0] : 0, b = c.timestamp && c.timestamp[1] != null ? c.timestamp[1] : null, st = a + s0;
+        if (st < p.own0 - 1e-3 || (!last && st >= p.own1)) continue;   // that line sits in the overlap and the neighbouring piece owns it
+        raw.push({ start: st, end: b == null ? 0 : b + s0, text: c.text });
+      }
+      doneS += p.own1 - p.own0;
+      await ease(performance.now() - t0, 0, 'wh', s1 - s0);
     }
     return cleanCues(raw, dur);
   }
@@ -1248,6 +1497,7 @@
       '<select id="ppv-wlang">' + LANGS.map(l => '<option value="' + l[0] + '">' + l[1] + '</option>').join('') + '</select>' +
       '<select id="ppv-wtask"><option value="transcribe">Write what is said</option><option value="translate">Translate to English</option></select>' +
       '<label class="ppv-c"><input type="checkbox" id="ppv-wclean"> Remove the music first (better for songs, much slower)</label>' +
+      '<label class="ppv-c" id="ppv-wgpu-l"><input type="checkbox" id="ppv-wgpu"> Use the GPU (experimental, much faster if your phone supports it)</label>' +
       '<div class="ppv-note">Songs get synced lyrics, videos get subtitles. The music-removal step uses the model chosen at the top of this panel.</div>' +
       '<button id="ppv-wgo">Transcribe current track</button><button id="ppv-wsrt" class="ppv-sec" style="display:none">Download .srt</button><button id="ppv-wfree" class="ppv-sec">Free up Whisper download</button>' +
       '<div id="ppv-wout" class="ppv-out"></div>';
@@ -1385,13 +1635,13 @@
         for (let i = 0; i < list.length && !stopFlag; i++) {
           const t = list[i];
           if (!$('#ppv-redo').checked && loadTags()[t.dbId]) { skip++; continue; }
-          h.status('Tagging ' + (i + 1) + ' of ' + list.length + ': ' + t.title);
+          const tt0 = performance.now(); h.status('Tagging ' + (i + 1) + ' of ' + list.length + ': ' + t.title);
           try {
             const r = await tagTrack(t.url, s => h.status('(' + (i + 1) + '/' + list.length + ') ' + s), lv, { deep: deep.checked, cache, progress: f => h.prog((i + f) / list.length) });
             if (!r.emb && !r.genre) throw new Error(r.errors.join('; ') || 'nothing detected');
             await persistTags(t.dbId, r, aeq.checked); done++;
           } catch (e) { console.warn('tag failed', t.title, e); fail++; }
-          await tick();
+          await tick(); await ease(performance.now() - tt0, 0, 'track');
         }
       } finally { if (cache) Object.values(cache).forEach(s => s && s.release && s.release()); wl && wl.release().catch(() => {}); }
       h.status((stopFlag ? 'Stopped. ' : 'Done. ') + done + ' tagged' + (skip ? ', ' + skip + ' already had tags' : '') + (fail ? ', ' + fail + ' failed' : '') + '.');
@@ -1528,12 +1778,12 @@
         while (ls('ppvBg') === '1' && await isAway()) {
           const tg = loadTags(), list = a.tracks().filter(x => !x.stem), t = list.find(x => !tg[x.dbId] && !bgFailed.has(x.dbId));
           if (!t) break;
-          const lv = h.LV(); if (!lv && !bgCache) bgCache = {};
+          const lv = h.LV(); if (!lv && !bgCache) bgCache = {}; const tb0 = performance.now();
           setBg('Background: tagging ' + t.title + ' (' + list.filter(x => !tg[x.dbId] && !bgFailed.has(x.dbId)).length + ' left)\u2026');
-          try { const r = await tagTrack(t.url, () => {}, lv, { deep: deep.checked, cache: lv ? null : bgCache }); if (!r.emb && !r.genre) throw new Error('nothing detected'); await persistTags(t.dbId, r, aeq.checked); }
+          try { const r = await tagTrack(t.url, () => {}, lv, { deep: deep.checked, cache: lv ? null : bgCache, rest: 0.3 }); if (!r.emb && !r.genre) throw new Error('nothing detected'); await persistTags(t.dbId, r, aeq.checked); }
           catch (e) { console.warn('background tag failed', t.title, e); bgFailed.add(t.dbId); }
           try { refreshCount(); } catch (e) {}
-          await tick();
+          await tick(); await ease(performance.now() - tb0, 0.3, 'bg');   // background work is deliberately gentle
         }
         if (ls('ppvSurp') === '1' && surpDue() && await isAway()) {
           setBg('Background: assembling a surprise\u2026');
@@ -1583,6 +1833,7 @@
     const wsize = $('#ppv-wsize'), wlang = $('#ppv-wlang'), wtask = $('#ppv-wtask'), wclean = $('#ppv-wclean'), wout = $('#ppv-wout'), wsrt = $('#ppv-wsrt');
     wsize.value = ls('ppvWSize') || 'tiny'; wlang.value = ls('ppvWLang') || ''; wtask.value = ls('ppvWTask') || 'transcribe'; wclean.checked = ls('ppvWClean') === '1';
     wsize.onchange = () => ls('ppvWSize', wsize.value); wlang.onchange = () => ls('ppvWLang', wlang.value); wtask.onchange = () => ls('ppvWTask', wtask.value); wclean.onchange = () => ls('ppvWClean', wclean.checked ? '1' : '0');
+    { const wg = $('#ppv-wgpu'); wg.checked = ls('ppvWGpu') === '1'; wg.onchange = () => ls('ppvWGpu', wg.checked ? '1' : '0'); if (!navigator.gpu) $('#ppv-wgpu-l').style.display = 'none'; }
     let lastSrt = null;
     $('#ppv-wgo').onclick = async () => {
       busy(true); wout.textContent = ''; wsrt.style.display = 'none';
