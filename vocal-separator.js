@@ -38,6 +38,44 @@
     { name: 'Max', info: 'Medium + longer pauses, UI yields inside heavy loops, keeps the screen awake. Slowest, safest.', blob: true, lean: true, pause: [250, 400], skip: true, ye: 64, wake: true }
   ];
 
+  // ---------- native ONNX bridge (Android app only; the web version is unchanged) ----------
+  const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  const NP = NATIVE ? window.Capacitor.Plugins.OnnxSeparator : null;
+  let curStatus = null;
+  if (NATIVE) {
+    // The separator only needs ort.Tensor from ORT; the real inference happens natively.
+    if (!window.ort) window.ort = { Tensor: class { constructor(type, data, dims) { this.type = type; this.data = data; this.dims = dims; } } };
+    NP.addListener('download', e => { if (curStatus) curStatus('Downloading ' + e.id.replace(/^sp4?_/, '') + ' ' + e.percent + '%'); });
+  }
+  const toB64 = f32 => {
+    const u = new Uint8Array(f32.buffer, f32.byteOffset, f32.byteLength); let s = '';
+    for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+    return btoa(s);
+  };
+  const fromB64 = b64 => { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Float32Array(u.buffer); };
+  async function nativeFetch(key, file, status) {
+    const urls = /^https?:/.test(file) ? [file] : [HF_BASE + file, SP4 + file];   // same fallback as the web path
+    let last = null;
+    for (const url of urls) {
+      try { curStatus = status; await NP.download({ id: key, url }); curStatus = null; return; }
+      catch (e) { last = e; }
+    }
+    curStatus = null;
+    throw new Error('Download failed for ' + file + ': ' + errText(last));
+  }
+  async function nativeSession(key) {
+    const info = await NP.load({ id: key });
+    return {
+      inputNames: [info.inputName], outputNames: [info.outputName],
+      run: async feed => {
+        const t = Object.values(feed)[0];
+        const r = await NP.run({ id: key, data: toB64(t.data), dims: Array.from(t.dims) });
+        return { [r.outputName]: { data: fromB64(r.data), dims: r.dims } };
+      },
+      release: () => { NP.unload({ id: key }).catch(() => {}); }
+    };
+  }
+
   // ---------- model storage (own IndexedDB, survives sw.js cache cleanup) ----------
   const idb = () => new Promise((res, rej) => {
     const r = indexedDB.open('ppSpleeterDB', 1);
@@ -414,6 +452,11 @@
     document.head.appendChild(s);
   });
   async function makeSession(key, gpu, lv) {
+    if (NATIVE) {
+      if (engineDead) throw new Error('The audio engine crashed earlier. Reload the app, then try again.');
+      try { return await nativeSession(key); }
+      catch (e) { throw new Error('Could not load model "' + key + '": ' + errText(e)); }
+    }
     if (engineDead) throw new Error('The audio engine crashed earlier and cannot recover until the app is reloaded. Reload the app, then try again.');
     const buf = await getPart(key);
     if (!buf) throw new Error('Model file "' + key + '" is missing. Press Split again to download it.');
@@ -449,11 +492,15 @@
     }
     throw new Error('Could not load model "' + key + '": ' + errText(first || last) + (engineDead ? ' The engine has crashed, so reload the app before trying again. If Multi-thread is ticked, untick it for this model.' : ''));
   }
-  async function haveModel(id) { for (const [k] of parts(id)) if (!(await getPart(k))) return false; return true; }
+  async function haveModel(id) {
+    if (NATIVE) { for (const [k] of parts(id)) if (!(await NP.exists({ id: k })).ready) return false; return true; }
+    for (const [k] of parts(id)) if (!(await getPart(k))) return false; return true; }
   async function downloadModel(id, status, low) {
+    if (NATIVE) { for (const [k, f] of parts(id)) { if ((await NP.exists({ id: k })).ready) continue; status('Downloading ' + f.split('/').pop() + '…'); await nativeFetch(k, f, status); } return; }
     for (const [k, f] of parts(id)) { if (await getPart(k)) continue; await fetchPart(k, f, (g, t) => status('Downloading ' + f.split('/').pop() + ' ' + (t ? Math.round(g / t * 100) + '%' : (g / 1048576 | 0) + ' MB')), low); }
   }
-  async function deleteModel(id) { for (const [k] of parts(id)) { await idbDel(k); if (k.startsWith('sp_')) await idbDel(legacyKey(k)); if (k.startsWith('sp4_')) await idbDel('sp4f_' + k.slice(4)); } }
+  async function deleteModel(id) {
+    if (NATIVE) { for (const [k] of parts(id)) { await NP.remove({ id: k }); if (k.startsWith('sp_')) await idbDel(legacyKey(k)).catch(() => {}); } return; } for (const [k] of parts(id)) { await idbDel(k); if (k.startsWith('sp_')) await idbDel(legacyKey(k)); if (k.startsWith('sp4_')) await idbDel('sp4f_' + k.slice(4)); } }
 
   // Runs the chosen model; returns {outputName: [L, R]} for just the wanted outputs.
   async function run(id, pcm, wanted, opts, status, onProgress) {
