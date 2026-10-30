@@ -1853,8 +1853,11 @@
       busy(false);
     };
     wsrt.onclick = () => {
-      if (!lastSrt) return; const u = URL.createObjectURL(new Blob([lastSrt.text], { type: 'text/plain' })), a = document.createElement('a');
-      a.href = u; a.download = lastSrt.name.replace(/[\\/:*?"<>|]+/g, '_') + '.srt'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 10000);
+      if (!lastSrt) return;
+      const blob = new Blob([lastSrt.text], { type: 'text/plain' }), name = lastSrt.name.replace(/[\\/:*?"<>|]+/g, '_') + '.srt';
+      if (window.ppSaveBlob) { window.ppSaveBlob(blob, name); return; }   // works inside the Android app
+      const u = URL.createObjectURL(blob), a = document.createElement('a');
+      a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 10000);
     };
     $('#ppv-wfree').onclick = async () => {
       try { if (asr) { await asr.dispose(); asr = null; asrId = ''; } const ks = await caches.keys(); for (const k of ks) if (/transformers/i.test(k)) await caches.delete(k); h.status('Whisper download removed.'); } catch (e) { h.status('Error: ' + errText(e)); }

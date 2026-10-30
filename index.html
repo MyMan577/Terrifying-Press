@@ -1,6 +1,58 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
+<script>
+/* Universal save helper: works in browsers AND inside Android WebView APKs,
+   where <a download> + blob: URLs are silently ignored. */
+window.ppSaveBlob = async function(blob, filename){
+  const mime = blob.type || 'application/octet-stream';
+  const toB64 = b => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1]);
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(b);
+  });
+  try {
+    const C = window.Capacitor, P = C && C.Plugins;
+    // 1) Capacitor (your APK): write to app cache in chunks (no storage permission,
+    //    no giant base64 string), then open the share sheet -> "Save to device / Files / Drive"
+    if (P && P.Filesystem){
+      const CH = 3 * 1024 * 1024;               // multiple of 3 keeps base64 chunks aligned
+      const path = 'export_' + Date.now() + '_' + filename.replace(/[^\w.\- ]+/g, '_');
+      for (let off = 0, first = true; off < blob.size || first; off += CH, first = false){
+        const data = await toB64(blob.slice(off, off + CH));
+        if (first) await P.Filesystem.writeFile({ path, data, directory: 'CACHE' });
+        else await P.Filesystem.appendFile({ path, data, directory: 'CACHE' });
+      }
+      const { uri } = await P.Filesystem.getUri({ path, directory: 'CACHE' });
+      if (P.Share){ try { await P.Share.share({ title: filename, url: uri, dialogTitle: 'Save ' + filename }); } catch(e){ if (!(e && /cancel/i.test(e.message||''))) throw e; } }
+      return true;
+    }
+    // 2) Custom Android bridge (e.g. addJavascriptInterface named AndroidBridge)
+    if (window.AndroidBridge && window.AndroidBridge.saveFile){
+      window.AndroidBridge.saveFile(await toB64(blob), filename, mime);
+      return true;
+    }
+    // 3) Web Share with files (system "Save to / Share" sheet)
+    const file = new File([blob], filename, { type: mime });
+    if (navigator.canShare && navigator.canShare({ files: [file] })){
+      await navigator.share({ files: [file], title: filename });
+      return true;
+    }
+  } catch(e){
+    if (e && e.name === 'AbortError') return true; // user closed share sheet
+    console.warn('native save failed, falling back', e);
+  }
+  // 4) Normal browser download
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return true;
+};
+</script>
 <script id="pp-gate-core">
 /* Mode gate: runs before the app so it can tell people who already have saved data from brand-new users. */
 (function(){
@@ -8610,14 +8662,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       }
       await zip.add('manifest.json', new TextEncoder().encode(JSON.stringify({ version: 1, playlists, tracks: manifest }, null, 2)));
       const blob = zip.finish();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'press-play-library-backup-' + new Date().toISOString().slice(0,10) + '.zip';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      await window.ppSaveBlob(blob, 'press-play-library-backup-' + new Date().toISOString().slice(0,10) + '.zip');
       showToast('Backup exported.');
     } catch(e){
       showToast('Backup failed: ' + (e && e.message ? e.message : 'unknown error'), 'error');
@@ -8801,14 +8846,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       if (Object.keys(data).length === 0){ showToast('Nothing to export yet.'); return; }
       const payload = { version: 1, exportedAt: new Date().toISOString(), data };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'press-play-progress-backup-' + new Date().toISOString().slice(0,10) + '.json';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      window.ppSaveBlob(blob, 'press-play-progress-backup-' + new Date().toISOString().slice(0,10) + '.json');
       showToast('Progress & settings exported.');
     } catch(e){
       showToast('Export failed: ' + (e && e.message ? e.message : 'unknown error'), 'error');
@@ -18259,16 +18297,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   function safeFilename(name){
     return (name || 'clip').replace(/[\\/:*?"<>|]+/g, '_').trim().slice(0, 80) || 'clip';
   }
-  function downloadBlob(blob, filename){
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 15000);
-  }
+  function downloadBlob(blob, filename){ return window.ppSaveBlob(blob, filename); }
 
   // 16-bit PCM WAV encoder, used to export trimmed audio without
   // depending on any external library.
@@ -20115,11 +20144,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       lines.push(t.remoteUrl || t.fileName || (t.title + '.' + t.ext));
     });
     const blob = new Blob([lines.join('\n') + '\n'], { type: 'audio/x-mpegurl;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name.replace(/[\\/:*?"<>|]+/g, '_') + '.m3u8';
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    window.ppSaveBlob(blob, name.replace(/[\\/:*?"<>|]+/g, '_') + '.m3u8');
     ppToast('Exported ' + idxs.length + ' track' + (idxs.length === 1 ? '' : 's') + ' to M3U.');
   }
   async function ppImportM3U(file){
@@ -24898,8 +24923,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
       const t=((document.getElementById('np-title')||{}).textContent||'snapshot').replace(/[^\w\- ]+/g,'').trim().slice(0,60)||'snapshot';
       c.toBlob(b=>{
         if(!b){toast('Snapshot failed.');return;}
-        const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=t+' '+Math.floor(V.currentTime)+'s.png';
-        document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+        window.ppSaveBlob(b, t+' '+Math.floor(V.currentTime)+'s.png');
         toast('Snapshot saved');
       },'image/png');
     }catch(e){toast('This video source blocks snapshots.');}
@@ -25342,7 +25366,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   setTimeout(finish, 12000);
 })();
 </script>
-<script src="./vocal-separator.js?v=20261012a" defer></script>
-<script src="./update-options.js?v=20261012a" defer></script>   <!-- bump v= each time vocal-separator.js changes so phones fetch the new copy -->
+<script src="./vocal-separator.js?v=20261030a" defer></script>
+<script src="./update-options.js?v=20261030a" defer></script>   <!-- bump v= each time vocal-separator.js changes so phones fetch the new copy -->
 </body>
 </html>
