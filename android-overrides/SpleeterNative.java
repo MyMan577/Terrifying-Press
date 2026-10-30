@@ -204,6 +204,13 @@ final class SpleeterNative {
         bb.putShort((short) Math.round(v * 32767f));
     }
 
+    static float[] copyOut(OnnxTensor t) throws Exception {   // kept for other callers; the separator itself no longer copies
+        FloatBuffer fb = t.getFloatBuffer();
+        float[] a = new float[fb.remaining()];
+        fb.get(a);
+        return a;
+    }
+
     // ---------- the separator ----------
     static void separate(OrtEnvironment env, OrtSession vS, OrtSession aS, Audio au, double sharp,
                          File outV, File outA, Progress prog) throws Exception {
