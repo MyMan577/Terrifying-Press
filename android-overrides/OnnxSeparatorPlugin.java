@@ -1,5 +1,6 @@
 package com.pressplay.media;
 
+import android.os.Process;
 import android.util.Base64;
 
 import ai.onnxruntime.OnnxTensor;
@@ -203,8 +204,13 @@ public class OnnxSeparatorPlugin extends Plugin {
         final boolean nnapi = call.getBoolean("nnapi", true);
         final int nfft = call.getInt("nfft", 7680), dimF = call.getInt("dimF", 3072);
         final double comp = call.getDouble("comp", 1.021);
+        final double duty = call.getDouble("duty", 0.0);   // optional fixed extra rest (0.2 = sleep 20% of each chunk's time); thermal easing is always on
         if (kind == null || input == null || stemsJ == null) { call.reject("kind, input and stems are required"); return; }
         new Thread(() -> {
+            // Slightly below the UI/audio threads, but NOT the background cgroup (that pins work to the little cores).
+            // Set before any session opens so the ONNX Runtime thread pool inherits it.
+            try { Process.setThreadPriority(5); } catch (Throwable ignored) { }
+            final Throttle th = new Throttle(getContext(), duty);
             final List<Accel.Sess> open = new ArrayList<>();
             final Map<String, File> outs = new LinkedHashMap<>();
             long t0 = System.currentTimeMillis();
@@ -219,6 +225,7 @@ public class OnnxSeparatorPlugin extends Plugin {
                     JSObject e = new JSObject();
                     e.put("fraction", fr);
                     notifyListeners("progress", e);
+                    if (fr < 1.0) th.tick();   // runs per chunk on this worker thread: eases off when the phone warms up
                 };
                 File inFile = new File(input);
                 SpleeterNative.Audio au = SpleeterNative.decode(inFile);

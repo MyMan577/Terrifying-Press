@@ -14,6 +14,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
@@ -26,6 +27,12 @@ import java.util.Map;
 final class Accel {
     private static SharedPreferences prefs;
     private static int threadsCache = 0;
+    /** Upper limit for inference threads. 4 fast cores finish about as quickly as 6 (the slower mid cores
+     *  make the pool wait at every sync point) and draw noticeably less power. Raise to 5 or 6 if you prefer speed. */
+    private static final int MAX_THREADS = 4;
+    /** Bump this when session settings change, so old "NNAPI vs CPU" timing verdicts are measured again. */
+    private static final String TUNE_VER = ":v2";
+    private static String tuneKey(String key, File f) { return key + ":" + f.length() + TUNE_VER; }
     private static final Map<OrtSession, Sess> REG = Collections.synchronizedMap(new IdentityHashMap<OrtSession, Sess>());
 
     static synchronized void init(Context c) {
@@ -86,7 +93,7 @@ final class Accel {
         int big = 0;
         if (max > 0) for (int i = 0; i < n; i++) if (fr[i] >= max * 7 / 10) big++;
         int t = big > 0 ? big : n - 2;
-        threadsCache = Math.max(1, Math.min(6, Math.min(t, n > 1 ? n - 1 : 1)));
+        threadsCache = Math.max(1, Math.min(MAX_THREADS, Math.min(t, n > 1 ? n - 1 : 1)));
         return threadsCache;
     }
 
@@ -94,6 +101,10 @@ final class Accel {
         OrtSession.SessionOptions o = new OrtSession.SessionOptions();
         int th = threads();
         o.setIntraOpNumThreads(th);
+        try { o.setInterOpNumThreads(1); } catch (Throwable ignored) { }
+        // Idle pool threads normally busy-wait for the next op, which burns power for nothing.
+        // These models are big convolutions, so sleeping between ops costs almost no speed.
+        try { o.addConfigEntry("session.intra_op.allow_spinning", "0"); } catch (Throwable ignored) { }
         o.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
         if (f.length() > 100000000L) {   // Demucs (316 MB): no extra memory pools or copies of the weights
             try {
@@ -103,7 +114,7 @@ final class Accel {
             } catch (Throwable ignored) { }
         }
         if (nnapi) {
-            o.getClass().getMethod("addNnapi").invoke(o);   // phone GPU / NPU
+            addNnapi(o);                                    // phone GPU / NPU, fp16 maths when the runtime supports the flag
         } else {
             try {
                 Map<String, String> xo = new HashMap<>();
@@ -112,6 +123,18 @@ final class Accel {
             } catch (Throwable ignored) { }
         }
         return env.createSession(f.getAbsolutePath(), o);
+    }
+
+    /** NNAPI with the FP16 flag (the NPU is far faster and cooler in half precision). Falls back to plain NNAPI on older runtimes. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void addNnapi(OrtSession.SessionOptions o) throws Exception {
+        try {
+            Class<?> fc = Class.forName("ai.onnxruntime.providers.NNAPIFlags");
+            Enum fp16 = Enum.valueOf((Class) fc, "USE_FP16");
+            o.getClass().getMethod("addNnapi", EnumSet.class).invoke(o, EnumSet.of(fp16));
+        } catch (Throwable t) {
+            o.getClass().getMethod("addNnapi").invoke(o);
+        }
     }
 
     static FloatBuffer directFloats(int n) {
@@ -131,7 +154,7 @@ final class Accel {
      */
     static Sess open(OrtEnvironment env, String key, File f, boolean wantNnapi, long[] shape) throws Exception {
         if (!wantNnapi) return reg(new Sess(build(env, f, false), f, key, false));
-        String tk = key + ":" + f.length();
+        String tk = tuneKey(key, f);
         String v = prefs == null ? null : prefs.getString(tk, null);
         if ("CPU".equals(v)) return reg(new Sess(build(env, f, false), f, key, false));
         if ("NNAPI".equals(v)) {
@@ -196,7 +219,7 @@ final class Accel {
             REG.remove(old);
             REG.put(x.s, x);
             try { old.close(); } catch (Exception ignored) { }
-            remember(x.key + ":" + x.f.length(), "CPU");
+            remember(tuneKey(x.key, x.f), "CPU");
             return once(env, x, in, dims);
         }
     }
