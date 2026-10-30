@@ -79,32 +79,9 @@ final class SpleeterNative {
     static String accelUsed = "CPU";   // which hardware the last session really runs on
 
     static OrtSession open(OrtEnvironment env, File f, boolean useNnapi) throws Exception {
-        if (useNnapi) {
-            try {
-                OrtSession s = make(env, f, true);
-                accelUsed = "NNAPI";
-                return s;
-            } catch (Exception e) {
-                // NNAPI not available for this model on this phone: use the CPU instead
-            }
-        }
-        accelUsed = "CPU";
-        return make(env, f, false);
-    }
-
-    private static OrtSession make(OrtEnvironment env, File f, boolean nnapi) throws Exception {
-        OrtSession.SessionOptions o = new OrtSession.SessionOptions();
-        int threads = Math.max(1, Math.min(6, Runtime.getRuntime().availableProcessors() - 2));
-        o.setIntraOpNumThreads(threads);
-        o.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
-        if (nnapi) {
-            o.getClass().getMethod("addNnapi").invoke(o);   // GPU / NPU via Android NNAPI
-        } else {
-            try {
-                o.getClass().getMethod("addXnnpack", Map.class).invoke(o, Collections.emptyMap());
-            } catch (Throwable ignored) { }
-        }
-        return env.createSession(f.getAbsolutePath(), o);
+        Accel.Sess x = Accel.open(env, f.getName(), f, useNnapi, new long[] {2, 1, T, F});
+        accelUsed = x.accel();
+        return x.s;
     }
 
     // ---------- decode any audio file to 44.1 kHz stereo float ----------
@@ -227,20 +204,14 @@ final class SpleeterNative {
         bb.putShort((short) Math.round(v * 32767f));
     }
 
-    static float[] copyOut(OnnxTensor t) throws Exception {
-        FloatBuffer fb = t.getFloatBuffer();
-        float[] a = new float[fb.remaining()];
-        fb.get(a);
-        return a;
-    }
-
     // ---------- the separator ----------
     static void separate(OrtEnvironment env, OrtSession vS, OrtSession aS, Audio au, double sharp,
                          File outV, File outA, Progress prog) throws Exception {
         final int len = au.len;
         final float[][] pcm = au.ch;
-        final String vIn = vS.getInputNames().iterator().next();
-        final String aIn = aS.getInputNames().iterator().next();
+        final Accel.Sess sv = Accel.wrap(vS), sa = Accel.wrap(aS);
+        final FloatBuffer inBuf = Accel.directFloats(2 * T * F);
+        final long[] dims = {2, 1, T, F};
         final int nSeg = (int) Math.ceil((len + PAD) / (double) SEG);
 
         final float[][] ovV = new float[2][RB], ovA = new float[2][RB];   // rolling overlap-add buffers
@@ -273,24 +244,22 @@ final class SpleeterNative {
                     }
                 }
 
-                // 2) inference: vocals and accompaniment models (native ONNX Runtime)
-                float[] V, A;
-                try (OnnxTensor tv = OnnxTensor.createTensor(env, FloatBuffer.wrap(x.clone()), new long[] {2, 1, T, F});
-                     OrtSession.Result rv = vS.run(Collections.singletonMap(vIn, tv))) {
-                    V = copyOut((OnnxTensor) rv.get(0));
-                }
-                try (OnnxTensor ta = OnnxTensor.createTensor(env, FloatBuffer.wrap(x.clone()), new long[] {2, 1, T, F});
-                     OrtSession.Result ra = aS.run(Collections.singletonMap(aIn, ta))) {
-                    A = copyOut((OnnxTensor) ra.get(0));
-                }
+                // 2) inference: vocals and accompaniment models (native ONNX Runtime, no tensor copies)
+                Accel.fill(inBuf, x);
+                try (OrtSession.Result rv = Accel.run(env, sv, inBuf, dims);
+                     OrtSession.Result ra = Accel.run(env, sa, inBuf, dims)) {
+                final FloatBuffer V = ((OnnxTensor) rv.get(0)).getFloatBuffer();
+                final FloatBuffer A = ((OnnxTensor) ra.get(0)).getFloatBuffer();
 
                 // 3) soft masks, applied to the spectrum, then inverse STFT with overlap-add
                 for (int c = 0; c < 2; c++) {
                     for (int t = 0; t < T; t++) {
                         int xb = c * T * F + t * F;
                         for (int k = 0; k < F; k++) {
-                            float v2 = V[xb + k] * V[xb + k];
-                            float a2 = A[xb + k] * A[xb + k];
+                            float vk = V.get(xb + k);
+                            float v2 = vk * vk;
+                            float ak = A.get(xb + k);
+                            float a2 = ak * ak;
                             float mk = (v2 + 5e-11f) / (v2 + a2 + 1e-10f);
                             if (sharp != 1.0) {
                                 double pa = Math.pow(mk, sharp), pb = Math.pow(1 - mk, sharp);
@@ -320,6 +289,8 @@ final class SpleeterNative {
                     }
                 }
 
+                }   // results closed here
+
                 // 4) samples before index SEG are final now: write them out
                 bbV.clear();
                 bbA.clear();
@@ -344,6 +315,10 @@ final class SpleeterNative {
                 }
                 if (prog != null) prog.onProgress((s + 1) / (double) nSeg);
             }
+        } finally {
+            accelUsed = sv.nn && sa.nn ? "NNAPI" : (sv.nn || sa.nn ? "NNAPI+CPU" : "CPU");
+            if (sv.s != vS) { Accel.close(sv); }   // a CPU replacement made after an NNAPI failure
+            if (sa.s != aS) { Accel.close(sa); }
         }
     }
 }
