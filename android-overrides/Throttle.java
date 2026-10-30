@@ -44,6 +44,9 @@ final class Throttle {
         last = SystemClock.elapsedRealtime();
     }
 
+    /** Current rest factor without sleeping (used by the page through the plugin's thermal() method). */
+    synchronized double peek() { return factor(SystemClock.elapsedRealtime()); }
+
     private double factor(long now) {
         if (now - probedAt < 1500) return cached;              // headroom must not be polled faster than ~1/s
         probedAt = now;

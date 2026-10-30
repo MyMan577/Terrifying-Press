@@ -98,6 +98,11 @@ final class Accel {
     }
 
     static OrtSession build(OrtEnvironment env, File f, boolean nnapi) throws Exception {
+        return build(env, f, nnapi, f.length() > 100000000L);
+    }
+
+    /** lowMem = no extra memory pools or copies of the weights (right for one huge model, wrong for loops that run a session thousands of times). */
+    static OrtSession build(OrtEnvironment env, File f, boolean nnapi, boolean lowMem) throws Exception {
         OrtSession.SessionOptions o = new OrtSession.SessionOptions();
         int th = threads();
         o.setIntraOpNumThreads(th);
@@ -106,7 +111,7 @@ final class Accel {
         // These models are big convolutions, so sleeping between ops costs almost no speed.
         try { o.addConfigEntry("session.intra_op.allow_spinning", "0"); } catch (Throwable ignored) { }
         o.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
-        if (f.length() > 100000000L) {   // Demucs (316 MB): no extra memory pools or copies of the weights
+        if (lowMem) {   // Demucs (316 MB)
             try {
                 o.setCPUArenaAllocator(false);
                 o.setMemoryPatternOptimization(false);

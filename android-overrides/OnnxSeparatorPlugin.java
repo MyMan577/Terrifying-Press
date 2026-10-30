@@ -125,6 +125,67 @@ public class OnnxSeparatorPlugin extends Plugin {
         }).start();
     }
 
+    private final WhisperNative whisper = new WhisperNative();
+
+    private static int[] ints(JSONArray a) throws org.json.JSONException {
+        int[] r = new int[a == null ? 0 : a.length()];
+        for (int i = 0; i < r.length; i++) r[i] = a.getInt(i);
+        return r;
+    }
+
+    /** One 30 s Whisper window: log-mel features in (base64 float32), generated token ids out. Models: <id>.onnx in the models folder. */
+    @PluginMethod
+    public void whisperRun(PluginCall call) {
+        Accel.init(getContext());
+        final String encId = call.getString("enc"), decId = call.getString("dec"), b64 = call.getString("mel");
+        final JSONArray dimsJ = call.getArray("dims"), langIdsJ = call.getArray("langIds"), supJ = call.getArray("suppress"), bsupJ = call.getArray("beginSuppress");
+        if (encId == null || decId == null || b64 == null || dimsJ == null) { call.reject("enc, dec, mel and dims are required"); return; }
+        final File ef = modelFile(encId), df = modelFile(decId);
+        if (!ef.exists() || !df.exists()) { call.reject("Whisper model not downloaded"); return; }
+        final WhisperNative.Cfg c = new WhisperNative.Cfg();
+        c.sot = call.getInt("sot", 0); c.eot = call.getInt("eot", 0); c.noTs = call.getInt("noTs", 0); c.tsBegin = call.getInt("tsBegin", 0);
+        c.task = call.getInt("task", 0); c.lang = call.getInt("lang", 0); c.maxTokens = call.getInt("maxTokens", 224);
+        c.useLang = call.getBoolean("useLang", false); c.timestamps = call.getBoolean("timestamps", true);
+        new Thread(() -> {
+            try { Process.setThreadPriority(5); } catch (Throwable ignored) { }   // before the sessions open, so the ORT thread pool inherits it
+            try {
+                c.langIds = ints(langIdsJ); c.suppress = ints(supJ); c.beginSuppress = ints(bsupJ);
+                byte[] raw = Base64.decode(b64, Base64.NO_WRAP);
+                ByteBuffer d = ByteBuffer.allocateDirect(raw.length).order(ByteOrder.nativeOrder());
+                d.put(raw);
+                d.rewind();
+                long[] dims = new long[dimsJ.length()];
+                for (int i = 0; i < dims.length; i++) dims[i] = dimsJ.getLong(i);
+                WhisperNative.Out o = whisper.run(env(), encId + "|" + decId, ef, df, d.asFloatBuffer(), dims, c);
+                JSONArray t = new JSONArray();
+                for (int v : o.tokens) t.put(v);
+                JSObject r = new JSObject();
+                r.put("tokens", t);
+                r.put("lang", o.lang);
+                call.resolve(r);
+            } catch (Throwable e) {
+                call.reject("Whisper: " + (e.getMessage() != null ? e.getMessage() : e.toString()));
+            }
+        }).start();
+    }
+
+    @PluginMethod
+    public void whisperUnload(PluginCall call) {
+        whisper.close();
+        call.resolve();
+    }
+
+    private Throttle thermalProbe;
+
+    /** Lets the page ask how warm the phone is: factor 0 = cool, higher = rest more between units of work. */
+    @PluginMethod
+    public synchronized void thermal(PluginCall call) {
+        if (thermalProbe == null) thermalProbe = new Throttle(getContext(), 0);
+        JSObject r = new JSObject();
+        r.put("factor", thermalProbe.peek());
+        call.resolve(r);
+    }
+
     @PluginMethod
     public void load(PluginCall call) {
         Accel.init(getContext());
@@ -133,9 +194,12 @@ public class OnnxSeparatorPlugin extends Plugin {
         final File f = modelFile(id);
         if (!f.exists()) { call.reject("Model not downloaded: " + id); return; }
         final boolean wantNnapi = call.getBoolean("nnapi", false);
+        final JSONArray shapeJ = call.getArray("shape");   // optional: lets Accel time NNAPI vs CPU once for this model and keep the winner
         new Thread(() -> {
             try {
-                Accel.Sess x = Accel.open(env(), id, f, wantNnapi, null);   // no timing here: reuses the verdict from native runs
+                long[] shape = null;
+                if (shapeJ != null && shapeJ.length() > 0) { shape = new long[shapeJ.length()]; for (int i = 0; i < shape.length; i++) shape[i] = shapeJ.getLong(i); }
+                Accel.Sess x = Accel.open(env(), id, f, wantNnapi, shape);
                 synchronized (sessions) {
                     Accel.Sess old = sessions.put(id, x);
                     if (old != null) Accel.close(old);
