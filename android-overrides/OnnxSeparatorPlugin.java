@@ -220,7 +220,9 @@ public class OnnxSeparatorPlugin extends Plugin {
                     e.put("fraction", fr);
                     notifyListeners("progress", e);
                 };
-                SpleeterNative.Audio au = SpleeterNative.decode(new File(input));
+                File inFile = new File(input);
+                SpleeterNative.Audio au = SpleeterNative.decode(inFile);
+                inFile.delete();   // the decoded audio is in memory now
                 String accel;
                 if ("sp4".equals(kind)) {
                     String[] names = {"vocals", "drums", "bass", "other"};

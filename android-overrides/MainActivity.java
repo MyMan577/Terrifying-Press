@@ -7,8 +7,9 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        // Register our native ONNX plugin before Capacitor starts the bridge.
+        // Register our native plugins before Capacitor starts the bridge.
         registerPlugin(OnnxSeparatorPlugin.class);
+        registerPlugin(SpleeterSeparatorPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
