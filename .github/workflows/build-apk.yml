@@ -37,15 +37,23 @@ jobs:
 
       - name: Add the native ONNX plugin
         run: |
-          for f in android-overrides/OnnxSeparatorPlugin.java android-overrides/MainActivity.java vocal-separator.js index.html; do
+          for f in android-overrides/OnnxSeparatorPlugin.java android-overrides/MainActivity.java android-overrides/Accel.java android-overrides/StemNative.java android-overrides/SpleeterNative.java android-overrides/KeepAliveService.java vocal-separator.js index.html; do
             if [ ! -f "$f" ]; then echo "::error::Missing file in the repo: $f. Add it at that exact path (folder included) and run again."; exit 1; fi
           done
           PKG_DIR=android/app/src/main/java/com/pressplay/media
           mkdir -p "$PKG_DIR"
-          cp android-overrides/OnnxSeparatorPlugin.java "$PKG_DIR"/
-          cp android-overrides/MainActivity.java "$PKG_DIR"/
+          cp android-overrides/*.java "$PKG_DIR"/
           sed -i '/^dependencies {/a\    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.19.2"' android/app/build.gradle
           sed -i 's/<application/<application android:largeHeap="true"/' android/app/src/main/AndroidManifest.xml
+          python3 - <<'PY'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p).read()
+          perms = ''.join('    <uses-permission android:name="android.permission.%s" />\n' % n for n in ['FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_DATA_SYNC', 'WAKE_LOCK', 'POST_NOTIFICATIONS'])
+          if 'KeepAliveService' not in s:
+              s = s.replace('<application', perms + '    <application', 1)
+              s = s.replace('</application>', '    <service android:name=".KeepAliveService" android:exported="false" android:foregroundServiceType="dataSync" />\n    </application>', 1)
+          open(p, 'w').write(s)
+          PY
 
       - name: Build the debug APK
         working-directory: android
