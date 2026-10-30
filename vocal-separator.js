@@ -63,8 +63,11 @@
     curStatus = null;
     throw new Error('Download failed for ' + file + ': ' + errText(last));
   }
+  // NNAPI (phone GPU/NPU) for everything except Demucs, whose transformer ops run better on CPU. The Java side falls back to CPU by itself.
+  const wantNnapi = key => { if (/^demucs/.test(key)) return false; try { return localStorage.getItem('ppvNnapi') !== '0'; } catch (e) { return true; } };
   async function nativeSession(key) {
-    const info = await NP.load({ id: key });
+    const info = await NP.load({ id: key, nnapi: wantNnapi(key) });
+    window.__ppLastSep = ' (on ' + info.accel + ')';
     return {
       inputNames: [info.inputName], outputNames: [info.outputName],
       run: async feed => {
@@ -502,10 +505,69 @@
   async function deleteModel(id) {
     if (NATIVE) { for (const [k] of parts(id)) { await NP.remove({ id: k }); if (k.startsWith('sp_')) await idbDel(legacyKey(k)).catch(() => {}); } return; } for (const [k] of parts(id)) { await idbDel(k); if (k.startsWith('sp_')) await idbDel(legacyKey(k)); if (k.startsWith('sp4_')) await idbDel('sp4f_' + k.slice(4)); } }
 
+  // Native 4-stem, MDX and Demucs path (Android app): decode, STFT, model and WAV output all run in Java.
+  const nativeGrab = async p => new Blob([await (await fetch(window.Capacitor.convertFileSrc(p))).arrayBuffer()], { type: 'audio/wav' });
+  async function nativeStems(m, id, track, wanted, opts, status, onProgress) {
+    const SS = window.Capacitor.Plugins.SpleeterSeparator;
+    status('Preparing audio…');
+    const blob = await (await fetch(track.url)).blob();
+    const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.onerror = () => rej(fr.error); fr.readAsDataURL(blob); });
+    const saved = await SS.writeInput({ name: 'track-' + Date.now() + '.audio', data: b64 });
+    window.__ppLastSep = '';
+    const h = await NP.addListener('progress', e => { onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
+    const base = { input: saved.path, stems: wanted, nnapi: opts.nnapi !== false };
+    let out;
+    try {
+      status('Loading models… (the first run on a phone also times NNAPI vs CPU)');
+      if (m.kind === 'sp4') {
+        try { out = await NP.separate(Object.assign({ kind: 'sp4', prefix: 'sp4_' }, base)); }
+        catch (e) {                                                   // half precision rejected: use the full precision files
+          if (!/Could not load model/.test(errText(e))) throw e;
+          for (const n of ['vocals', 'drums', 'bass', 'other']) if (!(await NP.exists({ id: 'sp4f_' + n })).ready) await nativeFetch('sp4f_' + n, n + '.onnx', status);
+          status('Loading models…');
+          out = await NP.separate(Object.assign({ kind: 'sp4', prefix: 'sp4f_' }, base));
+        }
+      } else if (m.kind === 'demucs') out = await NP.separate(Object.assign({ kind: 'demucs', model: id, sources: m.sources }, base));
+      else out = await NP.separate(Object.assign({ kind: 'mdx', model: id, nfft: m.nfft, dimF: m.dimF, comp: m.comp }, base));
+    } finally { h.remove(); }
+    window.__ppLastSep = ' (' + Math.round(out.seconds) + ' s on ' + out.accel + ')';
+    const res = {};
+    for (const n of wanted) res[n] = { blob: await nativeGrab(out.files[n]), ext: 'wav' };
+    NP.deleteFiles({ paths: Object.values(out.files) }).catch(() => {});
+    return res;
+  }
+
+  // Native 2-stem path (Android app): the whole separation runs in Java, not in this page.
+  async function nativeSpleeter(track, wanted, opts, status, onProgress) {
+    const SS = window.Capacitor.Plugins.SpleeterSeparator;
+    status('Preparing audio…');
+    const blob = await (await fetch(track.url)).blob();
+    const b64 = await new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(String(fr.result).split(',')[1]);
+      fr.onerror = () => rej(fr.error);
+      fr.readAsDataURL(blob);
+    });
+    const saved = await SS.writeInput({ name: 'track-' + Date.now() + '.audio', data: b64 });
+    window.__ppLastSep = '';
+    const h = await SS.addListener('progress', e => { onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
+    let out;
+    try { out = await SS.separate({ input: saved.path, sharp: opts.strength, nnapi: opts.nnapi !== false }); }
+    finally { h.remove(); }
+    window.__ppLastSep = ' (' + Math.round(out.seconds) + ' s on ' + out.accel + ')';
+    const grab = async p => new Blob([await (await fetch(window.Capacitor.convertFileSrc(p))).arrayBuffer()], { type: 'audio/wav' });
+    const res = {};
+    if (wanted.includes('Vocals')) res.Vocals = { blob: await grab(out.vocals), ext: 'wav' };
+    if (wanted.includes('Instrumental')) res.Instrumental = { blob: await grab(out.instrumental), ext: 'wav' };
+    return res;
+  }
+
   // Runs the chosen model; returns {outputName: [L, R]} for just the wanted outputs.
   async function run(id, pcm, wanted, opts, status, onProgress) {
     const m = MODELS[id]; await loadOrt();
     const mkGate = n => n === 'Vocals' ? makeGate(opts.gate) : null;
+    if (m.kind === 'spleeter' && NATIVE && !pcm) return nativeSpleeter(opts.track, wanted, opts, status, onProgress);
+    if ((m.kind === 'sp4' || m.kind === 'mdx' || m.kind === 'demucs') && NATIVE && !pcm) return nativeStems(m, id, opts.track, wanted, opts, status, onProgress);
     if (m.kind === 'spleeter') {
       status('Loading models…');
       const sess = { vocals: await makeSession('sp_vocals', false, opts.lv), accomp: await makeSession('sp_accomp', false, opts.lv) };
@@ -5244,6 +5306,7 @@
       '<div style="margin-top:8px">Mute vocal gaps</div><select id="ppv-gate"><option value="0">Off</option><option value="1">Gentle</option><option value="2">Normal</option><option value="3">Strong</option></select><div style="opacity:.6;font-size:11px;margin-top:4px">Silences leftover noise between sung lines. Vocals stem only.</div>' +
       '<div id="ppv-spl" style="margin-top:8px">Strength: <span id="ppv-sv">1</span><input id="ppv-sl" type="range" min="1" max="4" step="0.5" value="1" style="width:100%"><div style="opacity:.6;font-size:11px">Higher = less bleed, more watery artifacts</div><div style="margin-top:8px">Quality</div><select id="ppv-q"><option value="0">Standard</option><option value="1">Better (smooth seams, ~1.3x time)</option><option value="2">Best (+ averaged 2nd pass, ~2.7x time)</option></select></div>' +
       '<label id="ppv-gpu" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-gpuc"> Use GPU (faster, experimental)</label>' +
+      '<label id="ppv-nn" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-nnc"> Phone GPU/NPU (NNAPI), tested per model on first use. Demucs always uses CPU. Toggling re-tests</label>' +
       '<label id="ppv-mt" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-mtc"> Multi-thread (faster, uses more memory, reloads the app)</label>' +
       '<details><summary>Where split tracks go</summary><div class="ppv-note">Split tracks never count as new library tracks. They are all kept together under \u201cSplit tracks\u201d in the library\u2019s view selector.</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-mkpl"> Also make a playlist for each split song</label>' +
@@ -5319,6 +5382,7 @@
     const LV = () => LEVELS[+lsel.value] || null, showLv = () => lvi.textContent = LV() ? LV().info : 'No limits. Fastest, but can crash weak phones.';
     let holdUntil = 0;                                                // keep "Done"/"Error" visible instead of being wiped by "Ready" a split second later
     const status = t => { st.textContent = t; document.querySelectorAll('.ppv-stx').forEach(e => { e.textContent = t; }); if (/^(Done|Error)/.test(t)) holdUntil = Date.now() + 5000; mas.react(t); }, ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} };
+    const nnc = $('#ppv-nnc'); if (NATIVE) { $('#ppv-nn').style.display = 'block'; nnc.checked = ls('ppvNnapi') !== '0'; nnc.onchange = () => { ls('ppvNnapi', nnc.checked ? '1' : '0'); NP.clearTune().catch(() => {}); }; }
     const savedModel = ls('ppvModel'); if (savedModel && MODELS[savedModel]) sel.value = savedModel;
     if (ls('ppvStrength')) { sl.value = ls('ppvStrength'); sv.textContent = sl.value; }
     lsel.value = ls('ppvLevel') || (ls('ppvLow') === '0' ? '0' : '2'); showLv(); gpu.checked = ls('ppvGpu') === '1'; if (navigator.gpu) $('#ppv-gpu').style.display = 'block';
@@ -5365,6 +5429,7 @@
     async function splitTrack(t) {
       if (splitting) { status('Already splitting a track. Wait for it to finish.'); return; }   // two runs at once is a sure way to run out of memory
       splitting = true; go.disabled = true; bar.style.width = '0'; let wl = null;
+      if (NATIVE) NP.keepAlive({ on: true }).catch(() => {});
       try {
         if (LV() && LV().wake && navigator.wakeLock) { try { wl = await navigator.wakeLock.request('screen'); } catch (e) {} }
         const id = sel.value, want = picked();
@@ -5372,8 +5437,8 @@
         if (!want.length) throw new Error('Tick at least one stem.');
         await downloadModel(id, status, !!(LV() && LV().blob));
         status('Decoding audio…');
-        let pcm = await decode(t.url);
-        const res = await run(id, pcm, want, { strength: +sl.value, gpu: gpu.checked && !LV(), lv: LV(), quality: +qsel.value, gate: +gsel.value }, status, f => { bar.style.width = (f * 100) + '%'; status('Separating… ' + Math.round(f * 100) + '%'); });
+        let pcm = NATIVE && ['spleeter2', 'spleeter4', 'mdx_voc', 'demucs4', 'demucs6'].includes(id) ? null : await decode(t.url);
+        const res = await run(id, pcm, want, { strength: +sl.value, gpu: gpu.checked && !LV(), lv: LV(), quality: +qsel.value, gate: +gsel.value, track: t, nnapi: NATIVE ? nnc.checked : false }, status, f => { bar.style.width = (f * 100) + '%'; status('Separating… ' + Math.round(f * 100) + '%'); });
         pcm = null;
         const files = [];
         for (const n of want) {                                          // encode one at a time, free each stem after
@@ -5382,8 +5447,9 @@
           files.push(new File([e.blob], t.title + ' (' + n + ').' + e.ext, { type: e.blob.type }));
         }
         addSplit(files, { srcId: t.dbId, srcTitle: t.title, makePlaylist: mkpl.checked, showInTab: mkpl.checked && pltab.checked });
-        status('Done. Added ' + files.length + ' split track' + (files.length > 1 ? 's' : '') + ' to Split tracks' + (mkpl.checked ? ' + a playlist.' : '.'));
+        status('Done. Added ' + files.length + ' split track' + (files.length > 1 ? 's' : '') + ' to Split tracks' + (mkpl.checked ? ' + a playlist.' : '.') + (window.__ppLastSep || ''));
       } catch (e) { console.error(e); status('Error: ' + errText(e)); }
+      if (NATIVE) NP.keepAlive({ on: false }).catch(() => {});
       wl && wl.release().catch(() => {});
       splitting = false; go.disabled = false; refresh();
     }
