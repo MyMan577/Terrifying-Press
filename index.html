@@ -26,6 +26,14 @@ window.ppSaveBlob = async function(blob, filename){
         else await P.Filesystem.appendFile({ path, data, directory: 'CACHE' });
       }
       const { uri } = await P.Filesystem.getUri({ path, directory: 'CACHE' });
+      if (window.PPNative && PPNative.lib){
+        try {
+          const kind = /^audio\//.test(mime) ? 'audio' : /^video\//.test(mime) ? 'video' : 'other';
+          const r = await PPNative.lib.saveToDevice({ path: uri, name: filename, mime, kind });
+          if (PPNative.hooks.toast) PPNative.hooks.toast('Saved to ' + (r.location || 'device storage'));
+          return true;
+        } catch(e){ /* Android 9 or older, or MediaStore refused: use the share sheet below */ }
+      }
       if (P.Share){ try { await P.Share.share({ title: filename, url: uri, dialogTitle: 'Save ' + filename }); } catch(e){ if (!(e && /cancel/i.test(e.message||''))) throw e; } }
       return true;
     }
@@ -3768,6 +3776,11 @@ window.ppSaveBlob = async function(blob, filename){
   #lyrics-overlay .ly-cur{font-size:16px;font-weight:600;color:var(--text);text-shadow:0 1px 8px rgba(0,0,0,.9);min-height:20px}
   #lyrics-overlay .ly-next{font-size:12.5px;color:var(--text-dim);margin-top:2px;text-shadow:0 1px 6px rgba(0,0,0,.9);min-height:16px}
   .pp-set-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+
+  /* ---- native video surface: the page is see-through above the video box ---- */
+  html.pp-native-video #video-wrap{ background:transparent !important; border-radius:0 !important; border-color:transparent !important; }
+  html.pp-native-video #video-el{ visibility:hidden; }
+  .pp-hole-anc{ background:transparent !important; background-image:none !important; -webkit-backdrop-filter:none !important; backdrop-filter:none !important; }
 </style>
 </head>
 <body>
@@ -7285,6 +7298,8 @@ If you want to offset all timestamps of a track such that the first one is zero,
 if (typeof module === "object" && typeof module.exports === "object") Object.assign(module.exports, Mp4Muxer)
 
 </script>
+<script src="native-bridge.js"></script>
+<script>/* safety net: if native-bridge.js is missing, run exactly as the plain web app */if(!window.PPNative){window.PPNative={available:false,enabled:false,hooks:{},lib:null,wrapMedia:function(e){return e},setSrc:function(e,t){e.src=t.url;return Promise.resolve()},raw:function(e){return e},active:function(){return false},videoActive:function(){return false},decorateAnalyser:function(){},queueNext:function(){},updateMeta:function(){},setFxProvider:function(){},setVideoFilterCss:function(){},boot:function(){return Promise.resolve()},sameUri:function(){return false},expectAdvance:function(){}};}</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
 <script>
 (function(){
@@ -7311,8 +7326,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     setTimeout(finish, 8000);
   });
 
-  const audioEl = document.getElementById('audio');
-  const videoEl = document.getElementById('video-el');
+  const audioEl = PPNative.wrapMedia(document.getElementById('audio'), 'audio');
+  const videoEl = PPNative.wrapMedia(document.getElementById('video-el'), 'video');
   const videoDelayCanvas = document.getElementById('video-delay-canvas');
   const vizWrap = document.getElementById('viz-wrap');
   const videoWrap = document.getElementById('video-wrap');
@@ -8906,6 +8921,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       stem: t.stem || undefined, stemOf: t.stem ? (t.stemOf || null) : undefined, stemSrc: t.stem ? (t.stemSrc || null) : undefined,
       remoteUrl: t.remoteUrl || null,
       fileName: t.fileName || null,
+      nativeUri: t.nativeUri || null, nativeArt: t.nativeArt || null, nativeLocal: t.nativeLocal || false, album: t.album || undefined,
       convertedFromVideo: t.convertedFromVideo || false,
       origExt: t.convertedFromVideo ? (t._origExt || 'mp4') : undefined,
       origArtist: t.convertedFromVideo ? (t._origArtist != null ? t._origArtist : 'Video') : undefined,
@@ -8928,6 +8944,17 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
           tracks.push({ dbId: m.dbId, artDbId: null, url: m.remoteUrl, remoteUrl: m.remoteUrl, artUrl: null, kind: m.kind, ext: m.ext || 'mp3',
             title: m.title, artist: m.artist, duration: m.duration, size: null, width: m.width || null, height: m.height || null,
             playlistIds: Array.isArray(m.playlistIds) ? m.playlistIds : [], fileName: m.fileName || null });
+          continue;
+        }
+        if (m.nativeUri){   // lives on the device (SAF reference or app storage), no IndexedDB copy
+          let artUrl = null;
+          if (m.nativeArt && window.PPNative && PPNative.lib) artUrl = PPNative.lib.fileSrc(m.nativeArt);
+          else if (m.artDbId){ const ab = await dbGet(m.artDbId); if (ab) artUrl = URL.createObjectURL(ab); }
+          tracks.push({ dbId: m.dbId, artDbId: m.artDbId || null, url: (window.Capacitor && Capacitor.convertFileSrc) ? Capacitor.convertFileSrc(m.nativeUri) : '',
+            nativeUri: m.nativeUri, nativeArt: m.nativeArt || null, nativeLocal: !!m.nativeLocal, album: m.album || '', artUrl,
+            kind: m.kind, ext: m.ext || 'mp4', title: m.title, artist: m.artist, duration: m.duration, size: m.size != null ? m.size : null,
+            width: m.width || null, height: m.height || null, playlistIds: Array.isArray(m.playlistIds) ? m.playlistIds : [], fileName: m.fileName || null,
+            stem: m.stem || undefined, stemOf: m.stemOf || null, stemSrc: m.stemSrc || null });
           continue;
         }
         const blob = await dbGet(m.dbId);
@@ -9622,6 +9649,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   }
 
   function videoDelayActive(){
+    if (window.PPNative && PPNative.enabled) return false;
     return !memcActive && effLatencyMs() > 0 && videoWrap.style.display !== 'none'
       && currentIndex !== -1 && tracks[currentIndex] && tracks[currentIndex].kind === 'video';
   }
@@ -10877,7 +10905,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
   // Idempotent, no recursion: refreshVideoDelayState() calls this first.
   function memcSync(){
-    const want = memcWanted() && memcInitGL();
+    const want = !(window.PPNative && PPNative.enabled) && memcWanted() && memcInitGL();
     memcActive = want;
     document.body.classList.toggle('memc-active', want);
     if (want) memcStart(); else memcStop();
@@ -12585,6 +12613,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
   function applyVideoFilter(){
     videoEl.style.filter = perfLightActive() ? '' : buildVideoFilterString();
+    if (window.PPNative) PPNative.setVideoFilterCss(videoEl.style.filter);
   }
   window.__ppApplyVF = applyVideoFilter;
 
@@ -13202,6 +13231,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   document.addEventListener('visibilitychange', () => { if (!document.hidden) syncWebAudioPicture(); });
 
   async function enterBackgroundAudioMode(){
+    if (window.PPNative && PPNative.active()) return;   // native service keeps playing on its own
     if (bgAudioActive || currentIndex === -1 || pageLeaving) return;
     const t = tracks[currentIndex];
     if (t.kind !== 'video') return;
@@ -13629,6 +13659,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   function updateMediaSession(){
     if (!('mediaSession' in navigator) || currentIndex === -1) return;
     const t = tracks[currentIndex];
+    if (window.PPNative) PPNative.updateMeta(t);
     navigator.mediaSession.metadata = new MediaMetadata({
       title: t.title,
       artist: t.artist,
@@ -14728,11 +14759,12 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const ctx = ensureAudioCtx();
     const el = kind === 'video' ? videoEl : kind === 'bg' ? bgFxEl : audioEl;
     const analyser = ctx.createAnalyser();
+    PPNative.decorateAnalyser(analyser);
     // Finer resolution than the default 256 so the bass end isn't crammed
     // into one or two bins that every low-frequency bar ends up sharing.
     analyser.fftSize = 1024;
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    const source = ctx.createMediaElementSource(el);
+    const source = ctx.createMediaElementSource(PPNative.raw(el));
 
     // Chain: source -> band1 -> band2 -> ... -> trackGain -> masterGain -> analyser -> destination.
     // Filters sit ahead of the analyser so the visualizer reacts to the
@@ -16440,6 +16472,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     URL.revokeObjectURL(removed.url);
     if (removed.artUrl) URL.revokeObjectURL(removed.artUrl);
     dbDelete(removed.dbId).catch(()=>{}).then(refreshStorageEstimate);
+    if (removed.nativeLocal && window.PPNative && PPNative.lib) PPNative.lib.deleteLocal(removed.nativeUri).catch(()=>{});
     if (removed.artDbId) dbDelete(removed.artDbId).catch(()=>{});
     clearTimeout(subtitleSaveTimer);
     writeSubtitleEntry(removed.dbId, null);
@@ -16731,11 +16764,11 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (t.kind === 'video'){
       showVideoView();
       ppApplyCors(videoEl, t);
-      videoEl.src = t.url;
+      PPNative.setSrc(videoEl, t);
     } else {
       showAudioView();
       ppApplyCors(audioEl, t);
-      audioEl.src = t.url;
+      PPNative.setSrc(audioEl, t);
       if (t.artUrl){
         artImg.src = t.artUrl;
         artImg.style.display = 'block';
@@ -17180,12 +17213,12 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   addFilesBtn.addEventListener('click', () => {
     addDropdown.classList.remove('open');
     addBtn.classList.remove('open');
-    fileInput.click();
+    if (!ppNativePick('files')) fileInput.click();
   });
   addFolderBtn.addEventListener('click', () => {
     addDropdown.classList.remove('open');
     addBtn.classList.remove('open');
-    folderInput.click();
+    if (!ppNativePick('folder')) folderInput.click();
   });
   fileInput.addEventListener('change', (e) => {
     addFiles(Array.from(e.target.files));
@@ -19981,6 +20014,146 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   const libP = restoreLibrary();
   libP.then(refreshStorageEstimate);
   window.__ppLibReady = libP.then(() => {}, () => {});
+
+  // ================= Android native engine glue =================
+  function ppNativePick(kind){
+    if (!(window.PPNative && PPNative.enabled && PPNative.lib)) return false;
+    const done = (r) => {
+      if (!r || r.cancelled) return;
+      if (r.entries) ppAddNative(r.entries, 'pick');
+      if (r.tree) ppRememberFolder(r.tree);
+    };
+    (kind === 'folder' ? PPNative.lib.pickFolder() : PPNative.lib.pickFiles())
+      .then(done).catch(e => showToast('Could not add: ' + ((e && e.message) || e), 'error'));
+    if (kind === 'folder') showToast('Scanning folder…');
+    return true;
+  }
+  const PP_FOLDERS_KEY = 'ppNativeFolders';
+  function ppRememberFolder(tree){
+    try {
+      const l = JSON.parse(localStorage.getItem(PP_FOLDERS_KEY) || '[]');
+      if (l.indexOf(tree) < 0){ l.push(tree); localStorage.setItem(PP_FOLDERS_KEY, JSON.stringify(l)); }
+    } catch(e){}
+  }
+  async function ppRescanFolders(){
+    let l = []; try { l = JSON.parse(localStorage.getItem(PP_FOLDERS_KEY) || '[]'); } catch(e){}
+    for (const tree of l){
+      try { await PPNative.lib.rescan(tree, tracks.map(t => t.nativeUri).filter(Boolean)); } catch(e){}
+    }
+  }
+  async function ppAddNative(entries){
+    if (!entries || !entries.length) return;
+    const startIdx = tracks.length;
+    const targetPlaylistId = userPlaylistViewId();
+    const known = new Set(tracks.map(t => t.nativeUri).filter(Boolean));
+    const fresh = [];
+    for (const e of entries){
+      if (!e || !e.uri || known.has(e.uri)) continue;
+      known.add(e.uri);
+      const kind = e.kind === 'video' ? 'video' : 'audio';
+      const track = {
+        dbId: 'n_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
+        url: (window.Capacitor && Capacitor.convertFileSrc) ? Capacitor.convertFileSrc(e.uri) : '',
+        nativeUri: e.uri, nativeArt: e.artPath || null, kind,
+        ext: e.ext || (kind === 'video' ? 'mp4' : 'mp3'),
+        title: e.title || (e.name || 'Untitled').replace(/\.[^/.]+$/, ''),
+        artist: e.artist || (kind === 'video' ? 'Video' : 'Unknown artist'),
+        album: e.album || '', duration: e.durationSec || null,
+        artUrl: e.artPath ? PPNative.lib.fileSrc(e.artPath) : null, artDbId: null,
+        size: e.size >= 0 ? e.size : null, width: e.width || null, height: e.height || null,
+        fileName: e.name || null, playlistIds: targetPlaylistId ? [targetPlaylistId] : []
+      };
+      tracks.push(track);
+      fresh.push({ track, e });
+    }
+    if (!fresh.length) return;
+    saveLibraryMeta(); renderPlaylist(); renderPlaylistViewSelect();
+    if (currentIndex === -1 && tracks.length > 0) loadTrack(startIdx, false);
+    // lyrics / subtitle sidecars sitting next to the media
+    const subFiles = [], videoPairs = [];
+    for (const { track, e } of fresh){
+      for (const sc of (e.sidecars || [])){
+        try {
+          const r = await PPNative.lib.readText(sc.uri);
+          const f = new File([r.text || ''], sc.name, { type: 'text/plain' });
+          if (/\.lrc$/i.test(sc.name)) ppSidecarLrc(track, new File([], e.name || ''), [f]);
+          else subFiles.push(f);
+        } catch(err){}
+      }
+      if (track.kind === 'video') videoPairs.push({ track, file: new File([], e.name || '') });
+    }
+    if (subFiles.length) attachSidecarSubtitles(subFiles, videoPairs, fresh.length);
+  }
+  // What should play after the current track? Mirrors onEnded() so native can advance on its own.
+  let ppNextSig = '';
+  function ppQueueNext(){
+    let n = null;
+    try {
+      if (currentIndex !== -1 && repeatMode !== 2 && !(sleepTimer && sleepTimer.mode === 'track')){
+        const isLast = shuffleOn ? shuffleOrder.indexOf(currentIndex) === shuffleOrder.length - 1 : currentIndex === tracks.length - 1;
+        if (!(isLast && repeatMode === 0)){
+          const ni = nextTrackIndex();
+          if (ni >= 0 && ni !== currentIndex) n = tracks[ni];
+        }
+      }
+    } catch(e){}
+    PPNative.queueNext(n);
+  }
+  if (window.PPNative && PPNative.available){
+    PPNative.hooks.getBlob = (t) => dbGet(t.dbId);
+    PPNative.hooks.toast = (m, k) => showToast(m, k);
+    PPNative.hooks.onMigrated = (t) => { saveLibraryMeta(); dbDelete(t.dbId).catch(()=>{}).then(refreshStorageEstimate); };
+    PPNative.hooks.command = (c) => { if (c === 'next') nextBtn.click(); else if (c === 'prev') prevBtn.click(); };
+    PPNative.hooks.entries = (list, src) => ppAddNative(list, src);
+    PPNative.hooks.syncTo = (uri) => {
+      const i = tracks.findIndex(t => PPNative.sameUri(t.nativeUri || t.remoteUrl, uri));
+      if (i >= 0 && i !== currentIndex){ PPNative.expectAdvance(uri); loadTrack(i, true); }
+    };
+    // Native moved on to an item the app would not have picked (e.g. a queue chosen in a car): follow it.
+    PPNative.hooks.matchesNext = (uri) => {
+      try { const t = tracks[nextTrackIndex()]; return !!t && PPNative.sameUri(t.nativeUri || t.remoteUrl, uri); } catch(e){ return true; }
+    };
+    // "Hey Google, play <name> on Press Play" / MEDIA_PLAY_FROM_SEARCH
+    PPNative.hooks.voiceSearch = (q) => {
+      q = String(q || '').toLowerCase().trim();
+      if (!q){ if (currentIndex === -1 && tracks.length) loadTrack(0, true); else if (!isPlaying) playBtn.click(); return; }
+      const toks = q.split(/\s+/); let best = -1, bestScore = 0;
+      tracks.forEach((t, i) => {
+        const hay = ((t.title || '') + ' ' + (t.artist || '') + ' ' + (t.album || '')).toLowerCase();
+        let sc = 0; toks.forEach(k => { if (hay.indexOf(k) >= 0) sc++; });
+        if (sc > bestScore){ bestScore = sc; best = i; }
+      });
+      if (best >= 0) loadTrack(best, true); else showToast('Nothing matching "' + q + '"');
+    };
+    // Mirror the library to Android (Auto, Assistant, Bluetooth car kits browse it without the UI)
+    let ppCatSig = '', ppCatTimer = 0;
+    const ppPushCatalog = () => PPNative.pushCatalog(
+      tracks.filter(t => t.nativeUri || t.remoteUrl).map(t => ({
+        id: String(t.dbId), uri: t.nativeUri || t.remoteUrl, kind: t.kind, title: t.title || '', artist: t.artist || '',
+        album: t.album || '', durMs: t.duration > 0 ? Math.round(t.duration * 1000) : 0, art: t.nativeArt || '', pl: t.playlistIds || []
+      })),
+      playlists.map(p => ({ id: p.id, name: p.name })));
+    const ppCatalogCheck = () => {
+      const sig = [tracks.length, playlists.length, playlists.map(p => p.name).join('|'),
+        tracks.reduce((a, t) => a + (t.title || '').length + (t.artist || '').length + ((t.nativeUri || t.remoteUrl) ? 1 : 0) + (t.playlistIds || []).length, 0)].join('#');
+      if (sig === ppCatSig) return;
+      ppCatSig = sig; clearTimeout(ppCatTimer); ppCatTimer = setTimeout(ppPushCatalog, 1500);
+    };
+    window.ppMigrateLibrary = () => PPNative.migrateAll(tracks);   // run once from the console, or hook to a button
+    PPNative.hooks.tick = () => {
+      const sig = [currentIndex, shuffleOn, repeatMode, sleepTimer && sleepTimer.mode, tracks.length].join('|');
+      if (sig !== ppNextSig){ ppNextSig = sig; ppQueueNext(); }
+      ppCatalogCheck();
+    };
+    PPNative.setFxProvider(() => ({
+      eqOn: !!eqEnabled,
+      eq: Array.from({ length: 10 }, (_, i) => +eqGains[i] || 0),
+      gain: (trackBoostOverrideActive ? trackBoost : masterBoost) * ((typeof rgFactor === 'function' && +rgFactor()) || 1),
+      bass: bassBoost, reverb: reverbMix, filter: filterAmount, distortion: distortionAmount,
+      bitcrush: bitcrushAmount, echo: echoMix, tremolo: tremoloAmount
+    }));
+    libP.then(() => { PPNative.boot(); ppRescanFolders(); });
+  }
   loadCustomization();
   renderPlaylistsManager();
   requestPersistentStorage();
@@ -24915,6 +25088,11 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   const toast=m=>{try{showToast(m);}catch(e){}};
   function snap(){
     if(!V.currentSrc||!V.videoWidth){toast('Play a video to save a snapshot.');return;}
+    if(window.PPNative&&PPNative.videoActive()){
+      const t0=((document.getElementById('np-title')||{}).textContent||'snapshot').replace(/[^\w\- ]+/g,'').trim().slice(0,60)||'snapshot';
+      PPNative.snapshot().then(b=>{window.ppSaveBlob(b, t0+' '+Math.floor(V.currentTime)+'s.png'); toast('Snapshot saved');}).catch(()=>toast('Snapshot failed.'));
+      return;
+    }
     try{
       const c=document.createElement('canvas'); c.width=V.videoWidth; c.height=V.videoHeight;
       const x=c.getContext('2d'), f=getComputedStyle(V).filter;
