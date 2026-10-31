@@ -33,8 +33,16 @@ jobs:
       - name: Create the Android project
         run: |
           npm install
+          # Downloads/exports need these two Capacitor plugins (the page saves via Filesystem, then Share).
+          # Install any that package.json does not already list, at the same major version as Capacitor.
+          CAPV=$(node -p "require('./node_modules/@capacitor/core/package.json').version.split('.')[0]")
+          for pkg in filesystem share; do
+            grep -q "@capacitor/$pkg" package.json || npm install "@capacitor/$pkg@$CAPV"
+          done
           npx cap add android
           npx cap sync android
+          echo "--- Capacitor plugins registered in the app:"
+          cat android/app/src/main/assets/capacitor.plugins.json || true
 
       - name: Add the native ONNX plugin
         run: |
@@ -69,7 +77,8 @@ jobs:
           # Capacitor's default MainActivity.java and the zip's MainActivity.kt.
           rm -f "$PKG_DIR/MainActivity.java"
           cp "$SRC"/java/com/pressplay/media/*.kt "$PKG_DIR"/
-          cp android-overrides/MainActivity.kt "$PKG_DIR/MainActivity.kt"
+          # our fixed/merged files win over the zip
+          cp android-overrides/*.kt "$PKG_DIR"/
           test "$(ls "$PKG_DIR"/*.kt | wc -l)" -eq 8 || { echo "::error::Expected 8 Kotlin files"; ls "$PKG_DIR"; exit 1; }
 
           # Explicit imports for the nested Media3 types used inside PlaybackService's inner class
