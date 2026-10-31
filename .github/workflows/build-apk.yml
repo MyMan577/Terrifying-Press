@@ -23,11 +23,12 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Put the web app in www
+      - name: Check the web app is in www
         run: |
-          mkdir -p www
-          cp index.html vocal-separator.js www/
-          if [ -f update-options.js ]; then cp update-options.js www/; fi
+          for f in www/index.html www/native-bridge.js www/vocal-separator.js; do
+            if [ ! -f "$f" ]; then echo "::error::Missing $f. Put it inside the www folder."; exit 1; fi
+          done
+          if [ ! -f www/update-options.js ]; then echo "::warning::www/update-options.js is missing, the page will 404 on it."; fi
 
       - name: Create the Android project
         run: |
@@ -37,7 +38,7 @@ jobs:
 
       - name: Add the native ONNX plugin
         run: |
-          for f in android-overrides/OnnxSeparatorPlugin.java android-overrides/MainActivity.java android-overrides/Accel.java android-overrides/StemNative.java android-overrides/SpleeterNative.java android-overrides/KeepAliveService.java vocal-separator.js index.html; do
+          for f in android-overrides/OnnxSeparatorPlugin.java android-overrides/MainActivity.java android-overrides/Accel.java android-overrides/StemNative.java android-overrides/SpleeterNative.java android-overrides/KeepAliveService.java; do
             if [ ! -f "$f" ]; then echo "::error::Missing file in the repo: $f. Add it at that exact path (folder included) and run again."; exit 1; fi
           done
           PKG_DIR=android/app/src/main/java/com/pressplay/media
