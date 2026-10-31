@@ -38,7 +38,7 @@ jobs:
 
       - name: Add the native ONNX plugin
         run: |
-          for f in android-overrides/OnnxSeparatorPlugin.java android-overrides/MainActivity.java android-overrides/Accel.java android-overrides/StemNative.java android-overrides/SpleeterNative.java android-overrides/KeepAliveService.java; do
+          for f in android-overrides/OnnxSeparatorPlugin.java android-overrides/Accel.java android-overrides/StemNative.java android-overrides/SpleeterNative.java android-overrides/KeepAliveService.java; do
             if [ ! -f "$f" ]; then echo "::error::Missing file in the repo: $f. Add it at that exact path (folder included) and run again."; exit 1; fi
           done
           PKG_DIR=android/app/src/main/java/com/pressplay/media
@@ -55,6 +55,110 @@ jobs:
               s = s.replace('</application>', '    <service android:name=".KeepAliveService" android:exported="false" android:foregroundServiceType="dataSync" />\n    </application>', 1)
           open(p, 'w').write(s)
           PY
+
+      - name: Add the native player layer (Media3 service, GPU filters, library)
+        run: |
+          if [ ! -f pp-native.zip ]; then echo "::error::pp-native.zip is missing from the repo root."; exit 1; fi
+          if [ ! -f android-overrides/MainActivity.kt ]; then echo "::error::android-overrides/MainActivity.kt is missing."; exit 1; fi
+          rm -rf /tmp/ppn && mkdir -p /tmp/ppn && unzip -q pp-native.zip -d /tmp/ppn
+          SRC=/tmp/ppn/pp-native/android/app/src/main
+          APPSRC=android/app/src/main
+          PKG_DIR=$APPSRC/java/com/pressplay/media
+
+          # Kotlin sources. Our merged MainActivity (also registers the ONNX/Spleeter plugins) replaces both
+          # Capacitor's default MainActivity.java and the zip's MainActivity.kt.
+          rm -f "$PKG_DIR/MainActivity.java"
+          cp "$SRC"/java/com/pressplay/media/*.kt "$PKG_DIR"/
+          cp android-overrides/MainActivity.kt "$PKG_DIR/MainActivity.kt"
+          test "$(ls "$PKG_DIR"/*.kt | wc -l)" -eq 8 || { echo "::error::Expected 8 Kotlin files"; ls "$PKG_DIR"; exit 1; }
+
+          # Explicit imports for the nested Media3 types used inside PlaybackService's inner class
+          python3 - <<'PY2'
+          p = 'android/app/src/main/java/com/pressplay/media/PlaybackService.kt'
+          s = open(p).read()
+          add = 'import androidx.media3.session.MediaLibraryService.LibraryParams\nimport androidx.media3.session.MediaLibraryService.MediaLibrarySession\n'
+          if add not in s:
+              i = s.index('import ')
+              s = s[:i] + add + s[i:]
+          open(p, 'w').write(s)
+          PY2
+
+          # Resources: shortcuts, Android Auto descriptor, strings
+          mkdir -p $APPSRC/res/xml $APPSRC/res/values
+          cp "$SRC"/res/xml/*.xml $APPSRC/res/xml/
+          cp "$SRC"/res/values/pp_strings.xml $APPSRC/res/values/
+
+          # Gradle: Kotlin plugin, minSdk 26, Media3 1.4.1, opt in to Media3's @UnstableApi
+          sed -i -E 's/minSdkVersion *= *[0-9]+/minSdkVersion = 26/' android/variables.gradle
+          grep -q "kotlin-gradle-plugin" android/build.gradle || \
+            sed -i "/classpath .com.android.tools.build:gradle/a\\        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24'" android/build.gradle
+          grep -q "kotlin-gradle-plugin" android/build.gradle || { echo "::error::Could not add the Kotlin plugin to android/build.gradle"; cat android/build.gradle; exit 1; }
+          grep -q "org.jetbrains.kotlin.android" android/app/build.gradle || \
+            sed -i "0,/apply plugin: 'com.android.application'/s//apply plugin: 'com.android.application'\napply plugin: 'org.jetbrains.kotlin.android'/" android/app/build.gradle
+          grep -q "org.jetbrains.kotlin.android" android/app/build.gradle || { echo "::error::Could not apply the Kotlin plugin in app/build.gradle"; cat android/app/build.gradle; exit 1; }
+          sed -i '/^android {/a\    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }\n    kotlinOptions { jvmTarget = "17"; freeCompilerArgs += ["-opt-in=androidx.media3.common.util.UnstableApi"] }' android/app/build.gradle
+          sed -i '/^dependencies {/a\    implementation "androidx.media3:media3-exoplayer:1.4.1"\n    implementation "androidx.media3:media3-session:1.4.1"\n    implementation "androidx.media3:media3-ui:1.4.1"\n    implementation "androidx.media3:media3-effect:1.4.1"\n    implementation "androidx.media3:media3-common:1.4.1"\n    implementation "androidx.core:core-ktx:1.12.0"' android/app/build.gradle
+
+          # Manifest: merge the native layer's permissions, filters, services and receiver into the generated one
+          cat > /tmp/merge_manifest.py <<'PY3'
+          import sys, xml.etree.ElementTree as ET
+          A = 'http://schemas.android.com/apk/res/android'
+          ET.register_namespace('android', A)
+          ET.register_namespace('tools', 'http://schemas.android.com/tools')
+          def q(n): return '{%s}%s' % (A, n)
+
+          def sig(e):
+              return (e.tag, tuple(sorted(e.attrib.items())), tuple(sorted(sig(c) for c in e)))
+
+          dst_path, src_path = sys.argv[1], sys.argv[2]
+          dt, st = ET.parse(dst_path), ET.parse(src_path)
+          dm, sm = dt.getroot(), st.getroot()
+          dapp, sapp = dm.find('application'), sm.find('application')
+
+          # top-level permissions / features: add what is missing
+          have = {(c.tag, c.get(q('name'))) for c in dm if c.tag in ('uses-permission', 'uses-feature')}
+          for c in sm:
+              if c.tag in ('uses-permission', 'uses-feature') and (c.tag, c.get(q('name'))) not in have:
+                  dm.insert(list(dm).index(dapp), c)
+
+          # application attributes
+          for k, v in sapp.attrib.items():
+              dapp.set(k, v)
+
+          # MainActivity: copy attributes, union configChanges, add missing intent filters + meta-data
+          def find_named(parent, tag, name):
+              for c in parent.findall(tag):
+                  if c.get(q('name')) == name: return c
+          sact = find_named(sapp, 'activity', '.MainActivity')
+          dact = find_named(dapp, 'activity', '.MainActivity')
+          assert dact is not None and sact is not None, 'MainActivity not found in a manifest'
+          for k, v in sact.attrib.items():
+              if k == q('name'): continue
+              if k == q('configChanges'):
+                  v = '|'.join(sorted(set(v.split('|')) | set((dact.get(k) or '').split('|')) - {''}))
+              dact.set(k, v)
+          have_f = {sig(c) for c in dact.findall('intent-filter')}
+          for f in sact.findall('intent-filter'):
+              if sig(f) in have_f: continue
+              cats = {c.get(q('name')) for c in f.findall('category')}
+              if 'android.intent.category.LAUNCHER' in cats and 'android.intent.category.LAUNCHER' in {
+                      c.get(q('name')) for d in dact.findall('intent-filter') for c in d.findall('category')}:
+                  continue
+              dact.append(f)
+          for m in sact.findall('meta-data'):
+              if find_named(dact, 'meta-data', m.get(q('name'))) is None: dact.append(m)
+
+          # services / receivers / app-level meta-data
+          for tag in ('service', 'receiver', 'meta-data'):
+              for c in sapp.findall(tag):
+                  if find_named(dapp, tag, c.get(q('name'))) is None: dapp.append(c)
+
+          ET.indent(dt, space='    ')
+          dt.write(dst_path, encoding='utf-8', xml_declaration=True)
+          print('manifest merged')
+          PY3
+          python3 /tmp/merge_manifest.py $APPSRC/AndroidManifest.xml "$SRC/AndroidManifest.xml"
+          grep -q PlaybackService $APPSRC/AndroidManifest.xml
 
       - name: Build the debug APK
         working-directory: android
