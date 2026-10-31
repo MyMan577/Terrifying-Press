@@ -9649,7 +9649,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   }
 
   function videoDelayActive(){
-    if (window.PPNative && PPNative.enabled) return false;
+    if (window.PPNative && PPNative.videoActive()) return false;
     return !memcActive && effLatencyMs() > 0 && videoWrap.style.display !== 'none'
       && currentIndex !== -1 && tracks[currentIndex] && tracks[currentIndex].kind === 'video';
   }
@@ -10905,7 +10905,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
   // Idempotent, no recursion: refreshVideoDelayState() calls this first.
   function memcSync(){
-    const want = !(window.PPNative && PPNative.enabled) && memcWanted() && memcInitGL();
+    const want = !(window.PPNative && PPNative.videoActive()) && memcWanted() && memcInitGL();
     memcActive = want;
     document.body.classList.toggle('memc-active', want);
     if (want) memcStart(); else memcStop();
