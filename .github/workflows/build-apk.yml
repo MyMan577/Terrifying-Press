@@ -87,6 +87,8 @@ jobs:
           mkdir -p $APPSRC/res/xml $APPSRC/res/values
           cp "$SRC"/res/xml/*.xml $APPSRC/res/xml/
           cp "$SRC"/res/values/pp_strings.xml $APPSRC/res/values/
+          # the zip's shortcuts.xml uses the wrong attribute names (AAPT: attribute android:shortLabel not found)
+          sed -i -e 's/android:shortLabel=/android:shortcutShortLabel=/g' -e 's/android:longLabel=/android:shortcutLongLabel=/g' $APPSRC/res/xml/shortcuts.xml
 
           # Gradle: Kotlin plugin, minSdk 26, Media3 1.4.1, opt in to Media3's @UnstableApi
           sed -i -E 's/minSdkVersion *= *[0-9]+/minSdkVersion = 26/' android/variables.gradle
