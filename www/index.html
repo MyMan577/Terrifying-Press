@@ -9983,7 +9983,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       if (!videoDelayWorker) return;
       videoDelayWorker.postMessage({ type: 'filter', filter: videoEl.style.filter || 'none' });
       if (videoDelayActive() && (!videoDelayFilterHasUrlRef()) !== videoDelayTrackOn) restartVideoDelayCapture();
-    }).observe(videoEl, { attributes: true, attributeFilter: ['style'] });
+    }).observe(PPNative.raw(videoEl), { attributes: true, attributeFilter: ['style'] });
   }
 
   // ---------- Motion smoothing (frame interpolation) ----------
@@ -11312,7 +11312,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
   // The canvas is filtered exactly like the <video> it replaces.
   new MutationObserver(() => { memcCanvas.style.filter = videoEl.style.filter || ''; })
-    .observe(videoEl, { attributes: true, attributeFilter: ['style'] });
+    .observe(PPNative.raw(videoEl), { attributes: true, attributeFilter: ['style'] });
   memcCanvas.style.filter = videoEl.style.filter || '';
   memcUpdateUI();
 
