@@ -31,6 +31,8 @@ class MainActivity : BridgeActivity() {
     companion object {
         @Volatile var instance: MainActivity? = null
         @Volatile var playerView: PlayerView? = null
+        /** Native SurfaceView video under a transparent WebView. Off: it blanked the picture and slowed the UI. */
+        const val NATIVE_VIDEO = false
     }
 
     private var inPip = false
@@ -53,6 +55,7 @@ class MainActivity : BridgeActivity() {
     }
 
     private fun installVideoLayer() {
+        if (!NATIVE_VIDEO) return      // video plays in the normal web <video>; keeps the WebView opaque and fast
         val web = bridge.webView
         web.setBackgroundColor(Color.TRANSPARENT)
         val parent = web.parent as ViewGroup
