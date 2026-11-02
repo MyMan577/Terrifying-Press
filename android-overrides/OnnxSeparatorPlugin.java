@@ -73,6 +73,7 @@ public class OnnxSeparatorPlugin extends Plugin {
         String id = call.getString("id");
         if (id != null) {
             unloadById(id);
+            if (id.startsWith("llm_")) { llm.cancel(); llm.close(); }
             modelFile(id).delete();
         }
         call.resolve();
@@ -173,6 +174,65 @@ public class OnnxSeparatorPlugin extends Plugin {
     public void whisperUnload(PluginCall call) {
         whisper.close();
         call.resolve();
+    }
+
+    // ---------- Chat model (LlmNative): tokenizing stays in JS, only token ids cross the bridge ----------
+    private final LlmNative llm = new LlmNative();
+
+    /** Loads a decoder-only ONNX chat model with past_key_values inputs (e.g. SmolLM2 int8). File: <id>.onnx in the models folder. */
+    @PluginMethod
+    public void llmLoad(PluginCall call) {
+        Accel.init(getContext());
+        final String id = call.getString("id");
+        if (id == null) { call.reject("id is required"); return; }
+        final File f = modelFile(id);
+        if (!f.exists()) { call.reject("Chat model not downloaded: " + id); return; }
+        new Thread(() -> {
+            try { llm.load(env(), f); call.resolve(); }
+            catch (Throwable e) { llm.close(); call.reject("Chat model: " + (e.getMessage() != null ? e.getMessage() : e.toString())); }
+        }).start();
+    }
+
+    /** prompt = token ids. Emits "llmToken" {id} for every new token, resolves with all new ids (the stop token is not included). */
+    @PluginMethod
+    public void llmGenerate(PluginCall call) {
+        final JSONArray promptJ = call.getArray("prompt"), eosJ = call.getArray("eos");
+        if (promptJ == null || promptJ.length() == 0) { call.reject("prompt is required"); return; }
+        if (!llm.loaded()) { call.reject("Chat model not loaded"); return; }
+        final int maxNew = call.getInt("maxNew", 60);
+        final Boolean sampleArg = call.getBoolean("sample", true);
+        final Double tempArg = call.getDouble("temp", 0.5), topPArg = call.getDouble("topP", 0.9), repArg = call.getDouble("rep", 1.1);
+        final boolean sample = sampleArg == null || sampleArg;
+        final double temp = tempArg == null ? 0.5 : tempArg, topP = topPArg == null ? 0.9 : topPArg, rep = repArg == null ? 1.1 : repArg;
+        new Thread(() -> {
+            try { Process.setThreadPriority(5); } catch (Throwable ignored) { }
+            try {
+                int[] out = llm.generate(env(), ints(promptJ), maxNew, ints(eosJ), sample, temp, topP, rep, id -> {
+                    JSObject e = new JSObject();
+                    e.put("id", id);
+                    notifyListeners("llmToken", e);
+                });
+                JSONArray t = new JSONArray();
+                for (int v : out) t.put(v);
+                JSObject r = new JSObject();
+                r.put("tokens", t);
+                call.resolve(r);
+            } catch (Throwable e) {
+                call.reject("Chat model: " + (e.getMessage() != null ? e.getMessage() : e.toString()));
+            }
+        }).start();
+    }
+
+    @PluginMethod
+    public void llmCancel(PluginCall call) {
+        llm.cancel();
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void llmUnload(PluginCall call) {
+        llm.cancel();
+        new Thread(() -> { llm.close(); call.resolve(); }).start();   // close() waits for a running generate() to stop
     }
 
     private Throttle thermalProbe;
