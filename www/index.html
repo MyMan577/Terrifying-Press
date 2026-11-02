@@ -24,6 +24,29 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
     const C = window.Capacitor, P = C && C.Plugins;
     // 1) Capacitor (your APK): write to app cache in chunks (no storage permission,
     //    no giant base64 string), then open the share sheet -> "Save to device / Files / Drive"
+    // 0) Android app, big file: stream it straight into Download/Press Play with the native BackupPlugin. One copy, no cache file,
+    //    so a backup no longer needs twice its size in free space. Any failure falls through to the older cache-then-save route below.
+    if (P && P.PPBackup && blob.size > 32 * 1024 * 1024){
+      let began = false;
+      try {
+        await P.PPBackup.begin({ name: filename, mime });
+        began = true;
+        const CH0 = 6 * 1024 * 1024;               // multiple of 3 keeps base64 pieces aligned
+        let nextB64 = toB64(blob.slice(0, CH0));
+        for (let off = 0; off < blob.size; off += CH0){
+          const data = await nextB64;
+          nextB64 = (off + CH0 < blob.size) ? toB64(blob.slice(off + CH0, off + 2 * CH0)) : null;   // encode the next piece while this one is written
+          await P.PPBackup.write({ data });
+          if (onProgress){ try { onProgress(Math.min(1, (off + CH0) / blob.size), 'write'); } catch(e){} }
+        }
+        const r = await P.PPBackup.end({});
+        if (window.PPNative && PPNative.hooks && PPNative.hooks.toast) PPNative.hooks.toast('Saved to ' + ((r && r.location) || 'Downloads'));
+        return true;
+      } catch(e){
+        console.warn('streaming save failed, using the cache route', e);
+        if (began){ try { await P.PPBackup.abort({}); } catch(e2){} }
+      }
+    }
     if (P && P.Filesystem){
       const CH = 6 * 1024 * 1024;               // multiple of 3 keeps base64 chunks aligned (bigger chunks = fewer trips over the bridge)
       const path = 'export_' + Date.now() + '_' + filename.replace(/[^\w.\- ]+/g, '_');
