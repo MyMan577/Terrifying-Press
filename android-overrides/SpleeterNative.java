@@ -78,8 +78,10 @@ final class SpleeterNative {
     // ---------- ONNX session ----------
     static String accelUsed = "CPU";   // which hardware the last session really runs on
 
-    static OrtSession open(OrtEnvironment env, File f, boolean useNnapi) throws Exception {
-        Accel.Sess x = Accel.open(env, f.getName(), f, useNnapi, new long[] {2, 1, T, F});
+    static OrtSession open(OrtEnvironment env, File f, boolean useNnapi) throws Exception { return open(env, f, useNnapi, true); }
+
+    static OrtSession open(OrtEnvironment env, File f, boolean useNnapi, boolean tune) throws Exception {
+        Accel.Sess x = Accel.open(env, f.getName(), f, useNnapi, new long[] {2, 1, T, F}, tune);
         accelUsed = x.accel();
         return x.s;
     }

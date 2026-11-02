@@ -194,12 +194,13 @@ public class OnnxSeparatorPlugin extends Plugin {
         final File f = modelFile(id);
         if (!f.exists()) { call.reject("Model not downloaded: " + id); return; }
         final boolean wantNnapi = call.getBoolean("nnapi", false);
+        final boolean tune = call.getBoolean("tune", true);   // false = skip the NNAPI vs CPU timing race
         final JSONArray shapeJ = call.getArray("shape");   // optional: lets Accel time NNAPI vs CPU once for this model and keep the winner
         new Thread(() -> {
             try {
                 long[] shape = null;
                 if (shapeJ != null && shapeJ.length() > 0) { shape = new long[shapeJ.length()]; for (int i = 0; i < shape.length; i++) shape[i] = shapeJ.getLong(i); }
-                Accel.Sess x = Accel.open(env(), id, f, wantNnapi, shape);
+                Accel.Sess x = Accel.open(env(), id, f, wantNnapi, shape, tune);
                 synchronized (sessions) {
                     Accel.Sess old = sessions.put(id, x);
                     if (old != null) Accel.close(old);
@@ -283,6 +284,7 @@ public class OnnxSeparatorPlugin extends Plugin {
         final String model = call.getString("model", "mdx_voc");
         final JSONArray srcJ = call.getArray("sources");
         final boolean nnapi = call.getBoolean("nnapi", true);
+        final boolean tune = call.getBoolean("tune", true);   // false = skip the NNAPI vs CPU timing race
         final int nfft = call.getInt("nfft", 7680), dimF = call.getInt("dimF", 3072);
         final double comp = call.getDouble("comp", 1.021);
         final double duty = call.getDouble("duty", 0.0);   // optional fixed extra rest (0.2 = sleep 20% of each chunk's time); thermal easing is always on
@@ -318,7 +320,7 @@ public class OnnxSeparatorPlugin extends Plugin {
                     for (int i = 0; i < 4; i++) {
                         File mf = modelFile(prefix + names[i]);
                         if (!mf.exists()) throw new IOException("Model not downloaded: " + prefix + names[i]);
-                        try { ss[i] = Accel.open(env(), prefix + names[i], mf, nnapi, new long[] {2, 1, SpleeterNative.T, SpleeterNative.F}); }
+                        try { ss[i] = Accel.open(env(), prefix + names[i], mf, nnapi, new long[] {2, 1, SpleeterNative.T, SpleeterNative.F}, tune); }
                         catch (Throwable e) { throw new IOException("Could not load model " + prefix + names[i] + ": " + (e.getMessage() != null ? e.getMessage() : e.toString())); }
                         open.add(ss[i]);
                     }
@@ -366,7 +368,7 @@ public class OnnxSeparatorPlugin extends Plugin {
                     File mf = modelFile(model);
                     if (!mf.exists()) throw new IOException("Model not downloaded: " + model);
                     Accel.Sess s;
-                    try { s = Accel.open(env(), model, mf, nnapi, new long[] {1, 4, dimF, 256}); }
+                    try { s = Accel.open(env(), model, mf, nnapi, new long[] {1, 4, dimF, 256}, tune); }
                     catch (Throwable e) { throw new IOException("Could not load model " + model + ": " + (e.getMessage() != null ? e.getMessage() : e.toString())); }
                     open.add(s);
                     StemNative.mdx(env(), s, au, nfft, dimF, comp, outs.get("Vocals"), outs.get("Instrumental"), prog);

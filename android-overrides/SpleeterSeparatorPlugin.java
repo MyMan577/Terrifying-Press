@@ -60,6 +60,7 @@ public class SpleeterSeparatorPlugin extends Plugin {
         final double sharp = sharpArg == null ? 1.0 : sharpArg;
         Boolean nnArg = call.getBoolean("nnapi", true);
         final boolean useNnapi = nnArg == null ? true : nnArg;
+        final boolean tune = call.getBoolean("tune", true);   // false = skip the NNAPI vs CPU timing race
         final String tag = String.valueOf(System.currentTimeMillis());
         new Thread(() -> {
             OrtSession vS = null, aS = null;
@@ -75,8 +76,8 @@ public class SpleeterSeparatorPlugin extends Plugin {
                 inFile.delete();
 
                 OrtEnvironment env = OrtEnvironment.getEnvironment();
-                vS = SpleeterNative.open(env, vm, useNnapi);
-                aS = SpleeterNative.open(env, am, useNnapi);
+                vS = SpleeterNative.open(env, vm, useNnapi, tune);
+                aS = SpleeterNative.open(env, am, useNnapi, tune);
 
                 File outV = new File(dir, "sep_" + tag + "_vocals.wav");
                 File outA = new File(dir, "sep_" + tag + "_instrumental.wav");

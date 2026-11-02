@@ -158,6 +158,13 @@ final class Accel {
      * Pass shape = null to skip the timing (NNAPI is then used unless a past result says CPU).
      */
     static Sess open(OrtEnvironment env, String key, File f, boolean wantNnapi, long[] shape) throws Exception {
+        return open(env, key, f, wantNnapi, shape, true);
+    }
+
+    /** tune = false: never run the NNAPI-vs-CPU race. A verdict from an earlier race is still honoured, otherwise NNAPI is used
+     *  as asked (run() already swaps to CPU on a crash or NaN and remembers it). */
+    static Sess open(OrtEnvironment env, String key, File f, boolean wantNnapi, long[] shape, boolean tune) throws Exception {
+        if (!tune) shape = null;
         if (!wantNnapi) return reg(new Sess(build(env, f, false), f, key, false));
         String tk = tuneKey(key, f);
         String v = prefs == null ? null : prefs.getString(tk, null);
