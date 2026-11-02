@@ -233,23 +233,40 @@ public class OnnxSeparatorPlugin extends Plugin {
                 long[] dims = new long[dimsJson.length()];
                 for (int i = 0; i < dims.length; i++) dims[i] = dimsJson.getLong(i);
 
-                try (OrtSession.Result res = Accel.run(env(), x, in, dims)) {
-                    OnnxTensor out = (OnnxTensor) res.get(0);
-                    FloatBuffer ob = out.getFloatBuffer();
-                    byte[] ba = new byte[ob.remaining() * 4];
-                    ByteBuffer.wrap(ba).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().put(ob);   // one copy out
-                    JSONArray od = new JSONArray();
-                    for (long dd : out.getInfo().getShape()) od.put(dd);
-                    JSObject r = new JSObject();
-                    r.put("data", Base64.encodeToString(ba, Base64.NO_WRAP));
-                    r.put("dims", od);
-                    r.put("outputName", x.outName);
-                    call.resolve(r);
+                JSObject r = runOnce(x, in, dims);
+                if (r == null && !"CPU".equals(x.accel())) {
+                    // NNAPI (fp16) produced NaN/Inf: reopen this model on the plain CPU, keep it there, and redo the call
+                    Accel.Sess cpu = Accel.open(env(), id, modelFile(id), false, null);
+                    synchronized (sessions) { Accel.Sess old = sessions.put(id, cpu); if (old != null) Accel.close(old); }
+                    x = cpu;
+                    in.rewind();
+                    r = runOnce(x, in, dims);
                 }
+                if (r == null) { call.reject("Model " + id + " returned NaN/Inf"); return; }
+                call.resolve(r);
             } catch (Throwable e) {
                 call.reject(e.getMessage() != null ? e.getMessage() : e.toString());
             }
         }).start();
+    }
+
+    /** Runs one session; returns null when the output holds NaN/Inf. */
+    private JSObject runOnce(Accel.Sess x, FloatBuffer in, long[] dims) throws Exception {
+        try (OrtSession.Result res = Accel.run(env(), x, in, dims)) {
+            OnnxTensor out = (OnnxTensor) res.get(0);
+            FloatBuffer ob = out.getFloatBuffer();
+            int n = ob.remaining();
+            for (int i = 0; i < n; i++) { float v = ob.get(ob.position() + i); if (Float.isNaN(v) || Float.isInfinite(v)) return null; }
+            byte[] ba = new byte[n * 4];
+            ByteBuffer.wrap(ba).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().put(ob);   // one copy out
+            JSONArray od = new JSONArray();
+            for (long dd : out.getInfo().getShape()) od.put(dd);
+            JSObject r = new JSObject();
+            r.put("data", Base64.encodeToString(ba, Base64.NO_WRAP));
+            r.put("dims", od);
+            r.put("outputName", x.outName);
+            return r;
+        }
     }
 
     /**

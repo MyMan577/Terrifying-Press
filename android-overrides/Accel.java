@@ -31,7 +31,7 @@ final class Accel {
      *  make the pool wait at every sync point) and draw noticeably less power. Raise to 5 or 6 if you prefer speed. */
     private static final int MAX_THREADS = 4;
     /** Bump this when session settings change, so old "NNAPI vs CPU" timing verdicts are measured again. */
-    private static final String TUNE_VER = ":v2";
+    private static final String TUNE_VER = ":v3";
     private static String tuneKey(String key, File f) { return key + ":" + f.length() + TUNE_VER; }
     private static final Map<OrtSession, Sess> REG = Collections.synchronizedMap(new IdentityHashMap<OrtSession, Sess>());
 
@@ -186,6 +186,18 @@ final class Accel {
         return reg(new Sess(cp, f, key, false));
     }
 
+    /** True when the first output has no NaN/Inf (NNAPI fp16 can overflow). Anything unreadable counts as fine. */
+    private static boolean allFinite(OrtSession.Result r) {
+        try {
+            Object o = r.get(0);
+            if (!(o instanceof OnnxTensor)) return true;
+            FloatBuffer fb = ((OnnxTensor) o).getFloatBuffer();
+            int p = fb.position(), n = fb.remaining();
+            for (int i = 0; i < n; i++) { float v = fb.get(p + i); if (Float.isNaN(v) || Float.isInfinite(v)) return false; }
+            return true;
+        } catch (Throwable t) { return true; }
+    }
+
     private static long time(OrtEnvironment env, OrtSession s, long[] shape) throws Exception {
         int n = 1;
         for (long d : shape) n *= (int) d;
@@ -199,6 +211,7 @@ final class Accel {
             try (OnnxTensor x = OnnxTensor.createTensor(env, b, shape);
                  OrtSession.Result res = s.run(Collections.singletonMap(in, x))) {
                 res.get(0);
+                if (!allFinite(res)) return Long.MAX_VALUE;   // a road that gives NaN never wins the race
             }
             t = System.nanoTime() - t0;
         }
@@ -212,20 +225,22 @@ final class Accel {
         }
     }
 
-    /** Runs the model. If an NNAPI session fails, swaps it for a CPU one, remembers that, and retries once. */
+    /** Runs the model. If an NNAPI session fails or returns NaN/Inf, swaps it for a CPU one, remembers that, and retries once. */
     static OrtSession.Result run(OrtEnvironment env, Sess x, FloatBuffer in, long[] dims) throws Exception {
         try {
-            return once(env, x, in, dims);
+            OrtSession.Result r = once(env, x, in, dims);
+            if (!x.nn || x.f == null || allFinite(r)) return r;
+            try { r.close(); } catch (Exception ignored) { }
         } catch (Exception e) {
             if (!x.nn || x.f == null) throw e;
-            OrtSession old = x.s;
-            x.s = build(env, x.f, false);
-            x.nn = false;
-            REG.remove(old);
-            REG.put(x.s, x);
-            try { old.close(); } catch (Exception ignored) { }
-            remember(tuneKey(x.key, x.f), "CPU");
-            return once(env, x, in, dims);
         }
+        OrtSession old = x.s;
+        x.s = build(env, x.f, false);
+        x.nn = false;
+        REG.remove(old);
+        REG.put(x.s, x);
+        try { old.close(); } catch (Exception ignored) { }
+        remember(tuneKey(x.key, x.f), "CPU");
+        return once(env, x, in, dims);
     }
 }
