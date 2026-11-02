@@ -3,6 +3,13 @@
 <head>
 
 <script>
+/* One shared 1 s heartbeat for the small periodic checks, so they wake the CPU together instead of six separate times a second. */
+window.ppEvery = (function(){
+  var jobs = [], timer = 0, n = 0;
+  function tick(){ n++; for (var i = 0; i < jobs.length; i++){ if (n % jobs[i].k === 0){ try { jobs[i].fn(); } catch (e) { console.error(e); } } } }
+  return function(fn, ms){ jobs.push({ fn: fn, k: Math.max(1, Math.round(ms / 1000)) }); if (!timer) timer = setInterval(tick, 1000); };
+})();
+
 /* Universal save helper: works in browsers AND inside Android WebView APKs,
    where <a download> + blob: URLs are silently ignored. */
 window.ppSaveBlob = async function(blob, filename){
@@ -8315,13 +8322,17 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       audioLeadResync();
     }
   }
-  setInterval(() => {
-    if (!audioLeadOn && !audioLeadActive) return;
-    const was = audioLeadActive;
-    audioLeadUpdate();
-    if (was !== audioLeadActive) refreshVideoDelayState();
-    audioLeadTick();
-  }, 150);
+  (function leadPoll(){
+    setTimeout(() => {
+      if (audioLeadOn || audioLeadActive){
+        const was = audioLeadActive;
+        audioLeadUpdate();
+        if (was !== audioLeadActive) refreshVideoDelayState();
+        audioLeadTick();
+      }
+      leadPoll();
+    }, (audioLeadOn || audioLeadActive) ? 150 : 1000);
+  })();
   ['play', 'playing', 'pause', 'waiting', 'ratechange'].forEach(ev => videoEl.addEventListener(ev, audioLeadTick));
   // The moment a skip/seek begins, go quiet and wait for it to finish; don't chase the picture around.
   videoEl.addEventListener('seeking', () => { if (audioLeadActive) audioLeadResync(); });
@@ -11124,7 +11135,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     videoEl.addEventListener('loadstart', () => {
       if (perfAutoTripped){ perfAutoTripped = false; applyPerf(); } // each video gets a fresh chance
     });
-    setInterval(() => {
+    ppEvery(() => {
       if (perfMode !== 'auto' || perfAutoTripped) return;
       const now = performance.now();
       if (document.hidden || videoEl.paused || videoEl.ended || videoEl.seeking || videoEl.readyState < 3
@@ -13229,7 +13240,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const want = Math.abs(d) < 0.04 ? playbackSpeed : playbackSpeed * (d > 0 ? 0.97 : 1.03);
     if (Math.abs(videoEl.playbackRate - want) > 0.001) videoEl.playbackRate = want;
   }
-  setInterval(syncWebAudioPicture, 250);
+  (function wapPoll(){ setTimeout(() => { syncWebAudioPicture(); wapPoll(); }, (bgAudioActive && bgAudioManual && !document.hidden) ? 250 : 1000); })();
   [bgPlainEl, bgFxEl].forEach(el => ['play', 'pause', 'seeked'].forEach(ev => el.addEventListener(ev, syncWebAudioPicture)));
   document.addEventListener('visibilitychange', () => { if (!document.hidden) syncWebAudioPicture(); });
 
@@ -13424,7 +13435,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       if (isPlaying && audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
     });
   }
-  setInterval(hookCtxState, 1000);
+  ppEvery(hookCtxState, 1000);
 
   // (Web-audio mode keeps the picture in step with the sound: see syncWebAudioPicture above.)
 
@@ -13579,7 +13590,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     }
   }
   window.__noteFlap = noteFlap;
-  setInterval(() => {
+  ppEvery(() => {
     if (!document.hidden){ wdFails = 0; ctxFails = 0; ctxNextAt = 0; wdNextAt = 0; bgKeepAlive(false); return; }
     bgKeepAlive(!!(isPlaying && currentIndex !== -1 && !(window.PPNative && window.PPNative.active && window.PPNative.active() && !bgAudioActive)));
     const now = Date.now();
@@ -13630,7 +13641,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       try { v.load(); } catch(e){ done(); }
     }
   }
-  setInterval(() => {
+  ppEvery(() => {
     const v = videoEl;
     const watching = isPlaying && !document.hidden && currentIndex !== -1 && !bgAudioActive && !stuckBusy
       && media() === v && v.currentSrc && !v.paused && !v.ended && !v.seeking && v.playbackRate > 0
@@ -15416,9 +15427,14 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   function vizIsVisible(){
     return !document.hidden && vizWrap.offsetParent !== null && vizWrap.style.display !== 'none';
   }
-  function drawViz(){
+  let vizLast = 0, vizIdle = false;
+  function drawViz(ts){
+    const vizLive = audioCtx && isPlaying && currentIndex !== -1;
+    // Not visible, or paused with the bars already settled: check back in 250 ms instead of every frame.
+    if (!vizIsVisible() || (vizIdle && !vizLive)){ setTimeout(() => requestAnimationFrame(drawViz), 250); return; }
     requestAnimationFrame(drawViz);
-    if (!vizIsVisible()) return; // nothing is showing this frame - skip the work entirely
+    if (ts - vizLast < 30) return;   // ~30 fps is plenty for 48 bars and halves the work
+    vizLast = ts;
 
     const w = canvas.width, h = canvas.height;
     ctx.clearRect(0,0,w,h);
@@ -15462,6 +15478,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
         : bandLevels[i]*0.85 + target*0.15;
     }
 
+    vizIdle = !raw && bandLevels.every(v => v < 0.4);
     for (let i = 0; i < BAR_COUNT; i++){
       // Fixed reference (the analyser's own 0-255 byte range), not an
       // adaptive peak or ceiling that can chase the signal and snowball
@@ -20617,9 +20634,11 @@ async function ppMp4Chapters(blob){
       ppLrcIdx = a; ppLrcDraw(a);
       if (ppPanel.classList.contains('open')) ppHighlightLyric();
     }
-    ppLrcRaf = requestAnimationFrame(ppLrcStep);
+    if (media().paused) return;   // nothing moves while paused; play/seek/timeupdate restart it below
+    ppLrcRaf = setTimeout(() => { ppLrcRaf = requestAnimationFrame(ppLrcStep); }, 70);
   }
   function ppLrcKick(){ if (!ppLrcRaf) ppLrcRaf = requestAnimationFrame(ppLrcStep); }
+  ['audio', 'video-el'].forEach(id => { const e = document.getElementById(id); if (e) ['play', 'playing', 'seeked', 'timeupdate'].forEach(ev => e.addEventListener(ev, () => { if (ppLrc.length) ppLrcKick(); })); });
   function ppHighlightLyric(){
     const rows = ppEl('ly-list').querySelectorAll('.pp-item');
     rows.forEach((r, i) => r.classList.toggle('active', i === ppLrcIdx));
@@ -21419,7 +21438,7 @@ async function ppMp4Chapters(blob){
     window.PPPortfolioApi = { recordTrackPlay, tickListen, recordSetting, recordFilter, flush };
 
     // ---------- App foreground time ----------
-    setInterval(() => {
+    ppEvery(() => {
       if (!document.hidden){
         state.totalAppMs += 1000; markDirty();
         const n = Date.now();
@@ -24689,15 +24708,25 @@ async function ppMp4Chapters(blob){
     setTimeout(() => { if (!A.muted && A.volume === 0 && V && V.volume === 0) restore(); else { if (A.volume === 0) A.volume = tA; if (V && V.volume === 0) V.volume = tV; } }, (fade + 4) * 1000);
   }
 
-  setInterval(() => {
-    if (cfg.mode === 'off') return;
-    const cur = activeEl();
-    if (!cur || !isFinite(cur.duration) || cur.duration < 4) return;
-    const rem = (cur.duration - cur.currentTime) / (cur.playbackRate || 1);
-    const lead = cfg.mode === 'crossfade' ? Math.min(cfg.secs, cur.duration / 2) : Math.min(lat, cur.duration / 2);
-    if (rem > lead + 1) armed = true;
-    if (armed && rem <= lead && rem > 0.05) start(cur);
-  }, 40);
+  // Adaptive poll: sleeps 1 s when the feature is off, up to 0.5 s while the end is far away,
+  // and only runs at 40 ms in the last moments before the fade/handoff is due.
+  (function xfPoll(){
+    let wait = 1000;
+    try {
+      if (cfg.mode !== 'off'){
+        const cur = activeEl();
+        wait = 500;
+        if (cur && isFinite(cur.duration) && cur.duration >= 4){
+          const rem = (cur.duration - cur.currentTime) / (cur.playbackRate || 1);
+          const lead = cfg.mode === 'crossfade' ? Math.min(cfg.secs, cur.duration / 2) : Math.min(lat, cur.duration / 2);
+          if (rem > lead + 1) armed = true;
+          if (armed && rem <= lead && rem > 0.05) start(cur);
+          if (!cur.paused) wait = rem > lead + 1.5 ? Math.max(40, Math.min(500, (rem - lead - 1) * 1000)) : 40;
+        }
+      }
+    } catch (e) { wait = 1000; }
+    setTimeout(xfPoll, wait);
+  })();
 
   A.addEventListener('loadedmetadata', () => { armed = true; });
   if (V) V.addEventListener('loadedmetadata', () => { armed = true; });
@@ -25198,12 +25227,12 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   // Count real listening/watching time for the Lite task.
   (function(){
     var A=document.getElementById('audio'),V=document.getElementById('video-el');
-    setInterval(function(){
+    ppEvery(function(){
       if(G.legacy()||G.state().lite)return;
       var playing=(V&&V.currentSrc&&!V.paused&&!V.ended)||(A&&A.currentSrc&&!A.paused&&!A.ended);
       if(playing&&plain())G.addClean(1000);
     },1000);
-    setInterval(function(){G.check()},2000);
+    ppEvery(function(){G.check()},2000);
     window.addEventListener('ppgate',function(e){toast((NAMES[e.detail]||'A mode')+' unlocked. Find it under Settings \u2192 App mode.')});
   })();
   // One-time notice for people who already had data before modes became earned.

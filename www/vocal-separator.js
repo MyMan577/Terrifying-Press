@@ -84,17 +84,37 @@
   }
   // NNAPI (phone GPU/NPU) for everything except Demucs, whose transformer ops run better on CPU. The Java side falls back to CPU by itself.
   // The tiny classifier heads (a few hundred KB) lose time compiling for NNAPI and copying data over: CPU is faster for them.
-  const wantNnapi = key => { if (/^demucs/.test(key) || /^(tgh_|tg_hinst$|tg_hvoice$|tg_hgenre$)/.test(key)) return false; try { return localStorage.getItem('ppvNnapi') !== '0'; } catch (e) { return true; } };
+  const cpuOnly = new Set((() => { try { return JSON.parse(localStorage.getItem('ppvCpuOnly') || '[]'); } catch (e) { return []; } })());   // models whose NNAPI output came back NaN: always CPU
+  const markCpu = key => { cpuOnly.add(key); try { localStorage.setItem('ppvCpuOnly', JSON.stringify([...cpuOnly])); } catch (e) {} };
+  const hasBad = d => { if (!d || !d.length) return true; const st = Math.max(1, (d.length / 512) | 0); for (let i = 0; i < d.length; i += st) if (!Number.isFinite(d[i])) return true; return !Number.isFinite(d[d.length - 1]); };
+  const wantNnapi = key => { if (cpuOnly.has(key) || /^demucs/.test(key) || /^(tgh_|tg_hinst$|tg_hvoice$|tg_hgenre$)/.test(key)) return false; try { return localStorage.getItem('ppvNnapi') !== '0'; } catch (e) { return true; } };
+  const b64Memo = new WeakMap();
   async function nativeSession(key) {
     const SHAPES = { tg_effnet: [64, 128, 96], tg_mn10: [1, 160000] };   // lets the native side time NNAPI vs CPU once and keep the winner
-    const info = await NP.load({ id: key, nnapi: wantNnapi(key), shape: SHAPES[key] });
+    let info = await NP.load(cpuOnly.has(key) ? { id: key, nnapi: false } : { id: key, nnapi: wantNnapi(key), shape: SHAPES[key] });
     window.__ppLastSep = ' (on ' + info.accel + ')';
+    const once = async feed => {
+      const t = Object.values(feed)[0];
+      let b = null;
+      const small = /^(tgh_|tg_hinst$|tg_hvoice$|tg_hgenre$)/.test(key);   // the ~10 classifier heads all get the very same embedding: encode it once
+      if (small) b = b64Memo.get(t.data);
+      if (!b) { b = await toB64(t.data); if (small) b64Memo.set(t.data, b); }
+      const r = await NP.run({ id: key, data: b, dims: Array.from(t.dims) });
+      return { name: r.outputName, data: await fromB64(r.data), dims: r.dims };
+    };
     return {
       inputNames: [info.inputName], outputNames: [info.outputName],
       run: async feed => {
-        const t = Object.values(feed)[0];
-        const r = await NP.run({ id: key, data: await toB64(t.data), dims: Array.from(t.dims) });
-        return { [r.outputName]: { data: await fromB64(r.data), dims: r.dims } };
+        let o = await once(feed);
+        if (hasBad(o.data) && wantNnapi(key)) {                      // NNAPI (fp16) overflowed: reload this model on the CPU and redo the call
+          console.warn('NaN from NNAPI for', key, '- switching to CPU');
+          markCpu(key); try { await NP.unload({ id: key }); } catch (e) {}
+          try { await NP.clearTune(); } catch (e) {}
+          info = await NP.load({ id: key, nnapi: false });
+          o = await once(feed);
+        }
+        if (hasBad(o.data)) throw new Error('model ' + key + ' returned invalid numbers');
+        return { [o.name]: { data: o.data, dims: o.dims } };
       },
       release: () => { NP.unload({ id: key }).catch(() => {}); }
     };
@@ -1107,6 +1127,7 @@
       r.genre = pick(AS_GENRE[0], AS_GENRE[1]); r.mood = pick(AS_MOOD[0], AS_MOOD[1]); r.music = probs[137];
       r.inst2 = []; for (let i = 140; i <= 213; i++) if (asInst(i)) r.inst2.push([AUDIOSET[i], probs[i]]);
     } catch (e) { console.error(e); r.errors.push('AudioSet: ' + e.message); }
+    if (r.voice != null && !Number.isFinite(r.voice)) { delete r.voice; r.errors.push('Vocal detector gave no usable result.'); }
     P(1);
     return r;
   }
