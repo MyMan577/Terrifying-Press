@@ -3777,6 +3777,9 @@ window.ppSaveBlob = async function(blob, filename){
   #lyrics-overlay .ly-next{font-size:12.5px;color:var(--text-dim);margin-top:2px;text-shadow:0 1px 6px rgba(0,0,0,.9);min-height:16px}
   .pp-set-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 
+  /* Forces the WebView to rebuild the video layer (stale layer after #main flips from hidden to visible). */
+  body.pl-kick #video-wrap{ transform:translateZ(0); opacity:.999; }
+
   /* ---- native video surface: the page is see-through above the video box ---- */
   html.pp-native-video #video-wrap{ background:transparent !important; border-radius:0 !important; border-color:transparent !important; }
   html.pp-native-video #video-el{ visibility:hidden; }
@@ -13306,6 +13309,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       if (!audioEl.paused) audioEl.pause();   // the Web-Audio-routed element (audio lead) must not play over bgEl
       parkVideoForBg(); // hidden: stop decoding frames. Web-audio mode: keep the picture going, muted
       bgAudioActive = true;
+      bgKeepAlive(true);
       bgRetryCount = 0;
       // Repeat-one: let the element loop natively. Replaying from onEnded
       // (ended -> seek to 0 -> play()) drops the OS media session each
@@ -13354,6 +13358,20 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       // No automatic Picture-in-Picture fallback: opening a PiP window as the app is being
       // left is what makes the app try to reopen. PiP stays available via its own button.
     }
+  }
+
+  // Web-engine audio (video tracks handed to bgEl, or all audio with the native engine off) has no foreground
+  // service behind it, so Android freezes the backgrounded app and the sound dies after ~30 s. Reuse the
+  // foreground KeepAliveService (same one the splitter uses) for as long as that sound is playing hidden.
+  let bgKeepOn = false;
+  function bgKeepAlive(on){
+    if (bgKeepOn === on) return;
+    try {
+      const P = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.OnnxSeparator;
+      if (!P || !P.keepAlive) return;
+      bgKeepOn = on;
+      P.keepAlive({ on }).catch(() => {});
+    } catch(e){}
   }
 
   function exitBackgroundAudioMode(){
@@ -13426,6 +13444,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (e.persisted) return;   // going to the back/forward cache / just backgrounded - not closing
     pageLeaving = true;
     if (bgRetryTimer){ clearTimeout(bgRetryTimer); bgRetryTimer = null; }
+    bgKeepAlive(false);
   });
   window.addEventListener('pageshow', () => { pageLeaving = false; });
 
@@ -13561,7 +13580,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   }
   window.__noteFlap = noteFlap;
   setInterval(() => {
-    if (!document.hidden){ wdFails = 0; ctxFails = 0; ctxNextAt = 0; wdNextAt = 0; return; }
+    if (!document.hidden){ wdFails = 0; ctxFails = 0; ctxNextAt = 0; wdNextAt = 0; bgKeepAlive(false); return; }
+    bgKeepAlive(!!(isPlaying && currentIndex !== -1 && !(window.PPNative && window.PPNative.active && window.PPNative.active() && !bgAudioActive)));
     const now = Date.now();
     if (now < wdMuteUntil) return;
     if ((isPlaying || cutterExporting) && audioCtx && audioCtx.state !== 'running' && now >= ctxNextAt){
@@ -24365,13 +24385,21 @@ async function ppMp4Chapters(blob){
     if (uiMode === 2) hideUi();
     else showUi();   // mode 1 stays up; mode 0 resumes the normal timer
   });
+  function kickVideoLayer(){
+    if (!body.classList.contains('pl-video')) return;
+    body.classList.add('pl-kick');
+    requestAnimationFrame(() => requestAnimationFrame(() => body.classList.remove('pl-kick')));
+  }
   function syncVideoMode(){
     const v = on && getComputedStyle(videoWrap).display !== 'none';
     body.classList.toggle('pl-video', v);
     if (!v){ hideUi(); }
-    else if (body.hasAttribute('data-pl-player')){ showUi(); }
+    else if (body.hasAttribute('data-pl-player')){ showUi(); kickVideoLayer(); }
     resize();
   }
+  ['loadeddata', 'playing'].forEach(ev => videoEl.addEventListener(ev, kickVideoLayer));
+  const menuOv = document.getElementById('menu-overlay');
+  if (menuOv) new MutationObserver(kickVideoLayer).observe(menuOv, { attributes:true, attributeFilter:['style', 'class'] });
   new MutationObserver(syncVideoMode).observe(videoWrap, { attributes:true, attributeFilter:['style'] });
   window.__ppTap = () => {
     if (!isVideoMode()) return false;
