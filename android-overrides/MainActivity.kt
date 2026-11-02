@@ -43,6 +43,7 @@ class MainActivity : BridgeActivity() {
         // existing vocal-separation plugins (Java)
         registerPlugin(OnnxSeparatorPlugin::class.java)
         registerPlugin(SpleeterSeparatorPlugin::class.java)
+        registerPlugin(BackupPlugin::class.java)   // streams big exports (library backup) straight into Download/Press Play
         // native player layer
         registerPlugin(NativePlayerPlugin::class.java)
         registerPlugin(LibraryPlugin::class.java)
