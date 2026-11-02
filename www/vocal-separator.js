@@ -87,7 +87,7 @@
   const cpuOnly = new Set((() => { try { return JSON.parse(localStorage.getItem('ppvCpuOnly') || '[]'); } catch (e) { return []; } })());   // models whose NNAPI output came back NaN: always CPU
   const markCpu = key => { cpuOnly.add(key); try { localStorage.setItem('ppvCpuOnly', JSON.stringify([...cpuOnly])); } catch (e) {} };
   const hasBad = d => { if (!d || !d.length) return true; const st = Math.max(1, (d.length / 512) | 0); for (let i = 0; i < d.length; i += st) if (!Number.isFinite(d[i])) return true; return !Number.isFinite(d[d.length - 1]); };
-  const wantNnapi = key => { if (cpuOnly.has(key) || /^demucs/.test(key) || /^(tgh_|tg_hinst$|tg_hvoice$|tg_hgenre$)/.test(key)) return false; try { return localStorage.getItem('ppvNnapi') !== '0'; } catch (e) { return true; } };
+  const wantNnapi = key => { if (cpuOnly.has(key) || /^demucs/.test(key) || /^(tgh_|tg_hinst$|tg_hvoice$|tg_hgenre$|ww_)/.test(key)) return false; try { return localStorage.getItem('ppvNnapi') !== '0'; } catch (e) { return true; } };
   const b64Memo = new WeakMap();
   async function nativeSession(key) {
     const SHAPES = { tg_effnet: [64, 128, 96], tg_mn10: [1, 160000] };   // lets the native side time NNAPI vs CPU once and keep the winner
@@ -2685,11 +2685,16 @@
     // ---- openWakeWord: always-on wake phrase (opt-in) ----
     let wk = null, wkStarting = false;
     async function wakeFiles(say) {
-      const ensure = async (key, file, abs) => { if (!(await idbGet(key))) await fetchPart(key, abs ? WAKE_HF + file : file, (g, t) => say && say('Downloading ' + file + (t ? ' ' + Math.round(g / t * 100) + '%' : '')), true); };
+      const have = async k => NATIVE ? !!(await NP.exists({ id: k })).ready : !!(await idbGet(k));
+      const ensure = async (key, file, abs) => {
+        if (await have(key)) return;
+        if (NATIVE) { say && say('Downloading ' + file + '…'); await nativeFetch(key, abs ? WAKE_HF + file : file, () => {}); return; }   // the app's own engine reads its own model store
+        await fetchPart(key, abs ? WAKE_HF + file : file, (g, t) => say && say('Downloading ' + file + (t ? ' ' + Math.round(g / t * 100) + '%' : '')), true);
+      };
       await ensure('ww_mel', 'melspectrogram.onnx', true); await ensure('ww_emb', 'embedding_model.onnx', true);
-      if (await idbGet('ww_bloop')) return ['ww_bloop', 0.5, 'Hey Bloop'];
+      if (await have('ww_bloop')) return ['ww_bloop', 0.5, 'Hey Bloop'];
       if (Date.now() - (+lsGet('ppvWakeMiss') || 0) > 6048e5) {                                    // your own hey_bloop.onnx in HF_BASE, checked at most once a week
-        try { await fetchPart('ww_bloop', 'hey_bloop.onnx', null, true); return ['ww_bloop', 0.5, 'Hey Bloop']; } catch (e) { lsSet('ppvWakeMiss', String(Date.now())); }
+        try { if (NATIVE) await nativeFetch('ww_bloop', 'hey_bloop.onnx', () => {}); else await fetchPart('ww_bloop', 'hey_bloop.onnx', null, true); return ['ww_bloop', 0.5, 'Hey Bloop']; } catch (e) { lsSet('ppvWakeMiss', String(Date.now())); }
       }
       await ensure('ww_jarvis', 'hey_jarvis.onnx', true); return ['ww_jarvis', 0.45, 'Hey Jarvis'];
     }
@@ -2697,11 +2702,11 @@
       if (wk || wkStarting) return; wkStarting = true;
       try {
         await loadOrt(); const h = await wakeFiles(say);
-        ort.env.wasm.wasmPaths = ORT; ort.env.wasm.numThreads = 1;
-        const mk = async k => ort.InferenceSession.create(new Uint8Array(await getPart(k)), { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
+        if (!NATIVE) { ort.env.wasm.wasmPaths = ORT; ort.env.wasm.numThreads = 1; }
+        const mk = async k => NATIVE ? makeSession(k, false, null) : ort.InferenceSession.create(new Uint8Array(await getPart(k)), { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
         const mel = await mk('ww_mel'), emb = await mk('ww_emb'), head = await mk(h[0]);
         await micAcquire();
-        wk = { mel, emb, head, thr: h[1], name: h[2], raw: new Float32Array(480), melBuf: [], embBuf: [], acc: new Float32Array(0), q: [], busy: false, hits: 0, cool: 0 };
+        wk = { mel, emb, head, thr: h[1], name: h[2], raw: new Float32Array(480), melBuf: [], embBuf: [], acc: new Float32Array(0), q: [], busy: false, hits: 0, cool: 0, pre: [], hang: 0, floor: null };
         mic.subs.add(wakeSub); say && say('Wake word ready: say \u201c' + h[2] + '\u201d.');
       } finally { wkStarting = false; }
     }
@@ -2720,9 +2725,22 @@
       w.busy = true;
       try {
         while (w.q.length && wk === w) {
-          const c = w.q.shift(), x = new Float32Array(c.length); for (let i = 0; i < c.length; i++) x[i] = c[i] * 32768;   // the mel model wants 16-bit scale
-          const s = await wakeScore(w, x); w.hits = s >= w.thr ? w.hits + 1 : 0;
-          if (w.hits >= 2 && Date.now() > w.cool) { w.cool = Date.now() + 3500; w.hits = 0; dictate(true); }
+          const c = w.q.shift();
+          // Quiet-room saver: in silence the three models are skipped. The last ~2 s of audio is kept and replayed the moment
+          // sound starts, so the phrase is still heard from its first syllable. Loud = clearly above a slowly tracked noise floor.
+          let e = 0, n = 0; for (let i = 0; i < c.length; i += 4) { e += c[i] * c[i]; n++; }
+          const rms = Math.sqrt(e / Math.max(1, n));
+          w.floor = w.floor == null ? rms : (rms < w.floor ? rms : w.floor * 0.995 + rms * 0.005);
+          const now = Date.now();
+          if (rms > Math.max(0.006, Math.min(w.floor, 0.02) * 2.5)) w.hang = now + 2500;
+          if (now > w.hang) { w.pre.push(c); if (w.pre.length > 25) w.pre.shift(); w.hits = 0; continue; }
+          const batch = w.pre.length ? w.pre.splice(0).concat([c]) : [c];
+          for (const cc of batch) {
+            if (wk !== w) break;
+            const x = new Float32Array(cc.length); for (let i = 0; i < cc.length; i++) x[i] = cc[i] * 32768;   // the mel model wants 16-bit scale
+            const s = await wakeScore(w, x); w.hits = s >= w.thr ? w.hits + 1 : 0;
+            if (w.hits >= 2 && Date.now() > w.cool) { w.cool = Date.now() + 3500; w.hits = 0; dictate(true); }
+          }
         }
       } catch (e) { console.error(e); if (wk === w) { wakeStop(); lsSet('ppvWake', '0'); add('bot', 'The wake word stopped: ' + e.message); } }
       finally { w.busy = false; }
