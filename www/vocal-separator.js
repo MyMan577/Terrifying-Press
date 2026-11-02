@@ -3032,10 +3032,39 @@
         (favSong() ? " Your favorite song is " + songLine(favSong()) + (favArtist() ? " and your favorite artist is " + favArtist() : "") + "." : "") +
         (t ? " Now playing: " + t.title + (c ? " (" + vibes(c).join(', ') + ")." : ".") : "");
     };
+    // Android app: the chat model runs in Java (LlmNative: KV cache + sampling on the CPU). Tokenizing stays here, only token ids cross the bridge.
+    const LLM_ID = 'llm_smollm2', LLM_URL = 'https://huggingface.co/' + CHAT_MODEL + '/resolve/main/onnx/model_quantized.onnx';
+    async function nativeBrain(say) {
+      const pcb = p => { if (p && p.status === 'progress' && p.file) say('Downloading ' + p.file.split('/').pop() + ' ' + Math.round(p.progress || 0) + '%'); };
+      const tok = await tfMod.AutoTokenizer.from_pretrained(CHAT_MODEL, { progress_callback: pcb });
+      if (!(await NP.exists({ id: LLM_ID })).ready) await nativeFetch(LLM_ID, LLM_URL, say);
+      await NP.llmLoad({ id: LLM_ID });
+      let eos = [0, 2];                                                // <|endoftext|>, <|im_end|>
+      try { const e = tok.encode('<|im_end|>', { add_special_tokens: false }); if (e && e.length === 1) eos = [0, Number(e[0])]; } catch (e) {}
+      const g = async (msgs, opts) => {
+        opts = opts || {};
+        const prompt = Array.from(tok.apply_chat_template(msgs, { add_generation_prompt: true, tokenize: true, return_tensor: false }), Number);
+        const ids = [], cb = opts.streamer && opts.streamer.callback_function; let shown = 0;
+        const h = await NP.addListener('llmToken', e => {
+          ids.push(e.id); if (!cb) return;
+          const t = tok.decode(ids, { skip_special_tokens: true });
+          if (t.length > shown && !t.endsWith('\ufffd')) { cb(t.slice(shown)); shown = t.length; }
+        });
+        let out;
+        try { out = await NP.llmGenerate({ prompt, eos, maxNew: opts.max_new_tokens || 60, sample: opts.do_sample !== false, temp: opts.temperature == null ? 0.5 : opts.temperature, topP: opts.top_p == null ? 0.9 : opts.top_p, rep: opts.repetition_penalty || 1.1 }); }
+        finally { h.remove(); }
+        const text = tok.decode(out.tokens, { skip_special_tokens: true }).trim();
+        return [{ generated_text: msgs.concat([{ role: 'assistant', content: text }]) }];
+      };
+      g.tokenizer = tok;
+      g.dispose = async () => { try { await NP.llmUnload(); } catch (e) {} };
+      return g;
+    }
     async function ensureModel(say) {
       if (gen) return gen; if (genP) return genP;
       genP = (async () => {
         say('Loading my brain\u2026'); if (!tfMod) tfMod = await import(TF_URL);
+        if (NATIVE) { gen = await nativeBrain(say); lsSet('ppvChatDl', '1'); return gen; }
         const gpuOn = lsGet('ppvChatGpu') === '1' && navigator.gpu;
         try { tfMod.env.backends.onnx.wasm.numThreads = self.crossOriginIsolated ? Math.min(2, navigator.hardwareConcurrency || 2) : 1; } catch (e) {}   // fewer threads = less RAM
         const pcb = p => { if (p && p.status === 'progress' && p.file) say('Downloading ' + p.file.split('/').pop() + ' ' + Math.round(p.progress || 0) + '%'); };
@@ -3139,6 +3168,7 @@
     }
     async function freeChat() {
       if (gen) { try { await gen.dispose(); } catch (e) {} gen = null; }
+      if (NATIVE) { try { await NP.remove({ id: LLM_ID }); } catch (e) {} }
       lsSet('ppvChatDl', '0');
       const ks = await caches.keys();
       for (const k of ks) if (/transformers/i.test(k)) { const c = await caches.open(k); for (const r of await c.keys()) if (/SmolLM2/i.test(r.url)) await c.delete(r); }
