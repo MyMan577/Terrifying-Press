@@ -221,9 +221,17 @@ jobs:
           ./gradlew assembleDebug
 
       - name: Show which key signed the APK
+        continue-on-error: true   # informational only: never fail the build because of this check
         run: |
-          APKSIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner | tail -1)
-          "$APKSIGNER" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk | grep -E "Signer #1 certificate SHA-256|Verifies"
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          APKSIGNER=$(find "$SDK" /usr/local/lib/android -name apksigner -type f 2>/dev/null | sort | tail -1 || true)
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs "$APK" | grep -E "Signer #1 certificate SHA-256|Verifies" || true
+          else
+            echo "apksigner not found, using keytool instead"
+            keytool -printcert -jarfile "$APK" | grep -E "SHA256|Owner" || true
+          fi
 
       - name: Upload the APK
         uses: actions/upload-artifact@v4
