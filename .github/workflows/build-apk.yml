@@ -171,11 +171,59 @@ jobs:
           python3 /tmp/merge_manifest.py $APPSRC/AndroidManifest.xml "$SRC/AndroidManifest.xml"
           grep -q PlaybackService $APPSRC/AndroidManifest.xml
 
+      - name: Sign with one fixed key and raise the version number
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KS_KEYPASS: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          # Without this, every CI run makes a brand-new random debug key, so Android refuses to install the new APK over the old one
+          # ("App not installed as package conflicts with an existing package"). Same key every build = clean in-place update.
+          KS="$PWD/android/app/pp-signing.keystore"
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$KS"
+            PASS="$KS_PASS"; ALIAS="${KS_ALIAS:-pressplay}"; KPASS="${KS_KEYPASS:-$KS_PASS}"
+            echo "Signing with the key from the repo secrets."
+          elif [ -f android-overrides/pp.keystore ]; then
+            cp android-overrides/pp.keystore "$KS"
+            PASS="pressplay-keystore"; ALIAS="pressplay"; KPASS="pressplay-keystore"
+            echo "::warning::Signing with the key committed in android-overrides/pp.keystore. Add KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD secrets to use a private key instead."
+          else
+            echo "::error::No signing key. Add android-overrides/pp.keystore to the repo, or set the KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD secrets."; exit 1
+          fi
+          printf '\nPP_KS_FILE=%s\nPP_KS_PASS=%s\nPP_KS_ALIAS=%s\nPP_KS_KEYPASS=%s\n' "$KS" "$PASS" "$ALIAS" "$KPASS" >> android/gradle.properties
+          cat >> android/app/build.gradle <<'GRADLE'
+
+          android {
+              signingConfigs {
+                  pp {
+                      storeFile file(PP_KS_FILE)
+                      storePassword PP_KS_PASS
+                      keyAlias PP_KS_ALIAS
+                      keyPassword PP_KS_KEYPASS
+                  }
+              }
+              buildTypes {
+                  debug { signingConfig signingConfigs.pp }
+                  release { signingConfig signingConfigs.pp }
+              }
+          }
+          GRADLE
+          # Android only installs an update when versionCode goes up, so use the workflow run number
+          sed -i -E "s/versionCode +[0-9]+/versionCode ${GITHUB_RUN_NUMBER}/; s/versionName +\"[^\"]*\"/versionName \"1.0.${GITHUB_RUN_NUMBER}\"/" android/app/build.gradle
+          grep -nE "versionCode|versionName" android/app/build.gradle
+
       - name: Build the debug APK
         working-directory: android
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug
+
+      - name: Show which key signed the APK
+        run: |
+          APKSIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner | tail -1)
+          "$APKSIGNER" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk | grep -E "Signer #1 certificate SHA-256|Verifies"
 
       - name: Upload the APK
         uses: actions/upload-artifact@v4
