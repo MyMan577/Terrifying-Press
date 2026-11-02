@@ -90,8 +90,7 @@
   const wantNnapi = key => { if (cpuOnly.has(key) || /^demucs/.test(key) || /^(tgh_|tg_hinst$|tg_hvoice$|tg_hgenre$|ww_)/.test(key)) return false; try { return localStorage.getItem('ppvNnapi') !== '0'; } catch (e) { return true; } };
   const b64Memo = new WeakMap();
   async function nativeSession(key) {
-    const SHAPES = { tg_effnet: [64, 128, 96], tg_mn10: [1, 160000] };   // lets the native side time NNAPI vs CPU once and keep the winner
-    let info = await NP.load(cpuOnly.has(key) ? { id: key, nnapi: false } : { id: key, nnapi: wantNnapi(key), shape: SHAPES[key] });
+    let info = await NP.load({ id: key, nnapi: wantNnapi(key), tune: false });   // no NNAPI-vs-CPU timing pass: the NaN check below already falls back to CPU if NNAPI misbehaves
     window.__ppLastSep = ' (on ' + info.accel + ')';
     const once = async feed => {
       const t = Object.values(feed)[0];
@@ -109,7 +108,6 @@
         if (hasBad(o.data) && wantNnapi(key)) {                      // NNAPI (fp16) overflowed: reload this model on the CPU and redo the call
           console.warn('NaN from NNAPI for', key, '- switching to CPU');
           markCpu(key); try { await NP.unload({ id: key }); } catch (e) {}
-          try { await NP.clearTune(); } catch (e) {}
           info = await NP.load({ id: key, nnapi: false });
           o = await once(feed);
         }
@@ -384,8 +382,60 @@
     const A = window.__ppApi;
     if (A && A.addStemFiles) A.addStemFiles(files, info); else addToLibrary(files);
   }
-  // Re-records the original video with a split stem as its sound. Real time: one pass per stem.
+  // Fast path: remux instead of re-record. The original video packets are copied as-is (no decode, no re-encode),
+  // and only the stem's audio is added. Takes a second or two per stem instead of the full song length.
+  const MB = 'https://cdn.jsdelivr.net/npm/mediabunny@1.65.0/dist/bundles/mediabunny.min.mjs';
+  let mbLib = null, videoBlobFor = null, videoBlobCache = null;
   async function muxVideo(videoUrl, audioBlob, onFrac) {
+    try { return await muxVideoFast(videoUrl, audioBlob, onFrac); }
+    catch (e) { console.warn('Fast video mux failed, using real-time re-record:', e); return muxVideoSlow(videoUrl, audioBlob, onFrac); }
+  }
+  async function muxVideoFast(videoUrl, audioBlob, onFrac) {
+    const mb = mbLib || (mbLib = await import(MB));
+    if (videoBlobFor !== videoUrl) { videoBlobCache = await (await fetch(videoUrl)).blob(); videoBlobFor = videoUrl; }   // fetched once, reused for every stem
+    const vin = new mb.Input({ source: new mb.BlobSource(videoBlobCache), formats: mb.ALL_FORMATS });
+    const vtrack = await vin.getPrimaryVideoTrack(); if (!vtrack) throw new Error('No video track.');
+    const vcodec = vtrack.codec, vcfg = await vtrack.getDecoderConfig();
+    const fmt = vcodec === 'vp8' ? new mb.WebMOutputFormat() : new mb.Mp4OutputFormat({ fastStart: 'in-memory' });
+    if (!fmt.getSupportedCodecs().includes(vcodec)) throw new Error('Video codec ' + vcodec + ' not supported by the container.');
+    const ain = new mb.Input({ source: new mb.BlobSource(audioBlob), formats: mb.ALL_FORMATS });
+    const atrack = await ain.getPrimaryAudioTrack(); if (!atrack) throw new Error('No audio in stem.');
+    const out = new mb.Output({ format: fmt, target: new mb.BufferTarget() });
+    const vsrc = new mb.EncodedVideoPacketSource(vcodec); out.addVideoTrack(vsrc);
+    const dur = await vtrack.computeDuration();
+    let asrc, copyAudio = fmt.getSupportedCodecs().includes(atrack.codec);          // mp3 stems go straight into mp4 untouched; wav gets encoded
+    let encAudio = null;
+    if (copyAudio) { asrc = new mb.EncodedAudioPacketSource(atrack.codec); }
+    else {
+      const codec = await mb.getFirstEncodableAudioCodec(fmt.getSupportedAudioCodecs ? fmt.getSupportedAudioCodecs() : ['aac', 'opus'], { numberOfChannels: 2, sampleRate: SR });
+      if (!codec) throw new Error('No audio encoder available.');
+      asrc = new mb.AudioBufferSource({ codec, bitrate: 192000 });
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      try { encAudio = await ctx.decodeAudioData(await audioBlob.arrayBuffer()); } finally { ctx.close && ctx.close(); }
+    }
+    out.addAudioTrack(asrc);
+    await out.start();
+    const vp = (async () => {
+      const sink = new mb.EncodedPacketSink(vtrack); let first = true;
+      for await (const pk of sink.packets()) {
+        await vsrc.add(pk, first ? { decoderConfig: vcfg } : undefined); first = false;
+        if (onFrac && dur) onFrac(Math.min(1, pk.timestamp / dur) * 0.9);
+      }
+      vsrc.close();
+    })();
+    const ap = (async () => {
+      if (copyAudio) {
+        const acfg = await atrack.getDecoderConfig(), sink = new mb.EncodedPacketSink(atrack); let first = true;
+        for await (const pk of sink.packets()) { await asrc.add(pk, first ? { decoderConfig: acfg } : undefined); first = false; }
+      } else await asrc.add(encAudio);
+      asrc.close();
+    })();
+    await Promise.all([vp, ap]);
+    await out.finalize(); onFrac && onFrac(1);
+    return new Blob([out.target.buffer], { type: fmt.mimeType });
+  }
+  // Slow fallback: re-records the original video with a split stem as its sound. Real time: one pass per stem.
+  async function muxVideoSlow(videoUrl, audioBlob, onFrac) {
     const mime = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
     if (!mime) throw new Error('This device cannot record video.');
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -644,6 +694,7 @@
 
   // Native 4-stem, MDX and Demucs path (Android app): decode, STFT, model and WAV output all run in Java.
   const nativeGrab = async p => new Blob([await (await fetch(window.Capacitor.convertFileSrc(p))).arrayBuffer()], { type: 'audio/wav' });
+  const ls0 = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
   async function nativeStems(m, id, track, wanted, opts, status, onProgress) {
     const SS = window.Capacitor.Plugins.SpleeterSeparator;
     status('Preparing audio…');
@@ -652,10 +703,12 @@
     const saved = await SS.writeInput({ name: 'track-' + Date.now() + '.audio', data: b64 });
     window.__ppLastSep = '';
     const h = await NP.addListener('progress', e => { onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
-    const base = { input: saved.path, stems: wanted, nnapi: opts.nnapi !== false, duty: opts.lv ? ({ Light: 0, Medium: 0.2, Max: 0.5 }[opts.lv.name] || 0) : 0 };
+    const accKey = 'ppvAccel_' + id, remembered = ls0(accKey);
+    const useNn = opts.nnapi !== false && !/^demucs/.test(id) && !cpuOnly.has(id) && remembered !== 'cpu';   // Demucs is always CPU; a model that already lost or gave NaN stays on CPU
+    const base = { tune: false, input: saved.path, stems: wanted, nnapi: useNn, duty: opts.lv ? ({ Light: 0, Medium: 0.2, Max: 0.5 }[opts.lv.name] || 0) : 0 };
     let out;
     try {
-      status('Loading models… (the first run on a phone also times NNAPI vs CPU)');
+      status('Loading models…');
       if (m.kind === 'sp4') {
         try { out = await NP.separate(Object.assign({ kind: 'sp4', prefix: 'sp4_' }, base)); }
         catch (e) {                                                   // half precision rejected: use the full precision files
@@ -668,6 +721,7 @@
       else out = await NP.separate(Object.assign({ kind: 'mdx', model: id, nfft: m.nfft, dimF: m.dimF, comp: m.comp }, base));
     } finally { h.remove(); }
     window.__ppLastSep = ' (' + Math.round(out.seconds) + ' s on ' + out.accel + ')';
+    try { localStorage.setItem(accKey, /nnapi|npu|gpu/i.test(String(out.accel)) ? 'nnapi' : 'cpu'); } catch (e) {}
     const res = {};
     if (opts.pathOnly) { for (const n of wanted) res[n] = { path: out.files[n], ext: 'wav' }; return res; }   // caller reads and deletes the file itself
     for (const n of wanted) res[n] = { blob: await nativeGrab(out.files[n]), ext: 'wav' };
@@ -690,7 +744,7 @@
     window.__ppLastSep = '';
     const h = await SS.addListener('progress', e => { onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
     let out;
-    try { out = await SS.separate({ input: saved.path, sharp: opts.strength, nnapi: opts.nnapi !== false }); }
+    try { out = await SS.separate({ input: saved.path, sharp: opts.strength, nnapi: opts.nnapi !== false && ls0('ppvAccel_spleeter2') !== 'cpu' && !cpuOnly.has('spleeter2'), tune: false }); try { localStorage.setItem('ppvAccel_spleeter2', /nnapi|npu|gpu/i.test(String(out.accel)) ? 'nnapi' : 'cpu'); } catch (e) {} }
     finally { h.remove(); }
     window.__ppLastSep = ' (' + Math.round(out.seconds) + ' s on ' + out.accel + ')';
     const grab = async p => new Blob([await (await fetch(window.Capacitor.convertFileSrc(p))).arrayBuffer()], { type: 'audio/wav' });
@@ -5731,7 +5785,7 @@
     const LV = () => LEVELS[+lsel.value] || null, showLv = () => lvi.textContent = LV() ? LV().info : 'No limits. Fastest, but can crash weak phones.';
     let holdUntil = 0;                                                // keep "Done"/"Error" visible instead of being wiped by "Ready" a split second later
     const status = t => { st.textContent = t; document.querySelectorAll('.ppv-stx').forEach(e => { e.textContent = t; }); if (/^(Done|Error)/.test(t)) holdUntil = Date.now() + 5000; mas.react(t); }, ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} };
-    const nnc = $('#ppv-nnc'); if (NATIVE) { $('#ppv-nn').style.display = 'block'; nnc.checked = ls('ppvNnapi') !== '0'; nnc.onchange = () => { ls('ppvNnapi', nnc.checked ? '1' : '0'); NP.clearTune().catch(() => {}); }; }
+    const nnc = $('#ppv-nnc'); if (NATIVE) { $('#ppv-nn').style.display = 'block'; nnc.checked = ls('ppvNnapi') !== '0'; nnc.onchange = () => { ls('ppvNnapi', nnc.checked ? '1' : '0'); }; }
     const savedModel = ls('ppvModel'); if (savedModel && MODELS[savedModel]) sel.value = savedModel;
     if (ls('ppvStrength')) { sl.value = ls('ppvStrength'); sv.textContent = sl.value; }
     lsel.value = ls('ppvLevel') || (ls('ppvLow') === '0' ? '0' : '2'); showLv(); gpu.checked = ls('ppvGpu') === '1'; if (navigator.gpu) $('#ppv-gpu').style.display = 'block';
@@ -5801,6 +5855,7 @@
           }
           files.push(new File([blob], t.title + ' (' + n + ').' + ext, { type: blob.type }));
         }
+        videoBlobCache = null; videoBlobFor = null;
         addSplit(files, { srcId: t.dbId, srcTitle: t.title, makePlaylist: mkpl.checked, showInTab: mkpl.checked && pltab.checked });
         status('Done. Added ' + files.length + ' split track' + (files.length > 1 ? 's' : '') + ' to Split tracks' + (mkpl.checked ? ' + a playlist.' : '.') + (window.__ppLastSep || '') + (vidFail ? ' ' + vidFail + ' stem' + (vidFail > 1 ? 's' : '') + ' saved as audio only (video failed).' : ''));
       } catch (e) { console.error(e); status('Error: ' + errText(e)); }
