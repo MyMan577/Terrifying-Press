@@ -1924,6 +1924,8 @@
         { id: 'aeq', label: 'Auto-EQ when tagging', key: 'ppvAutoEq', def: 0, box: 'ppv-aeq' },
         { id: 'askip', label: 'Skip long intros', key: 'ppvAutoSkip', def: 0, box: 'ppv-askip' },
         { g: 'Bloop', id: 'mascot', label: 'Bloop, the mascot', box: 'ppv-mas', def: 1, get: () => h.mas.isOn() },
+        { id: 'blbub', label: 'Bloop speech bubbles over the app', key: 'ppvBlBubbles', def: 0, box: 'ppv-bub' },
+        { id: 'blhdr', label: 'Bloop headers at the top of AI sections', key: 'ppvBlHeaders', def: 0, box: 'ppv-hdr' },
         { id: 'assist', label: 'Bloop assistant button', box: 'ppv-chat-on', def: 0, get: () => h.mas.chat.isOn() },
         { id: 'mini', label: 'Smarter understanding (MiniLM)', box: 'ppv-mini-on', def: 0, get: () => h.mas.voice.get('ppvMini') },
         { id: 'speak', label: 'Bloop speaks (Kokoro)', box: 'ppv-voice-on', def: 0, get: () => h.mas.voice.get('ppvVoice') },
@@ -1958,7 +1960,7 @@
         syncBoxes();
       };
       // keep these in step when the same switch is changed in its own panel
-      document.addEventListener('change', e => { if (e.target && /^ppv-(live|lmix|surp|bg|aeq|askip|mas|chat-on|mini-on|voice-on|mic-on|wake-on)$/.test(e.target.id)) syncBoxes(); });
+      document.addEventListener('change', e => { if (e.target && /^ppv-(live|lmix|surp|bg|aeq|askip|mas|bub|hdr|chat-on|mini-on|voice-on|mic-on|wake-on)$/.test(e.target.id)) syncBoxes(); });
       (document.getElementById('sidebar-pane-settings') || p).appendChild(box);
       if (sb) sb.addEventListener('click', () => setTimeout(applyShow, 0));
       if (eb) eb.addEventListener('click', () => setTimeout(applyShow, 0));
