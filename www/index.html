@@ -12,7 +12,7 @@ window.ppEvery = (function(){
 
 /* Universal save helper: works in browsers AND inside Android WebView APKs,
    where <a download> + blob: URLs are silently ignored. */
-window.ppSaveBlob = async function(blob, filename){
+window.ppSaveBlob = async function(blob, filename, onProgress){
   const mime = blob.type || 'application/octet-stream';
   const toB64 = b => new Promise((res, rej) => {
     const r = new FileReader();
@@ -25,13 +25,17 @@ window.ppSaveBlob = async function(blob, filename){
     // 1) Capacitor (your APK): write to app cache in chunks (no storage permission,
     //    no giant base64 string), then open the share sheet -> "Save to device / Files / Drive"
     if (P && P.Filesystem){
-      const CH = 3 * 1024 * 1024;               // multiple of 3 keeps base64 chunks aligned
+      const CH = 6 * 1024 * 1024;               // multiple of 3 keeps base64 chunks aligned (bigger chunks = fewer trips over the bridge)
       const path = 'export_' + Date.now() + '_' + filename.replace(/[^\w.\- ]+/g, '_');
+      let nextB64 = toB64(blob.slice(0, CH));
       for (let off = 0, first = true; off < blob.size || first; off += CH, first = false){
-        const data = await toB64(blob.slice(off, off + CH));
+        const data = await nextB64;
+        nextB64 = (off + CH < blob.size) ? toB64(blob.slice(off + CH, off + 2 * CH)) : null;   // encode the next chunk while this one is written
         if (first) await P.Filesystem.writeFile({ path, data, directory: 'CACHE' });
         else await P.Filesystem.appendFile({ path, data, directory: 'CACHE' });
+        if (onProgress){ try { onProgress(Math.min(1, (off + CH) / Math.max(1, blob.size)), 'write'); } catch(e){} }
       }
+      if (onProgress){ try { onProgress(1, 'finish'); } catch(e){} }
       const { uri } = await P.Filesystem.getUri({ path, directory: 'CACHE' });
       if (window.PPNative && PPNative.lib){
         try {
@@ -8593,17 +8597,37 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     }
     return t;
   })();
+  // Slicing-by-8: handles 8 bytes per step instead of 1 (about 4-6x faster than the plain table loop; identical result).
+  const CRC8 = (() => {
+    const t = new Int32Array(8 * 256);
+    for (let i = 0; i < 256; i++) t[i] = CRC_TABLE[i] | 0;
+    for (let i = 0; i < 256; i++){
+      let c = t[i];
+      for (let k = 1; k < 8; k++){ c = t[c & 0xFF] ^ (c >>> 8); t[k * 256 + i] = c; }
+    }
+    return t;
+  })();
   function crc32Update(crc, bytes){
-    for (let i = 0; i < bytes.length; i++) crc = CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    const t = CRC8, n = bytes.length, end = n - (n & 7);
+    let i = 0;
+    for (; i < end; i += 8){
+      const lo = crc ^ (bytes[i] | (bytes[i + 1] << 8) | (bytes[i + 2] << 16) | (bytes[i + 3] << 24));
+      crc = t[1792 + (lo & 0xFF)] ^ t[1536 + ((lo >>> 8) & 0xFF)] ^ t[1280 + ((lo >>> 16) & 0xFF)] ^ t[1024 + (lo >>> 24)]
+          ^ t[768 + bytes[i + 4]] ^ t[512 + bytes[i + 5]] ^ t[256 + bytes[i + 6]] ^ t[bytes[i + 7]];
+    }
+    for (; i < n; i++) crc = CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
     return crc;
   }
   async function crc32OfBlob(blob){
     let crc = 0xFFFFFFFF;
-    const CHUNK = 4 * 1024 * 1024;
+    const CHUNK = 8 * 1024 * 1024, ms = backupThrottleMs();
+    // read the next slice while the current one is being checksummed
+    let next = blob.size ? blob.slice(0, CHUNK).arrayBuffer() : null;
     for (let off = 0; off < blob.size; off += CHUNK){
-      const buf = await blob.slice(off, off + CHUNK).arrayBuffer();
+      const buf = await next;
+      next = (off + CHUNK < blob.size) ? blob.slice(off + CHUNK, off + 2 * CHUNK).arrayBuffer() : null;
       crc = crc32Update(crc, new Uint8Array(buf));
-      await backupPause(backupThrottleMs());
+      if (ms > 0) await backupPause(ms);          // only the gentler speed settings pause; Max just keeps going
     }
     return (crc ^ 0xFFFFFFFF) >>> 0;
   }
@@ -8689,9 +8713,14 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
           mediaFile: 'media/' + fileName, artFile: artFile ? 'art/' + artFile : null
         });
       }
+      // Every track is packed now. What is left is writing the whole archive out, which used to show no progress at all and looked frozen on the last song.
+      if (btn) btn.textContent = 'Finishing…';
       await zip.add('manifest.json', new TextEncoder().encode(JSON.stringify({ version: 1, playlists, tracks: manifest }, null, 2)));
       const blob = zip.finish();
-      await window.ppSaveBlob(blob, 'press-play-library-backup-' + new Date().toISOString().slice(0,10) + '.zip');
+      await backupPause(0);
+      await window.ppSaveBlob(blob, 'press-play-library-backup-' + new Date().toISOString().slice(0,10) + '.zip', (f, phase) => {
+        if (btn) btn.textContent = phase === 'finish' ? 'Saving to device…' : 'Saving ' + Math.round(f * 100) + '%…';
+      });
       showToast('Backup exported.');
     } catch(e){
       showToast('Backup failed: ' + (e && e.message ? e.message : 'unknown error'), 'error');
@@ -8792,17 +8821,21 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
         });
         restored++;
       }
+      if (btn) btn.textContent = 'Finishing…';
+      await backupPause(0);
+      // Each closing step is guarded on its own, so one failing screen refresh can no longer leave the restore hanging on the last track.
+      const step = fn => { try { fn(); } catch(err){ console.error('restore finish step failed', err); } };
       if (manifest.playlists && Array.isArray(manifest.playlists)){
         manifest.playlists.forEach(p => {
           if (!playlists.some(existing => existing.id === p.id)) playlists.push(p);
         });
-        savePlaylists();
-        renderPlaylistsManager();
+        step(savePlaylists);
+        step(renderPlaylistsManager);
       }
-      saveLibraryMeta();
-      renderPlaylist();
-      renderPlaylistViewSelect();
-      refreshStorageEstimate();
+      step(saveLibraryMeta);
+      step(renderPlaylist);
+      step(renderPlaylistViewSelect);
+      step(refreshStorageEstimate);
       showToast('Restored ' + restored + ' track' + (restored === 1 ? '' : 's') + (failed ? (', ' + failed + ' failed') : '') + '.', failed ? 'warn' : undefined);
     } catch(e){
       showToast('Restore failed: ' + (e && e.message ? e.message : 'invalid file'), 'error');
