@@ -52,7 +52,7 @@ jobs:
           PKG_DIR=android/app/src/main/java/com/pressplay/media
           mkdir -p "$PKG_DIR"
           cp android-overrides/*.java "$PKG_DIR"/
-          sed -i '/^dependencies {/a\    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.19.2"' android/app/build.gradle
+          sed -i '/^dependencies {/a\    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.22.0"' android/app/build.gradle
           sed -i 's/<application/<application android:largeHeap="true"/' android/app/src/main/AndroidManifest.xml
           python3 - <<'PY'
           p = 'android/app/src/main/AndroidManifest.xml'
