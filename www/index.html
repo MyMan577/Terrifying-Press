@@ -11684,9 +11684,9 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     playPause:     { label: 'Play / Pause', run: () => togglePlay() },
     next:          { label: 'Next track', run: () => { if (currentIndex !== -1) loadTrack(nextTrackIndex(), true); } },
     prev:          { label: 'Previous track', run: () => { if (currentIndex !== -1) loadTrack(prevTrackIndex(), true); } },
-    seekFwd10:     { label: 'Seek +10s', run: () => { media().currentTime = Math.min(media().duration||0, media().currentTime + 10); } },
+    seekFwd10:     { label: 'Seek +10s', run: () => { media().currentTime = (isFinite(media().duration) && media().duration > 0) ? Math.min(media().duration, media().currentTime + 10) : media().currentTime + 10; } },
     seekBack10:    { label: 'Seek -10s', run: () => { media().currentTime = Math.max(0, media().currentTime - 10); } },
-    seekFwd30:     { label: 'Seek +30s', run: () => { media().currentTime = Math.min(media().duration||0, media().currentTime + 30); } },
+    seekFwd30:     { label: 'Seek +30s', run: () => { media().currentTime = (isFinite(media().duration) && media().duration > 0) ? Math.min(media().duration, media().currentTime + 30) : media().currentTime + 30; } },
     seekBack30:    { label: 'Seek -30s', run: () => { media().currentTime = Math.max(0, media().currentTime - 30); } },
     volUp:         { label: 'Volume +10%', run: () => { volume.value = Math.min(100, parseFloat(volume.value) + 10); volume.dispatchEvent(new Event('input')); saveSettings(); } },
     volDown:       { label: 'Volume -10%', run: () => { volume.value = Math.max(0, parseFloat(volume.value) - 10); volume.dispatchEvent(new Event('input')); saveSettings(); } },
@@ -11729,7 +11729,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     speedDown:     { label: 'Speed -0.25x', run: () => stepSpeed(-0.25) },
     speedReset:    { label: 'Reset speed to 1x', run: () => setSpeedTo(1) },
     restart:       { label: 'Restart track', run: () => { const m = media(); if (m) m.currentTime = 0; } },
-    seekFwd60:     { label: 'Seek +60s', run: () => { media().currentTime = Math.min(media().duration||0, media().currentTime + 60); } },
+    seekFwd60:     { label: 'Seek +60s', run: () => { media().currentTime = (isFinite(media().duration) && media().duration > 0) ? Math.min(media().duration, media().currentTime + 60) : media().currentTime + 60; } },
     seekBack60:    { label: 'Seek -60s', run: () => { media().currentTime = Math.max(0, media().currentTime - 60); } }
   };
 
@@ -17100,11 +17100,11 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   function onLoadedMetadata(e){
     if (e.target !== media()) return;
     const m = media();
-    if (currentIndex !== -1){
+    if (currentIndex !== -1 && isFinite(m.duration) && m.duration > 0){
       tracks[currentIndex].duration = m.duration;
       saveLibraryMeta();
     }
-    seek.max = m.duration || 100;
+    seek.max = (isFinite(m.duration) && m.duration > 0) ? m.duration : 100;
     durTimeEl.textContent = fmtTime(m.duration);
     renderPlaylist();
     updateABMarkers();
@@ -17139,6 +17139,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   [audioEl, videoEl, bgPlainEl, bgFxEl].forEach(el => {
     el.addEventListener('timeupdate', onTimeUpdate);
     el.addEventListener('loadedmetadata', onLoadedMetadata);
+    el.addEventListener('durationchange', onLoadedMetadata);
     el.addEventListener('ended', onEnded);
   });
   document.addEventListener('visibilitychange', () => { if (document.hidden) persistSubtitleState(true); });
@@ -17149,16 +17150,20 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     }
   });
 
-  window.ppSeekDrag = window.ppSeekDrag || { on: false };
-  seek.addEventListener('pointerdown', () => { window.ppSeekDrag.on = true; });
-  seek.addEventListener('touchstart', () => { window.ppSeekDrag.on = true; }, { passive: true });
-  window.addEventListener('pointerup', () => { setTimeout(() => { window.ppSeekDrag.on = false; }, 400); });
+  // While the thumb is held (or still moving), playback updates must not move it.
+  // Several events are listened to because not every phone sends all of them.
+  window.ppSeekDrag = window.ppSeekDrag || { on: false, t: 0 };
+  const seekHold = () => { window.ppSeekDrag.on = true; clearTimeout(window.ppSeekDrag.t); };
+  const seekRelease = () => { clearTimeout(window.ppSeekDrag.t); window.ppSeekDrag.t = setTimeout(() => { window.ppSeekDrag.on = false; }, 400); };
+  ['pointerdown', 'touchstart', 'mousedown'].forEach(ev => seek.addEventListener(ev, seekHold, { passive: true }));
+  ['pointerup', 'pointercancel', 'touchend', 'touchcancel', 'mouseup'].forEach(ev => window.addEventListener(ev, seekRelease, { passive: true }));
   seek.addEventListener('input', () => {
+    seekHold();
     updateSeekFill();
   });
   seek.addEventListener('change', () => {
+    window.ppSeekDrag.on = false; clearTimeout(window.ppSeekDrag.t);
     media().currentTime = parseFloat(seek.value);
-    window.ppSeekDrag.on = false;
   });
 
   // Same reasoning as applySpeed(): writing .volume (and hitting
