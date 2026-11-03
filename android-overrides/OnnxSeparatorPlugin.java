@@ -176,6 +176,48 @@ public class OnnxSeparatorPlugin extends Plugin {
         call.resolve();
     }
 
+    // ---------- Parakeet TDT (ParakeetNative): preprocessor + encoder + greedy token-and-duration decoding, all native ----------
+    private final ParakeetNative parakeet = new ParakeetNative();
+
+    /** One chunk of 16 kHz mono audio (base64 float32, n samples). Models: <pre>.onnx, <enc>.onnx, <dec>.onnx in the models folder. */
+    @PluginMethod
+    public void parakeetRun(PluginCall call) {
+        Accel.init(getContext());
+        final String preId = call.getString("pre"), encId = call.getString("enc"), decId = call.getString("dec"), b64 = call.getString("pcm");
+        final int n = call.getInt("n", 0), vocab = call.getInt("vocab", 0), blank = call.getInt("blank", -1);
+        if (preId == null || encId == null || decId == null || b64 == null || n <= 0 || blank < 0) { call.reject("pre, enc, dec, pcm, n and blank are required"); return; }
+        final File pf = modelFile(preId), ef = modelFile(encId), df = modelFile(decId);
+        if (!pf.exists() || !ef.exists() || !df.exists()) { call.reject("Parakeet model not downloaded"); return; }
+        new Thread(() -> {
+            try { Process.setThreadPriority(5); } catch (Throwable ignored) { }
+            try {
+                final String k = preId + "|" + encId + "|" + decId;
+                if (!parakeet.loaded(k)) whisper.close();                    // never hold both big models in memory
+                byte[] raw = Base64.decode(b64, Base64.NO_WRAP);
+                ByteBuffer d = ByteBuffer.allocateDirect(raw.length).order(ByteOrder.nativeOrder());
+                d.put(raw);
+                d.rewind();
+                ParakeetNative.Out o = parakeet.run(env(), k, pf, ef, df, d.asFloatBuffer(), Math.min(n, raw.length / 4), vocab, blank);
+                JSONArray t = new JSONArray(), f = new JSONArray(), u = new JSONArray();
+                for (int i = 0; i < o.tokens.length; i++) { t.put(o.tokens[i]); f.put(o.frames[i]); u.put(o.durs[i]); }
+                JSObject r = new JSObject();
+                r.put("tokens", t);
+                r.put("frames", f);
+                r.put("durs", u);
+                r.put("nFrames", o.nFrames);
+                call.resolve(r);
+            } catch (Throwable e) {
+                call.reject("Parakeet: " + (e.getMessage() != null ? e.getMessage() : e.toString()));
+            }
+        }).start();
+    }
+
+    @PluginMethod
+    public void parakeetUnload(PluginCall call) {
+        parakeet.close();
+        call.resolve();
+    }
+
     // ---------- Chat model (LlmNative): tokenizing stays in JS, only token ids cross the bridge ----------
     private final LlmNative llm = new LlmNative();
 
