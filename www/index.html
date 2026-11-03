@@ -3512,6 +3512,10 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
   }
   .ph-chip svg{ width:15px; height:15px; color:#22d3ee; }
   .ph-chip:active{ background:#22d3ee22; }
+  .ph-chip.on{ background:#22d3ee22; border-color:#22d3ee; }
+  .ph-tabs{ overflow-x:auto; scrollbar-width:none; padding-bottom:6px; }
+  .ph-tabs::-webkit-scrollbar{ display:none; }
+  .ph-tabs .ph-chip{ flex:0 0 auto; }
 
   /* Lite: calm and flat */
   #pl-home[data-ed="lite"] .ph-thumb{ border-color:transparent; border-radius:8px; }
@@ -23870,7 +23874,8 @@ async function ppMp4Chapters(blob){
       const tr = A.tracks(), byId = new Map(tr.map((t, i) => [t.dbId, i]));
       const avail = [];
       if (tr.some(t => t.kind === 'video')) avail.push('videos');
-      if (playHistory.some(h => { const i = byId.get(h.id); return i != null && tr[i].kind === 'video'; })) avail.push('history');
+      if (tr.some(t => t.kind === 'audio' && !t.stem)) avail.push('audio');
+      if (playHistory.some(h => byId.get(h.id) != null)) avail.push('history');
       const n = avail.indexOf(openSec) + step;
       if (n >= 0 && n < avail.length) slideRun(step, pane, () => { openSec = avail[n]; renderHome(true); }, () => pane);
       return true;
@@ -23974,7 +23979,7 @@ async function ppMp4Chapters(blob){
   const HKEY = 'playerHistoryV1';
   let playHistory = [];
   try { playHistory = JSON.parse(localStorage.getItem(HKEY)) || []; } catch(e){}
-  var openSec = null;   // 'videos' | 'history': that section's own full page on the Home tab
+  var openSec = null;   // 'videos' | 'audio' | 'history': that section's own full page on the Home tab
   var openPlId = null;   // playlist whose own page is open on the Playlists tab
   let lastSig = '', lastView = '', homeTimer = null;
   const thumbCache = new Map();   // dbId -> dataURL | null (failed)
@@ -24165,6 +24170,9 @@ async function ppMp4Chapters(blob){
     const vidIdx = [];
     tracks.forEach((t, i) => { if (t.kind === 'video') vidIdx.push(i); });
     const hist = playHistory.map(h => ({ h, i: byId.get(h.id) })).filter(x => x.i != null && tracks[x.i].kind === 'video');
+    const audIdx = [];
+    tracks.forEach((t, i) => { if (t.kind === 'audio' && !t.stem) audIdx.push(i); });
+    const histAll = playHistory.map(h => ({ h, i: byId.get(h.id) })).filter(x => x.i != null);
     const plData = pls.map(pl => {
       const idxs = []; tracks.forEach((t, i) => { if ((t.playlistIds || []).includes(pl.id)) idxs.push(i); });
       return { pl, idxs };
@@ -24172,7 +24180,7 @@ async function ppMp4Chapters(blob){
 
     const sig = JSON.stringify([
       tracks.map(t => [t.dbId, t.title, t.kind, t.duration, !!t.artUrl, thumbCache.has(t.dbId), t.playlistIds]),
-      pls, view, hist.map(x => [x.h.id, x.h.at]), cur, openSec, openPlId, (window.__ppEdition ? window.__ppEdition() : '')
+      pls, view, histAll.map(x => [x.h.id, x.h.at]), tracks.map(t => t.artist), cur, openSec, openPlId, (window.__ppEdition ? window.__ppEdition() : '')
     ]);
     if (!force && sig === lastSig) return;
     lastSig = sig;
@@ -24180,7 +24188,12 @@ async function ppMp4Chapters(blob){
     // Videos
     const vCards = vidIdx.map(i => cardHTML(tracks[i], i, 'videos', tracks[i].height ? tracks[i].height + 'p' : (tracks[i].ext || '').toUpperCase(), i === cur));
     // History
-    const hCards = hist.map(x => cardHTML(tracks[x.i], x.i, 'history', relTime(x.h.at), x.i === cur));
+    const audSub = t => (t.artist && t.artist !== 'Unknown artist') ? t.artist : (t.ext || '').toUpperCase();
+    const aCards = audIdx.map(i => cardHTML(tracks[i], i, 'audio', audSub(tracks[i]), i === cur));
+    const hCards = histAll.map(x => cardHTML(tracks[x.i], x.i, 'history', relTime(x.h.at), x.i === cur));
+    const SEC_TITLE = { videos:'Videos', audio:'Audio', history:'History' };
+    const tabsHTML = active => '<div class="ph-chips ph-tabs">' + [['all','All'],['videos','Videos'],['audio','Audio'],['history','History']].map(t =>
+      '<button type="button" class="ph-chip' + (active === t[0] ? ' on' : '') + '" data-act="home-tab" data-tab="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>';
     // Playlists
     let plHTML;
     function plInfo(idxs){
@@ -24230,21 +24243,23 @@ async function ppMp4Chapters(blob){
         '<section class="ph-sec" style="margin-top:' + (openPlId ? 0 : 14) + 'px;">' + plHTML + '</section>';
     } else if (openSec){
       // One section on its own page: every item in a grid
-      const isV = openSec === 'videos', items = isV ? vCards : hCards;
-      if (!items.length) openSec = null;
-      else homeEl.innerHTML =
-        '<button type="button" class="ph-back" data-act="sec-back">' + IC_BACK + 'Home</button>' +
-        '<div class="ph-sec-head ph-page-head"><h1 class="ph-app-title ph-page-title">' + (isV ? 'Videos' : 'History') + '</h1>' +
-          '<span class="ph-count">' + items.length + '</span><span class="ph-spacer"></span>' +
-          (!isV ? '<button type="button" class="ph-link dim" data-act="clear-history">Clear</button>' : '') + '</div>' +
-        '<div class="ph-row expanded ph-page-grid">' + items.join('') + '</div>';
+      const items = openSec === 'videos' ? vCards : (openSec === 'audio' ? aCards : hCards);
+      homeEl.innerHTML =
+        tabsHTML(openSec) +
+        '<div class="ph-sec-head ph-page-head"><h1 class="ph-app-title ph-page-title">' + SEC_TITLE[openSec] + '</h1>' +
+          '<span class="ph-count">' + (items.length || '') + '</span><span class="ph-spacer"></span>' +
+          (openSec === 'history' && items.length ? '<button type="button" class="ph-link dim" data-act="clear-history">Clear</button>' : '') + '</div>' +
+        (items.length ? '<div class="ph-row expanded ph-page-grid">' + items.join('') + '</div>'
+          : '<div class="ph-empty">' + (openSec === 'videos' ? 'No videos yet. Add files from the Library tab.' : openSec === 'audio' ? 'No audio yet. Add files from the Library tab.' : 'Tracks you play show up here.') + '</div>');
     }
     const ed = window.__ppEdition ? window.__ppEdition() : '';
     homeEl.dataset.ed = ed;
     if (!(view === 'home' && openSec) && view !== 'playlists'){
       const histBtn = hCards.length ? '<button type="button" class="ph-link dim" data-act="clear-history">Clear</button>' : '';
       const vSec = sectionHTML('videos', 'Videos', vCards, 'No videos yet. Add files from the Library tab.');
-      const hSec = sectionHTML('history', 'History', hCards, 'Videos you play show up here.', histBtn);
+      const aSec = sectionHTML('audio', 'Audio', aCards, 'No audio yet. Add files from the Library tab.');
+      const hSec = sectionHTML('history', 'History', hCards, 'Tracks you play show up here.', histBtn);
+      const tabs = tabsHTML('all');
       // Featured video: what's playing, else the last one watched, else the first video
       const curIsVid = cur >= 0 && tracks[cur] && tracks[cur].kind === 'video';
       const heroI = curIsVid ? cur : (hist.length ? hist[0].i : (vidIdx.length ? vidIdx[0] : -1));
@@ -24255,19 +24270,22 @@ async function ppMp4Chapters(blob){
         (ed ? '<div class="ph-tag">' + TAGLINES[ed] + '</div>' : '');
       if (ed === 'lite'){
         const rows = vidIdx.map(i => listRowHTML(tracks[i], i, 'videos', tracks[i].height ? tracks[i].height + 'p' : (tracks[i].ext || '').toUpperCase(), i === cur));
-        homeEl.innerHTML = head + hero +
+        const aRows = audIdx.map(i => listRowHTML(tracks[i], i, 'audio', audSub(tracks[i]), i === cur));
+        homeEl.innerHTML = head + tabs + hero +
           '<section class="ph-sec"><div class="ph-sec-head"><h2>Videos</h2><span class="ph-count">' + (rows.length || '') + '</span></div>' +
-          (rows.length ? '<div class="ph-list">' + rows.join('') + '</div>' : '<div class="ph-empty">No videos yet. Add files from the Library tab.</div>') + '</section>';
+          (rows.length ? '<div class="ph-list">' + rows.join('') + '</div>' : '<div class="ph-empty">No videos yet. Add files from the Library tab.</div>') + '</section>' +
+          '<section class="ph-sec"><div class="ph-sec-head"><h2>Audio</h2><span class="ph-count">' + (aRows.length || '') + '</span></div>' +
+          (aRows.length ? '<div class="ph-list">' + aRows.join('') + '</div>' : '<div class="ph-empty">No audio yet. Add files from the Library tab.</div>') + '</section>';
       } else if (ed === 'plus'){
         const chips = vidIdx.length
           ? '<div class="ph-chips"><button type="button" class="ph-chip" data-act="shuffle-all">' + IC_SHUF + 'Shuffle all</button>' +
             (hist.length ? '<button type="button" class="ph-chip" data-act="resume">' + IC_PLAYSM + 'Resume</button>' : '') + '</div>'
           : '';
-        homeEl.innerHTML = head + chips + vSec + hSec;
+        homeEl.innerHTML = head + tabs + chips + vSec + aSec + hSec;
       } else if (ed === 'premium'){
-        homeEl.innerHTML = head + hero + vSec + hSec;
+        homeEl.innerHTML = head + tabs + hero + vSec + aSec + hSec;
       } else {
-        homeEl.innerHTML = head + vSec + hSec;
+        homeEl.innerHTML = head + tabs + vSec + aSec + hSec;
       }
     }
     const pageKey = view + ':' + (openPlId || '') + ':' + (openSec || '');
@@ -24303,6 +24321,7 @@ async function ppMp4Chapters(blob){
     }
     else if (act === 'sec-open'){ openSec = el.dataset.sec; renderHome(true); }
     else if (act === 'sec-back'){ openSec = null; renderHome(true); }
+    else if (act === 'home-tab'){ openSec = el.dataset.tab === 'all' ? null : el.dataset.tab; renderHome(true); }
     else if (act === 'clear-history'){
       playHistory = [];
       try { localStorage.setItem(HKEY, '[]'); } catch(err){}
@@ -24313,7 +24332,9 @@ async function ppMp4Chapters(blob){
       let queue;
       if (el.dataset.src === 'history'){
         const byId = new Map(tracks.map((t, k) => [t.dbId, k]));
-        queue = playHistory.map(h => byId.get(h.id)).filter(k => k != null && tracks[k].kind === 'video');
+        queue = playHistory.map(h => byId.get(h.id)).filter(k => k != null);
+      } else if (el.dataset.src === 'audio'){
+        queue = []; tracks.forEach((t, k) => { if (t.kind === 'audio' && !t.stem) queue.push(k); });
       } else {
         queue = []; tracks.forEach((t, k) => { if (t.kind === 'video') queue.push(k); });
       }
@@ -24431,7 +24452,7 @@ async function ppMp4Chapters(blob){
       if (t) A.sel.toggle(t);
     } else if (act === 'shuffle-all' || act === 'resume'){
       e.stopImmediatePropagation(); e.preventDefault();   // would start playback and open the player page mid-selection
-    } else if (act === 'sec-open' || act === 'sec-back' || act === 'pl-open' || act === 'pl-back'){
+    } else if (act === 'sec-open' || act === 'sec-back' || act === 'home-tab' || act === 'pl-open' || act === 'pl-back'){
       A.sel.exit();   // leaving the page ends the selection, like switching playlists in Library
     }
   }, true);
