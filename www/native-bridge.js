@@ -84,7 +84,7 @@
       S.seeking = true; S.base = Math.max(0, sec * 1000); S.baseAt = now(); S.ended = false;
       emit(S, 'seeking');
       clearTimeout(S.seekTimer);
-      S.seekTimer = setTimeout(function () { if (S.seeking) { S.seeking = false; emit(S, 'seeked'); emit(S, 'timeupdate'); } }, 1500);
+      S.seekTimer = setTimeout(function () { if (S.seeking) { S.seeking = false; emit(S, 'seeked'); emit(S, 'timeupdate'); } }, 8000);
       S.after(function () { return Player.seek({ ms: Math.round(sec * 1000) }); });
     };
     S.applyRate = function () { S.after(function () { return Player.setRate({ rate: S.rate, preservePitch: S.preservePitch }); }); };
@@ -301,7 +301,8 @@
     var wasPwr = S.pwr, wasPlaying = S.playing;
     if (!recentLocal) S.pwr = !!s.playWhenReady;
     S.playing = !!s.playing; S.state = s.state;
-    S.base = s.posMs || 0; S.baseAt = now();
+    // While a seek is pending, keep the target the user chose. Snapshots from before the seek finished would move the bar back.
+    if (!S.seeking || s.why === 'seeked') { S.base = s.posMs || 0; S.baseAt = now(); }
     S.durMs = s.durMs >= 0 ? s.durMs : NaN;
     if (s.rate) S.rate = s.rate;
     if (s.vw) { S.vw = s.vw; S.vh = s.vh; }
