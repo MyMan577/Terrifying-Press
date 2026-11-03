@@ -1064,7 +1064,7 @@
     opt = opt || {};
     const P = f => { try { opt.progress && opt.progress(Math.max(0, Math.min(1, f))); } catch (e) {} };
     P(0); await loadOrt();
-    const low = !!(lv && lv.blob), r = { errors: [] }, own = [];
+    const low = !!(lv && lv.blob), r = { errors: [] }, own = [], dg = {};
     const TF = ['tg_effnet', 'tg_hinst', 'tg_hvoice', 'tg_mel', 'tg_mn10'];
     for (let i = 0; i < TF.length; i++) { await ensureTagFile(TF[i], status, low, (g, t) => P(0.1 * (i + (t ? g / t : 0.5)) / TF.length)); P(0.1 * (i + 1) / TF.length); await tick(); }
     let hasGenre = true; try { await ensureTagFile('tg_hgenre', status, low); } catch (e) { hasGenre = false; }
@@ -1102,6 +1102,14 @@
       const hs = [], okHeads = [];
       for (const h of heads) { try { hs.push(await S('tgh_' + h.id)); okHeads.push(h); status('Loading mood models ' + okHeads.length + ' of ' + heads.length + '…'); P(0.2 + 0.05 * okHeads.length / heads.length); await tick(); } catch (e) { console.warn('mood head unusable', h.id, e); try { await idbDel('tgh_' + h.id); await idbDel('tghm_' + h.id); } catch (e2) {} headsMemo = null; } }
       const heads0 = heads; heads = okHeads; if (!okHeads.length && heads0.length) r.errors.push('Moods skipped: the mood models would not load (they will be re-downloaded next run).');
+      // Reads a classifier head's answer by its own output shape. If a head hands back one row for the whole batch instead of one per patch
+      // (or fewer values than expected), that row is used for every patch instead of reading past the end and producing NaN.
+      const runHead = async (sess, E, cnt, name) => {
+        const o = (await sess.run({ [sess.inputNames[0]]: E }))[sess.outputNames[0]], n = (o.dims && o.dims[o.dims.length - 1]) || Math.max(1, Math.round(o.data.length / 64));
+        const per = o.data.length >= cnt * n;
+        if (!dg[name]) dg[name] = 'dims ' + (o.dims ? '[' + Array.from(o.dims).join(',') + ']' : '?') + ', ' + o.data.length + ' values' + (per ? '' : ', one row for the whole batch');
+        return { n, at: (i, c) => { const v = per ? o.data[i * n + c] : o.data[c]; return Number.isFinite(v) ? v : 0; } };
+      };
       const inst = new Float32Array(40), g400 = new Float32Array(400), embSum = new Float64Array(1280), hacc = heads.map(() => null), pv = [];
       let voice = 0, rows = 0, gotG = false;
       for (let b = 0; b < take; b += 64) {
@@ -1113,7 +1121,7 @@
         for (const n of eff.outputNames) { const o = res[n], d = o.dims[o.dims.length - 1]; if (d === 1280) emb = o.data; else if (d === 400) p400 = o.data; }
         if (!emb) throw new Error('embedding output not found');
         const E = new ort.Tensor('float32', emb, [64, 1280]);
-        const yi = (await hI.run({ [hI.inputNames[0]]: E }))[hI.outputNames[0]].data, yv = (await hV.run({ [hV.inputNames[0]]: E }))[hV.outputNames[0]].data;
+        const yi = await runHead(hI, E, cnt, 'instrument head'), yv = await runHead(hV, E, cnt, 'vocal head');
         let yg = hG ? (await hG.run({ [hG.inputNames[0]]: E }))[hG.outputNames[0]].data : p400;
         if (!yg && sNet) {                                              // official Discogs-EffNet: dynamic batch, [n,128,96] in, 400 style activations out
           const rs = await sNet.run({ [sNet.inputNames[0]]: new ort.Tensor('float32', X.subarray(0, cnt * 128 * 96), [cnt, 128, 96]) });
@@ -1121,14 +1129,14 @@
         }
         for (let j = 0; j < hs.length; j++) {
           if (!hs[j]) continue;
-          let y; try { y = (await hs[j].run({ [hs[j].inputNames[0]]: E }))[hs[j].outputNames[0]].data; } catch (e) { console.warn('mood head failed', heads[j].id, e); hs[j] = null; continue; }
-          const n = y.length / 64;
+          let y; try { y = await runHead(hs[j], E, cnt, 'mood head ' + heads[j].id); } catch (e) { console.warn('mood head failed', heads[j].id, e); hs[j] = null; continue; }
+          const n = y.n;
           if (!hacc[j]) hacc[j] = new Float64Array(n);
-          for (let i = 0; i < cnt; i++) for (let c = 0; c < n; c++) hacc[j][c] += y[i * n + c];
+          for (let i = 0; i < cnt; i++) for (let c = 0; c < n; c++) hacc[j][c] += y.at(i, c);
         }
         for (let i = 0; i < cnt; i++) {
-          for (let c = 0; c < 40; c++) inst[c] = Math.max(inst[c], yi[i * 40 + c]);
-          voice += yv[i * 2 + 1]; pv.push(yv[i * 2 + 1]);                // classes: instrumental, voice
+          for (let c = 0; c < 40; c++) inst[c] = Math.max(inst[c], yi.at(i, c));
+          { const vv = yv.at(i, 1); voice += vv; pv.push(vv); }                // classes: instrumental, voice
           for (let c = 0; c < 1280; c++) embSum[c] += emb[i * 1280 + c];
           if (yg) { gotG = true; for (let c = 0; c < 400; c++) g400[c] += yg[i * 400 + c]; }
         }
@@ -1181,7 +1189,9 @@
       r.genre = pick(AS_GENRE[0], AS_GENRE[1]); r.mood = pick(AS_MOOD[0], AS_MOOD[1]); r.music = probs[137];
       r.inst2 = []; for (let i = 140; i <= 213; i++) if (asInst(i)) r.inst2.push([AUDIOSET[i], probs[i]]);
     } catch (e) { console.error(e); r.errors.push('AudioSet: ' + e.message); }
-    if (r.voice != null && !Number.isFinite(r.voice)) { delete r.voice; r.errors.push('Vocal detector gave no usable result.'); }
+    if (r.voice != null && !Number.isFinite(r.voice)) { delete r.voice; r.errors.push('Vocal detector gave no usable result' + (dg['vocal head'] ? ' (' + dg['vocal head'] + ')' : '') + '.'); }
+    else if (dg['vocal head'] && /one row/.test(dg['vocal head'])) r.errors.push('Vocal detector: ' + dg['vocal head'] + '.');
+    if (dg['instrument head'] && /one row/.test(dg['instrument head'])) r.errors.push('Instrument model: ' + dg['instrument head'] + '.');
     P(1);
     return r;
   }
@@ -1354,21 +1364,39 @@
   // ---------- Lyrics / subtitles with Whisper (transformers.js, runs on-device) ----------
   // The library and the model files come from jsDelivr / Hugging Face on first use and are cached by the browser.
   const TF_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2/dist/transformers.min.js';
-  const WH = { tiny: ['Xenova/whisper-tiny', 'Tiny (~40 MB, fastest)'], base: ['Xenova/whisper-base', 'Base (~75 MB, better)'], small: ['Xenova/whisper-small', 'Small (~250 MB, best, slow)'] };
+  // English-only models (".en") are noticeably more accurate than the multilingual ones at the same size. The third item marks them:
+  // en = no language/task options, gpuDec = decoder precision on WebGPU (q4 is smaller but a little less accurate).
+  const WH = {
+    base_en: ['Xenova/whisper-base.en', 'English Base (~75 MB, recommended)', { en: 1, gpuDec: 'fp32' }],
+    parakeet: ['Xenova/whisper-base.en', 'English Parakeet TDT (~650 MB, best accuracy, app only)', { en: 1, pk: 1, big: 650, noGpu: 1 }],
+    distil_en: ['Xenova/distil-small.en', 'English Distil-Small (~170 MB, near Small accuracy, 2x faster)', { en: 1 }],
+    small_en: ['Xenova/whisper-small.en', 'English Small (~250 MB, most accurate, slow)', { en: 1 }],
+    tiny_en: ['Xenova/whisper-tiny.en', 'English Tiny (~40 MB, fastest)', { en: 1, gpuDec: 'fp32' }],
+    tiny: ['Xenova/whisper-tiny', 'Any language: Tiny (~40 MB)'],
+    base: ['Xenova/whisper-base', 'Any language: Base (~75 MB)'],
+    small: ['Xenova/whisper-small', 'Any language: Small (~250 MB)'],
+    distil_med_en: ['Xenova/distil-medium.en', 'English Distil-Medium (~400 MB, very accurate, big phones)', { en: 1, big: 400, noGpu: 1 }],
+    medium_en: ['Xenova/whisper-medium.en', 'English Medium (~750 MB, most accurate, flagship phones, slow)', { en: 1, big: 750, noGpu: 1 }],
+    turbo: ['onnx-community/whisper-large-v3-turbo', 'Any language: Large-v3 Turbo (~1 GB, experimental, flagship phones)', { big: 1000, mel: 128, noGpu: 1 }]
+  };
+  const whEn = k => !!(WH[k] && WH[k][2] && WH[k][2].en);
+  const whPk = k => !!(WH[k] && WH[k][2] && WH[k][2].pk);
+  const whOk = k => !!WH[k] && (!whPk(k) || NATIVE);   // Parakeet only exists in the app
   const LANGS = [['', 'Auto-detect'], ['english', 'English'], ['spanish', 'Spanish'], ['french', 'French'], ['german', 'German'], ['italian', 'Italian'], ['portuguese', 'Portuguese'], ['dutch', 'Dutch'], ['russian', 'Russian'], ['polish', 'Polish'], ['turkish', 'Turkish'], ['arabic', 'Arabic'], ['hindi', 'Hindi'], ['japanese', 'Japanese'], ['korean', 'Korean'], ['chinese', 'Chinese'], ['indonesian', 'Indonesian'], ['swedish', 'Swedish'], ['ukrainian', 'Ukrainian']];
   let tfMod = null, asr = null, asrId = '';
   // Optional: run Whisper on the phone's GPU (WebGPU). Off unless ticked in the Whisper panel; any failure drops back to the CPU for the rest of the session.
   let wGpuFailed = false;
   const wGpu = () => { try { return !wGpuFailed && !!navigator.gpu && localStorage.getItem('ppvWGpu') === '1'; } catch (e) { return false; } };
   async function getAsr(id, status) {
-    const dev = wGpu() ? 'webgpu' : 'wasm', key = id + '|' + dev;
+    const ent0 = Object.values(WH).find(v => v[0] === id), dev = wGpu() && !(ent0 && ent0[2] && ent0[2].noGpu) ? 'webgpu' : 'wasm', key = id + '|' + dev;   // the biggest models are too large for the GPU path
     if (asr && asrId === key) return asr;
     if (asr) { try { await asr.dispose(); } catch (e) {} asr = null; asrId = ''; }
     if (!tfMod) { status('Loading Whisper…'); tfMod = await import(TF_URL); }
     const cb = p => { if (p && p.status === 'progress' && p.file) status('Downloading ' + p.file.split('/').pop() + ' ' + Math.round(p.progress || 0) + '%'); else if (p && p.status === 'ready') status('Whisper ready.'); };
     if (dev === 'webgpu') {
       try {
-        asr = await tfMod.pipeline('automatic-speech-recognition', id, { device: 'webgpu', dtype: { encoder_model: 'fp32', decoder_model_merged: 'q4' }, progress_callback: cb });
+        const ent = Object.values(WH).find(v => v[0] === id), dd = (ent && ent[2] && ent[2].gpuDec) || 'q4';
+        asr = await tfMod.pipeline('automatic-speech-recognition', id, { device: 'webgpu', dtype: { encoder_model: 'fp32', decoder_model_merged: dd }, progress_callback: cb });
         asrId = key; return asr;
       } catch (e) { console.warn('Whisper on the GPU failed, using the CPU', e); wGpuFailed = true; status('GPU not available here, using the CPU…'); }
     }
@@ -1401,7 +1429,7 @@
   // int8 Whisper on the phone's CPU cores through native ONNX Runtime, with KV-cache decoding in Java, instead of single-threaded WebAssembly.
   // JavaScript only prepares the log-mel features, walks the audio window by window and turns token ids back into text.
   // Any failure drops back to the web version for the rest of the session. To switch it off: localStorage.ppvWNative = '0'.
-  const WHN = { tiny: 'wh_tiny', base: 'wh_base', small: 'wh_small' };
+  const WHN = { tiny: 'wh_tiny', base: 'wh_base', small: 'wh_small', tiny_en: 'wh_tiny_en', distil_med_en: 'wh_distil_med_en', medium_en: 'wh_medium_en', turbo: 'wh_turbo', base_en: 'wh_base_en', small_en: 'wh_small_en', distil_en: 'wh_distil_en' };
   const WH_CODE = { english: 'en', spanish: 'es', french: 'fr', german: 'de', italian: 'it', portuguese: 'pt', dutch: 'nl', russian: 'ru', polish: 'pl', turkish: 'tr', arabic: 'ar', hindi: 'hi', japanese: 'ja', korean: 'ko', chinese: 'zh', indonesian: 'id', swedish: 'sv', ukrainian: 'uk' };
   let wNativeFailed = false;
   const whNativeOn = () => { try { return !!NATIVE && !wNativeFailed && localStorage.getItem('ppvWNative') !== '0'; } catch (e) { return !!NATIVE && !wNativeFailed; } };
@@ -1481,7 +1509,7 @@
     return segs;
   }
   async function whisperNative(x, regs, o, status) {
-    const size = o.size, k = WHN[size], nMel = 80;
+    const size = o.size, k = WHN[size], nMel = (WH[size][2] && WH[size][2].mel) || 80;   // Large-v3 uses 128 mel bins, the rest 80
     status('Preparing native Whisper…');
     const [c, tok] = await Promise.all([whConfig(size), whTokenizer(WH[size][0], status)]);
     await whNativeFiles(size, status);
@@ -1512,6 +1540,72 @@
     return raw;
   }
 
+  // ---------- Parakeet TDT 0.6B (Android app): native preprocessor + encoder + token-and-duration decoder ----------
+  // Model files: istupakov/parakeet-tdt-0.6b-v2-onnx (the onnx-asr export). Native side: ParakeetNative.java. One encoder frame = 80 ms.
+  const PK_BASE = 'https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/resolve/main/';
+  const PK_FILES = [['pk_pre', 'nemo128.onnx'], ['pk_enc', 'encoder-model.int8.onnx'], ['pk_dec', 'decoder_joint-model.int8.onnx']];
+  let pkVoc = null;
+  async function pkVocab() {                                           // vocab.txt lines look like "▁the 42"; saved after the first download so it works offline
+    if (pkVoc) return pkVoc;
+    let txt = ''; try { txt = localStorage.getItem('ppvPkVocab') || ''; } catch (e) {}
+    if (!txt) { txt = await (await fetch(PK_BASE + 'vocab.txt')).text(); try { localStorage.setItem('ppvPkVocab', txt); } catch (e) {} }
+    const toks = []; let blank = -1;
+    for (const line of txt.split('\n')) {
+      const l = line.replace(/\r$/, ''); if (!l) continue;
+      const i = l.lastIndexOf(' '), id = +l.slice(i + 1), tk = l.slice(0, i);
+      if (!(id >= 0)) continue; toks[id] = tk; if (tk === '<blk>') blank = id;
+    }
+    if (!toks.length) throw new Error('empty Parakeet vocabulary');
+    if (blank < 0) blank = toks.length - 1;
+    return (pkVoc = { toks, blank, V: toks.length });
+  }
+  async function pkFiles(status) {
+    for (const [k, f] of PK_FILES) if (!(await NP.exists({ id: k })).ready) { status('Downloading ' + f + '…'); await nativeFetch(k, PK_BASE + f, status); }
+  }
+  function pkCues(words) {                                             // words -> subtitle lines: sentence ends, pauses, and a length cap
+    const cues = []; let cur = null;
+    const flush = () => { if (cur) { cues.push({ start: cur.s, end: cur.e, text: cur.t.join(' ') }); cur = null; } };
+    for (const w of words) {
+      if (cur) { const len = cur.t.join(' ').length; if (w.s - cur.e > 0.9 || w.e - cur.s > 8 || len + w.text.length > 84) flush(); }
+      if (!cur) cur = { s: w.s, e: w.e, t: [] };
+      cur.t.push(w.text); cur.e = Math.max(cur.e, w.e);
+      const len = cur.t.join(' ').length;
+      if ((/[.!?]["')\]]?$/.test(w.text) && len >= 24) || (/[,;:]$/.test(w.text) && len >= 60)) flush();
+    }
+    flush(); return cues;
+  }
+  async function parakeetNative(x, regs, o, status) {
+    status('Preparing Parakeet…');
+    const vo = await pkVocab();
+    await pkFiles(status);
+    const OWN = 30, OV = 3, FR = 0.08, pieces = [], words = [];
+    for (const [ra, rb] of regs) for (let q = ra; q < rb - 0.01; q += OWN) pieces.push({ own0: q, own1: Math.min(rb, q + OWN), ra, rb });
+    const total = pieces.reduce((n, p) => n + p.own1 - p.own0, 0) || 1; let doneS = 0;
+    for (const p of pieces) {
+      const t0 = performance.now();
+      status('Transcribing… ' + Math.round(doneS / total * 100) + '%'); await tick();
+      const s0 = Math.max(p.ra, p.own0 - OV), s1 = Math.min(p.rb, p.own1 + OV), last = p.own1 >= p.rb - 1e-6;
+      const pcm = x.subarray(Math.floor(s0 * 16000), Math.min(x.length, Math.ceil(s1 * 16000)));
+      if (pcm.length >= 3200) {
+        const r = await NP.parakeetRun({ pre: 'pk_pre', enc: 'pk_enc', dec: 'pk_dec', pcm: await toB64(pcm), n: pcm.length, vocab: vo.V, blank: vo.blank });
+        const tk = r.tokens || [], fr = r.frames || [], du = r.durs || []; let w = null;
+        const push = () => { if (w && w.text) { const st = s0 + w.f0 * FR; if (!(st < p.own0 - 1e-3 || (!last && st >= p.own1))) words.push({ s: st, e: s0 + w.f1 * FR, text: w.text }); } w = null; };
+        for (let i = 0; i < tk.length; i++) {
+          const pc = vo.toks[tk[i]]; if (pc == null || /^<.*>$/.test(pc)) continue;
+          const startsWord = pc.charAt(0) === '\u2581', txt = pc.replace(/\u2581/g, '');
+          if (startsWord || !w) { push(); w = { f0: fr[i], f1: fr[i] + Math.max(1, du[i] || 1), text: '' }; }
+          w.text += txt; w.f1 = Math.max(w.f1, fr[i] + Math.max(1, du[i] || 1));
+        }
+        push();
+      }
+      doneS += p.own1 - p.own0;
+      await ease(performance.now() - t0, 0, 'whn', s1 - s0);
+    }
+    words.sort((a, b) => a.s - b.s);
+    for (let i = 0; i + 1 < words.length; i++) if (words[i].e > words[i + 1].s) words[i].e = Math.max(words[i].s + 0.04, words[i + 1].s);
+    return pkCues(words);
+  }
+
   let heavyJob = false;                                               // stem split or Whisper running: two at once runs out of memory
   async function transcribe(t, o, status) {
     if (heavyJob) throw new Error('Another split or transcription is still running. Wait for it to finish.');
@@ -1524,6 +1618,7 @@
   }
   async function transcribeRun(t, o, status) {
     let pipe = null;
+    if (o.task === 'translate' && whEn(o.size)) { o = Object.assign({}, o, { size: 'base' }); status('Translating needs the multilingual Base model…'); }
     let x;
     if (o.clean) {                                                    // pull the vocals out first: far fewer made-up lines on songs
       await downloadModel(o.model, status, !!(o.lv && o.lv.blob));
@@ -1542,6 +1637,11 @@
     // Only the parts with speech or singing go to Whisper. Each part is cut into 90 s pieces that overlap by 4 s, and a line belongs to the
     // piece it starts in, so nothing is cut at a seam. Between pieces it can rest if the phone is hot.
     const regs = speechRegions(x, 16000);
+    if (whPk(o.size)) {
+      try { if (!NATIVE) throw new Error('Parakeet only runs in the Android app'); return cleanCues(await parakeetNative(x, regs, o, status), dur); }
+      catch (e) { console.warn('Parakeet failed', e); status('Parakeet failed: ' + errText(e) + ' Using English Base instead…'); o = Object.assign({}, o, { size: 'base_en' }); }
+      finally { if (NATIVE) NP.parakeetUnload().catch(() => {}); }          // give the memory back
+    }
     if (whNativeOn()) {                                                // Android app: native Whisper first
       try { return cleanCues(await whisperNative(x, regs, o, status), dur); }
       catch (e) { console.warn('Native Whisper failed, using the web version', e); wNativeFailed = true; status('Native Whisper unavailable, using the web version…'); }
@@ -1554,8 +1654,8 @@
       const t0 = performance.now();
       status('Transcribing… ' + Math.round(doneS / total * 100) + '%'); await tick();
       const s0 = Math.max(p.ra, p.own0 - OV), s1 = Math.min(p.rb, p.own1 + OV), last = p.own1 >= p.rb - 1e-6;
-      const kw = { return_timestamps: true, chunk_length_s: 30, stride_length_s: 5, task: o.task || 'transcribe' };
-      if (o.lang) kw.language = o.lang;
+      const kw = { return_timestamps: true, chunk_length_s: 30, stride_length_s: 5 };
+      if (!whEn(o.size)) { kw.task = o.task || 'transcribe'; if (o.lang) kw.language = o.lang; }
       const part = x.subarray(Math.floor(s0 * 16000), Math.min(x.length, Math.ceil(s1 * 16000)));
       let out;
       try { out = await pipe(part, kw); }
@@ -1609,10 +1709,10 @@
       '<button id="ppv-eqall" class="ppv-sec">Apply auto-EQ to all tagged tracks</button><button id="ppv-heads" class="ppv-sec">Refresh mood models</button>' +
       '<div id="ppv-lib" class="ppv-out"></div>';
     d2.innerHTML = '<summary>Lyrics &amp; subtitles (Whisper)</summary>' +
-      '<select id="ppv-wsize">' + Object.entries(WH).map(([k, v]) => '<option value="' + k + '">' + v[1] + '</option>').join('') + '</select>' +
+      '<select id="ppv-wsize">' + Object.entries(WH).filter(e => whOk(e[0])).map(([k, v]) => '<option value="' + k + '">' + v[1] + '</option>').join('') + '</select>' +
       '<select id="ppv-wlang">' + LANGS.map(l => '<option value="' + l[0] + '">' + l[1] + '</option>').join('') + '</select>' +
       '<select id="ppv-wtask"><option value="transcribe">Write what is said</option><option value="translate">Translate to English</option></select>' +
-      '<label class="ppv-c"><input type="checkbox" id="ppv-wclean"> Remove the music first (better for songs, much slower)</label>' +
+      '<label class="ppv-c"><input type="checkbox" id="ppv-wclean"> Remove the music first (on by default for songs, much slower)</label>' +
       '<label class="ppv-c" id="ppv-wgpu-l"><input type="checkbox" id="ppv-wgpu"> Use the GPU (experimental, much faster if your phone supports it)</label>' +
       '<div class="ppv-note">Songs get synced lyrics, videos get subtitles. The music-removal step uses the model chosen at the top of this panel.</div>' +
       '<button id="ppv-wgo">Transcribe current track</button><button id="ppv-wsrt" class="ppv-sec" style="display:none">Download .srt</button><button id="ppv-wfree" class="ppv-sec">Free up Whisper download</button>' +
@@ -1947,19 +2047,24 @@
 
     // Whisper
     const wsize = $('#ppv-wsize'), wlang = $('#ppv-wlang'), wtask = $('#ppv-wtask'), wclean = $('#ppv-wclean'), wout = $('#ppv-wout'), wsrt = $('#ppv-wsrt');
-    wsize.value = ls('ppvWSize') || 'tiny'; wlang.value = ls('ppvWLang') || ''; wtask.value = ls('ppvWTask') || 'transcribe'; wclean.checked = ls('ppvWClean') === '1';
-    wsize.onchange = () => ls('ppvWSize', wsize.value); wlang.onchange = () => ls('ppvWLang', wlang.value); wtask.onchange = () => ls('ppvWTask', wtask.value); wclean.onchange = () => ls('ppvWClean', wclean.checked ? '1' : '0');
+    if (ls('ppvWDef') !== '2') { ls('ppvWDef', '2'); ls('ppvWSize', 'base_en'); ls('ppvWLang', 'english'); }   // one-time move to the English models
+    wsize.value = whOk(ls('ppvWSize')) ? ls('ppvWSize') : 'base_en'; wlang.value = ls('ppvWLang') === null ? 'english' : ls('ppvWLang'); wtask.value = ls('ppvWTask') || 'transcribe'; wclean.checked = ls('ppvWClean') === '1';
+    const syncEn = () => { wlang.disabled = whEn(wsize.value) && wtask.value !== 'translate'; };   // English models need no language; translating does
+    wsize.onchange = () => { ls('ppvWSize', wsize.value); syncEn(); }; wlang.onchange = () => ls('ppvWLang', wlang.value); wtask.onchange = () => { ls('ppvWTask', wtask.value); syncEn(); }; wclean.onchange = () => ls('ppvWClean', wclean.checked ? '1' : '0');
     { const wg = $('#ppv-wgpu'); wg.checked = ls('ppvWGpu') === '1'; wg.onchange = () => ls('ppvWGpu', wg.checked ? '1' : '0'); if (!navigator.gpu) $('#ppv-wgpu-l').style.display = 'none'; }
+    syncEn();
     let lastSrt = null;
     $('#ppv-wgo').onclick = async () => {
       busy(true); wout.textContent = ''; wsrt.style.display = 'none';
       try {
         const a = A(), t = cur(); if (!t) throw new Error('Play or select a track first.');
         const lyr = window.__ppLyrics;
+        { const m = WH[wsize.value][2]; if (m && m.big && localStorage.getItem('ppvWBig_' + wsize.value) !== '1') { if (!confirm('This model is a ~' + m.big + ' MB download and needs plenty of free memory. Continue?')) { busy(false); return; } try { localStorage.setItem('ppvWBig_' + wsize.value, '1'); } catch (e) {} } }
+        if (ls('ppvWClean') === null) wclean.checked = t.kind !== 'video';   // untouched: songs get their vocals separated first, videos do not
         if (t.kind !== 'video' && lyr && lyr.has(t.dbId) && !confirm('This track already has lyrics. Replace them?')) { busy(false); return; }
         document.querySelectorAll('.ppv-bar-wh i').forEach(e => e.style.width = '0');
         const wst = t => { h.status(t); const m = /(\d+)%/.exec(t); if (m) document.querySelectorAll('.ppv-bar-wh i').forEach(e => e.style.width = m[1] + '%'); };
-        const cues = await transcribe(t, { size: wsize.value, lang: wlang.value, task: wtask.value, clean: wclean.checked, model: h.sel.value, strength: +h.sl.value, lv: h.LV() }, wst);
+        const cues = await transcribe(t, { size: wsize.value, lang: wlang.disabled ? '' : wlang.value, task: wtask.value, clean: wclean.checked, model: h.sel.value, strength: +h.sl.value, lv: h.LV() }, wst);
         if (!cues.length) throw new Error('No speech found.');
         if (t.kind === 'video' || !lyr) a.setSubtitles(t.dbId, cues, 'Whisper.srt'); else lyr.set(t.dbId, toLrc(cues));
         lastSrt = { name: t.title, text: toSrt(cues) }; wsrt.style.display = '';
@@ -1976,7 +2081,7 @@
       a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 10000);
     };
     $('#ppv-wfree').onclick = async () => {
-      try { if (asr) { await asr.dispose(); asr = null; asrId = ''; } const ks = await caches.keys(); for (const k of ks) if (/transformers/i.test(k)) await caches.delete(k); h.status('Whisper download removed.'); } catch (e) { h.status('Error: ' + errText(e)); }
+      try { if (NATIVE) { const ids = PK_FILES.map(f => f[0]).concat(Object.values(WHN).flatMap(k => [k + '_enc', k + '_dec'])); for (const id of ids) { try { await NP.remove({ id }); } catch (e) {} } } if (asr) { await asr.dispose(); asr = null; asrId = ''; } const ks = await caches.keys(); for (const k of ks) if (/transformers/i.test(k)) await caches.delete(k); h.status('Whisper download removed.'); } catch (e) { h.status('Error: ' + errText(e)); }
     };
     refreshCount();
     // the list is always visible now, so keep it current as the library loads and tags change
