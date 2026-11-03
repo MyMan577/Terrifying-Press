@@ -8557,7 +8557,21 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   async function refreshStorageEstimate(){
     const textEl = document.getElementById('storage-usage-text');
     const fillEl = document.getElementById('storage-usage-fill');
-    if (!textEl || !fillEl || !(navigator.storage && navigator.storage.estimate)) return;
+    if (!textEl || !fillEl) return;
+    // Android app: show the phone's real storage, not the WebView's small quota.
+    try {
+      const SP = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.PPStorage;
+      if (SP && Capacitor.isNativePlatform && Capacitor.isNativePlatform()){
+        const d = await SP.info();
+        const pct = d.total ? Math.min(100, ((d.total - d.free) / d.total) * 100) : 0;
+        fillEl.style.width = pct + '%';
+        fillEl.classList.toggle('storage-warn', pct >= 85 && pct < 95);
+        fillEl.classList.toggle('storage-danger', pct >= 95);
+        textEl.textContent = 'App ' + formatBytes(d.used) + ' · ' + formatBytes(d.free) + ' free of ' + formatBytes(d.total);
+        return;
+      }
+    } catch(e){ /* fall back to the browser estimate */ }
+    if (!(navigator.storage && navigator.storage.estimate)) return;
     try {
       const { usage, quota } = await navigator.storage.estimate();
       const pct = quota ? Math.min(100, (usage / quota) * 100) : 0;
