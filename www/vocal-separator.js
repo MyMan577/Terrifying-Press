@@ -5975,7 +5975,7 @@
     return {
       react,
       voice: ppVoiceApi,
-      chat: { isOn: () => chatOn, setOn: setChatOn, free: freeChat, setModel: setChatModel, brainOn, setBrain, memory: { get: memN, set: setMem, max: MEM_MAX } },
+      chat: { isOn: () => chatOn, setOn: setChatOn, free: freeChat, setModel: setChatModel, models: CHAT_MODELS, key: chatKey, brainOn, setBrain, memory: { get: memN, set: setMem, max: MEM_MAX } },
       start() { key = ''; set('start', blLine('start', L.start), 900); },
       opened() {
         if (greeted || !on) return; greeted = true;
@@ -6049,8 +6049,8 @@
       const cbr = p.querySelector('#ppv-brain-on'); cbr.checked = mas.chat.brainOn(); cbr.onchange = () => mas.chat.setBrain(cbr.checked);
       cbr.closest('label').insertAdjacentHTML('afterend', '<label class="ppv-c" style="display:block">Chat model: <select id="ppv-chat-model" style="width:100%;display:block"></select></label>');
       const cmod = p.querySelector('#ppv-chat-model');
-      cmod.innerHTML = Object.keys(CHAT_MODELS).map(k => '<option value="' + k + '">' + CHAT_MODELS[k].label + '</option>').join('');
-      cmod.value = chatKey(); cmod.onchange = () => mas.chat.setModel(cmod.value);
+      cmod.innerHTML = Object.keys(mas.chat.models).map(k => '<option value="' + k + '">' + mas.chat.models[k].label + '</option>').join('');
+      cmod.value = mas.chat.key(); cmod.onchange = () => mas.chat.setModel(cmod.value);
       const ms = p.querySelector('#ppv-mem'), mv = p.querySelector('#ppv-mem-val'), memTxt = n => n === 0 ? 'none' : n + (n === 1 ? ' exchange' : ' exchanges');
       ms.value = mas.chat.memory.get(); mv.textContent = memTxt(+ms.value);
       ms.oninput = () => { const n = mas.chat.memory.set(ms.value); mv.textContent = memTxt(n); };
