@@ -1989,7 +1989,11 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
   @media (max-width: 720px){
     #app{ grid-template-columns:1fr; grid-template-rows:auto 1fr; }
     #sidebar{ border-right:none; border-bottom:1px solid var(--line); max-height:42vh; min-height:180px; overflow:hidden; display:flex; flex-direction:column; }
-    #controls-footer{ display:none; }
+    /* The footer used to be hidden here, which also hid the volume bar in portrait. Keep it, drop only the keyboard hint
+       (there is no keyboard on a phone), and centre the volume slider. */
+    #controls-footer{ display:flex; justify-content:center; width:100%; max-width:100%; margin:6px 0 0 0; }
+    #hint{ display:none; }
+    #vol-row{ width:min(280px, 78vw); max-width:100%; margin:0 auto; }
     #viz-wrap{ margin-bottom:24px; }
     /* Portrait: the sidebar stacks above the player instead of sitting
        beside it, so its resize handle becomes a horizontal grab bar along
@@ -3776,10 +3780,25 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
   @media (max-height:480px) and (orientation:landscape){
     body.player-layout #main{ flex-direction:row; justify-content:center; gap:28px; padding:10px 24px 10px 64px; }
     body.player-layout #viz-wrap{ width:min(52dvh, 40vw); height:min(52dvh, 40vw); }
-    body.player-layout #controls-col{ max-width:420px; }
-    body.player-layout #now-playing{ margin-bottom:8px; }
-    body.player-layout #transport{ margin:4px 0 8px; }
-    body.player-layout #play-btn{ width:56px; height:56px; flex-basis:56px; }
+    /* The controls column takes whatever width is left beside the art (it used to be a fixed 420px that could not shrink, so on
+       narrower phones it ran past the edge and the centred row got pushed off to the left), and everything inside it is centred. */
+    body.player-layout #controls-col, body.player-layout #controls-col.custom-bg-active{ flex:1 1 0; min-width:0; max-width:560px; align-items:stretch; text-align:center; }
+    body.player-layout #now-playing{ margin-bottom:10px; text-align:center; }
+    body.player-layout #now-playing #np-title{ text-align:center; font-size:clamp(17px, 5dvh, 22px); }
+    body.player-layout #now-playing #np-artist{ font-size:13px; }
+    body.player-layout #seek-row{ width:100%; max-width:none; margin:0 0 4px; }
+    /* Bigger controls for the bigger space: roomier buttons, thicker sliders, larger thumbs. */
+    body.player-layout #transport{ justify-content:center; gap:clamp(16px, 3.5vw, 34px); margin:6px 0 10px; }
+    body.player-layout #transport .ctrl-btn{ padding:10px; }
+    body.player-layout #transport .ctrl-btn svg{ width:28px; height:28px; }
+    body.player-layout #play-btn{ width:68px; height:68px; flex-basis:68px; }
+    body.player-layout #play-btn svg{ width:32px; height:32px; }
+    body.player-layout #seek, body.player-layout #volume{ height:6px; border-radius:3px; }
+    body.player-layout #seek::-webkit-slider-thumb, body.player-layout #volume::-webkit-slider-thumb{ width:17px; height:17px; }
+    body.player-layout #seek::-moz-range-thumb, body.player-layout #volume::-moz-range-thumb{ width:17px; height:17px; }
+    body.player-layout #controls-footer{ width:100%; max-width:none; justify-content:center; margin:6px 0 0; }
+    body.player-layout #vol-row{ width:min(340px, 100%); margin:0 auto; gap:12px; }
+    body.player-layout #vol-row svg{ width:20px; height:20px; }
     body.player-layout #extra-transport{ display:none; }
   }
 
