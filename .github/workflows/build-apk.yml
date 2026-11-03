@@ -41,6 +41,12 @@ jobs:
           done
           npx cap add android
           npx cap sync android
+          # App icons: generated from resources/icon.png (1024x1024) into every mipmap size, including the adaptive icon.
+          if [ -f resources/icon.png ]; then
+            npx @capacitor/assets@3 generate --androidProject android --iconBackgroundColor '#1b1c20' --iconBackgroundColorDark '#1b1c20' || { echo "::error::Icon generation failed"; exit 1; }
+          else
+            echo "::warning::resources/icon.png is missing, the APK will use the default Capacitor icon."
+          fi
           echo "--- Capacitor plugins registered in the app:"
           cat android/app/src/main/assets/capacitor.plugins.json || true
 
