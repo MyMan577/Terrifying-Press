@@ -17075,8 +17075,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       window.PPXpApi.recordCompletion(m.duration);
     }
     lastTickPos = m.currentTime;
-    seek.max = m.duration;
-    seek.value = m.currentTime;
+    if (m.duration > 0) seek.max = m.duration;
+    if (!(window.ppSeekDrag && window.ppSeekDrag.on)) seek.value = m.currentTime;
     curTimeEl.textContent = fmtTime(m.currentTime);
     durTimeEl.textContent = fmtTime(m.duration);
     updateSeekFill();
@@ -17149,11 +17149,16 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     }
   });
 
+  window.ppSeekDrag = window.ppSeekDrag || { on: false };
+  seek.addEventListener('pointerdown', () => { window.ppSeekDrag.on = true; });
+  seek.addEventListener('touchstart', () => { window.ppSeekDrag.on = true; }, { passive: true });
+  window.addEventListener('pointerup', () => { setTimeout(() => { window.ppSeekDrag.on = false; }, 400); });
   seek.addEventListener('input', () => {
     updateSeekFill();
   });
   seek.addEventListener('change', () => {
     media().currentTime = parseFloat(seek.value);
+    window.ppSeekDrag.on = false;
   });
 
   // Same reasoning as applySpeed(): writing .volume (and hitting
