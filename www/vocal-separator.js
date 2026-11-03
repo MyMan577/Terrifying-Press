@@ -2701,7 +2701,7 @@
     let CHAT_MODEL = CHAT_MODELS[chatKey()].id;
     let pendingJob = null, holdModel = false, idleT = 0, chatOn = lsGet('ppvChat') === '1', gen = null, genP = null, chatBusy = false, dlOk = false, hist = [];
     // How many past exchanges (your message + Bloop's reply) he remembers during a chat. 0 = none. More memory = slower and more RAM on a tiny model.
-    const MEM_MAX = 8, memN = () => { const v = parseInt(lsGet('ppvMem'), 10); return isNaN(v) ? 2 : Math.max(0, Math.min(MEM_MAX, v)); };
+    const MEM_MAX = 8, memN = () => { const v = parseInt(lsGet('ppvMem'), 10); return isNaN(v) ? 4 : Math.max(0, Math.min(MEM_MAX, v)); };
     const setMem = v => { v = Math.max(0, Math.min(MEM_MAX, parseInt(v, 10) || 0)); lsSet('ppvMem', String(v)); hist = memN() ? hist.slice(-2 * memN()) : []; return v; };
     const cstyle = document.createElement('style');
     cstyle.textContent = `
@@ -5951,6 +5951,14 @@
       if (++blTr.bad >= 3) return blTreeStop('I lost the thread a little. Tell me how you are feeling any time and we can start fresh.');
       blTreeRows(); blSay('I want to get this right. Pick one of these, or say stop to end this chat.'); blTreeOpts(n); return true;
     }
+    const MUSICY = /\b(songs?|music|tracks?|play(list|ing)?|artists?|albums?|genres?|vibes?|moods?|tags?|tagged|stems?|lyrics|library|listen(ing)?|playing)\b/i;
+    const chatSys = text => {
+      const A = window.__ppApi, t = A && A.tracks()[A.currentIndex()], music = MUSICY.test(text);
+      return 'You are Bloop, a small bouncy ball who lives in a music player. You are friendly, playful and a little silly.' + blSkinNote() +
+        ' Reply to exactly what the user just said, in one or two short plain sentences. Answer their question or react to their statement first. Do not repeat yourself or earlier replies. Stay on their topic. No lists, no markdown, no emoji.' +
+        ' You cannot press buttons or change the player. If they want an action, tell them what to type, such as play something chill, or say help. You are not a doctor, lawyer or counselor. If someone sounds distressed, be kind and suggest talking to someone they trust.' +
+        (music ? (t ? ' Now playing: ' + t.title + '.' : '') + groundCtx(text) : '');
+    };
     async function send(raw, noEcho) {
       const text = String(raw || '').trim().slice(0, 400); if (!text || chatBusy) return;
       blLastSent = text.toLowerCase();
@@ -5978,12 +5986,16 @@
       const el = add('bot', '\u2026');
       try {
         const g = await ensureModel(s => { el.textContent = s; });
-        const msgs = [{ role: 'system', content: sysPrompt() + groundCtx(text) }].concat(memN() ? hist.slice(-2 * memN()) : [], [{ role: 'user', content: text }]);
-        let acc = '', opts = { max_new_tokens: 60, do_sample: true, temperature: 0.5, top_p: 0.9, repetition_penalty: 1.1 };
+        const msgs = [{ role: 'system', content: chatSys(text) }].concat(memN() ? hist.slice(-2 * memN()) : [], [{ role: 'user', content: text }]);
+        let acc = '', opts = { max_new_tokens: 80, do_sample: true, temperature: 0.75, top_p: 0.92, top_k: 50, repetition_penalty: 1.18 };
         if (tfMod.TextStreamer) opts.streamer = new tfMod.TextStreamer(g.tokenizer, { skip_prompt: true, skip_special_tokens: true, callback_function: t => { acc += t; el.textContent = acc; scrollDown(); } });
         const out = await g(msgs, opts);
         let r = out && out[0] && out[0].generated_text; r = Array.isArray(r) ? (r[r.length - 1] || {}).content : (r || acc);
         r = String(r || acc).trim().replace(/\s+\n/g, '\n') || "Hmm, I lost my words. Try again?";
+        const prevBot = (hist.filter(m => m.role === 'assistant').pop() || {}).content, nz = z => String(z || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+        if (prevBot && looksOk(r) && nz(r) === nz(prevBot)) {
+          try { const o2 = await g(msgs, Object.assign({}, opts, { streamer: undefined, temperature: 1.0, repetition_penalty: 1.3 })); let r2 = o2 && o2[0] && o2[0].generated_text; r2 = Array.isArray(r2) ? (r2[r2.length - 1] || {}).content : r2; if (r2 && looksOk(String(r2)) && nz(r2) !== nz(prevBot)) r = String(r2).trim(); } catch (e) {}
+        }
         if (!looksOk(r)) { el.textContent = "Sorry, that came out as gibberish. Try again, or tap Clear."; return void (chatBusy = false); }   // never feed garbage back into the history
         el.textContent = r; try { vSpeak(r); } catch (e) {} hist.push({ role: 'user', content: text }, { role: 'assistant', content: r }); hist = memN() ? hist.slice(-2 * memN()) : [];
         moodChip(text);
