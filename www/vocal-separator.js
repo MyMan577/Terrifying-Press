@@ -1105,9 +1105,29 @@
       // Reads a classifier head's answer by its own output shape. If a head hands back one row for the whole batch instead of one per patch
       // (or fewer values than expected), that row is used for every patch instead of reading past the end and producing NaN.
       const runHead = async (sess, E, cnt, name) => {
-        const o = (await sess.run({ [sess.inputNames[0]]: E }))[sess.outputNames[0]], n = (o.dims && o.dims[o.dims.length - 1]) || Math.max(1, Math.round(o.data.length / 64));
-        const per = o.data.length >= cnt * n;
-        if (!dg[name]) dg[name] = 'dims ' + (o.dims ? '[' + Array.from(o.dims).join(',') + ']' : '?') + ', ' + o.data.length + ' values' + (per ? '' : ', one row for the whole batch');
+        const run1 = async t => (await sess.run({ [sess.inputNames[0]]: t }))[sess.outputNames[0]];
+        let o = null, n = 0, per = false, note = '';
+        if (!sess.__rows) {
+          o = await run1(E); n = (o.dims && o.dims[o.dims.length - 1]) || Math.max(1, Math.round(o.data.length / 64));
+          per = o.data.length >= cnt * n;
+          note = 'dims ' + (o.dims ? '[' + Array.from(o.dims).join(',') + ']' : '?') + ', ' + o.data.length + ' values';
+          if (!per && !sess.__broke) sess.__rows = 1;                                    // this model folds the whole batch into one row
+        }
+        if (sess.__rows) {                                               // so feed it one patch at a time to get a real answer per patch
+          try {
+            const em = E.data; let outd = null;
+            for (let i = 0; i < cnt; i++) {
+              const row = em.slice(i * 1280, (i + 1) * 1280); let oi;
+              if (!sess.__rep) { try { oi = await run1(new ort.Tensor('float32', row, [1, 1280])); } catch (e1) { if (i) throw e1; sess.__rep = 1; } }
+              if (sess.__rep) { const rep = new Float32Array(64 * 1280); for (let k = 0; k < 64; k++) rep.set(row, k * 1280); oi = await run1(new ort.Tensor('float32', rep, [64, 1280])); }
+              n = (oi.dims && oi.dims[oi.dims.length - 1]) || oi.data.length;
+              if (!outd) outd = new Float32Array(cnt * n);
+              outd.set(oi.data.subarray(0, n), i * n);
+            }
+            o = { data: outd, dims: [cnt, n] }; per = true; note = (note || 'batch-folding model') + ', run one patch at a time';
+          } catch (e) { sess.__rows = 0; sess.__broke = 1; if (!o) o = await run1(E); note = (note || '') + ', one row for the whole batch'; per = false; }
+        }
+        if (!dg[name]) dg[name] = note;
         return { n, at: (i, c) => { const v = per ? o.data[i * n + c] : o.data[c]; return Number.isFinite(v) ? v : 0; } };
       };
       const inst = new Float32Array(40), g400 = new Float32Array(400), embSum = new Float64Array(1280), hacc = heads.map(() => null), pv = [];
@@ -1185,6 +1205,8 @@
           await ease(performance.now() - tw0, opt.rest, 'mn', 1);
         }
       } finally { own.forEach(s => s.release && s.release()); own.length = 0; }
+      { let lo = Infinity, hi = -Infinity; for (let c = 0; c < 527; c++) { lo = Math.min(lo, probs[c]); hi = Math.max(hi, probs[c]); }
+        if (lo < 0 || hi > 1) for (let c = 0; c < 527; c++) probs[c] = 1 / (1 + Math.exp(-probs[c])); }   // raw scores -> probabilities
       const pick = (lo, hi) => { const o = []; for (let i = lo; i <= hi; i++) o.push([AUDIOSET[i], probs[i]]); return o; };
       r.genre = pick(AS_GENRE[0], AS_GENRE[1]); r.mood = pick(AS_MOOD[0], AS_MOOD[1]); r.music = probs[137];
       r.inst2 = []; for (let i = 140; i <= 213; i++) if (asInst(i)) r.inst2.push([AUDIOSET[i], probs[i]]);
@@ -1203,10 +1225,10 @@
     if (r.bpm || r.key) L.push([r.bpm ? 'Tempo: ' + r.bpm + ' BPM' : '', r.key ? 'Key: ' + r.key + ' (' + r.camelot + ')' : ''].filter(Boolean).join(' · '));
     if (r.voice != null) L.push((r.voice >= 0.5 ? 'Vocals: yes (' + pct(r.voice) + ')' : 'Instrumental (' + pct(1 - r.voice) + ')') + (r.firstVocal != null ? ' · first vocals at ' + mmss(r.firstVocal) : ''));
     if (r.style) L.push('Style: ' + top(r.style, 4, 0.05));
-    if (r.genre) L.push('Genre: ' + top(r.genre, 3, 0.08));
-    if (r.mood) L.push('Mood: ' + top(r.mood, 2, 0.08));
+    if (r.genre) { const g = top(r.genre, 3, 0.08); L.push(g === 'none' ? 'Genre (weak): ' + top(r.genre, 2, 0) : 'Genre: ' + g); }
+    if (r.mood) { const m = top(r.mood, 2, 0.08); L.push(m === 'none' ? 'Mood (weak): ' + top(r.mood, 2, 0) : 'Mood: ' + m); }
     const hd = Object.values(r.heads || {}), bin = hd.filter(h => h.kind === 'binary').map(h => [h.label, h.p[h.pos]]);
-    if (bin.length) L.push('Feels: ' + top(bin, 5, 0.5));
+    if (bin.length) { const f5 = top(bin, 5, 0.5); L.push(f5 === 'none' ? 'Feels (weak): ' + top(bin, 3, 0) : 'Feels: ' + f5); }
     hd.filter(h => h.kind !== 'binary' && h.group !== 'gender').forEach(h => L.push(h.label + ': ' + top(h.p.map((p, i) => [h.classes[i], p]), 4, 0.1)));
     const g = hd.find(h => h.group === 'gender'); if (g && r.voice >= 0.5) L.push('Voice: ' + top(g.p.map((p, i) => [g.classes[i], p]), 1, 0.5));
     if (r.inst) L.push('Instruments: ' + top(r.inst, 6, 0.4));
@@ -1235,6 +1257,7 @@
       c.gp = top(Object.entries(par), 3, 0.1); c.st = top(r.style, 5, 0.05);
     }
     c.gn = top(r.genre, 3, 0.08); c.md = top(r.mood, 3, 0.08);
+    if (r.genre && !c.gn.length) c.gn = top(r.genre, 2, 0); if (r.mood && !c.md.length) c.md = top(r.mood, 2, 0);
     const ins = {}; (r.inst || []).forEach(([n, p]) => { if (p >= 0.4) ins[n] = p; }); (r.inst2 || []).forEach(([n, p]) => { if (p >= 0.2) ins[n] = Math.max(ins[n] || 0, p); });
     c.in = top(Object.entries(ins), 8, 0);
     c.hd = {}; c.hm = {};
@@ -1369,7 +1392,7 @@
   const WH = {
     base_en: ['Xenova/whisper-base.en', 'English Base (~75 MB, recommended)', { en: 1, gpuDec: 'fp32' }],
     parakeet: ['Xenova/whisper-base.en', 'English Parakeet TDT (~650 MB, best accuracy, app only)', { en: 1, pk: 1, big: 650, noGpu: 1 }],
-    distil_en: ['Xenova/distil-small.en', 'English Distil-Small (~170 MB, near Small accuracy, 2x faster)', { en: 1 }],
+    distil_en: ['onnx-community/distil-small.en', 'English Distil-Small (~170 MB, near Small accuracy, 2x faster)', { en: 1 }],
     small_en: ['Xenova/whisper-small.en', 'English Small (~250 MB, most accurate, slow)', { en: 1 }],
     tiny_en: ['Xenova/whisper-tiny.en', 'English Tiny (~40 MB, fastest)', { en: 1, gpuDec: 'fp32' }],
     tiny: ['Xenova/whisper-tiny', 'Any language: Tiny (~40 MB)'],
@@ -1677,7 +1700,7 @@
   // ---------- Panel: library tools + lyrics ----------
   function smartUI(p, h) {
     const css = document.createElement('style');
-    css.textContent = '#ppv-panel details,.ppv-scope details{margin-top:10px;border-top:1px solid #333;padding-top:8px}#ppv-panel summary,.ppv-scope summary{cursor:pointer;font-weight:600;padding:2px 0}#ppv-panel input[type=text],.ppv-scope input[type=text]{width:100%;box-sizing:border-box;margin-top:6px;padding:7px;border-radius:8px;background:#2a2b31;color:#eee;border:1px solid #444}#ppv-panel .ppv-note,.ppv-scope .ppv-note{opacity:.6;font-size:11px;margin-top:4px}#ppv-panel .ppv-out,.ppv-scope .ppv-out{margin-top:6px;font-size:12px;white-space:pre-wrap}#ppv-panel .ppv-row,.ppv-scope .ppv-row{display:flex;gap:6px}#ppv-panel .ppv-row button,.ppv-scope .ppv-row button{margin-top:8px}#ppv-panel .ppv-grid label,.ppv-scope .ppv-grid label{display:block;margin:4px 0}.ppv-scope{color:var(--text,#eee);font:13px system-ui,sans-serif;margin:8px 0;padding:0 2px}.ppv-scope button{width:100%;margin-top:8px;padding:9px;border-radius:8px;border:0;background:var(--accent,#7c3aed);color:#fff;font:600 13px system-ui}.ppv-scope button:disabled{opacity:.5}.ppv-scope button.ppv-sec{background:transparent;border:1px solid var(--line,#555);color:inherit;font-weight:500;font-size:12px;padding:6px}.ppv-scope select{width:100%;margin-top:6px;padding:7px;border-radius:8px;background:var(--bg,#2a2b31);color:inherit;border:1px solid var(--line,#444)}.ppv-scope label.ppv-c{display:inline-block;margin:6px 10px 0 0}.ppv-scope details{border-top-color:var(--line,#333)}.ppv-pbar{height:6px;background:var(--line,#333);border-radius:3px;margin-top:8px}.ppv-pbar i{display:block;height:100%;width:0;background:var(--accent,#7c3aed);border-radius:3px}';
+    css.textContent = '#ppv-panel details,.ppv-scope details{margin-top:10px;border-top:1px solid #333;padding-top:8px}#ppv-panel summary,.ppv-scope summary{cursor:pointer;font-weight:600;padding:2px 0}#ppv-panel input[type=text],.ppv-scope input[type=text]{width:100%;box-sizing:border-box;margin-top:6px;padding:7px;border-radius:8px;background:#2a2b31;color:#eee;border:1px solid #444}#ppv-panel .ppv-note,.ppv-scope .ppv-note{opacity:.6;font-size:11px;margin-top:4px}#ppv-panel .ppv-out,.ppv-scope .ppv-out{margin-top:6px;font-size:12px;white-space:pre-wrap}#ppv-panel .ppv-row,.ppv-scope .ppv-row{display:flex;gap:6px}#ppv-panel .ppv-row button,.ppv-scope .ppv-row button{margin-top:8px}#ppv-panel .ppv-grid label,.ppv-scope .ppv-grid label{display:block;margin:4px 0}.ppv-scope{color:var(--text,#eee);font:13px system-ui,sans-serif;margin:8px 0;padding:0 2px}.ppv-scope button{width:100%;margin-top:8px;padding:9px;border-radius:8px;border:0;background:var(--accent,#7c3aed);color:#fff;font:600 13px system-ui}.ppv-scope button:disabled{opacity:.5}.ppv-scope button.ppv-sec{background:transparent;border:1px solid var(--line,#555);color:inherit;font-weight:500;font-size:12px;padding:6px}.ppv-scope select{width:100%;margin-top:6px;padding:7px;border-radius:8px;background:var(--bg,#2a2b31);color:inherit;border:1px solid var(--line,#444)}.ppv-scope label.ppv-c{display:inline-block;margin:6px 10px 0 0}.ppv-scope details{border-top-color:var(--line,#333)}#ppv-edrows .er{display:flex;gap:4px;align-items:center;margin-top:5px}#ppv-edrows .er input{margin:0!important;padding:6px!important}#ppv-edrows .et{width:74px!important;flex:none;text-align:center}#ppv-edrows .er button{width:auto;margin:0;padding:5px 8px;flex:none}#ppv-edrows .er.on input{border-color:var(--accent,#7c3aed)}.ppv-pbar{height:6px;background:var(--line,#333);border-radius:3px;margin-top:8px}.ppv-pbar i{display:block;height:100%;width:0;background:var(--accent,#7c3aed);border-radius:3px}';
     document.head.appendChild(css);
     const d1 = document.createElement('details'), d2 = document.createElement('details');
     d1.innerHTML = '<summary>Library tools (tags)</summary>' +
@@ -1714,9 +1737,18 @@
       '<select id="ppv-wtask"><option value="transcribe">Write what is said</option><option value="translate">Translate to English</option></select>' +
       '<label class="ppv-c"><input type="checkbox" id="ppv-wclean"> Remove the music first (on by default for songs, much slower)</label>' +
       '<label class="ppv-c" id="ppv-wgpu-l"><input type="checkbox" id="ppv-wgpu"> Use the GPU (experimental, much faster if your phone supports it)</label>' +
-      '<div class="ppv-note">Songs get synced lyrics, videos get subtitles. The music-removal step uses the model chosen at the top of this panel.</div>' +
+      '<div class="ppv-note">Songs get synced lyrics (Lyrics tab), videos get subtitles. Both can be exported as .srt or .lrc from the editor below. The music-removal step uses the model chosen at the top of this panel.</div>' +
       '<button id="ppv-wgo">Transcribe current track</button><button id="ppv-wsrt" class="ppv-sec" style="display:none">Download .srt</button><button id="ppv-wfree" class="ppv-sec">Free up Whisper download</button>' +
-      '<div id="ppv-wout" class="ppv-out"></div>';
+      '<div id="ppv-wout" class="ppv-out"></div>' +
+      '<details id="ppv-ed"><summary>Edit lyrics &amp; timestamps</summary>' +
+      '<div class="ppv-note">Works for songs (synced lyrics) and videos (subtitles). Tap play to jump to a line, and the clock button sets a line to the current playback time.</div>' +
+      '<div class="ppv-row"><button id="ppv-edload" class="ppv-sec">Load current</button><button id="ppv-edundo" class="ppv-sec">Undo</button></div>' +
+      '<div id="ppv-edrows"></div>' +
+      '<div class="ppv-row"><button id="ppv-edadd" class="ppv-sec">+ Add line</button><button id="ppv-edpaste" class="ppv-sec">Paste text</button></div>' +
+      '<div class="ppv-row"><button id="ppv-edm" class="ppv-sec">All -0.5s</button><button id="ppv-edp" class="ppv-sec">All +0.5s</button></div>' +
+      '<button id="ppv-edsave">Save to this track</button>' +
+      '<div class="ppv-row"><button id="ppv-edsrt" class="ppv-sec">Download .srt</button><button id="ppv-edlrc" class="ppv-sec">Download .lrc</button></div>' +
+      '<div id="ppv-edout" class="ppv-out"></div></details>';
     // AI tools no longer live in the one panel: tagging + smart playlists go to the Library tab, Whisper goes to captions (video) or Lyrics (songs)
     d1.querySelector('summary').textContent = 'AI tagging & smart playlists';
     d1.insertAdjacentHTML('afterbegin', '<div class="ppv-stx ppv-note">Ready</div><div class="ppv-pbar ppv-bar-tag"><i></i></div><select id="ppv-scope"><option value="cur">Tag: current track</option><option value="pick">Tag: a track I choose</option><option value="all">Tag: all tracks</option></select><select id="ppv-pick" style="display:none"></select><label class="ppv-c" id="ppv-redo-l" style="display:none"><input type="checkbox" id="ppv-redo"> Also redo tracks that already have tags</label><div class="ppv-row"><button id="ppv-tag">Tag current track</button><button id="ppv-stop" class="ppv-sec" style="display:none;width:auto;padding:6px 14px" data-keep="1">Stop</button></div><div id="ppv-tags" class="ppv-out"></div><details id="ppv-saved" open><summary>Tagged tracks <span id="ppv-scount" style="opacity:.6;font-weight:400"></span></summary><input type="text" id="ppv-ss" placeholder="Filter by title, artist or tag (e.g. piano, 120 bpm)"><select id="ppv-sf"><option value="all">Everything tagged</option><option value="audio">Songs</option><option value="video">Videos</option></select><div id="ppv-slist" class="ppv-note"></div></details>');
@@ -1734,8 +1766,10 @@
     libHost.after(savedHost);
     const capDrop = document.getElementById('subtitle-dropdown'), lyPane = document.querySelector('#extras-panel .pp-pane[data-pp="ly"]');
     // the Whisper block sits in whichever place fits the current track: captions menu for video, Lyrics tab for songs
+    let audPanel = null;
     const placeWhisper = where => {
       if (where === 'cap' && capDrop) { if (whHost.parentNode !== capDrop) { capDrop.appendChild(document.createElement('hr')); capDrop.appendChild(whHost); } }
+      else if (where === 'aud' && audPanel) { if (whHost.parentNode !== audPanel) audPanel.appendChild(whHost); }
       else if (where === 'ly' && lyPane) { if (whHost.parentNode !== lyPane) lyPane.appendChild(whHost); }
     };
     const curKind = () => { const a = window.__ppApi, t = a && a.tracks()[a.currentIndex()]; return t ? t.kind : null; };
@@ -1762,7 +1796,7 @@
       if (c.gn && c.gn.length) L.push('Also sounds like: ' + lst(c.gn));
       if (c.md && c.md.length) L.push('Mood: ' + lst(c.md));
       const feels = Object.entries(c.hd || {}).filter(e => e[1] >= 50).sort((u, v) => v[1] - u[1]).map(e => [e[0].replace(/^mood_/, '').replace(/_/g, ' '), e[1]]);
-      if (feels.length) L.push('Feels: ' + lst(feels.slice(0, 6)));
+      if (feels.length) L.push('Feels: ' + lst(feels.slice(0, 6))); else { const w = Object.entries(c.hd || {}).sort((u, v) => v[1] - u[1]).slice(0, 3).map(e => [e[0].replace(/^mood_/, '').replace(/_/g, ' '), e[1]]); if (w.length) L.push('Feels (weak): ' + lst(w)); }
       if (c.in && c.in.length) L.push('Instruments: ' + lst(c.in));
       Object.entries(c.hm || {}).forEach(([id, a]) => { if (a && a.length) L.push(id.replace(/_/g, ' ') + ': ' + lst(a)); });
       if (c.d) L.push('Length: ' + mmss(c.d) + (c.w ? ' (whole track scanned)' : ''));
@@ -2066,9 +2100,9 @@
         const wst = t => { h.status(t); const m = /(\d+)%/.exec(t); if (m) document.querySelectorAll('.ppv-bar-wh i').forEach(e => e.style.width = m[1] + '%'); };
         const cues = await transcribe(t, { size: wsize.value, lang: wlang.disabled ? '' : wlang.value, task: wtask.value, clean: wclean.checked, model: h.sel.value, strength: +h.sl.value, lv: h.LV() }, wst);
         if (!cues.length) throw new Error('No speech found.');
-        if (t.kind === 'video' || !lyr) a.setSubtitles(t.dbId, cues, 'Whisper.srt'); else lyr.set(t.dbId, toLrc(cues));
+        if (t.kind === 'video' || !lyr) a.setSubtitles(t.dbId, cues, 'Whisper.srt'); else lyr.set(t.dbId, toLrc(cues)); if (t.kind !== 'video' && lyr) { try { a.setSubtitles(t.dbId, cues, 'Whisper.srt'); } catch (e) {} }
         lastSrt = { name: t.title, text: toSrt(cues) }; wsrt.style.display = '';
-        wout.textContent = cues.length + ' lines added as ' + (t.kind === 'video' ? 'subtitles' : 'synced lyrics') + '.\n' + cues.slice(0, 4).map(c => mmss(c.start) + '  ' + c.text).join('\n');
+        wout.textContent = cues.length + ' lines added as ' + (t.kind === 'video' ? 'subtitles' : 'synced lyrics and subtitles (tap CC on the disc to show them)') + '.\n' + cues.slice(0, 4).map(c => mmss(c.start) + '  ' + c.text).join('\n');
         h.status('Done.');
       } catch (e) { console.error(e); h.status('Error: ' + errText(e)); }
       busy(false);
@@ -2083,6 +2117,121 @@
     $('#ppv-wfree').onclick = async () => {
       try { if (NATIVE) { const ids = PK_FILES.map(f => f[0]).concat(Object.values(WHN).flatMap(k => [k + '_enc', k + '_dec'])); for (const id of ids) { try { await NP.remove({ id }); } catch (e) {} } } if (asr) { await asr.dispose(); asr = null; asrId = ''; } const ks = await caches.keys(); for (const k of ks) if (/transformers/i.test(k)) await caches.delete(k); h.status('Whisper download removed.'); } catch (e) { h.status('Error: ' + errText(e)); }
     };
+    // ---------- Lyrics & timestamp editor ----------
+    {
+      const rowsEl = $('#ppv-edrows'), eout = $('#ppv-edout'), edet = $('#ppv-ed');
+      let rows = [], hist = [], edId = null;   // rows: {s: seconds, e: seconds|null, text}
+      const fmtT = x => { x = Math.max(0, x); const m = Math.floor(x / 60); return m + ':' + (x - m * 60).toFixed(2).padStart(5, '0'); };
+      const parseT = v => { v = String(v).trim().replace(',', '.'); let m = /^(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)$/.exec(v); if (m) return (+(m[1] || 0)) * 3600 + (+m[2]) * 60 + (+m[3]); m = /^(\d+(?:\.\d+)?)$/.exec(v); return m ? +m[1] : NaN; };
+      const snap = () => { hist.push(JSON.stringify(rows)); if (hist.length > 50) hist.shift(); };
+      const parseLrcText = txt => { const out = [], re = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g; String(txt).split(/\r?\n/).forEach(raw => { const st = []; let m, last = 0; re.lastIndex = 0; while ((m = re.exec(raw))) { st.push(+m[1] * 60 + +m[2] + (m[3] ? +m[3].padEnd(3, '0').slice(0, 3) / 1000 : 0)); last = re.lastIndex; } if (!st.length) return; const tx = raw.slice(last).replace(/<\d+:\d+(?:[.:]\d+)?>/g, '').trim(); st.forEach(x => out.push({ s: x, e: null, text: tx })); }); return out.sort((a, b) => a.s - b.s); };
+      const parseSrtText = txt => { const out = []; String(txt).replace(/\r/g, '').split(/\n{2,}/).forEach(b => { const l = b.split('\n'), i = l.findIndex(x => x.includes('-->')); if (i < 0) return; const m = /([\d:.,]+)\s*-->\s*([\d:.,]+)/.exec(l[i]); if (!m) return; const s = parseT(m[1]), e = parseT(m[2]); if (isNaN(s)) return; out.push({ s, e: isNaN(e) ? null : e, text: l.slice(i + 1).join('\n').replace(/<[^>]+>/g, '').trim() }); }); return out.sort((a, b) => a.s - b.s); };
+      const plain = v => v.split(/\r?\n/).filter(x => x.trim()).map((x, i) => ({ s: i * 4, e: null, text: x.trim() }));
+      const toCues = () => { const r = rows.filter(x => x.text.trim() && isFinite(x.s)).slice().sort((a, b) => a.s - b.s); return r.map((x, i) => { const nx = r[i + 1]; let e = x.e != null && x.e > x.s ? x.e : (nx ? nx.s : x.s + 4); return { start: x.s, end: Math.max(e, x.s + 0.3), text: x.text.trim() }; }); };
+      const media = () => { const t = cur(); return t ? mediaOf(t) : null; };
+      const render = () => {
+        const el = media(), now = el ? el.currentTime : -1;
+        rowsEl.textContent = '';
+        rows.forEach((r, i) => {
+          const d = document.createElement('div'); d.className = 'er' + (now >= r.s && (i + 1 >= rows.length || now < rows[i + 1].s) ? ' on' : '');
+          const tin = document.createElement('input'); tin.type = 'text'; tin.className = 'et'; tin.value = fmtT(r.s);
+          tin.onchange = () => { const v = parseT(tin.value); if (isNaN(v)) { tin.value = fmtT(r.s); return; } snap(); r.s = v; r.e = null; rows.sort((a, b) => a.s - b.s); render(); };
+          const tx = document.createElement('input'); tx.type = 'text'; tx.value = r.text; tx.onchange = () => { snap(); r.text = tx.value; };
+          const go = document.createElement('button'); go.className = 'ppv-sec'; go.textContent = '▶'; go.title = 'Jump here'; go.onclick = () => { const e2 = media(); if (e2) { e2.currentTime = r.s; if (e2.play) e2.play().catch(() => {}); } };
+          const nw = document.createElement('button'); nw.className = 'ppv-sec'; nw.textContent = '⏱'; nw.title = 'Set to current time'; nw.onclick = () => { const e2 = media(); if (!e2) return; snap(); r.s = e2.currentTime; r.e = null; rows.sort((a, b) => a.s - b.s); render(); };
+          const dl = document.createElement('button'); dl.className = 'ppv-sec'; dl.textContent = '✕'; dl.title = 'Delete line'; dl.onclick = () => { snap(); rows.splice(i, 1); render(); };
+          d.append(tin, tx, go, nw, dl); rowsEl.appendChild(d);
+        });
+      };
+      const load = () => {
+        const t = cur(); if (!t) { eout.textContent = 'Play or select a track first.'; return; }
+        edId = t.dbId; hist = []; rows = [];
+        try {
+          if (t.kind === 'video') { const o = JSON.parse(localStorage.getItem('playerSubtitles') || '{}')[t.dbId]; const c = o && (Array.isArray(o) ? o.map(x => [x.start, x.end, x.text]) : o.c); if (c) rows = c.map(x => ({ s: +x[0], e: +x[1], text: String(x[2]) })); }
+          else { const o = JSON.parse(localStorage.getItem('playerLyricsV1') || '{}')[t.dbId]; if (o) { rows = parseLrcText(o); if (!rows.length) rows = plain(String(o)); } }
+        } catch (e) {}
+        eout.textContent = rows.length ? rows.length + ' lines loaded.' : 'No saved ' + (t.kind === 'video' ? 'subtitles' : 'lyrics') + ' yet. Add lines, paste text, or generate with Whisper above.';
+        render();
+      };
+      edet.addEventListener('toggle', () => { if (edet.open && (!rows.length || (cur() && cur().dbId !== edId))) load(); });
+      $('#ppv-edload').onclick = load;
+      $('#ppv-edundo').onclick = () => { if (!hist.length) return; rows = JSON.parse(hist.pop()); render(); };
+      $('#ppv-edadd').onclick = () => { const el = media(); snap(); rows.push({ s: el ? el.currentTime : 0, e: null, text: '' }); rows.sort((a, b) => a.s - b.s); render(); };
+      $('#ppv-edpaste').onclick = () => {
+        const v = prompt('Paste lyrics or subtitles (.lrc, .srt, or plain text with one line per row). Plain text is spaced 4 seconds apart so you can re-time it.'); if (!v || !v.trim()) return;
+        let r = /-->/.test(v) ? parseSrtText(v) : parseLrcText(v);
+        if (!r.length) r = plain(v);
+        snap(); rows = r; render(); eout.textContent = r.length + ' lines pasted. Not saved until you tap Save.';
+      };
+      const shift = d => { if (!rows.length) return; snap(); rows.forEach(r => { r.s = Math.max(0, r.s + d); if (r.e != null) r.e = Math.max(0, r.e + d); }); render(); };
+      $('#ppv-edm').onclick = () => shift(-0.5); $('#ppv-edp').onclick = () => shift(0.5);
+      $('#ppv-edsave').onclick = () => {
+        const t = cur(); if (!t) { eout.textContent = 'Play or select a track first.'; return; }
+        const cues = toCues(); if (!cues.length) { eout.textContent = 'Nothing to save: add at least one line with text.'; return; }
+        const a = A(), lyr = window.__ppLyrics;
+        if (t.kind === 'video' || !lyr) a.setSubtitles(t.dbId, cues, 'Edited.srt'); else lyr.set(t.dbId, toLrc(cues)); if (t.kind !== 'video' && lyr) { try { a.setSubtitles(t.dbId, cues, 'Edited.srt'); } catch (e) {} }
+        lastSrt = { name: t.title, text: toSrt(cues) }; wsrt.style.display = '';
+        edId = t.dbId; eout.textContent = cues.length + ' lines saved as ' + (t.kind === 'video' ? 'subtitles' : 'synced lyrics') + '.';
+      };
+      const dlFile = ext => {
+        const t = cur(); if (!t) return; const cues = toCues(); if (!cues.length) { eout.textContent = 'Nothing to download yet.'; return; }
+        const blob = new Blob([ext === 'srt' ? toSrt(cues) : toLrc(cues)], { type: 'text/plain' }), name = t.title.replace(/[\\/:*?"<>|]+/g, '_') + '.' + ext;
+        if (window.ppSaveBlob) { window.ppSaveBlob(blob, name); return; }
+        const u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 10000);
+      };
+      $('#ppv-edsrt').onclick = () => dlFile('srt'); $('#ppv-edlrc').onclick = () => dlFile('lrc');
+      // refresh the editor after Whisper writes new text
+      const origGo = $('#ppv-wgo').onclick;
+      $('#ppv-wgo').onclick = async function () { await origGo.apply(this, arguments); if (edet.open) load(); };
+      // follow playback: highlight the current row
+      ['audio', 'video-el'].forEach(id => { const e = document.getElementById(id); if (e) e.addEventListener('timeupdate', () => { if (!edet.open) return; const t = cur(); if (!t || mediaOf(t) !== e) return; const n = e.currentTime; rowsEl.querySelectorAll('.er').forEach((d, i) => d.classList.toggle('on', !!rows[i] && n >= rows[i].s && (i + 1 >= rows.length || n < rows[i + 1].s))); }); });
+      // ---------- Subtitles for audio tracks (CC button + line under the disc) ----------
+      {
+        const viz = document.getElementById('viz-wrap'), aud = document.getElementById('audio');
+        if (viz && aud) {
+          const st = document.createElement('style');
+          st.textContent = '#ppv-acc{position:absolute;top:-6px;right:-6px;z-index:6;width:34px;height:34px;border-radius:50%;border:1px solid var(--line,#555);background:var(--bg,#1b1c21);color:var(--text,#eee);font:700 11px system-ui;cursor:pointer;display:none;padding:0}#ppv-acc.on{background:var(--accent,#7c3aed);color:#fff;border-color:transparent}#ppv-asub{position:absolute;left:-14%;right:-14%;bottom:-48px;text-align:center;pointer-events:none;z-index:4;display:none}#ppv-asub span{display:inline-block;background:rgba(0,0,0,.7);color:#fff;padding:4px 10px;border-radius:4px;font-size:16px;line-height:1.4;white-space:pre-line;max-width:100%}#ppv-asub.low{bottom:-96px}#ppv-apanel{position:fixed;z-index:9999;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,420px);max-height:78vh;overflow:auto;background:var(--bg,#1b1c21);color:var(--text,#eee);border:1px solid var(--line,#444);border-radius:12px;padding:12px;display:none}#ppv-apanel.open{display:block}';
+          document.head.appendChild(st);
+          const btn = document.createElement('button'); btn.id = 'ppv-acc'; btn.textContent = 'CC'; btn.title = 'Subtitles'; btn.setAttribute('aria-label', 'Subtitles');
+          const box = document.createElement('div'); box.id = 'ppv-asub'; const sp = document.createElement('span'); box.appendChild(sp);
+          const panel = document.createElement('div'); panel.id = 'ppv-apanel'; panel.className = 'ppv-scope';
+          panel.innerHTML = '<div class="ppv-row"><b style="flex:1;align-self:center">Subtitles</b><button class="ppv-sec" id="ppv-apx" style="width:auto;padding:4px 12px" data-keep="1">Close</button></div><div class="ppv-note" id="ppv-ast">No subtitles</div><button id="ppv-aton" class="ppv-sec">Turn on</button><button id="ppv-ald" class="ppv-sec">Load subtitle file (.srt/.vtt/.lrc)</button><button id="ppv-arm" class="ppv-sec">Remove from this track</button><input type="file" id="ppv-af" accept=".srt,.vtt,.lrc,.txt" style="display:none"><hr style="border:0;border-top:1px solid var(--line,#444);margin:10px 0">';
+          viz.append(btn, box); document.body.appendChild(panel);
+          audPanel = panel;
+          let cues = [], off = 0, lastId = null, shown = '';
+          const isOn = () => ls('ppvAudSub') === '1';
+          const loadCues = () => {
+            cues = []; off = 0; const t = cur(); lastId = t ? t.dbId : null; if (!t || t.kind === 'video') return;
+            try { const o = JSON.parse(localStorage.getItem('playerSubtitles') || '{}')[t.dbId]; const c = o && (Array.isArray(o) ? o.map(x => [x.start, x.end, x.text]) : o.c); if (c) { cues = c.map(x => ({ s: +x[0], e: +x[1], text: String(x[2]) })).sort((a, b) => a.s - b.s); off = (!Array.isArray(o) && isFinite(+o.o)) ? +o.o : 0; } } catch (e) {}
+          };
+          const status = () => { $('#ppv-ast').textContent = cues.length ? cues.length + ' lines' + (cues.length ? '' : '') : 'No subtitles for this track yet. Generate them with Whisper below, or load a file.'; $('#ppv-aton').textContent = isOn() ? 'Turn off' : 'Turn on'; $('#ppv-aton').disabled = !cues.length; $('#ppv-arm').disabled = !cues.length; btn.classList.toggle('on', isOn() && cues.length > 0); };
+          const tick = () => {
+            const t = cur(), a = t && t.kind !== 'video';
+            btn.style.display = a ? 'block' : 'none';
+            if (!a) { box.style.display = 'none'; lastId = null; return; }
+            if (t.dbId !== lastId) { loadCues(); status(); }
+            if (!isOn() || !cues.length) { box.style.display = 'none'; return; }
+            const n = aud.currentTime - off; let txt = ''; for (const c of cues) { if (c.s > n) break; if (n < c.e) txt += (txt ? '\n' : '') + c.text; }
+            const ly = document.getElementById('lyrics-overlay'); box.classList.toggle('low', !!(ly && ly.classList.contains('show')));
+            if (txt !== shown) { shown = txt; sp.textContent = txt; }
+            box.style.display = txt ? 'block' : 'none';
+          };
+          setInterval(tick, 120);
+          try { const a = A(); if (a && a.setSubtitles && !a.__ppvW) { const o = a.setSubtitles; a.setSubtitles = function () { const r = o.apply(this, arguments); lastId = null; return r; }; a.__ppvW = 1; } } catch (e) {}
+          btn.onclick = () => { loadCues(); status(); placeWhisper('aud'); panel.classList.toggle('open'); };
+          $('#ppv-apx').onclick = () => panel.classList.remove('open');
+          $('#ppv-aton').onclick = () => { ls('ppvAudSub', isOn() ? '0' : '1'); status(); tick(); };
+          $('#ppv-arm').onclick = () => { const t = cur(); if (!t) return; try { const all = JSON.parse(localStorage.getItem('playerSubtitles') || '{}'); delete all[t.dbId]; localStorage.setItem('playerSubtitles', JSON.stringify(all)); } catch (e) {} loadCues(); status(); tick(); };
+          $('#ppv-ald').onclick = () => $('#ppv-af').click();
+          $('#ppv-af').onchange = async e => {
+            const f = e.target.files[0]; e.target.value = ''; const t = cur(); if (!f || !t) return;
+            const txt = (await f.text()).replace(/^﻿/, ''); let r = /-->/.test(txt) ? parseSrtText(txt) : parseLrcText(txt);
+            rows = r; const c = toCues(); if (!c.length) { status(); $('#ppv-ast').textContent = 'Could not read any subtitles from that file.'; return; }
+            A().setSubtitles(t.dbId, c, f.name); ls('ppvAudSub', '1'); loadCues(); status(); tick();
+          };
+        }
+      }
+    }
     refreshCount();
     // the list is always visible now, so keep it current as the library loads and tags change
     let lastSig = '';
@@ -2532,10 +2681,24 @@
       set(m, blLine(k, lines), 6000); pop();
     }
 
-    // ---------- Chat with Bloop: a tiny on-device language model (SmolLM2-135M-Instruct via transformers.js) ----------
+    // ---------- Chat with Bloop: a small on-device language model (choose one in settings) via transformers.js ----------
     // Off by default. App questions and crisis messages are answered from fixed text (no model needed, always reliable);
     // everything else goes to the small model. Chat is kept in memory only.
-    const CHAT_MODEL = 'HuggingFaceTB/SmolLM2-135M-Instruct';
+    // Chat models. Pick one in the Bloop brain settings. file = the ONNX file in that repo, eos = end-of-turn tokens, mb = rough download size.
+    const CHAT_MODELS = {
+      qwen05:  { id: 'onnx-community/Qwen2.5-0.5B-Instruct', label: 'Qwen2.5 0.5B (default, better, ~520 MB)', mb: 520, file: 'onnx/model_quantized.onnx', eos: ['<|im_end|>', '<|endoftext|>'], lid: 'llm_qwen05' },
+      llama1b: { id: 'onnx-community/Llama-3.2-1B-Instruct', label: 'Llama 3.2 1B (most capable, ~1.3 GB, needs a strong phone)', mb: 1300, file: 'onnx/model_quantized.onnx', eos: ['<|eot_id|>', '<|end_of_text|>'], lid: 'llm_llama1b' },
+      smol135: { id: 'HuggingFaceTB/SmolLM2-135M-Instruct', label: 'SmolLM2 135M (tiny, ~150 MB, the old one)', mb: 150, file: 'onnx/model_quantized.onnx', eos: ['<|im_end|>'], lid: 'llm_smollm2' }
+    };
+    // Users who already downloaded the old SmolLM2 keep it; everyone else gets Qwen2.5 0.5B.
+    const chatKey = () => {
+      try {
+        const k = localStorage.getItem('ppvChatModel');
+        if (CHAT_MODELS[k]) return k;
+        return localStorage.getItem('ppvChatDl') === '1' ? 'smol135' : 'qwen05';
+      } catch (e) { return 'qwen05'; }
+    };
+    let CHAT_MODEL = CHAT_MODELS[chatKey()].id;
     let pendingJob = null, holdModel = false, idleT = 0, chatOn = lsGet('ppvChat') === '1', gen = null, genP = null, chatBusy = false, dlOk = false, hist = [];
     // How many past exchanges (your message + Bloop's reply) he remembers during a chat. 0 = none. More memory = slower and more RAM on a tiny model.
     const MEM_MAX = 8, memN = () => { const v = parseInt(lsGet('ppvMem'), 10); return isNaN(v) ? 2 : Math.max(0, Math.min(MEM_MAX, v)); };
@@ -3138,14 +3301,16 @@
         (t ? " Now playing: " + t.title + (c ? " (" + vibes(c).join(', ') + ")." : ".") : "");
     };
     // Android app: the chat model runs in Java (LlmNative: KV cache + sampling on the CPU). Tokenizing stays here, only token ids cross the bridge.
-    const LLM_ID = 'llm_smollm2', LLM_URL = 'https://huggingface.co/' + CHAT_MODEL + '/resolve/main/onnx/model_quantized.onnx';
+    const llmId = () => CHAT_MODELS[chatKey()].lid, llmUrl = () => 'https://huggingface.co/' + CHAT_MODELS[chatKey()].id + '/resolve/main/' + CHAT_MODELS[chatKey()].file;
+    let llmNativeFailed = false;                                     // set when the Java runtime rejects the model: use the web version for the rest of the session
     async function nativeBrain(say) {
       const pcb = p => { if (p && p.status === 'progress' && p.file) say('Downloading ' + p.file.split('/').pop() + ' ' + Math.round(p.progress || 0) + '%'); };
       const tok = await tfMod.AutoTokenizer.from_pretrained(CHAT_MODEL, { progress_callback: pcb });
-      if (!(await NP.exists({ id: LLM_ID })).ready) await nativeFetch(LLM_ID, LLM_URL, say);
-      await NP.llmLoad({ id: LLM_ID });
-      let eos = [0, 2];                                                // <|endoftext|>, <|im_end|>
-      try { const e = tok.encode('<|im_end|>', { add_special_tokens: false }); if (e && e.length === 1) eos = [0, Number(e[0])]; } catch (e) {}
+      if (!(await NP.exists({ id: llmId() })).ready) await nativeFetch(llmId(), llmUrl(), say);
+      await NP.llmLoad({ id: llmId() });
+      const eos = [];                                                  // end-of-turn ids for the chosen model
+      for (const t of CHAT_MODELS[chatKey()].eos) { try { const e = tok.encode(t, { add_special_tokens: false }); if (e && e.length === 1) eos.push(Number(e[0])); } catch (x) {} }
+      if (!eos.length) eos.push(0, 2);
       const g = async (msgs, opts) => {
         opts = opts || {};
         const prompt = Array.from(tok.apply_chat_template(msgs, { add_generation_prompt: true, tokenize: true, return_tensor: false }), Number);
@@ -3169,7 +3334,10 @@
       if (gen) return gen; if (genP) return genP;
       genP = (async () => {
         say('Loading my brain\u2026'); if (!tfMod) tfMod = await import(TF_URL);
-        if (NATIVE) { gen = await nativeBrain(say); lsSet('ppvChatDl', '1'); return gen; }
+        if (NATIVE && !llmNativeFailed) {
+          try { gen = await nativeBrain(say); lsSet('ppvChatDl', '1'); return gen; }
+          catch (e) { console.warn('Native chat model failed, using the web version', e); llmNativeFailed = true; say('Native brain unavailable, using the web version…'); }
+        }
         const gpuOn = lsGet('ppvChatGpu') === '1' && navigator.gpu;
         try { tfMod.env.backends.onnx.wasm.numThreads = self.crossOriginIsolated ? Math.min(2, navigator.hardwareConcurrency || 2) : 1; } catch (e) {}   // fewer threads = less RAM
         const pcb = p => { if (p && p.status === 'progress' && p.file) say('Downloading ' + p.file.split('/').pop() + ' ' + Math.round(p.progress || 0) + '%'); };
@@ -3269,14 +3437,22 @@
     function fallbackReply(text) {
       if (MOODS.find(x => x[0].test(text))) { add('bot', pick(["That sounds hard. I'm only a little ball, but I can find some music for it.", "I'm sorry it feels like that. Want some music to go with it?", 'Thanks for telling me. Music might help a little.'])); moodChip(text); return; }
       add('bot', "I'm not sure what to do with that. I can play music by mood, make playlists, tag, split, get lyrics and control the player. Say \u201chelp\u201d for the list.");
-      actions([['Turn on chat AI (~150 MB)', (b, d) => { d.remove(); setBrain(true); dlOk = true; send(text, true); }], ['No thanks', (b, d) => d.remove()]]);
+      actions([['Turn on chat AI', (b, d) => { d.remove(); setBrain(true); dlOk = true; send(text, true); }], ['No thanks', (b, d) => d.remove()]]);
     }
     async function freeChat() {
       if (gen) { try { await gen.dispose(); } catch (e) {} gen = null; }
-      if (NATIVE) { try { await NP.remove({ id: LLM_ID }); } catch (e) {} }
+      if (NATIVE) { for (const m of Object.values(CHAT_MODELS)) { try { await NP.remove({ id: m.lid }); } catch (e) {} } }
       lsSet('ppvChatDl', '0');
       const ks = await caches.keys();
-      for (const k of ks) if (/transformers/i.test(k)) { const c = await caches.open(k); for (const r of await c.keys()) if (/SmolLM2/i.test(r.url)) await c.delete(r); }
+      for (const k of ks) if (/transformers/i.test(k)) { const c = await caches.open(k); for (const r of await c.keys()) if (/SmolLM2|Qwen2\.5-0\.5B|Llama-3\.2-1B/i.test(r.url)) await c.delete(r); }
+    }
+    // Switch the chat model: drop the loaded one, and ask for the new download the next time Bloop chats.
+    async function setChatModel(k) {
+      if (!CHAT_MODELS[k]) return;
+      try { localStorage.setItem('ppvChatModel', k); } catch (e) {}
+      CHAT_MODEL = CHAT_MODELS[k].id; llmNativeFailed = false; dlOk = false;
+      await unloadModel();
+      lsSet('ppvChatDl', '0');
     }
     // AGENT START
     // ---------- Agent: Bloop does things when asked ----------
@@ -5775,7 +5951,7 @@
       if (!brainOn()) { fallbackReply(text); return; }
       if (heavyBusy()) { add('bot', "I'm busy with a heavy job (split, lyrics or tagging), so I'm staying out of memory until it's done. Commands still work, and I can chat after."); return; }
       if (!gen && !dlOk && lsGet('ppvChatDl') !== '1') {
-        add('bot', "To chat about anything else I need to download my brain first: about 150 MB, one time. Wi-Fi is best.");
+        add('bot', "To chat about anything else I need to download my brain first: about " + CHAT_MODELS[chatKey()].mb + " MB, one time. Wi-Fi is best.");
         actions([['Download and chat', (b, d) => { d.remove(); dlOk = true; send(text, true); }], ['Not now', (b, d) => d.remove()]]);
         return;
       }
@@ -5799,7 +5975,7 @@
     return {
       react,
       voice: ppVoiceApi,
-      chat: { isOn: () => chatOn, setOn: setChatOn, free: freeChat, brainOn, setBrain, memory: { get: memN, set: setMem, max: MEM_MAX } },
+      chat: { isOn: () => chatOn, setOn: setChatOn, free: freeChat, setModel: setChatModel, brainOn, setBrain, memory: { get: memN, set: setMem, max: MEM_MAX } },
       start() { key = ''; set('start', blLine('start', L.start), 900); },
       opened() {
         if (greeted || !on) return; greeted = true;
@@ -5861,7 +6037,7 @@
     bc.onchange = () => { try { localStorage.setItem('ppvBlBubbles', bc.checked ? '1' : '0'); } catch (e) {} if (!bc.checked) { const f = document.getElementById('ppv-mfloat'), r = document.getElementById('bl-react'); f && (f.style.display = 'none'); r && r.classList.remove('show'); } };
     p.insertAdjacentHTML('beforeend', '<label class="ppv-c" style="display:block;margin-top:8px"><input type="checkbox" id="ppv-chat-on"> Bloop assistant (does things in the app, no AI download)</label>' +
       '<div class="ppv-note">Adds a Bloop button. He can play music by mood, make mood and smart playlists, tag, split, get lyrics and control the player (volume, seek, speed, EQ, repeat\u2026). That all runs from the tagger and fixed rules, so it needs no chat AI.</div>' +
-      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-brain-on"> Chat brain: talk about anything with a tiny AI (optional, ~150 MB download)</label>' +
+      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-brain-on"> Chat brain: talk about anything with a tiny AI (optional, one-time download)</label>' +
       '<div class="ppv-note">Off: Bloop only does tasks and answers app questions. On: he can also chat. It is taken out of memory whenever he does a task. It is a tiny model: it can be wrong, and it is not a counselor.</div>' +
       '<label class="ppv-c" style="display:block">Bloop\'s memory: <b id="ppv-mem-val"></b><input type="range" id="ppv-mem" min="0" max="8" step="1" style="width:100%;display:block"></label>' +
       '<div class="ppv-note">How many of your recent messages and his replies he remembers while chatting. 0 means he forgets each message right away. Higher is more context, but slower and uses more RAM. Tasks and commands never need memory.</div>' +
@@ -5871,6 +6047,10 @@
     { const co = p.querySelector('#ppv-chat-on'), cg = p.querySelector('#ppv-chatgpu'), cl = p.querySelector('#ppv-chatgpul');
       co.checked = mas.chat.isOn(); co.onchange = () => mas.chat.setOn(co.checked);
       const cbr = p.querySelector('#ppv-brain-on'); cbr.checked = mas.chat.brainOn(); cbr.onchange = () => mas.chat.setBrain(cbr.checked);
+      cbr.closest('label').insertAdjacentHTML('afterend', '<label class="ppv-c" style="display:block">Chat model: <select id="ppv-chat-model" style="width:100%;display:block"></select></label>');
+      const cmod = p.querySelector('#ppv-chat-model');
+      cmod.innerHTML = Object.keys(CHAT_MODELS).map(k => '<option value="' + k + '">' + CHAT_MODELS[k].label + '</option>').join('');
+      cmod.value = chatKey(); cmod.onchange = () => mas.chat.setModel(cmod.value);
       const ms = p.querySelector('#ppv-mem'), mv = p.querySelector('#ppv-mem-val'), memTxt = n => n === 0 ? 'none' : n + (n === 1 ? ' exchange' : ' exchanges');
       ms.value = mas.chat.memory.get(); mv.textContent = memTxt(+ms.value);
       ms.oninput = () => { const n = mas.chat.memory.set(ms.value); mv.textContent = memTxt(n); };
