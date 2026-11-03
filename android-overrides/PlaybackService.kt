@@ -15,7 +15,6 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
-import androidx.media3.extractor.mp3.Mp3Extractor
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
@@ -76,11 +75,13 @@ class PlaybackService : MediaLibraryService() {
         renderers.setEnableDecoderFallback(true)
         renderers.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
 
-        // MP3s without a seek table can't be seeked, and ExoPlayer then drops you back to the start.
-        // Index seeking and constant-bitrate seeking let MP3s land where you asked, the way video does.
+        // MP3/AAC/AMR files without a seek table: fall back to constant-bitrate seeking so they still get
+        // a duration and a working seek bar. Do NOT force Mp3Extractor.FLAG_ENABLE_INDEX_SEEKING here:
+        // it replaces the Xing/VBRI/CBR seeker for every MP3 with an index that only knows the parts
+        // already read, so duration stays unknown (0:00 / 0:00) and seeks fall back to the start.
         val extractors = DefaultExtractorsFactory()
-            .setMp3ExtractorFlags(Mp3Extractor.FLAG_ENABLE_INDEX_SEEKING)
             .setConstantBitrateSeekingEnabled(true)
+            .setConstantBitrateSeekingAlwaysEnabled(true)
         player = ExoPlayer.Builder(this, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(this, extractors))
             .setHandleAudioBecomingNoisy(true)
@@ -124,8 +125,8 @@ class PlaybackService : MediaLibraryService() {
     private fun prefs() = getSharedPreferences("pp_resume", MODE_PRIVATE)
     private fun saveResume() {
         val it = player.currentMediaItem ?: return
-        val uri = it.localConfiguration?.uri?.toString() ?: return
         val md = it.mediaMetadata
+        val uri = md.extras?.getString("orig") ?: it.localConfiguration?.uri?.toString() ?: return
         prefs().edit().putString("id", it.mediaId).putString("uri", uri)
             .putString("title", md.title?.toString()).putString("artist", md.artist?.toString())
             .putLong("pos", player.currentPosition.coerceAtLeast(0)).apply()

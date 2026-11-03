@@ -3,7 +3,17 @@ package com.pressplay.media
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.content.Context
+import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Bundle
+import android.system.ErrnoException
+import android.system.Os
+import android.system.OsConstants
+import java.io.File
+import java.io.IOException
+import java.security.MessageDigest
+import java.util.concurrent.Executors
 import android.os.Build
 import android.view.PixelCopy
 import android.view.SurfaceView
@@ -55,9 +65,18 @@ class NativePlayerPlugin : Plugin() {
     private val freq = ByteArray(512)
     private val wave = ByteArray(512)
 
+    // Source handling. The player is only ever handed a source that is verified seekable with a known
+    // length (see SourceResolver); the duration is probed independently so the UI never depends on
+    // what an extractor happens to report. [loadGen]/[nextGen] discard results of superseded loads.
+    private val bg = Executors.newCachedThreadPool()
+    private var loadGen = 0
+    private var nextGen = 0
+    private var srcOrig: String? = null            // the uri the web app asked for (what JS compares against)
+    @Volatile private var probedDurMs = -1L
+
     override fun load() { instance = this }
     fun emitPip(on: Boolean) { notifyListeners("pip", JSObject().put("on", on)) }
-    override fun handleOnDestroy() { main.removeCallbacksAndMessages(null); instance = null }
+    override fun handleOnDestroy() { main.removeCallbacksAndMessages(null); bg.shutdownNow(); instance = null }
 
     // ---------- plumbing ----------
     private fun withSvc(call: PluginCall?, block: (PlaybackService) -> Unit) {
@@ -75,6 +94,22 @@ class NativePlayerPlugin : Plugin() {
         MainActivity.playerView?.player = s.player
     }
 
+    /** ExoPlayer's duration, or the independently probed one when the extractor could not tell. */
+    private fun durMs(p: Player): Long = if (p.duration != C.TIME_UNSET) p.duration else probedDurMs
+
+    /** The uri the web app knows this item by (the playable uri may be a verified local copy). */
+    private fun origOf(item: MediaItem?): String? =
+        item?.mediaMetadata?.extras?.getString("orig") ?: item?.localConfiguration?.uri?.toString()
+
+    private fun probeAsync(orig: String?) {
+        probedDurMs = -1L
+        if (orig == null) return
+        bg.execute {
+            val d = SourceResolver.probeDurationMs(context, orig)
+            if (srcOrig == orig) probedDurMs = d
+        }
+    }
+
     private fun snapshot(why: String): JSObject {
         val p = svc?.player
         val o = JSObject()
@@ -87,9 +122,9 @@ class NativePlayerPlugin : Plugin() {
             Player.STATE_READY -> "ready"; else -> "ended"
         })
         o.put("posMs", p.currentPosition)
-        o.put("durMs", if (p.duration == C.TIME_UNSET) -1L else p.duration)
+        o.put("durMs", durMs(p))
         o.put("rate", p.playbackParameters.speed.toDouble())
-        o.put("uri", p.currentMediaItem?.localConfiguration?.uri?.toString())
+        o.put("uri", origOf(p.currentMediaItem))
         val vs = p.videoSize
         o.put("vw", vs.width); o.put("vh", vs.height)
         return o
@@ -112,6 +147,7 @@ class NativePlayerPlugin : Plugin() {
                 val u = item.localConfiguration?.uri?.toString()
                 if (u != null && u != currentItem?.localConfiguration?.uri?.toString()) {
                     currentItem = item; nextUri = null
+                    srcOrig = origOf(item); probeAsync(srcOrig)
                     kind = if (item.mediaMetadata.mediaType == MediaMetadata.MEDIA_TYPE_VIDEO) "video" else "audio"
                     main.post { MainActivity.instance?.showVideoLayer(kind == "video") }
                     notifyListeners("external", snapshot("external"))
@@ -123,6 +159,7 @@ class NativePlayerPlugin : Plugin() {
                 if (p.currentMediaItemIndex > 0) p.removeMediaItems(0, p.currentMediaItemIndex)
                 currentItem = p.currentMediaItem
                 nextUri = null
+                srcOrig = origOf(currentItem); probeAsync(srcOrig)
                 notifyListeners("advanced", snapshot("advanced"))
             }
         }
@@ -142,7 +179,7 @@ class NativePlayerPlugin : Plugin() {
             val p = svc?.player
             if (p != null && p.isPlaying) {
                 notifyListeners("time", JSObject().put("posMs", p.currentPosition)
-                    .put("durMs", if (p.duration == C.TIME_UNSET) -1L else p.duration))
+                    .put("durMs", durMs(p)))
                 main.postDelayed(this, 250)
             } else ticking = false
         }
@@ -167,41 +204,84 @@ class NativePlayerPlugin : Plugin() {
     // ---------- transport ----------
     @PluginMethod
     fun loadMedia(call: PluginCall) {
-        val uri = call.getString("uri") ?: return call.reject("uri required")
+        val orig = call.getString("uri") ?: return call.reject("uri required")
         kind = call.getString("kind") ?: "audio"
         val startMs = call.getLong("startMs") ?: 0L
         val autoplay = call.getBoolean("autoplay", false) ?: false
-        withSvc(call) { s ->
-            val item = buildItem(uri, call.data)
-            currentItem = item; nextUri = null
-            s.player.setAudioAttributes(
-                AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
-                    .setContentType(if (kind == "video") C.AUDIO_CONTENT_TYPE_MOVIE else C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
-            s.player.setMediaItem(item, startMs)
-            s.player.prepare()
-            s.player.playWhenReady = autoplay
-            main.post { MainActivity.instance?.showVideoLayer(kind == "video") }
-            call.resolve()
+        val gen = ++loadGen
+        nextGen++                                   // any queued "next" belongs to the previous track
+        srcOrig = orig; probedDurMs = -1L
+        bg.execute {
+            // Off the main thread: verify the source can be seeked (copy it locally if it can't) and probe its length.
+            val play = try { SourceResolver.playable(context, orig) } catch (e: Exception) { orig }
+            val dur = SourceResolver.probeDurationMs(context, play)
+            main.post {
+                if (gen != loadGen) { call.resolve(); return@post }   // a newer load superseded this one
+                withSvc(call) { s ->
+                    val item = buildItem(orig, play, call.data)
+                    currentItem = item; nextUri = null; probedDurMs = dur
+                    s.player.setAudioAttributes(
+                        AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
+                            .setContentType(if (kind == "video") C.AUDIO_CONTENT_TYPE_MOVIE else C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
+                    s.player.setMediaItem(item, startMs)
+                    s.player.prepare()
+                    s.player.playWhenReady = autoplay
+                    MainActivity.instance?.showVideoLayer(kind == "video")
+                    call.resolve()
+                }
+            }
         }
     }
 
-    private fun buildItem(uri: String, d: JSObject): MediaItem {
+    /** [orig] is what the web app asked for; [play] is what ExoPlayer actually opens (same, or a verified local copy). */
+    private fun buildItem(orig: String, play: String, d: JSObject): MediaItem {
         val md = MediaMetadata.Builder()
             .setTitle(d.optString("title", "")).setArtist(d.optString("artist", ""))
             .setAlbumTitle(d.optString("album", ""))
+            .setExtras(Bundle().apply { putString("orig", orig) })
         val art = d.optString("artUri", "")
         if (art.isNotEmpty()) md.setArtworkUri(Uri.parse(art))
         val b64 = d.optString("artBase64", "")
         if (b64.isNotEmpty()) md.setArtworkData(Base64.decode(b64, Base64.DEFAULT), MediaMetadata.PICTURE_TYPE_FRONT_COVER)
         val id = d.optString("id", "")
-        return MediaItem.Builder().setMediaId(if (id.isNotEmpty()) id else uri).setUri(Uri.parse(uri)).setMediaMetadata(md.build()).build()
+        return MediaItem.Builder().setMediaId(if (id.isNotEmpty()) id else orig).setUri(Uri.parse(play)).setMediaMetadata(md.build()).build()
     }
 
     @PluginMethod fun play(call: PluginCall) = withSvc(call) { it.player.play(); call.resolve() }
     @PluginMethod fun pause(call: PluginCall) = withSvc(call) { it.player.pause(); call.resolve() }
     @PluginMethod fun seek(call: PluginCall) {
-        val ms = call.getLong("ms") ?: 0L
-        withSvc(call) { it.player.seekTo(ms.coerceAtLeast(0)); call.resolve() }
+        val ms = (call.getLong("ms") ?: 0L).coerceAtLeast(0)
+        withSvc(call) { s ->
+            val p = s.player
+            if (ms > 1500 && p.playbackState == Player.STATE_READY && !p.isCurrentMediaItemSeekable) recoverSeek(s, ms)
+            else p.seekTo(ms)
+            call.resolve()
+        }
+    }
+
+    /**
+     * The source turned out not to be seekable (ExoPlayer would silently restart it from 0). Make a local copy,
+     * which always is, and continue from the requested position. The queued "next" item is dropped; JS re-queues it.
+     */
+    private fun recoverSeek(s: PlaybackService, ms: Long) {
+        val orig = srcOrig
+        val cur = s.player.currentMediaItem
+        if (orig == null || cur == null) { s.player.seekTo(ms); return }
+        val gen = loadGen
+        val resume = s.player.playWhenReady
+        bg.execute {
+            val play = try { SourceResolver.localCopy(context, orig) } catch (e: Exception) { null }
+            main.post {
+                val p = svc?.player ?: return@post
+                if (gen != loadGen) return@post
+                if (play == null) { p.seekTo(ms); return@post }
+                val item = cur.buildUpon().setUri(Uri.parse(play)).build()
+                currentItem = item; nextUri = null
+                p.setMediaItem(item, ms)
+                p.prepare()
+                p.playWhenReady = resume
+            }
+        }
     }
     @PluginMethod fun stop(call: PluginCall) = withSvc(call) {
         it.player.stop(); it.player.clearMediaItems(); videoPlaying = false
@@ -225,23 +305,34 @@ class NativePlayerPlugin : Plugin() {
     /** Queue the item JS will play next so ExoPlayer advances by itself (gapless, works with the screen off). */
     @PluginMethod
     fun setNext(call: PluginCall) {
-        val uri = call.getString("uri")
-        withSvc(call) { s ->
-            val p = s.player
-            if (p.mediaItemCount > 1) p.removeMediaItems(1, p.mediaItemCount)
-            nextUri = null
-            if (!uri.isNullOrEmpty()) { p.addMediaItem(buildItem(uri, call.data)); nextUri = uri }
-            call.resolve()
+        val orig = call.getString("uri")
+        val gen = ++nextGen
+        if (orig.isNullOrEmpty()) { withSvc(call) { s -> clearNext(s); call.resolve() }; return }
+        bg.execute {
+            val play = try { SourceResolver.playable(context, orig) } catch (e: Exception) { orig }
+            main.post {
+                if (gen != nextGen) { call.resolve(); return@post }
+                withSvc(call) { s ->
+                    clearNext(s)
+                    s.player.addMediaItem(buildItem(orig, play, call.data)); nextUri = orig
+                    call.resolve()
+                }
+            }
         }
+    }
+
+    private fun clearNext(s: PlaybackService) {
+        val p = s.player
+        if (p.mediaItemCount > 1) p.removeMediaItems(1, p.mediaItemCount)
+        nextUri = null
     }
 
     /** Refresh title/artist/art on the live notification without restarting playback. */
     @PluginMethod
     fun updateMeta(call: PluginCall) {
         withSvc(call) { s ->
-            val cur = currentItem
-            val uri = cur?.localConfiguration?.uri?.toString()
-            if (uri != null && s.player.mediaItemCount > 0) s.player.replaceMediaItem(0, buildItem(uri, call.data))
+            val play = currentItem?.localConfiguration?.uri?.toString()
+            if (play != null && s.player.mediaItemCount > 0) s.player.replaceMediaItem(0, buildItem(srcOrig ?: play, play, call.data))
             call.resolve()
         }
     }
@@ -383,5 +474,59 @@ class NativePlayerPlugin : Plugin() {
             s.player.trackSelectionParameters = ts.build()
             call.resolve()
         }
+    }
+}
+
+
+/**
+ * Makes sure ExoPlayer is only ever given a source it can seek, and finds a track's duration without
+ * relying on the extractor. A source that cannot be randomly read (a pipe-backed content:// provider) is
+ * copied to the app cache once; local files and normal providers are used as they are.
+ */
+internal object SourceResolver {
+    private fun randomAccess(ctx: Context, u: Uri): Boolean {
+        if (u.scheme != "content") return true      // file paths: fine; http(s): the server decides, see recoverSeek
+        return try {
+            val afd = ctx.contentResolver.openAssetFileDescriptor(u, "r") ?: return false
+            afd.use {
+                try { Os.lseek(it.fileDescriptor, 0L, OsConstants.SEEK_CUR); true }
+                catch (e: ErrnoException) { false }      // ESPIPE: a pipe, cannot seek
+            }
+        } catch (e: Exception) { true }
+    }
+
+    /** [uriStr] itself when it is seekable, otherwise a file:// copy of it. */
+    fun playable(ctx: Context, uriStr: String): String =
+        if (randomAccess(ctx, Uri.parse(uriStr))) uriStr else localCopy(ctx, uriStr)
+
+    private fun hash(s: String) = MessageDigest.getInstance("SHA-1").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
+
+    fun localCopy(ctx: Context, uriStr: String): String {
+        val u = Uri.parse(uriStr)
+        val dir = File(ctx.cacheDir, "pp-seekable").apply { mkdirs() }
+        val ext = (u.lastPathSegment ?: "").substringAfterLast('.', "").lowercase()
+            .takeIf { it.length in 1..5 && it.all { c -> c.isLetterOrDigit() } } ?: "bin"
+        val out = File(dir, hash(uriStr) + "." + ext)
+        if (out.exists() && out.length() > 0) { out.setLastModified(System.currentTimeMillis()); return Uri.fromFile(out).toString() }
+        val tmp = File(dir, out.name + "." + System.nanoTime() + ".part")
+        val input = (if (u.scheme == "http" || u.scheme == "https") java.net.URL(uriStr).openStream()
+                     else ctx.contentResolver.openInputStream(u)) ?: throw IOException("cannot open $uriStr")
+        try {
+            input.use { i -> tmp.outputStream().use { o -> i.copyTo(o, 64 * 1024) } }
+            if (!tmp.renameTo(out) && !out.exists()) throw IOException("cannot store copy")
+        } finally { tmp.delete() }
+        // keep the cache small: the newest few copies cover the current and queued tracks
+        dir.listFiles()?.filter { !it.name.endsWith(".part") }?.sortedByDescending { it.lastModified() }?.drop(6)?.forEach { it.delete() }
+        return Uri.fromFile(out).toString()
+    }
+
+    /** Duration from the platform's own parser; -1 when it cannot tell. */
+    fun probeDurationMs(ctx: Context, uriStr: String): Long {
+        val r = MediaMetadataRetriever()
+        return try {
+            val u = Uri.parse(uriStr)
+            if (u.scheme == "http" || u.scheme == "https") r.setDataSource(uriStr, HashMap<String, String>()) else r.setDataSource(ctx, u)
+            r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: -1L
+        } catch (e: Exception) { -1L } finally { try { r.release() } catch (e: Exception) {} }
     }
 }
