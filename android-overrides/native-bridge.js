@@ -57,22 +57,6 @@
     if (S.durMs >= 0 && t > S.durMs) t = S.durMs;
     return Math.max(0, t) / 1000;
   }
-  // A seek only counts as done once the native player is near the target. Early reports (often 0 right after a seek) are ignored.
-  function seekLanded(S, posMs) { return Math.abs((posMs || 0) - (S.seekTarget || 0)) < 2000; }
-  function confirmSeek(S) {
-    var tries = 0;
-    (function step() {
-      if (!S.seeking) return;
-      Player.getState().then(function (s) {
-        if (!S.seeking) return;
-        if (seekLanded(S, s.posMs)) {
-          S.seeking = false; clearTimeout(S.seekTimer);
-          S.base = s.posMs; S.baseAt = now();
-          emit(S, 'seeked'); emit(S, 'timeupdate');
-        } else if (++tries < 20) setTimeout(step, 200);
-      }).catch(function () {});
-    })();
-  }
   function call(fn) { try { var p = fn(); if (p && p.catch) p.catch(function () {}); return p; } catch (e) { return Promise.resolve(); } }
 
   // ---------- media-element facade ----------
@@ -97,11 +81,11 @@
     };
     S.seek = function (sec) {
       if (!isFinite(sec)) return;
-      S.seeking = true; S.seekTarget = Math.max(0, sec * 1000); S.base = S.seekTarget; S.baseAt = now(); S.ended = false;
+      S.seeking = true; S.base = Math.max(0, sec * 1000); S.baseAt = now(); S.ended = false;
       emit(S, 'seeking');
       clearTimeout(S.seekTimer);
-      S.seekTimer = setTimeout(function () { if (S.seeking) { S.seeking = false; emit(S, 'seeked'); emit(S, 'timeupdate'); } }, 8000);
-      S.after(function () { return Player.seek({ ms: Math.round(sec * 1000) }); }).then(function () { confirmSeek(S); });
+      S.seekTimer = setTimeout(function () { if (S.seeking) { S.seeking = false; emit(S, 'seeked'); emit(S, 'timeupdate'); } }, 1500);
+      S.after(function () { return Player.seek({ ms: Math.round(sec * 1000) }); });
     };
     S.applyRate = function () { S.after(function () { return Player.setRate({ rate: S.rate, preservePitch: S.preservePitch }); }); };
     S.applyVol = function () { S.after(function () { return Player.setVolume({ volume: S.muted ? 0 : S.vol }); }); };
@@ -317,8 +301,7 @@
     var wasPwr = S.pwr, wasPlaying = S.playing;
     if (!recentLocal) S.pwr = !!s.playWhenReady;
     S.playing = !!s.playing; S.state = s.state;
-    // While a seek is pending, keep the target the user chose. Snapshots from before the seek finished would move the bar back.
-    if (!S.seeking) { S.base = s.posMs || 0; S.baseAt = now(); }
+    S.base = s.posMs || 0; S.baseAt = now();
     S.durMs = s.durMs >= 0 ? s.durMs : NaN;
     if (s.rate) S.rate = s.rate;
     if (s.vw) { S.vw = s.vw; S.vh = s.vh; }
@@ -336,7 +319,7 @@
       if (!S.pwr && wasPwr && !S.ended) emit(S, 'pause');     // paused from the notification / headset / audio focus loss
       if (S.pwr && !wasPwr) emit(S, 'play');                  // started from outside the page
     }
-    if (s.why === 'seeked' && S.seeking && seekLanded(S, s.posMs)) { S.seeking = false; clearTimeout(S.seekTimer); S.base = s.posMs; S.baseAt = now(); emit(S, 'seeked'); emit(S, 'timeupdate'); }
+    if (s.why === 'seeked' && S.seeking) { S.seeking = false; clearTimeout(S.seekTimer); emit(S, 'seeked'); emit(S, 'timeupdate'); }
     if (s.why === 'rate') emit(S, 'ratechange');
     if (s.why === 'size') emit(S, 'resize');
     syncViz();
