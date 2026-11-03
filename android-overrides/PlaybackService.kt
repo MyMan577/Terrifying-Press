@@ -76,8 +76,8 @@ class PlaybackService : MediaLibraryService() {
         renderers.setEnableDecoderFallback(true)
         renderers.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
 
-        // MP3s without a seek table (most of them) can't be seeked exactly by default, and ExoPlayer falls back to the start.
-        // Index seeking and constant-bitrate seeking let them land where you asked, like video does.
+        // MP3s without a seek table can't be seeked, and ExoPlayer then drops you back to the start.
+        // Index seeking and constant-bitrate seeking let MP3s land where you asked, the way video does.
         val extractors = DefaultExtractorsFactory()
             .setMp3ExtractorFlags(Mp3Extractor.FLAG_ENABLE_INDEX_SEEKING)
             .setConstantBitrateSeekingEnabled(true)
