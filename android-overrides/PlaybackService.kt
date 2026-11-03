@@ -13,6 +13,9 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.mp3.Mp3Extractor
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
@@ -73,7 +76,13 @@ class PlaybackService : MediaLibraryService() {
         renderers.setEnableDecoderFallback(true)
         renderers.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
 
+        // MP3s without a seek table (most of them) can't be seeked exactly by default, and ExoPlayer falls back to the start.
+        // Index seeking and constant-bitrate seeking let them land where you asked, like video does.
+        val extractors = DefaultExtractorsFactory()
+            .setMp3ExtractorFlags(Mp3Extractor.FLAG_ENABLE_INDEX_SEEKING)
+            .setConstantBitrateSeekingEnabled(true)
         player = ExoPlayer.Builder(this, renderers)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(this, extractors))
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .build()
