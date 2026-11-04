@@ -30,6 +30,15 @@ jobs:
           done
           if [ ! -f www/update-options.js ]; then echo "::warning::www/update-options.js is missing, the page will 404 on it."; fi
 
+      - name: Use the updated native-bridge.js
+        run: |
+          # android-overrides/native-bridge.js is the newer one (adds N.mirror for the web-video media notification).
+          # It must replace www/native-bridge.js BEFORE `cap sync` copies www into the app.
+          if [ -f android-overrides/native-bridge.js ]; then
+            cp android-overrides/native-bridge.js www/native-bridge.js
+            echo "www/native-bridge.js replaced by android-overrides/native-bridge.js"
+          fi
+
       - name: Create the Android project
         run: |
           npm install
@@ -52,7 +61,8 @@ jobs:
 
       - name: Add the native ONNX plugin
         run: |
-          for f in android-overrides/OnnxSeparatorPlugin.java android-overrides/Accel.java android-overrides/StemNative.java android-overrides/SpleeterNative.java android-overrides/KeepAliveService.java; do
+          for f in OnnxSeparatorPlugin Accel StemNative SpleeterNative KeepAliveService SpleeterSeparatorPlugin BackupPlugin EmbedPlugin StoragePlugin Throttle WhisperNative ParakeetNative LlmNative; do
+            f="android-overrides/$f.java"
             if [ ! -f "$f" ]; then echo "::error::Missing file in the repo: $f. Add it at that exact path (folder included) and run again."; exit 1; fi
           done
           PKG_DIR=android/app/src/main/java/com/pressplay/media
@@ -73,7 +83,9 @@ jobs:
       - name: Add the native player layer (Media3 service, GPU filters, library)
         run: |
           if [ ! -f pp-native.zip ]; then echo "::error::pp-native.zip is missing from the repo root."; exit 1; fi
-          if [ ! -f android-overrides/MainActivity.kt ]; then echo "::error::android-overrides/MainActivity.kt is missing."; exit 1; fi
+          for k in MainActivity WebMirrorPlayer; do
+            if [ ! -f "android-overrides/$k.kt" ]; then echo "::error::android-overrides/$k.kt is missing."; exit 1; fi
+          done
           rm -rf /tmp/ppn && mkdir -p /tmp/ppn && unzip -q pp-native.zip -d /tmp/ppn
           SRC=/tmp/ppn/pp-native/android/app/src/main
           APPSRC=android/app/src/main
@@ -85,7 +97,7 @@ jobs:
           cp "$SRC"/java/com/pressplay/media/*.kt "$PKG_DIR"/
           # our fixed/merged files win over the zip
           cp android-overrides/*.kt "$PKG_DIR"/
-          test "$(ls "$PKG_DIR"/*.kt | wc -l)" -eq 8 || { echo "::error::Expected 8 Kotlin files"; ls "$PKG_DIR"; exit 1; }
+          test "$(ls "$PKG_DIR"/*.kt | wc -l)" -eq 9 || { echo "::error::Expected 9 Kotlin files"; ls "$PKG_DIR"; exit 1; }
 
           # Explicit imports for the nested Media3 types used inside PlaybackService's inner class
           python3 - <<'PY2'
