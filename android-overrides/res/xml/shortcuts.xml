@@ -1,1 +1,9 @@
-
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="resume" android:enabled="true" android:shortcutShortLabel="@string/sc_resume" android:shortcutLongLabel="@string/sc_resume_long">
+        <intent android:action="com.pressplay.media.RESUME" android:targetPackage="com.pressplay.media" android:targetClass="com.pressplay.media.MainActivity" />
+    </shortcut>
+    <shortcut android:shortcutId="library" android:enabled="true" android:shortcutShortLabel="@string/sc_library" android:shortcutLongLabel="@string/sc_library_long">
+        <intent android:action="com.pressplay.media.LIBRARY" android:targetPackage="com.pressplay.media" android:targetClass="com.pressplay.media.MainActivity" />
+    </shortcut>
+</shortcuts>
