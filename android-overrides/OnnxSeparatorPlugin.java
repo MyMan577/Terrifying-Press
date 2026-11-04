@@ -493,13 +493,25 @@ public class OnnxSeparatorPlugin extends Plugin {
     }
 
     /** Keeps the process alive and the CPU awake while a split runs (screen off, app in background). */
+    private static boolean keepSplit = false, keepPlay = false;
+
+    /** mode "split" (default) = a stem split is running; mode "play" = background playback without the native player.
+     *  The two are tracked separately and the service only stops when neither wants it, so pausing playback can't kill a split. */
     @PluginMethod
     public void keepAlive(PluginCall call) {
         boolean on = call.getBoolean("on", false);
+        String mode = call.getString("mode", "split");
         try {
-            Intent i = new Intent(getContext(), KeepAliveService.class);
-            if (on) ContextCompat.startForegroundService(getContext(), i);
-            else getContext().stopService(i);
+            synchronized (OnnxSeparatorPlugin.class) {
+                if ("play".equals(mode)) keepPlay = on; else keepSplit = on;
+                Intent i = new Intent(getContext(), KeepAliveService.class);
+                if (keepSplit || keepPlay) {
+                    i.putExtra("mode", keepSplit ? "split" : "play");
+                    ContextCompat.startForegroundService(getContext(), i);
+                } else {
+                    getContext().stopService(i);
+                }
+            }
         } catch (Throwable ignored) { }   // never block a split because the service could not start
         call.resolve();
     }

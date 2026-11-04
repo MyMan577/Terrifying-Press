@@ -53,6 +53,25 @@ class PlaybackService : MediaLibraryService() {
     lateinit var fx: FxAudioProcessor
         private set
     private var session: MediaLibrarySession? = null
+    private var uiPlayer: Player? = null
+    private var mirrorPlayer: WebMirrorPlayer? = null
+
+    /** Main thread. Swaps the session's player for a stand-in that mirrors what the web engine is playing (a video),
+     *  so the notification and its controls exist for it too. [send] carries notification presses back to the page. */
+    fun mirror(send: (String, Long) -> Unit): WebMirrorPlayer {
+        mirrorPlayer?.let { it.send = send; return it }
+        val m = WebMirrorPlayer(Looper.getMainLooper(), send)
+        mirrorPlayer = m
+        session?.player = m
+        return m
+    }
+
+    /** Main thread. Gives the session back to ExoPlayer. */
+    fun clearMirror() {
+        if (mirrorPlayer == null) return
+        mirrorPlayer = null
+        uiPlayer?.let { session?.player = it }
+    }
 
     /** Set while the web UI is alive; notification Next/Previous are forwarded to its playlist logic. */
     @Volatile var onCommand: ((String) -> Unit)? = null
@@ -98,7 +117,9 @@ class PlaybackService : MediaLibraryService() {
             this, 0, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        session = MediaLibrarySession.Builder(this, UiForwardingPlayer(player), LibraryCallback())
+        val ui = UiForwardingPlayer(player)
+        uiPlayer = ui
+        session = MediaLibrarySession.Builder(this, ui, LibraryCallback())
             .setSessionActivity(openApp)
             .build()
         // Media3 only attaches the notification / foreground-service logic to a session once it is added to the
@@ -121,6 +142,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onDestroy() {
         instance = null
+        clearMirror()   // so the session's player is ExoPlayer again when it is released below
         session?.run { player.release(); release() }
         session = null
         super.onDestroy()

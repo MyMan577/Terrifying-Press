@@ -76,7 +76,7 @@ class NativePlayerPlugin : Plugin() {
 
     override fun load() { instance = this }
     fun emitPip(on: Boolean) { notifyListeners("pip", JSObject().put("on", on)) }
-    override fun handleOnDestroy() { main.removeCallbacksAndMessages(null); bg.shutdownNow(); instance = null }
+    override fun handleOnDestroy() { PlaybackService.instance?.clearMirror(); main.removeCallbacksAndMessages(null); bg.shutdownNow(); instance = null }
 
     // ---------- plumbing ----------
     private fun withSvc(call: PluginCall?, block: (PlaybackService) -> Unit) {
@@ -208,6 +208,7 @@ class NativePlayerPlugin : Plugin() {
         kind = call.getString("kind") ?: "audio"
         val startMs = call.data.optLong("startMs", 0L).coerceAtLeast(0)   // PluginCall.getLong ignores JSON ints (returns null), so every value < 2^31 became 0
         val autoplay = call.getBoolean("autoplay", false) ?: false
+        main.post { PlaybackService.instance?.clearMirror() }     // ExoPlayer owns the notification again
         val gen = ++loadGen
         nextGen++                                   // any queued "next" belongs to the previous track
         srcOrig = orig; probedDurMs = -1L
@@ -354,6 +355,32 @@ class NativePlayerPlugin : Plugin() {
             .putLong("pos", call.data.optLong("posMs", 0L).coerceAtLeast(0))
             .apply()
         call.resolve()
+    }
+
+    /**
+     * A video is playing in the web engine (the WebView's <video>), not in ExoPlayer. Show it in the media
+     * notification anyway: the page reports its state here, and notification presses come back as "cmd" events
+     * (play / pause / seek / next / prev). on=false hands the session back to ExoPlayer.
+     */
+    @PluginMethod
+    fun mirror(call: PluginCall) {
+        val on = call.getBoolean("on", false) ?: false
+        if (!on) { main.post { PlaybackService.instance?.clearMirror() }; call.resolve(); return }
+        val d = call.data
+        val id = d.optString("id", "")
+        val uri = d.optString("uri", "").ifEmpty { "pp://web/$id" }
+        val item = buildItem(uri, uri, d)
+        val pos = d.optLong("posMs", 0L).coerceAtLeast(0)
+        val dur = d.optLong("durMs", -1L)
+        val playing = d.optBoolean("playing", false)
+        val rate = d.optDouble("rate", 1.0).toFloat().coerceIn(0.25f, 4f)
+        PlaybackService.whenReady(context) { s ->
+            try {
+                s.mirror { name, p -> notifyListeners("cmd", JSObject().put("name", name).put("posMs", p)) }
+                    .update(item, pos, dur, playing, rate)
+                call.resolve()
+            } catch (e: Exception) { call.reject(e.message ?: "mirror failed") }
+        }
     }
 
     // ---------- effects ----------
