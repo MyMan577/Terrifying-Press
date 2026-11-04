@@ -1,5 +1,7 @@
 package com.pressplay.media
 
+import androidx.media3.session.MediaLibraryService.LibraryParams
+import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
