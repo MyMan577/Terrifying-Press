@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sc_resume">Resume</string>
+    <string name="sc_resume_long">Resume playing</string>
+    <string name="sc_library">Library</string>
+    <string name="sc_library_long">Open library</string>
+</resources>
