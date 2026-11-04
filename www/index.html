@@ -6,8 +6,19 @@
 /* One shared 1 s heartbeat for the small periodic checks, so they wake the CPU together instead of six separate times a second. */
 window.ppEvery = (function(){
   var jobs = [], timer = 0, n = 0;
-  function tick(){ n++; for (var i = 0; i < jobs.length; i++){ if (n % jobs[i].k === 0){ try { jobs[i].fn(); } catch (e) { console.error(e); } } } }
-  return function(fn, ms){ jobs.push({ fn: fn, k: Math.max(1, Math.round(ms / 1000)) }); if (!timer) timer = setInterval(tick, 1000); };
+  /* Parked while the page is hidden AND nothing is playing (window.ppIdleCheck is set once the player exists).
+     Woken by visibilitychange and by ppWake() (called when play state changes), so an idle backgrounded app
+     does not wake the CPU every second. The jobs run one last time before parking, so their off-switches fire. */
+  function idle(){ try { return !!(document.hidden && window.ppIdleCheck && window.ppIdleCheck()); } catch (e) { return false; } }
+  function start(){ if (!timer && jobs.length) timer = setInterval(tick, 1000); }
+  function tick(){
+    n++;
+    for (var i = 0; i < jobs.length; i++){ if (n % jobs[i].k === 0){ try { jobs[i].fn(); } catch (e) { console.error(e); } } }
+    if (timer && idle()){ clearInterval(timer); timer = 0; }
+  }
+  window.ppWake = start;
+  document.addEventListener('visibilitychange', start);
+  return function(fn, ms){ jobs.push({ fn: fn, k: Math.max(1, Math.round(ms / 1000)) }); start(); };
 })();
 
 /* Universal save helper: works in browsers AND inside Android WebView APKs,
@@ -7370,7 +7381,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
 </script>
 <script src="native-bridge.js"></script>
-<script>/* safety net: if native-bridge.js is missing, run exactly as the plain web app */if(!window.PPNative){window.PPNative={available:false,enabled:false,hooks:{},lib:null,wrapMedia:function(e){return e},setSrc:function(e,t){e.src=t.url;return Promise.resolve()},raw:function(e){return e},active:function(){return false},videoActive:function(){return false},decorateAnalyser:function(){},queueNext:function(){},updateMeta:function(){},setFxProvider:function(){},setVideoFilterCss:function(){},boot:function(){return Promise.resolve()},sameUri:function(){return false},expectAdvance:function(){}};}</script>
+<script>/* safety net: if native-bridge.js is missing, run exactly as the plain web app */if(!window.PPNative){window.PPNative={available:false,enabled:false,hooks:{},lib:null,wrapMedia:function(e){return e},setSrc:function(e,t){e.src=t.url;return Promise.resolve()},raw:function(e){return e},active:function(){return false},videoActive:function(){return false},decorateAnalyser:function(){},queueNext:function(){},updateMeta:function(){},setFxProvider:function(){},mirror:function(){},setVideoFilterCss:function(){},boot:function(){return Promise.resolve()},sameUri:function(){return false},expectAdvance:function(){}};}</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
 <script>
 (function(){
@@ -9600,6 +9611,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     let delaySec = 0, lastDrawn = null, lastT = -1;
     let trackFilter = 'none', pumpToken = 0, pumpReader = null;
     let lastFrameWall = 0, stallSent = false;
+    let lastActivity = 0, loopOn = false, stallTimer = 0;
     let fx = 0, fv = 0, fHave = 0; // smoothed frame arrival time (alpha-beta filter)
     let MAX_W = ${VIDEO_DELAY_MIN_BUFFER_WIDTH};
     const HAS_RAF = typeof requestAnimationFrame === 'function';
@@ -9630,6 +9642,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       writeIdx = (kept.length - drop) % n;
     }
     function addFrame(bitmap, t, disp, filter){
+      startLoop();
       if (!ring.length){ bitmap.close(); return; }
       const prev = ring[writeIdx];
       if (prev && prev.bitmap) prev.bitmap.close();
@@ -9651,13 +9664,13 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       const reader = readable.getReader();
       pumpReader = reader;
       fHave = 0;
-      lastFrameWall = performance.now(); stallSent = false;
+      lastFrameWall = performance.now(); stallSent = false; armStall(); startLoop();
       try {
         while (token === pumpToken){
           const r = await reader.read();
           if (r.done){ if (token === pumpToken) postMessage({ type: 'trackdone' }); break; }
           const frame = r.value;
-          lastFrameWall = performance.now(); stallSent = false;
+          lastFrameWall = performance.now(); stallSent = false; armStall();
           if (!ring.length){ frame.close(); continue; }
           const z = performance.timeOrigin + performance.now();
           if (fHave === 0){ fx = z; fv = 0; fHave = 1; }
@@ -9706,20 +9719,32 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       if (!best && !lastDrawn) best = oldest;
       if (best && best !== lastDrawn) draw(best);
     }
+    // The draw loop parks itself once frames have stopped and the delay has run out (the last frame is on screen),
+    // instead of spinning at the display's refresh rate for as long as the page lives. Any new frame restarts it.
     function loop(ts){
       present(ts);
-      requestAnimationFrame(loop);
+      if (performance.now() - lastActivity < delaySec * 1000 + 1500) requestAnimationFrame(loop);
+      else loopOn = false;
+    }
+    function startLoop(){
+      lastActivity = performance.now();
+      if (HAS_RAF && ctx && !loopOn){ loopOn = true; requestAnimationFrame(loop); }
     }
     // Tell the page if the stream goes quiet, so it can restart capture (end of video, loop, new source).
-    setInterval(() => {
-      if (pumpReader && !stallSent && performance.now() - lastFrameWall > 900){ stallSent = true; postMessage({ type: 'stalled' }); }
-    }, 400);
+    // The timer only exists while a stream is attached and hasn't been reported stalled.
+    function armStall(){
+      if (stallTimer) return;
+      stallTimer = setInterval(() => {
+        if (!pumpReader || stallSent){ clearInterval(stallTimer); stallTimer = 0; return; }
+        if (performance.now() - lastFrameWall > 900){ stallSent = true; postMessage({ type: 'stalled' }); }
+      }, 400);
+    }
     onmessage = (e) => {
       const m = e.data;
       if (m.type === 'init'){
         canvas = m.canvas;
         ctx = canvas.getContext('2d', { alpha: false });
-        if (HAS_RAF) requestAnimationFrame(loop);
+        startLoop();
       } else if (m.type === 'capacity'){
         if (m.maxW) MAX_W = m.maxW;
         ensureCapacity(m.n);
@@ -9734,9 +9759,9 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       } else if (m.type === 'untrack'){
         stopPump();
       } else if (m.type === 'delay'){
-        delaySec = m.delaySec;
+        delaySec = m.delaySec; startLoop();
       } else if (m.type === 'filter'){
-        trackFilter = m.filter;
+        trackFilter = m.filter; startLoop();
       } else if (m.type === 'frame'){
         if (!ring.length){ m.bitmap.close(); return; }
         // Media time went backwards or jumped (seek, loop, stall): the
@@ -13344,7 +13369,14 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const want = Math.abs(d) < 0.04 ? playbackSpeed : playbackSpeed * (d > 0 ? 0.97 : 1.03);
     if (Math.abs(videoEl.playbackRate - want) > 0.001) videoEl.playbackRate = want;
   }
-  (function wapPoll(){ setTimeout(() => { syncWebAudioPicture(); wapPoll(); }, (bgAudioActive && bgAudioManual && !document.hidden) ? 250 : 1000); })();
+  // The 250 ms follower only runs while web-audio picture sync is live and visible; otherwise it did nothing but reset a flag.
+  let wapTimer = 0;
+  function wapSchedule(){
+    const want = bgAudioActive && bgAudioManual && !document.hidden;
+    if (want && !wapTimer) wapTimer = setInterval(syncWebAudioPicture, 250);
+    else if (!want && wapTimer){ clearInterval(wapTimer); wapTimer = 0; syncWebAudioPicture(); }
+  }
+  ppEvery(wapSchedule, 1000);
   [bgPlainEl, bgFxEl].forEach(el => ['play', 'pause', 'seeked'].forEach(ev => el.addEventListener(ev, syncWebAudioPicture)));
   document.addEventListener('visibilitychange', () => { if (!document.hidden) syncWebAudioPicture(); });
 
@@ -13485,9 +13517,10 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       const P = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.OnnxSeparator;
       if (!P || !P.keepAlive) return;
       bgKeepOn = on;
-      P.keepAlive({ on }).catch(() => {});
+      P.keepAlive({ on, mode: 'play' }).catch(() => {});   // 'play' is tracked separately from a stem split, so one can't switch the other off
     } catch(e){}
   }
+  window.ppIdleCheck = () => !isPlaying && !bgKeepOn;
 
   function exitBackgroundAudioMode(){
     if (!bgAudioActive) return;
@@ -13791,7 +13824,24 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       });
     } catch(e) { /* seekto not supported in this browser */ }
   }
+  // Videos play in the WebView, which has no media notification of its own. Mirror their state into the native
+  // media session so the notification (and its play/pause/seek/next/prev) exists for videos like it does for audio.
+  function ppMirrorSync(){
+    const P = window.PPNative; if (!P || !P.mirror) return;
+    const t = currentIndex !== -1 ? tracks[currentIndex] : null;
+    if (!t || t.kind !== 'video' || (P.active && P.active())){ P.mirror(null); return; }
+    const m = media();
+    let dur = (m && isFinite(m.duration) && m.duration > 0) ? m.duration : (isFinite(videoEl.duration) ? videoEl.duration : 0);
+    P.mirror({ track: t, playing: !!isPlaying, posMs: Math.round(((m && m.currentTime) || 0) * 1000),
+               durMs: Math.round((dur || 0) * 1000), rate: playbackSpeed || 1 });
+  }
+  let ppMirrorTimer = 0;
+  function ppMirrorSoon(){ clearTimeout(ppMirrorTimer); ppMirrorTimer = setTimeout(() => { try { ppMirrorSync(); } catch(e){} }, 250); }
+  ['loadedmetadata', 'durationchange', 'seeked', 'ratechange'].forEach(ev => videoEl.addEventListener(ev, ppMirrorSoon));
+  [bgPlainEl, bgFxEl].forEach(el => ['seeked', 'ratechange'].forEach(ev => el.addEventListener(ev, ppMirrorSoon)));
+
   function updateMediaSession(){
+    try { ppMirrorSync(); } catch(e){}
     if (!('mediaSession' in navigator) || currentIndex === -1) return;
     const t = tracks[currentIndex];
     if (window.PPNative) PPNative.updateMeta(t);
@@ -16968,6 +17018,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   }
 
   function updatePlayIcon(){
+    if (window.ppWake) ppWake();   // restart the heartbeat if it was parked while hidden and idle
     playBtn.classList.toggle('is-playing', !!isPlaying);
     playBtn.title = isPlaying ? 'Pause' : 'Play';
     playBtn.setAttribute('aria-label', isPlaying ? 'Pause' : 'Play');
@@ -20254,7 +20305,14 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     PPNative.hooks.getBlob = (t) => dbGet(t.dbId);
     PPNative.hooks.toast = (m, k) => showToast(m, k);
     PPNative.hooks.onMigrated = (t) => { saveLibraryMeta(); dbDelete(t.dbId).catch(()=>{}).then(refreshStorageEstimate); };
-    PPNative.hooks.command = (c) => { if (c === 'next') nextBtn.click(); else if (c === 'prev') prevBtn.click(); };
+    PPNative.hooks.command = (c, ev) => {
+      if (c === 'next') nextBtn.click();
+      else if (c === 'prev') prevBtn.click();
+      else if (c === 'play'){ if (!isPlaying) togglePlay(); }      // from the video notification (see ppMirrorSync)
+      else if (c === 'pause'){ if (isPlaying) togglePlay(); }
+      else if (c === 'seek'){ if (ev && ev.posMs != null && currentIndex !== -1){ try { media().currentTime = ev.posMs / 1000; } catch(e){} } }
+      if (c === 'play' || c === 'pause' || c === 'seek') setTimeout(() => { try { ppMirrorSync(); } catch(e){} }, 700);   // confirm the real state back
+    };
     PPNative.hooks.entries = (list, src) => ppAddNative(list, src);
     PPNative.hooks.syncTo = (uri) => {
       const i = tracks.findIndex(t => PPNative.sameUri(t.nativeUri || t.remoteUrl, uri));
