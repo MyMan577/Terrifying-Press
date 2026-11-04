@@ -27,6 +27,16 @@ import java.util.Map;
 final class Accel {
     private static SharedPreferences prefs;
     private static int threadsCache = 0;
+    // Per-split overrides from the page's "Custom" optimization level. Set at the start of a split, cleared when it ends.
+    private static volatile int customThreads = 0;       // 0 = automatic (fast cores only, max MAX_THREADS)
+    private static volatile boolean customSpin = false;  // true = idle pool threads busy-wait (faster, hotter)
+    private static volatile boolean customLean = false;  // true = low-RAM session settings even for small models
+
+    static void setCustom(int threads, boolean spin, boolean lean) {
+        customThreads = Math.max(0, threads); customSpin = spin; customLean = lean;
+    }
+
+    static void clearCustom() { customThreads = 0; customSpin = false; customLean = false; }
     /** Upper limit for inference threads. 4 fast cores finish about as quickly as 6 (the slower mid cores
      *  make the pool wait at every sync point) and draw noticeably less power. Raise to 5 or 6 if you prefer speed. */
     private static final int MAX_THREADS = 4;
@@ -80,6 +90,7 @@ final class Accel {
 
     /** Threads = the fast cores only. Little cores slow the whole pool down. */
     static synchronized int threads() {
+        if (customThreads > 0) return Math.max(1, Math.min(customThreads, Runtime.getRuntime().availableProcessors()));   // the user's pick wins over the automatic limit
         if (threadsCache > 0) return threadsCache;
         int n = Math.max(1, Runtime.getRuntime().availableProcessors());
         long[] fr = new long[n];
@@ -98,7 +109,7 @@ final class Accel {
     }
 
     static OrtSession build(OrtEnvironment env, File f, boolean nnapi) throws Exception {
-        return build(env, f, nnapi, f.length() > 100000000L);
+        return build(env, f, nnapi, customLean || f.length() > 100000000L);
     }
 
     /** lowMem = no extra memory pools or copies of the weights (right for one huge model, wrong for loops that run a session thousands of times). */
@@ -109,7 +120,7 @@ final class Accel {
         try { o.setInterOpNumThreads(1); } catch (Throwable ignored) { }
         // Idle pool threads normally busy-wait for the next op, which burns power for nothing.
         // These models are big convolutions, so sleeping between ops costs almost no speed.
-        try { o.addConfigEntry("session.intra_op.allow_spinning", "0"); } catch (Throwable ignored) { }
+        try { o.addConfigEntry("session.intra_op.allow_spinning", customSpin ? "1" : "0"); } catch (Throwable ignored) { }
         o.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
         if (lowMem) {   // Demucs (316 MB)
             try {

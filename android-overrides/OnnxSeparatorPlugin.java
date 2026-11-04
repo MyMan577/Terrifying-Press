@@ -389,12 +389,15 @@ public class OnnxSeparatorPlugin extends Plugin {
         final boolean tune = call.getBoolean("tune", true);   // false = skip the NNAPI vs CPU timing race
         final int nfft = call.getInt("nfft", 7680), dimF = call.getInt("dimF", 3072);
         final double comp = call.getDouble("comp", 1.021);
+        final int cThreads = call.getInt("threads", 0);        // custom level: 0 = automatic
+        final boolean cSpin = call.getBoolean("spin", false), cLean = call.getBoolean("lean", false);
         final double duty = call.getDouble("duty", 0.0);   // optional fixed extra rest (0.2 = sleep 20% of each chunk's time); thermal easing is always on
         if (kind == null || input == null || stemsJ == null) { call.reject("kind, input and stems are required"); return; }
         new Thread(() -> {
             // Slightly below the UI/audio threads, but NOT the background cgroup (that pins work to the little cores).
             // Set before any session opens so the ONNX Runtime thread pool inherits it.
             try { Process.setThreadPriority(5); } catch (Throwable ignored) { }
+            Accel.setCustom(cThreads, cSpin, cLean);   // before any session opens; cleared in the finally below
             final Throttle th = new Throttle(getContext(), duty);
             final List<Accel.Sess> open = new ArrayList<>();
             final Map<String, File> outs = new LinkedHashMap<>();
@@ -488,6 +491,7 @@ public class OnnxSeparatorPlugin extends Plugin {
                 call.reject(e.getMessage() != null ? e.getMessage() : e.toString());
             } finally {
                 for (Accel.Sess s : open) Accel.close(s);
+                Accel.clearCustom();
             }
         }).start();
     }
