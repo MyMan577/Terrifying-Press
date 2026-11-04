@@ -37,6 +37,14 @@
     { name: 'Medium', info: 'Light + lean runtime memory settings, short pauses between chunks, skips unused stems.', blob: true, lean: true, pause: [80, 150], skip: true, ye: 0, wake: false },
     { name: 'Max', info: 'Medium + longer pauses, UI yields inside heavy loops, keeps the screen awake. Slowest, safest.', blob: true, lean: true, pause: [250, 400], skip: true, ye: 64, wake: true }
   ];
+  // Custom level (option 4): the person picks each setting. Stored as JSON under ppvCustom.
+  const CUSTOM_DEFAULT = { threads: 0, rest: 0, lean: false, skip: true, smooth: false, wake: false, blob: false, spin: false };
+  const customLoad = () => { try { return Object.assign({}, CUSTOM_DEFAULT, JSON.parse(localStorage.getItem('ppvCustom') || '{}')); } catch (e) { return Object.assign({}, CUSTOM_DEFAULT); } };
+  const customLevel = () => {
+    const c = customLoad(), d = Math.max(0, Math.min(1, (+c.rest || 0) / 100));     // rest = % of each chunk's working time spent idle
+    return { name: 'Custom', custom: true, info: 'Your own mix. Pick each setting below.', blob: !!c.blob, lean: !!c.lean, skip: !!c.skip, ye: c.smooth ? 64 : 0, wake: !!c.wake,
+      threads: Math.max(0, +c.threads || 0), spin: !!c.spin, duty: d, pause: [Math.round(500 * d), Math.round(800 * d)] };   // native sleeps via duty, the web path via the pause values (ms)
+  };
 
   // ---------- native ONNX bridge (Android app only; the web version is unchanged) ----------
   const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
@@ -656,7 +664,7 @@
       throw new Error('The downloaded model "' + key + '" was not a valid ONNX file (' + u8.length + ' bytes). I deleted it: press Split again to re-download.');
     }
     ort.env.wasm.wasmPaths = ORT;
-    const threads = !lv && self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;
+    const threads = lv && lv.custom ? (self.crossOriginIsolated && lv.threads ? Math.min(lv.threads, navigator.hardwareConcurrency || lv.threads) : 1) : !lv && self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;   // custom: the person's pick (needs Multi-thread on the web)
     const big = u8.length > 100e6;                                       // Demucs (316 MB): keep every extra copy of the weights out of memory
     const base = { graphOptimizationLevel: lv || big || key === 'mdx_voc' ? 'basic' : 'all' };
     if (big) { base.enableCpuMemArena = false; base.enableMemPattern = false; base.executionMode = 'sequential'; }   // MDX: 'all' makes the load slow and memory hungry
@@ -705,7 +713,8 @@
     const h = await NP.addListener('progress', e => { onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
     const accKey = 'ppvAccel_' + id, remembered = ls0(accKey);
     const useNn = opts.nnapi !== false && !/^demucs/.test(id) && !cpuOnly.has(id) && remembered !== 'cpu';   // Demucs is always CPU; a model that already lost or gave NaN stays on CPU
-    const base = { tune: false, input: saved.path, stems: wanted, nnapi: useNn, duty: opts.lv ? ({ Light: 0, Medium: 0.2, Max: 0.5 }[opts.lv.name] || 0) : 0 };
+    const base = { tune: false, input: saved.path, stems: wanted, nnapi: useNn, duty: opts.lv ? (opts.lv.custom ? opts.lv.duty : ({ Light: 0, Medium: 0.2, Max: 0.5 }[opts.lv.name] || 0)) : 0,
+      threads: opts.lv && opts.lv.custom ? opts.lv.threads : 0, spin: !!(opts.lv && opts.lv.custom && opts.lv.spin), lean: !!(opts.lv && opts.lv.custom && opts.lv.lean) };
     let out;
     try {
       status('Loading models…');
@@ -1431,17 +1440,23 @@
   const srtT = s => { const ms = Math.round(s * 1000); return pad2(Math.floor(ms / 3600000)) + ':' + pad2(Math.floor(ms / 60000) % 60) + ':' + pad2(Math.floor(ms / 1000) % 60) + ',' + String(ms % 1000).padStart(3, '0'); };
   const toSrt = cues => cues.map((c, i) => (i + 1) + '\n' + srtT(c.start) + ' --> ' + srtT(c.end) + '\n' + c.text + '\n').join('\n');
   // Whisper invents text over silence and music. Drop the usual junk and runs of the same line.
-  function cleanCues(raw, dur) {
+  function cleanCues(raw, dur, xx) {
     const out = [];
     for (const c of raw) {
       let t = String(c.text || '').replace(/[♪♫]+/g, ' ').replace(/\[[^\]]*(music|silence|applause|laughter)[^\]]*\]|\([^)]*(music|silence|applause|laughter)[^)]*\)/gi, ' ').replace(/\s+/g, ' ').trim();
       if (t.length < 2 || /^(thanks for watching|thank you\.?$|subtitles by|subtitle by|amara\.org|please subscribe)/i.test(t)) continue;
       out.push({ start: c.start, end: c.end, text: t });
     }
-    const res = []; let run = 0;
+    // A line sung 3+ times in a row is real in a lot of songs ("hey, hey, hey"). It is only dropped when it looks like Whisper looping over
+    // silence: the audio under it is quiet, the lines overlap in time, or the run is very long.
+    const res = [], ref = xx ? rpRef(xx) : 0; let run = 0;
     for (let i = 0; i < out.length; i++) {
       run = i && out[i].text.toLowerCase() === out[i - 1].text.toLowerCase() ? run + 1 : 1;
-      if (run >= 3) continue;
+      if (run >= 3) {
+        const c = out[i], pv = out[i - 1], e = c.end > c.start ? c.end : c.start + 3, pe = pv.end > pv.start ? pv.end : pv.start + 3;
+        const sung = xx && ref > 0 ? rpRms(xx, c.start, e) >= ref * 0.2 : e - c.start >= 0.4;
+        if (!(run <= 10 && c.start >= pe - 0.15 && sung)) continue;
+      }
       res.push(out[i]);
     }
     res.forEach((c, i) => { const nx = res[i + 1]; if (!(c.end > c.start)) c.end = nx ? Math.min(nx.start, c.start + 6) : c.start + 3; if (dur) c.end = Math.min(c.end, dur); });
@@ -1629,6 +1644,153 @@
     return pkCues(words);
   }
 
+  // ---------- Repeat tracker: finds lines that were sung more than once, votes on the wording, aligns known lyrics ----------
+  const rpNorm = s => String(s).toLowerCase().replace(/[’‘`]/g, "'").replace(/[^a-z0-9\u00c0-\uffff' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const rpLev = (a, b) => {
+    if (a === b) return 0; const n = a.length, m = b.length; if (!n) return m; if (!m) return n;
+    let p = new Array(m + 1), c = new Array(m + 1); for (let j = 0; j <= m; j++) p[j] = j;
+    for (let i = 1; i <= n; i++) { c[0] = i; for (let j = 1; j <= m; j++) c[j] = Math.min(p[j] + 1, c[j - 1] + 1, p[j - 1] + (a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1)); const t = p; p = c; c = t; }
+    return p[m];
+  };
+  const rpSim = (a, b) => { a = rpNorm(a); b = rpNorm(b); const L = Math.max(a.length, b.length); return L ? 1 - rpLev(a, b) / L : 1; };
+  // small speech features (12 MFCC-like numbers every 40 ms) so two sung lines can be compared by sound, not only by the words Whisper guessed
+  let rpFB = null;
+  const rpInit = () => {
+    if (rpFB) return rpFB;
+    const NF = 512, NM = 24, sr = 16000, mel = f => 2595 * Math.log10(1 + f / 700), imel = m => 700 * (Math.pow(10, m / 2595) - 1), lo = mel(80), hi = mel(7600), pts = [];
+    for (let i = 0; i < NM + 2; i++) pts.push(Math.floor((NF + 1) * imel(lo + (hi - lo) * i / (NM + 1)) / sr));
+    const fb = []; for (let m = 1; m <= NM; m++) { const f = new Float32Array(NF / 2 + 1); for (let k = pts[m - 1]; k < pts[m]; k++) f[k] = (k - pts[m - 1]) / Math.max(1, pts[m] - pts[m - 1]); for (let k = pts[m]; k < pts[m + 1]; k++) f[k] = (pts[m + 1] - k) / Math.max(1, pts[m + 1] - pts[m]); fb.push(f); }
+    const win = new Float32Array(400); for (let i = 0; i < 400; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / 399);
+    const dct = []; for (let c = 1; c <= 12; c++) { const r = new Float32Array(NM); for (let m = 0; m < NM; m++) r[m] = Math.cos(Math.PI * c * (m + 0.5) / NM); dct.push(r); }
+    const cos = new Float32Array(NF / 2), sin = new Float32Array(NF / 2); for (let i = 0; i < NF / 2; i++) { cos[i] = Math.cos(2 * Math.PI * i / NF); sin[i] = -Math.sin(2 * Math.PI * i / NF); }
+    const rev = new Uint16Array(NF); for (let i = 0; i < NF; i++) { let r = 0, v = i; for (let b = 0; b < 9; b++) { r = (r << 1) | (v & 1); v >>= 1; } rev[i] = r; }
+    return (rpFB = { NF, NM, fb, win, dct, cos, sin, rev });
+  };
+  const rpFft = (re, im, T) => {
+    const n = T.NF;
+    for (let i = 0; i < n; i++) { const j = T.rev[i]; if (j > i) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+    for (let len = 2; len <= n; len <<= 1) { const h = len >> 1, st = n / len; for (let i = 0; i < n; i += len) for (let k = 0; k < h; k++) { const wr = T.cos[k * st], wi = T.sin[k * st], a = i + k, b = a + h, xr = re[b] * wr - im[b] * wi, xi = re[b] * wi + im[b] * wr; re[b] = re[a] - xr; im[b] = im[a] - xi; re[a] += xr; im[a] += xi; } }
+  };
+  const rpFeat = (x, s, e) => {
+    const T = rpInit(), a = Math.max(0, Math.floor(s * 16000)), b = Math.min(x.length, Math.floor(Math.min(e, s + 8) * 16000)), out = [];
+    const re = new Float32Array(T.NF), im = new Float32Array(T.NF), pw = new Float32Array(T.NF / 2 + 1), me = new Float32Array(T.NM);
+    for (let p = a; p + 400 <= b; p += 640) {
+      re.fill(0); im.fill(0); let pre = 0; for (let i = 0; i < 400; i++) { const v = x[p + i]; re[i] = (v - pre * 0.97) * T.win[i]; pre = v; }
+      rpFft(re, im, T); for (let k = 0; k <= T.NF / 2; k++) pw[k] = re[k] * re[k] + im[k] * im[k];
+      for (let m = 0; m < T.NM; m++) { let sum = 0; const f = T.fb[m]; for (let k = 0; k <= T.NF / 2; k++) sum += f[k] * pw[k]; me[m] = Math.log(sum + 1e-6); }
+      const c = new Float32Array(12); for (let d = 0; d < 12; d++) { let sum = 0; for (let m = 0; m < T.NM; m++) sum += T.dct[d][m] * me[m]; c[d] = sum; } out.push(c);
+    }
+    if (out.length < 5) return null;
+    const mu = new Float32Array(12); out.forEach(c => { for (let d = 0; d < 12; d++) mu[d] += c[d] / out.length; });
+    out.forEach(c => { let n2 = 0; for (let d = 0; d < 12; d++) { c[d] -= mu[d]; n2 += c[d] * c[d]; } n2 = Math.sqrt(n2) || 1; for (let d = 0; d < 12; d++) c[d] /= n2; });
+    return out;
+  };
+  const rpDtw = (A, B) => {
+    const n = A.length, m = B.length, INF = 1e9; let prev = new Float32Array(m + 1).fill(INF), cur = new Float32Array(m + 1); prev[0] = 0;
+    for (let i = 1; i <= n; i++) { cur[0] = INF; const a = A[i - 1]; for (let j = 1; j <= m; j++) { const b = B[j - 1]; let d = 0; for (let k = 0; k < 12; k++) d += a[k] * b[k]; cur[j] = (1 - d) + Math.min(prev[j], cur[j - 1], prev[j - 1]); } const t = prev; prev = cur; cur = t; }
+    return prev[m] / (n + m);
+  };
+  // cues: [{s, e, text}]. Returns groups of cue indexes that are the same line sung again. With audio x (16 kHz mono) it also
+  // links lines that sound alike even when Whisper wrote them differently (the text still has to share a little with the other line).
+  async function rpFind(cues, x) {
+    const n = cues.length, par = Array.from({ length: n }, (_, i) => i);
+    const find = i => { while (par[i] !== i) { par[i] = par[par[i]]; i = par[i]; } return i; }, uni = (a, b) => { a = find(a); b = find(b); if (a !== b) par[b] = a; };
+    const nt = cues.map(c => rpNorm(c.text)), du = cues.map(c => Math.max(0.1, c.e - c.s)), memo = new Map();
+    const S = (i, j) => { const k = i * n + j; let v = memo.get(k); if (v === undefined) { v = 1 - rpLev(nt[i], nt[j]) / Math.max(nt[i].length, nt[j].length, 1); memo.set(k, v); } return v; };
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (nt[i] && nt[j] && Math.abs(nt[i].length - nt[j].length) <= 0.5 * Math.max(nt[i].length, nt[j].length) && S(i, j) >= 0.72) uni(i, j);
+    if (x && n > 2) {
+      const feats = new Array(n), F = i => (feats[i] === undefined ? (feats[i] = rpFeat(x, cues[i].s, cues[i].e)) : feats[i]), okDur = (i, j) => { const r = du[i] / du[j]; return r >= 0.6 && r <= 1.67; };
+      const cand = [], base = [], stride = Math.max(1, Math.floor(n * n / 2 / 70)); let q = 0;
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { if (!okDur(i, j) || !nt[i] || !nt[j]) continue; if ((q++ % stride) === 0) base.push([i, j]); if (find(i) !== find(j) && S(i, j) >= 0.3) cand.push([i, j, S(i, j)]); }
+      cand.sort((a, b) => b[2] - a[2]); if (cand.length > 2500) cand.length = 2500;
+      const dist = async (i, j) => { const a = F(i), b = F(j); return a && b ? rpDtw(a, b) : 9; };
+      const bd = []; for (const [i, j] of base.slice(0, 70)) bd.push(await dist(i, j)); await tick();
+      bd.sort((a, b) => a - b); const med = bd.length ? bd[bd.length >> 1] : 0.5, thr = Math.max(0.12, Math.min(0.45, med * 0.62));   // "much closer than a typical pair of lines"
+      let k = 0; for (const [i, j] of cand) { if (find(i) !== find(j) && (await dist(i, j)) <= thr) uni(i, j); if (++k % 40 === 0) await tick(); }
+    }
+    const g = new Map(); for (let i = 0; i < n; i++) { if (!nt[i]) continue; const r = find(i); if (!g.has(r)) g.set(r, []); g.get(r).push(i); }
+    return [...g.values()].filter(a => a.length >= 2);
+  }
+  // Votes on the best wording for a group. Each member offers its own text plus any alternatives from other passes (alternatives count a little less).
+  const rpVote = ms => {
+    const cand = new Map(), offers = m => [m.text].concat(m.alts || []);
+    ms.forEach(m => offers(m).forEach(t => { const k = rpNorm(t); if (k && !cand.has(k)) cand.set(k, t); }));
+    let best = null;
+    cand.forEach((t, k) => {
+      let sc = 0, sup = 0;
+      ms.forEach(m => { let b = 0; offers(m).forEach((u, ui) => { const v = rpSim(t, u) * (ui ? 0.85 : 1); if (v > b) b = v; }); sc += b; if (rpNorm(m.text) === k) sup++; });
+      if (!best || sc > best.sc + 1e-9 || (Math.abs(sc - best.sc) < 1e-9 && sup > best.sup)) best = { text: t, sc, sup };
+    });
+    return best;
+  };
+  // Lines up known lyrics (array of strings) with timed lines that Whisper heard (src: [{s, e, text}]). Returns start times per lyric line.
+  function rpAlign(src, lines) {
+    const A = [], B = [];
+    src.forEach(r => { const w = rpNorm(r.text).split(' ').filter(Boolean), tot = w.reduce((a, x) => a + x.length + 1, 0) || 1; let acc = 0; w.forEach(x => { A.push({ w: x, t: r.s + (r.e - r.s) * acc / tot }); acc += x.length + 1; }); });
+    lines.forEach((l, li) => rpNorm(l).split(' ').filter(Boolean).forEach(w => B.push({ w, li })));
+    const n = A.length, m = B.length, W = m + 1, H = new Int16Array((n + 1) * W), TR = new Uint8Array((n + 1) * W);
+    if (!n || !m) return { starts: lines.map(() => 0), anchored: lines.map(() => false), ratio: 0 };
+    const ms = (a, b) => a === b ? 2 : (a.length >= 4 && b.length >= 4 && Math.abs(a.length - b.length) <= 2 && rpLev(a, b) <= (a.length >= 7 ? 2 : 1)) ? 1 : -1;
+    for (let i = 1; i <= n; i++) { H[i * W] = -i; TR[i * W] = 1; }
+    for (let j = 1; j <= m; j++) { H[j] = -j; TR[j] = 2; }
+    for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
+      const d = H[(i - 1) * W + j - 1] + ms(A[i - 1].w, B[j - 1].w), u = H[(i - 1) * W + j] - 1, l = H[i * W + j - 1] - 1; let v = d, t = 0;
+      if (u > v) { v = u; t = 1; } if (l > v) { v = l; t = 2; } H[i * W + j] = v; TR[i * W + j] = t;
+    }
+    const T = new Array(m).fill(null); let i = n, j = m, hit = 0;
+    while (i > 0 || j > 0) { const t = TR[i * W + j]; if (i > 0 && j > 0 && t === 0) { if (ms(A[i - 1].w, B[j - 1].w) > 0) { T[j - 1] = A[i - 1].t; hit++; } i--; j--; } else if (i > 0 && (t === 1 || j === 0)) i--; else j--; }
+    const nl = lines.length, first = new Array(nl).fill(-1), cnt = new Array(nl).fill(0); B.forEach((b, k) => { if (first[b.li] < 0) first[b.li] = k; cnt[b.li]++; });
+    const starts = new Array(nl).fill(null), anchored = new Array(nl).fill(false);
+    for (let li = 0; li < nl; li++) { for (let k = 0; k < cnt[li]; k++) { const t = T[first[li] + k]; if (t != null) { starts[li] = Math.max(0, t - k * 0.3); anchored[li] = true; break; } } }
+    const ids = starts.map((s, k) => s != null ? k : -1).filter(k => k >= 0);
+    if (!ids.length) return { starts: lines.map((_, k) => k * 4), anchored, ratio: 0 };
+    const wc = k => Math.max(1, cnt[k]);
+    for (let k = 0; k < nl; k++) {
+      if (starts[k] != null) continue;
+      let p = k - 1; while (p >= 0 && starts[p] == null) p--; let q = k + 1; while (q < nl && starts[q] == null) q++;
+      if (p >= 0 && q < nl) { let tot = 0, up = 0; for (let z = p; z < q; z++) { tot += wc(z); if (z < k) up += wc(z); } starts[k] = starts[p] + (starts[q] - starts[p]) * up / tot; }
+      else if (p >= 0) { let up = 0; for (let z = p; z < k; z++) up += wc(z); starts[k] = starts[p] + up * 0.4; }
+      else { let dn = 0; for (let z = k; z < q; z++) dn += wc(z); starts[k] = Math.max(0, starts[q] - dn * 0.4); }
+    }
+    for (let k = 1; k < nl; k++) if (starts[k] < starts[k - 1] + 0.2) starts[k] = starts[k - 1] + 0.2;
+    return { starts, anchored, ratio: hit / m };
+  }
+  const rpAltsLoad = id => { try { return (JSON.parse(localStorage.getItem('ppvAlts') || '{}')[id]) || []; } catch (e) { return []; } };
+  const rpAltsSave = (id, items) => {
+    try { const all = JSON.parse(localStorage.getItem('ppvAlts') || '{}'), list = items.filter(c => c.alts && c.alts.length).map(c => [Math.round((c.s != null ? c.s : c.start) * 100) / 100, c.alts.slice(0, 3)]); if (list.length) all[id] = list; else delete all[id]; localStorage.setItem('ppvAlts', JSON.stringify(all)); } catch (e) {}
+  };
+  // Merge extra passes into alternatives, find repeated lines, and unify the wording when most repeats agree.
+  async function rpFinish(passes, x) {
+    const main = passes[0].map(c => ({ start: c.start, end: c.end, text: c.text, alts: [] }));
+    for (let k = 1; k < passes.length; k++) for (const m of main) {
+      const part = passes[k].filter(c => { const mid = (c.start + c.end) / 2; return mid >= m.start - 0.3 && mid <= m.end + 0.3; });
+      if (!part.length) continue;
+      const t = part.map(c => c.text).join(' ').replace(/\s+/g, ' ').trim();
+      if (t && rpSim(t, m.text) < 0.97 && !m.alts.some(a => rpSim(a, t) >= 0.97)) m.alts.push(t);
+    }
+    const rep = window.__ppvRep = { fixed: 0, unsure: 0 };
+    try {
+      const groups = await rpFind(main.map(c => ({ s: c.start, e: c.end, text: c.text })), x);
+      for (const ix of groups) {
+        const ms = ix.map(i => main[i]), vs = new Set(ms.map(c => rpNorm(c.text)));
+        if (vs.size < 2 && !ms.some(c => c.alts.length)) continue;
+        const v = rpVote(ms); if (!v) continue;
+        if (vs.size > 1 && ms.length >= 3 && v.sup >= 2 && v.sc / ms.length >= 0.8) { ms.forEach(c => { if (rpNorm(c.text) !== rpNorm(v.text)) { c.alts.unshift(c.text); c.text = v.text; rep.fixed++; } }); }
+        else if (vs.size > 1) rep.unsure++;
+      }
+    } catch (e) { console.warn('repeat check failed', e); }
+    main.forEach(c => { c.alts = c.alts.slice(0, 3); });
+    return main;
+  }
+  const rpRms = (x, s, e) => { const a = Math.max(0, Math.floor(s * 16000)), b = Math.min(x.length, Math.max(a + 1, Math.floor(e * 16000))); let q = 0; for (let i = a; i < b; i++) q += x[i] * x[i]; return Math.sqrt(q / (b - a)); };
+  const rpRef = x => { const F = 8000, n = Math.floor(x.length / F); if (n < 4) return 0; const r = new Float32Array(n); for (let i = 0; i < n; i++) { let s = 0; for (let j = 0; j < F; j++) { const v = x[i * F + j]; s += v * v; } r[i] = Math.sqrt(s / F); } return Array.from(r).sort((u, v) => u - v)[Math.floor(n * 0.9)]; };
+
+  // A song that was already split keeps its stems in the library. Find the vocals one so lyrics can reuse it instead of splitting again.
+  const isVocalsStem = x => !!x && !!x.stem && (/\(\s*vocals?\s*\)\s*$/i.test(x.title || '') || (typeof x.stem === 'string' && /vocal/i.test(x.stem)));
+  const findVocalsStem = (list, t) => {
+    if (!t || t.stem) return null; const id = String(t.dbId), title = String(t.title || '');
+    return (list || []).find(x => isVocalsStem(x) && x.dbId !== t.dbId && ((x.stemOf != null && String(x.stemOf) === id) || (!x.stemOf && x.stemSrc && x.stemSrc === title))) || null;
+  };
   let heavyJob = false;                                               // stem split or Whisper running: two at once runs out of memory
   async function transcribe(t, o, status) {
     if (heavyJob) throw new Error('Another split or transcription is still running. Wait for it to finish.');
@@ -1636,65 +1798,105 @@
     if (NATIVE) NP.keepAlive({ on: true }).catch(() => {});
     try {
       if (o.lv && o.lv.wake && navigator.wakeLock) { try { wl = await navigator.wakeLock.request('screen'); } catch (e) {} }
-      return await transcribeRun(t, o, status);
+      const cues = await transcribeRun(t, o, status);
+      try { rpAltsSave(t.dbId, cues); } catch (e) {}                  // alternative wordings live beside the subtitles, for the editor's Repeats tab
+      return cues.map(c => ({ start: c.start, end: c.end, text: c.text }));
     } finally { if (NATIVE) NP.keepAlive({ on: false }).catch(() => {}); wl && wl.release().catch(() => {}); heavyJob = false; }
   }
   async function transcribeRun(t, o, status) {
     let pipe = null;
     if (o.task === 'translate' && whEn(o.size)) { o = Object.assign({}, o, { size: 'base' }); status('Translating needs the multilingual Base model…'); }
-    let x;
+    let x; window.__ppvSaved = false;
     if (o.clean) {                                                    // pull the vocals out first: far fewer made-up lines on songs
-      await downloadModel(o.model, status, !!(o.lv && o.lv.blob));
-      // In the app the whole separation runs natively (no JavaScript copy of the song, no JavaScript FFTs); elsewhere it runs in the page.
-      const nat = NATIVE && ['spleeter2', 'spleeter4', 'mdx_voc', 'demucs4', 'demucs6'].includes(o.model);
-      status('Decoding audio…'); let pcm = nat ? null : await decode(t.url);
-      const res = await run(o.model, pcm, ['Vocals'], { strength: o.strength, gpu: false, lv: o.lv, quality: 1, gate: 0, track: t, nnapi: NATIVE ? wantNnapi(o.model) : false, pathOnly: nat }, status, f => status('Separating vocals… ' + Math.round(f * 100) + '%'));
-      pcm = null; const v = res.Vocals; status('Reading vocals…');
-      if (v.path) {                                                   // app: decode straight from the file, no extra copies of the WAV in the page
-        try { x = await decodeMono(window.Capacitor.convertFileSrc(v.path), 16000); } finally { NP.deleteFiles({ paths: [v.path] }).catch(() => {}); }
+      const A0 = window.__ppApi, vs = findVocalsStem(A0 && A0.tracks(), t);
+      if (vs || isVocalsStem(t)) {                                    // already split (or this IS the vocals): never split again
+        status(vs ? 'Using the vocals you already split…' : 'This is already a vocals track…'); x = await decodeMono((vs || t).url, 16000);
       } else {
-        const e = v.blob ? v : encode(v), u = URL.createObjectURL(e.blob); try { x = await decodeMono(u, 16000); } finally { URL.revokeObjectURL(u); }
+      const SPM = 'spleeter2';                                        // the music-removal step always uses Spleeter (Fast 2 stems), whatever model is picked for splitting
+      await downloadModel(SPM, status, !!(o.lv && o.lv.blob));
+      // In the app the whole separation runs natively (no JavaScript copy of the song, no JavaScript FFTs); elsewhere it runs in the page.
+      const nat = NATIVE;
+      status('Decoding audio…'); let pcm = nat ? null : await decode(t.url);
+      const res = await run(SPM, pcm, ['Vocals'], { strength: o.strength, gpu: false, lv: o.lv, quality: 1, gate: 0, track: t, nnapi: NATIVE ? wantNnapi(SPM) : false, pathOnly: nat }, status, f => status('Separating vocals… ' + Math.round(f * 100) + '%'));
+      pcm = null; const v = res.Vocals; status('Reading vocals…');
+      let eb = null, eext = v.ext || 'wav';
+      if (v.path) {                                                   // app: the vocals sit in a temp file; read it once so it can be decoded AND kept
+        try { eb = await (await fetch(window.Capacitor.convertFileSrc(v.path))).blob(); } catch (e) { console.warn('Could not read the vocals file', e); }
+        try { if (eb) { const u = URL.createObjectURL(eb); try { x = await decodeMono(u, 16000); } finally { URL.revokeObjectURL(u); } } else x = await decodeMono(window.Capacitor.convertFileSrc(v.path), 16000); }
+        finally { NP.deleteFiles({ paths: [v.path] }).catch(() => {}); }
+      } else {
+        const e = v.blob ? v : encode(v); eb = e.blob; eext = e.ext || eext; const u = URL.createObjectURL(e.blob); try { x = await decodeMono(u, 16000); } finally { URL.revokeObjectURL(u); }
+      }
+      // Keep the vocals as a split track, exactly like a normal split, so the next transcription (or a split) reuses them.
+      if (eb && !t.stem) {
+        try {
+          const mk = ls0('ppvMkPl') === '1';
+          addSplit([new File([eb], t.title + ' (Vocals).' + eext, { type: eb.type || 'audio/wav' })], { srcId: t.dbId, srcTitle: t.title, makePlaylist: mk, showInTab: mk && ls0('ppvPlTab') === '1' });
+          window.__ppvSaved = true; status('Saved the vocals to Split tracks.');
+        } catch (e) { console.warn('Could not save the vocals', e); }
+      }
+      eb = null;
       }
     } else { status('Decoding audio…'); x = await decodeMono(t.url, 16000); }
-    const dur = x.length / 16000, SL = 90, OV = 4, raw = [];
+    const dur = x.length / 16000, acc = Math.max(0, Math.min(2, Math.round(+o.acc || 0)));
     // Only the parts with speech or singing go to Whisper. Each part is cut into 90 s pieces that overlap by 4 s, and a line belongs to the
     // piece it starts in, so nothing is cut at a seam. Between pieces it can rest if the phone is hot.
+    // Accuracy 1/2 decodes the song 2/3 times with the piece boundaries moved, so every line is heard from a different angle. The versions are
+    // compared, the repeated lines (choruses) are voted on, and the other wordings are kept as alternatives for the editor's Repeats tab.
     const regs = speechRegions(x, 16000);
+    window.__ppvRep = null;
     if (whPk(o.size)) {
-      try { if (!NATIVE) throw new Error('Parakeet only runs in the Android app'); return cleanCues(await parakeetNative(x, regs, o, status), dur); }
+      try { if (!NATIVE) throw new Error('Parakeet only runs in the Android app'); return await rpFinish([cleanCues(await parakeetNative(x, regs, o, status), dur, x)], x); }
       catch (e) { console.warn('Parakeet failed', e); status('Parakeet failed: ' + errText(e) + ' Using English Base instead…'); o = Object.assign({}, o, { size: 'base_en' }); }
       finally { if (NATIVE) NP.parakeetUnload().catch(() => {}); }          // give the memory back
     }
-    if (whNativeOn()) {                                                // Android app: native Whisper first
-      try { return cleanCues(await whisperNative(x, regs, o, status), dur); }
-      catch (e) { console.warn('Native Whisper failed, using the web version', e); wNativeFailed = true; status('Native Whisper unavailable, using the web version…'); }
-    }
-    pipe = await getAsr(WH[o.size][0], status);
-    const pieces = [];
-    for (const [ra, rb] of regs) for (let q = ra; q < rb - 0.01; q += SL) pieces.push({ own0: q, own1: Math.min(rb, q + SL), ra, rb });
-    const total = pieces.reduce((n, p) => n + p.own1 - p.own0, 0) || 1; let doneS = 0;
-    for (const p of pieces) {
-      const t0 = performance.now();
-      status('Transcribing… ' + Math.round(doneS / total * 100) + '%'); await tick();
-      const s0 = Math.max(p.ra, p.own0 - OV), s1 = Math.min(p.rb, p.own1 + OV), last = p.own1 >= p.rb - 1e-6;
-      const kw = { return_timestamps: true, chunk_length_s: 30, stride_length_s: 5 };
-      if (!whEn(o.size)) { kw.task = o.task || 'transcribe'; if (o.lang) kw.language = o.lang; }
-      const part = x.subarray(Math.floor(s0 * 16000), Math.min(x.length, Math.ceil(s1 * 16000)));
-      let out;
-      try { out = await pipe(part, kw); }
-      catch (e) {                                                     // the GPU path broke mid-run: finish on the CPU instead of failing
-        if (!/webgpu$/.test(asrId)) throw e;
-        console.warn('Whisper GPU run failed, retrying on the CPU', e); wGpuFailed = true; pipe = await getAsr(WH[o.size][0], status); out = await pipe(part, kw);
+    const decodeOnce = async (xx, rg, oo, st, k) => {
+      const d2 = xx.length / 16000, SL = 90, OV = 4, raw = [];
+      if (whNativeOn()) {                                                // Android app: native Whisper first
+        try { return cleanCues(await whisperNative(xx, rg, oo, st), d2, xx); }
+        catch (e) { console.warn('Native Whisper failed, using the web version', e); wNativeFailed = true; st('Native Whisper unavailable, using the web version…'); }
       }
-      for (const c of (out.chunks || [])) {
-        const a = c.timestamp && c.timestamp[0] != null ? c.timestamp[0] : 0, b = c.timestamp && c.timestamp[1] != null ? c.timestamp[1] : null, st = a + s0;
-        if (st < p.own0 - 1e-3 || (!last && st >= p.own1)) continue;   // that line sits in the overlap and the neighbouring piece owns it
-        raw.push({ start: st, end: b == null ? 0 : b + s0, text: c.text });
+      let pipe = await getAsr(WH[oo.size][0], st);
+      const pieces = [];
+      for (const [ra, rb] of rg) for (let q = ra; q < rb - 0.01; q += SL) pieces.push({ own0: q, own1: Math.min(rb, q + SL), ra, rb });
+      const total = pieces.reduce((n, p) => n + p.own1 - p.own0, 0) || 1; let doneS = 0;
+      for (const p of pieces) {
+        const t0 = performance.now();
+        st('Transcribing… ' + Math.round(doneS / total * 100) + '%'); await tick();
+        const s0 = Math.max(p.ra, p.own0 - OV), s1 = Math.min(p.rb, p.own1 + OV), last = p.own1 >= p.rb - 1e-6;
+        const kw = { return_timestamps: true, chunk_length_s: 30, stride_length_s: 5 };
+        if (acc > 0 && k === 0) kw.num_beams = 4;                       // beam search: weighs several wordings before choosing one (slower)
+        if (acc > 1 && k === 2) { kw.do_sample = true; kw.temperature = 0.3; }   // a slightly different roll of the dice for the third opinion
+        if (!whEn(oo.size)) { kw.task = oo.task || 'transcribe'; if (oo.lang) kw.language = oo.lang; }
+        const part = xx.subarray(Math.floor(s0 * 16000), Math.min(xx.length, Math.ceil(s1 * 16000)));
+        let out;
+        try { out = await pipe(part, kw); }
+        catch (e) {
+          if (kw.num_beams || kw.do_sample) { console.warn('Beam search / sampling failed, using normal decoding', e); delete kw.num_beams; delete kw.do_sample; delete kw.temperature; try { out = await pipe(part, kw); } catch (e2) { e = e2; } }
+          if (!out) {                                                   // the GPU path broke mid-run: finish on the CPU instead of failing
+            if (!/webgpu$/.test(asrId)) throw e;
+            console.warn('Whisper GPU run failed, retrying on the CPU', e); wGpuFailed = true; pipe = await getAsr(WH[oo.size][0], st); out = await pipe(part, kw);
+          }
+        }
+        for (const c of (out.chunks || [])) {
+          const a = c.timestamp && c.timestamp[0] != null ? c.timestamp[0] : 0, b = c.timestamp && c.timestamp[1] != null ? c.timestamp[1] : null, stt = a + s0;
+          if (stt < p.own0 - 1e-3 || (!last && stt >= p.own1)) continue;   // that line sits in the overlap and the neighbouring piece owns it
+          raw.push({ start: stt, end: b == null ? 0 : b + s0, text: c.text });
+        }
+        doneS += p.own1 - p.own0;
+        await ease(performance.now() - t0, 0, 'wh', s1 - s0);
       }
-      doneS += p.own1 - p.own0;
-      await ease(performance.now() - t0, 0, 'wh', s1 - s0);
+      return cleanCues(raw, d2, xx);
+    };
+    const offs = [0, 15, 7].slice(0, 1 + acc), passes = [];
+    for (let k = 0; k < offs.length; k++) {
+      const off = offs[k], xx = off ? x.subarray(Math.floor(off * 16000)) : x, rg = off ? regs.map(r => [Math.max(0, r[0] - off), r[1] - off]).filter(r => r[1] - r[0] > 0.5) : regs;
+      const st = offs.length > 1 ? (m => status('Pass ' + (k + 1) + ' of ' + offs.length + ': ' + m)) : status;
+      let c; try { c = await decodeOnce(xx, rg, o, st, k); } catch (e) { if (!k) throw e; console.warn('Extra pass failed, keeping what we have', e); break; }
+      passes.push(off ? c.map(q => ({ start: q.start + off, end: q.end + off, text: q.text })) : c);
     }
-    return cleanCues(raw, dur);
+    status(passes.length > 1 ? 'Comparing the passes and the repeated lines…' : 'Checking repeated lines…'); await tick();
+    return await rpFinish(passes, x);
   }
 
   // ---------- Panel: library tools + lyrics ----------
@@ -1735,20 +1937,14 @@
       '<select id="ppv-wsize">' + Object.entries(WH).filter(e => whOk(e[0])).map(([k, v]) => '<option value="' + k + '">' + v[1] + '</option>').join('') + '</select>' +
       '<select id="ppv-wlang">' + LANGS.map(l => '<option value="' + l[0] + '">' + l[1] + '</option>').join('') + '</select>' +
       '<select id="ppv-wtask"><option value="transcribe">Write what is said</option><option value="translate">Translate to English</option></select>' +
-      '<label class="ppv-c"><input type="checkbox" id="ppv-wclean"> Remove the music first (on by default for songs, much slower)</label>' +
+      '<select id="ppv-wacc"><option value="0">Accuracy: Standard (1 pass, fastest)</option><option value="1">Accuracy: Careful (2 passes + beam search, ~2x slower)</option><option value="2">Accuracy: Max (3 passes, ~3x slower)</option></select>' +
+      '<div class="ppv-note">Careful and Max listen to the song more than once and vote on repeated lines such as choruses. Other wordings are kept so you can choose in the editor.</div>' +
+      '<label class="ppv-c"><input type="checkbox" id="ppv-wclean"> Remove the music first (uses Spleeter, or the vocals you already split; on by default for songs)</label>' +
       '<label class="ppv-c" id="ppv-wgpu-l"><input type="checkbox" id="ppv-wgpu"> Use the GPU (experimental, much faster if your phone supports it)</label>' +
-      '<div class="ppv-note">Songs get synced lyrics (Lyrics tab), videos get subtitles. Both can be exported as .srt or .lrc from the editor below. The music-removal step uses the model chosen at the top of this panel.</div>' +
+      '<div class="ppv-note">Songs get synced lyrics (Lyrics tab), videos get subtitles. Both can be exported as .srt or .lrc from the editor below. The music-removal step always uses Spleeter. If the song was already split, its saved vocals are reused and nothing is split again.</div>' +
       '<button id="ppv-wgo">Transcribe current track</button><button id="ppv-wsrt" class="ppv-sec" style="display:none">Download .srt</button><button id="ppv-wfree" class="ppv-sec">Free up Whisper download</button>' +
       '<div id="ppv-wout" class="ppv-out"></div>' +
-      '<details id="ppv-ed"><summary>Edit lyrics &amp; timestamps</summary>' +
-      '<div class="ppv-note">Works for songs (synced lyrics) and videos (subtitles). Tap play to jump to a line, and the clock button sets a line to the current playback time.</div>' +
-      '<div class="ppv-row"><button id="ppv-edload" class="ppv-sec">Load current</button><button id="ppv-edundo" class="ppv-sec">Undo</button></div>' +
-      '<div id="ppv-edrows"></div>' +
-      '<div class="ppv-row"><button id="ppv-edadd" class="ppv-sec">+ Add line</button><button id="ppv-edpaste" class="ppv-sec">Paste text</button></div>' +
-      '<div class="ppv-row"><button id="ppv-edm" class="ppv-sec">All -0.5s</button><button id="ppv-edp" class="ppv-sec">All +0.5s</button></div>' +
-      '<button id="ppv-edsave">Save to this track</button>' +
-      '<div class="ppv-row"><button id="ppv-edsrt" class="ppv-sec">Download .srt</button><button id="ppv-edlrc" class="ppv-sec">Download .lrc</button></div>' +
-      '<div id="ppv-edout" class="ppv-out"></div></details>';
+      '<button id="ppv-edopen" class="ppv-sec" style="margin-top:12px;padding:10px;font-size:13px">✎ Open full-screen editor (lyrics &amp; timestamps)</button>';
     // AI tools no longer live in the one panel: tagging + smart playlists go to the Library tab, Whisper goes to captions (video) or Lyrics (songs)
     d1.querySelector('summary').textContent = 'AI tagging & smart playlists';
     d1.insertAdjacentHTML('afterbegin', '<div class="ppv-stx ppv-note">Ready</div><div class="ppv-pbar ppv-bar-tag"><i></i></div><select id="ppv-scope"><option value="cur">Tag: current track</option><option value="pick">Tag: a track I choose</option><option value="all">Tag: all tracks</option></select><select id="ppv-pick" style="display:none"></select><label class="ppv-c" id="ppv-redo-l" style="display:none"><input type="checkbox" id="ppv-redo"> Also redo tracks that already have tags</label><div class="ppv-row"><button id="ppv-tag">Tag current track</button><button id="ppv-stop" class="ppv-sec" style="display:none;width:auto;padding:6px 14px" data-keep="1">Stop</button></div><div id="ppv-tags" class="ppv-out"></div><details id="ppv-saved" open><summary>Tagged tracks <span id="ppv-scount" style="opacity:.6;font-weight:400"></span></summary><input type="text" id="ppv-ss" placeholder="Filter by title, artist or tag (e.g. piano, 120 bpm)"><select id="ppv-sf"><option value="all">Everything tagged</option><option value="audio">Songs</option><option value="video">Videos</option></select><div id="ppv-slist" class="ppv-note"></div></details>');
@@ -2087,6 +2283,7 @@
     wsize.onchange = () => { ls('ppvWSize', wsize.value); syncEn(); }; wlang.onchange = () => ls('ppvWLang', wlang.value); wtask.onchange = () => { ls('ppvWTask', wtask.value); syncEn(); }; wclean.onchange = () => ls('ppvWClean', wclean.checked ? '1' : '0');
     { const wg = $('#ppv-wgpu'); wg.checked = ls('ppvWGpu') === '1'; wg.onchange = () => ls('ppvWGpu', wg.checked ? '1' : '0'); if (!navigator.gpu) $('#ppv-wgpu-l').style.display = 'none'; }
     syncEn();
+    { const wa = $('#ppv-wacc'); wa.value = ls('ppvWAcc') || '0'; wa.onchange = () => ls('ppvWAcc', wa.value); }
     let lastSrt = null;
     $('#ppv-wgo').onclick = async () => {
       busy(true); wout.textContent = ''; wsrt.style.display = 'none';
@@ -2098,11 +2295,13 @@
         if (t.kind !== 'video' && lyr && lyr.has(t.dbId) && !confirm('This track already has lyrics. Replace them?')) { busy(false); return; }
         document.querySelectorAll('.ppv-bar-wh i').forEach(e => e.style.width = '0');
         const wst = t => { h.status(t); const m = /(\d+)%/.exec(t); if (m) document.querySelectorAll('.ppv-bar-wh i').forEach(e => e.style.width = m[1] + '%'); };
-        const cues = await transcribe(t, { size: wsize.value, lang: wlang.disabled ? '' : wlang.value, task: wtask.value, clean: wclean.checked, model: h.sel.value, strength: +h.sl.value, lv: h.LV() }, wst);
+        const cues = await transcribe(t, { size: wsize.value, lang: wlang.disabled ? '' : wlang.value, task: wtask.value, clean: wclean.checked, acc: +$('#ppv-wacc').value, model: h.sel.value, strength: +h.sl.value, lv: h.LV() }, wst);
         if (!cues.length) throw new Error('No speech found.');
         if (t.kind === 'video' || !lyr) a.setSubtitles(t.dbId, cues, 'Whisper.srt'); else lyr.set(t.dbId, toLrc(cues)); if (t.kind !== 'video' && lyr) { try { a.setSubtitles(t.dbId, cues, 'Whisper.srt'); } catch (e) {} }
         lastSrt = { name: t.title, text: toSrt(cues) }; wsrt.style.display = '';
         wout.textContent = cues.length + ' lines added as ' + (t.kind === 'video' ? 'subtitles' : 'synced lyrics and subtitles (tap CC on the disc to show them)') + '.\n' + cues.slice(0, 4).map(c => mmss(c.start) + '  ' + c.text).join('\n');
+        { const rp = window.__ppvRep; if (rp && (rp.fixed || rp.unsure)) wout.textContent += '\n' + (rp.fixed ? rp.fixed + ' repeated line' + (rp.fixed === 1 ? '' : 's') + ' made consistent. ' : '') + (rp.unsure ? rp.unsure + ' repeated line' + (rp.unsure === 1 ? ' is' : 's are') + ' still unsure: open the editor, Repeats tab, to choose the right wording.' : ''); }
+        if (window.__ppvSaved) wout.textContent += '\nVocals saved to Split tracks, so this song never needs splitting again for lyrics.';
         h.status('Done.');
       } catch (e) { console.error(e); h.status('Error: ' + errText(e)); }
       busy(false);
@@ -2119,72 +2318,322 @@
     };
     // ---------- Lyrics & timestamp editor ----------
     {
-      const rowsEl = $('#ppv-edrows'), eout = $('#ppv-edout'), edet = $('#ppv-ed');
+      const edet = { open: false }, mkEl = (t, c, h) => { const e = document.createElement(t); if (c) e.className = c; if (h != null) e.innerHTML = h; return e; };
+      let edTrack = null;
+      const fut = [];   // redo stack
       let rows = [], hist = [], edId = null;   // rows: {s: seconds, e: seconds|null, text}
       const fmtT = x => { x = Math.max(0, x); const m = Math.floor(x / 60); return m + ':' + (x - m * 60).toFixed(2).padStart(5, '0'); };
       const parseT = v => { v = String(v).trim().replace(',', '.'); let m = /^(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)$/.exec(v); if (m) return (+(m[1] || 0)) * 3600 + (+m[2]) * 60 + (+m[3]); m = /^(\d+(?:\.\d+)?)$/.exec(v); return m ? +m[1] : NaN; };
-      const snap = () => { hist.push(JSON.stringify(rows)); if (hist.length > 50) hist.shift(); };
+      const snap = () => { hist.push(JSON.stringify(rows)); if (hist.length > 80) hist.shift(); fut.length = 0; };
       const parseLrcText = txt => { const out = [], re = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g; String(txt).split(/\r?\n/).forEach(raw => { const st = []; let m, last = 0; re.lastIndex = 0; while ((m = re.exec(raw))) { st.push(+m[1] * 60 + +m[2] + (m[3] ? +m[3].padEnd(3, '0').slice(0, 3) / 1000 : 0)); last = re.lastIndex; } if (!st.length) return; const tx = raw.slice(last).replace(/<\d+:\d+(?:[.:]\d+)?>/g, '').trim(); st.forEach(x => out.push({ s: x, e: null, text: tx })); }); return out.sort((a, b) => a.s - b.s); };
       const parseSrtText = txt => { const out = []; String(txt).replace(/\r/g, '').split(/\n{2,}/).forEach(b => { const l = b.split('\n'), i = l.findIndex(x => x.includes('-->')); if (i < 0) return; const m = /([\d:.,]+)\s*-->\s*([\d:.,]+)/.exec(l[i]); if (!m) return; const s = parseT(m[1]), e = parseT(m[2]); if (isNaN(s)) return; out.push({ s, e: isNaN(e) ? null : e, text: l.slice(i + 1).join('\n').replace(/<[^>]+>/g, '').trim() }); }); return out.sort((a, b) => a.s - b.s); };
       const plain = v => v.split(/\r?\n/).filter(x => x.trim()).map((x, i) => ({ s: i * 4, e: null, text: x.trim() }));
       const toCues = () => { const r = rows.filter(x => x.text.trim() && isFinite(x.s)).slice().sort((a, b) => a.s - b.s); return r.map((x, i) => { const nx = r[i + 1]; let e = x.e != null && x.e > x.s ? x.e : (nx ? nx.s : x.s + 4); return { start: x.s, end: Math.max(e, x.s + 0.3), text: x.text.trim() }; }); };
-      const media = () => { const t = cur(); return t ? mediaOf(t) : null; };
+      const media = () => { const t = edTrack || cur(); return t ? mediaOf(t) : null; };
+      // ================= Full-screen editor page =================
+      const ecss = document.createElement('style');
+      ecss.textContent = '#ppv-edpage{position:fixed;inset:0;z-index:100000;display:none;flex-direction:column;background:var(--bg,#15161a);color:var(--text,#eee);font:14px system-ui,sans-serif}#ppv-edpage.open{display:flex}' +
+        '#ppv-edpage button{font:inherit;cursor:pointer;color:inherit;background:rgba(127,127,127,.16);border:1px solid var(--line,#444);border-radius:10px;padding:8px 12px;margin:0;width:auto}#ppv-edpage button:disabled{opacity:.4}' +
+        '#ppv-edpage button.pri{background:var(--accent,#7c3aed);border-color:transparent;color:#fff;font-weight:700}#ppv-edpage button.danger{color:#ff6b6b}' +
+        '#ppv-edpage input,#ppv-edpage select,#ppv-edpage textarea{font:inherit;color:inherit;background:rgba(127,127,127,.12);border:1px solid var(--line,#444);border-radius:8px;padding:7px;box-sizing:border-box;margin:0;width:auto}' +
+        '#ppv-edpage .eh{display:flex;align-items:center;gap:10px;padding:calc(8px + env(safe-area-inset-top,0px)) 12px 8px;border-bottom:1px solid var(--line,#333)}#ppv-edpage .eh .tt{flex:1;min-width:0}#ppv-edpage .eh b{display:block;font-size:15px}#ppv-edpage .eh small{display:block;opacity:.65;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+        '#ppv-edpage .ebadge{font-size:11px;padding:3px 8px;border-radius:99px;background:rgba(127,127,127,.2)}#ppv-edpage .ebadge.dirty{background:#b45309;color:#fff}' +
+        '#ppv-edpage .etr{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line,#333);flex-wrap:wrap}#ppv-edpage .etr input[type=range]{flex:1;min-width:120px;padding:0;accent-color:var(--accent,#7c3aed)}#ppv-edpage .etime{font-variant-numeric:tabular-nums;font-size:12px;opacity:.85;min-width:92px;text-align:center}' +
+        '#ppv-edpage .etabs{display:flex;gap:6px;padding:8px 12px 0;overflow-x:auto}#ppv-edpage .etabs button{white-space:nowrap;border-radius:99px;padding:6px 14px;font-size:13px}#ppv-edpage .etabs button.on{background:var(--accent,#7c3aed);color:#fff;border-color:transparent}' +
+        '#ppv-edpage .etool{display:none;padding:8px 12px;gap:8px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line,#333);max-height:34vh;overflow:auto}#ppv-edpage .etool.on{display:flex}#ppv-edpage .etool label{font-size:12px;opacity:.8;display:flex;align-items:center;gap:6px}#ppv-edpage .etool .sep{flex-basis:100%;height:0}' +
+        '#ppv-edpage .ebanner{display:none;padding:8px 12px;background:#b45309;color:#fff;font-size:13px;align-items:center;gap:8px}#ppv-edpage .ebanner.on{display:flex}#ppv-edpage .ebanner span{flex:1}' +
+        '#ppv-edpage .efilter{padding:8px 12px 0;display:flex;gap:8px;align-items:center}#ppv-edpage .efilter input{flex:1}#ppv-edpage .ecount{font-size:12px;opacity:.65}' +
+        '#ppv-edpage .elist{flex:1;overflow:auto;padding:8px 12px 16px;-webkit-overflow-scrolling:touch}#ppv-edpage .eempty{opacity:.6;text-align:center;padding:40px 10px}' +
+        '#ppv-edpage .er{border:1px solid var(--line,#3a3a40);border-radius:12px;padding:8px;margin-top:8px;background:rgba(127,127,127,.07)}#ppv-edpage .er.on{border-color:var(--accent,#7c3aed);box-shadow:0 0 0 1px var(--accent,#7c3aed) inset}#ppv-edpage .er.sel{background:rgba(124,58,237,.14)}' +
+        '#ppv-edpage .er .r1{display:flex;gap:6px;align-items:center;flex-wrap:wrap}#ppv-edpage .er .n{font-size:11px;opacity:.6;width:26px;text-align:center}#ppv-edpage .er .et{width:84px;text-align:center;font-variant-numeric:tabular-nums}#ppv-edpage .er .arrow{opacity:.5}' +
+        '#ppv-edpage .er textarea{display:block;width:100%;margin-top:6px;resize:none;line-height:1.35;overflow:hidden}#ppv-edpage.fs-s .er textarea{font-size:13px}#ppv-edpage.fs-l .er textarea{font-size:17px}#ppv-edpage.fs-x .er textarea{font-size:20px}' +
+        '#ppv-edpage .er .r3{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}#ppv-edpage .er .r3 button{padding:5px 9px;font-size:12px}#ppv-edpage .er.hide{display:none}#ppv-edpage .er.bad .et{border-color:#ff6b6b}' +
+        '#ppv-edpage .etap{display:none;padding:8px 12px;border-top:1px solid var(--line,#333);text-align:center}#ppv-edpage .etap.on{display:block}#ppv-edpage .etap button{width:100%;padding:18px;font-size:18px;font-weight:700}#ppv-edpage .etap small{display:block;opacity:.7;margin-bottom:6px}' +
+        '#ppv-edpage .ebar{display:flex;align-items:center;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line,#333);background:var(--bg,#15161a)}#ppv-edpage .ebar .st{flex:1;font-size:12px;opacity:.8;min-width:0}#ppv-edpage .ebar .go{padding:13px 18px;font-size:15px}' +
+        '#ppv-edpage .etoast{position:absolute;left:50%;bottom:calc(86px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#23242a;color:#eee;border:1px solid #555;border-radius:12px;padding:9px 14px;font-size:13px;max-width:88vw;display:none;z-index:3;box-shadow:0 6px 24px #0008}' +
+        '#ppv-edpage .emod{position:absolute;inset:0;background:#000a;display:none;align-items:center;justify-content:center;z-index:4;padding:16px}#ppv-edpage .emod.on{display:flex}#ppv-edpage .emod .box{background:var(--bg,#1b1c21);border:1px solid var(--line,#444);border-radius:14px;padding:14px;width:min(520px,100%);max-height:88vh;overflow:auto;display:flex;flex-direction:column;gap:8px}#ppv-edpage .emod textarea,#ppv-edpage .emod input[type=text]{width:100%}#ppv-edpage .emod textarea{min-height:180px}#ppv-edpage .emod .acts{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}';
+      document.head.appendChild(ecss);
+      const ov = mkEl('div'); ov.id = 'ppv-edpage';
+      ov.innerHTML =
+        '<div class="eh"><button id="e-back" data-keep="1">‹ Back</button><div class="tt"><b>Edit lyrics &amp; subtitles</b><small id="e-track">No track</small></div><span class="ebadge" id="e-badge">Saved</span></div>' +
+        '<div class="ebanner" id="e-ban"><span>The player moved to another track.</span><button id="e-banload">Edit that track</button></div>' +
+        '<div class="etr"><button id="e-b5" title="Back 5 seconds">−5s</button><button id="e-pp" class="pri" style="min-width:48px">▶</button><button id="e-f5" title="Forward 5 seconds">+5s</button><span class="etime" id="e-time">0:00.00 / 0:00</span><input type="range" id="e-scrub" min="0" max="1" step="0.05" value="0"><select id="e-rate" title="Playback speed"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option></select></div>' +
+        '<div class="etabs" id="e-tabs"><button data-t="lines" class="on">Lines</button><button data-t="timing">Timing</button><button data-t="text">Text</button><button data-t="rep">Repeats</button><button data-t="file">File</button><button data-t="view">View</button></div>' +
+        '<div class="etool on" data-p="lines"><button id="e-undo">↶ Undo</button><button id="e-redo">↷ Redo</button><button id="e-add">+ Add line at playhead</button><button id="e-tap">⏱ Tap-sync mode</button><button id="e-sort">Sort by time</button></div>' +
+        '<div class="etool" data-p="timing">' +
+          '<label>Shift by <input type="number" id="e-sh" value="0.5" step="0.1" min="0" style="width:74px"> s</label>' +
+          '<label>Apply to <select id="e-scope"><option value="all">all lines</option><option value="from">selected line and after</option><option value="sel">selected line only</option></select></label>' +
+          '<div class="sep"></div><button id="e-shm">− Earlier</button><button id="e-shp">+ Later</button>' +
+          '<div class="sep"></div><label>Stretch ×<input type="number" id="e-st" value="1.000" step="0.001" style="width:88px"></label><button id="e-stgo">Apply stretch</button>' +
+          '<div class="sep"></div><button id="e-fit">Fit ends to next line</button><button id="e-auto">Reset ends to auto</button><button id="e-ovl">Remove overlaps</button><button id="e-rnd">Round to 0.1s</button>' +
+          '<div class="sep"></div><label>Min length<input type="number" id="e-min" value="1" step="0.1" min="0.3" style="width:70px"> s</label><button id="e-mingo">Make short lines longer</button></div>' +
+        '<div class="etool" data-p="text"><button id="e-fr">Find &amp; replace…</button><button id="e-trim">Trim spaces</button><button id="e-cap">Capitalise first letter</button><button id="e-up">UPPER</button><button id="e-low">lower</button><button id="e-brk">Remove [bracketed] text</button><button id="e-empty">Delete empty lines</button><button id="e-dup">Delete repeated lines</button></div>' +
+        '<div class="etool" data-p="rep"><button id="e-rscan">Scan repeated lines</button><button id="e-rscanA">Scan with audio</button><button id="e-rall" class="pri">Apply all suggestions</button><label><input type="checkbox" id="e-rshow"> Also show repeats that already agree</label></div>' +
+        '<div class="etool" data-p="file"><button id="e-sync">Sync my own lyrics…</button><button id="e-net">Find lyrics online…</button><div class="sep"></div><button id="e-paste">Paste text…</button><button id="e-loadf">Open file…</button><button id="e-revert">Revert to saved</button><div class="sep"></div><button id="e-dsrt">Download .srt</button><button id="e-dlrc">Download .lrc</button><button id="e-dtxt">Download .txt</button><input type="file" id="e-file" accept=".srt,.vtt,.lrc,.txt" style="display:none"></div>' +
+        '<div class="etool" data-p="view"><label><input type="checkbox" id="e-follow" checked> Follow playback</label><label><input type="checkbox" id="e-ends" checked> Show end times</label><label>Text size <select id="e-fs"><option value="s">Small</option><option value="m" selected>Medium</option><option value="l">Large</option><option value="x">Extra large</option></select></label></div>' +
+        '<div class="efilter"><input type="text" id="e-q" placeholder="Search lines…"><span class="ecount" id="e-cnt"></span></div>' +
+        '<div class="elist" id="e-list"></div>' +
+        '<div class="etap" id="e-tapbar"><small id="e-tapinfo"></small><button id="e-tapbtn" class="pri">TAP — set start of selected line</button></div>' +
+        '<div class="ebar"><button id="e-cancel" data-keep="1">Cancel</button><div class="st" id="e-st2">No changes</div><button id="e-save">Save</button><button id="e-ok" class="pri go" data-keep="1">✓ Confirm &amp; close</button></div>' +
+        '<div class="etoast" id="e-toast"></div><div class="emod" id="e-mod"><div class="box" id="e-modbox"></div></div>';
+      document.body.appendChild(ov);
+      const $e = s => ov.querySelector(s), rowsEl = $e('#e-list');
+      let sel = null, savedSnap = '[]', tapOn = false, prevRate = 1, toastT = 0;
+      const toast = m => { const t = $e('#e-toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => { t.style.display = 'none'; }, 2600); };
+      const autoEnd = i => rows[i + 1] ? rows[i + 1].s : rows[i].s + 4;
+      const endOf = i => { const r = rows[i]; return r.e != null && r.e > r.s ? r.e : autoEnd(i); };
+      const sortRows = () => rows.sort((a, b) => a.s - b.s);
+      const isDirty = () => JSON.stringify(rows) !== savedSnap;
+      const upBar = () => { const d = isDirty(); $e('#e-badge').textContent = d ? 'Unsaved' : 'Saved'; $e('#e-badge').classList.toggle('dirty', d); $e('#e-st2').textContent = (d ? 'Unsaved changes · ' : 'All changes saved · ') + rows.filter(x => x.text.trim()).length + ' lines'; $e('#e-undo').disabled = !hist.length; $e('#e-redo').disabled = !fut.length; };
+      const mut = fn => { snap(); fn(); render(); };
+      const fixE = r => { if (r.e != null && r.e <= r.s) r.e = null; };
+      const kind = () => (edTrack && edTrack.kind === 'video') ? 'subtitles' : 'synced lyrics';
+      const modal = (title, body, acts) => { const b = $e('#e-modbox'); b.innerHTML = '<b>' + title + '</b>'; b.appendChild(body); const a = mkEl('div', 'acts'); acts.forEach(x => { const bt = mkEl('button', x.pri ? 'pri' : '', x.label); bt.onclick = () => { if (x.fn && x.fn() === false) return; if (!x.keep) $e('#e-mod').classList.remove('on'); }; a.appendChild(bt); }); b.appendChild(a); $e('#e-mod').classList.add('on'); };
+      const closeModal = () => $e('#e-mod').classList.remove('on');
       const render = () => {
-        const el = media(), now = el ? el.currentTime : -1;
+        const el = media(), now = el ? el.currentTime : -1, q = $e('#e-q').value.trim().toLowerCase(), showE = $e('#e-ends').checked;
         rowsEl.textContent = '';
+        if (!rows.length) { rowsEl.appendChild(mkEl('div', 'eempty', 'No lines yet.<br>Use “+ Add line at playhead”, open the File tab to paste text or load a file, or generate with Whisper.')); upBar(); $e('#e-cnt').textContent = ''; return; }
+        let shown = 0;
         rows.forEach((r, i) => {
-          const d = document.createElement('div'); d.className = 'er' + (now >= r.s && (i + 1 >= rows.length || now < rows[i + 1].s) ? ' on' : '');
-          const tin = document.createElement('input'); tin.type = 'text'; tin.className = 'et'; tin.value = fmtT(r.s);
-          tin.onchange = () => { const v = parseT(tin.value); if (isNaN(v)) { tin.value = fmtT(r.s); return; } snap(); r.s = v; r.e = null; rows.sort((a, b) => a.s - b.s); render(); };
-          const tx = document.createElement('input'); tx.type = 'text'; tx.value = r.text; tx.onchange = () => { snap(); r.text = tx.value; };
-          const go = document.createElement('button'); go.className = 'ppv-sec'; go.textContent = '▶'; go.title = 'Jump here'; go.onclick = () => { const e2 = media(); if (e2) { e2.currentTime = r.s; if (e2.play) e2.play().catch(() => {}); } };
-          const nw = document.createElement('button'); nw.className = 'ppv-sec'; nw.textContent = '⏱'; nw.title = 'Set to current time'; nw.onclick = () => { const e2 = media(); if (!e2) return; snap(); r.s = e2.currentTime; r.e = null; rows.sort((a, b) => a.s - b.s); render(); };
-          const dl = document.createElement('button'); dl.className = 'ppv-sec'; dl.textContent = '✕'; dl.title = 'Delete line'; dl.onclick = () => { snap(); rows.splice(i, 1); render(); };
-          d.append(tin, tx, go, nw, dl); rowsEl.appendChild(d);
+          const d = mkEl('div', 'er' + (now >= r.s && now < endOf(i) ? ' on' : '') + (r === sel ? ' sel' : '') + (r.e != null && r.e <= r.s ? ' bad' : ''));
+          if (q && r.text.toLowerCase().indexOf(q) < 0) d.classList.add('hide'); else shown++;
+          d.onclick = ev => { if (ev.target.tagName === 'BUTTON') return; sel = r; rowsEl.querySelectorAll('.er.sel').forEach(x => x.classList.remove('sel')); d.classList.add('sel'); if (tapOn) tapInfo(); };
+          const r1 = mkEl('div', 'r1'), num = mkEl('span', 'n', String(i + 1));
+          const tin = mkEl('input', 'et'); tin.type = 'text'; tin.value = fmtT(r.s); tin.inputMode = 'decimal'; tin.title = 'Start time';
+          tin.onchange = () => { const v = parseT(tin.value); if (isNaN(v)) { tin.value = fmtT(r.s); return; } snap(); r.s = v; fixE(r); sortRows(); render(); };
+          const ein = mkEl('input', 'et'); ein.type = 'text'; ein.value = r.e != null ? fmtT(r.e) : ''; ein.placeholder = fmtT(autoEnd(i)); ein.title = 'End time (leave empty for automatic)'; ein.inputMode = 'decimal';
+          ein.onchange = () => { const s = ein.value.trim(); snap(); if (!s) r.e = null; else { const v = parseT(s); if (isNaN(v)) { hist.pop(); ein.value = r.e != null ? fmtT(r.e) : ''; return; } r.e = v; } render(); };
+          const nm = mkEl('button', '', '−.1'), np = mkEl('button', '', '+.1'); nm.title = 'Start 0.1s earlier'; np.title = 'Start 0.1s later';
+          nm.onclick = () => mut(() => { r.s = Math.max(0, r.s - 0.1); if (r.e != null) r.e = Math.max(0, r.e - 0.1); sortRows(); }); np.onclick = () => mut(() => { r.s += 0.1; if (r.e != null) r.e += 0.1; sortRows(); });
+          r1.append(num, tin); if (showE) r1.append(mkEl('span', 'arrow', '→'), ein); r1.append(nm, np);
+          const tx = mkEl('textarea'); tx.value = r.text; tx.rows = 1; tx.placeholder = 'Line text'; let first = true;
+          const fit = () => { tx.style.height = 'auto'; tx.style.height = (tx.scrollHeight + 2) + 'px'; };
+          tx.oninput = () => { if (first) { snap(); first = false; } r.text = tx.value; fit(); upBar(); }; tx.onfocus = () => { sel = r; first = true; };
+          const r3 = mkEl('div', 'r3');
+          const B = (t, ttl, fn, cls) => { const b = mkEl('button', cls || '', t); b.title = ttl; b.onclick = fn; r3.appendChild(b); return b; };
+          B('▶ Play', 'Jump here and play', () => { const e2 = media(); if (e2) { e2.currentTime = Math.max(0, r.s - 0.05); if (e2.play) e2.play().catch(() => {}); } sel = r; });
+          B('⏱ Start', 'Set start to current time', () => { const e2 = media(); if (!e2) return; mut(() => { r.s = e2.currentTime; fixE(r); sortRows(); }); });
+          B('⏱ End', 'Set end to current time', () => { const e2 = media(); if (!e2) return; if (e2.currentTime <= r.s) { toast('End must be after the start.'); return; } mut(() => { r.e = e2.currentTime; }); });
+          B('＋ Below', 'Insert a new line after this one', () => { snap(); const n = { s: Math.min(endOf(i), r.s + 30), e: null, text: '' }; rows.splice(i + 1, 0, n); sel = n; render(); const t2 = rowsEl.querySelectorAll('textarea')[i + 1]; if (t2) t2.focus(); });
+          B('⧉ Copy', 'Duplicate line', () => mut(() => { rows.splice(i + 1, 0, { s: endOf(i), e: null, text: r.text }); }));
+          B('✂ Split', 'Split at the text cursor', () => { const p = tx.selectionStart; if (!r.text.trim() || p <= 0 || p >= tx.value.length) { toast('Tap inside the text where you want to split first.'); return; } mut(() => { const a = r.text.slice(0, p).trim(), b = r.text.slice(p).trim(), mid = r.s + (endOf(i) - r.s) * (p / tx.value.length), oe = r.e; r.text = a; r.e = mid; rows.splice(i + 1, 0, { s: mid, e: oe, text: b }); }); });
+          if (rows[i + 1]) B('⤵ Merge', 'Merge with the next line', () => mut(() => { const n = rows[i + 1]; r.text = (r.text.trim() + ' ' + n.text.trim()).trim(); r.e = n.e != null ? n.e : null; rows.splice(i + 1, 1); }));
+          B('✕ Delete', 'Delete line', () => mut(() => { rows.splice(i, 1); if (sel === r) sel = null; }), 'danger');
+          d.append(r1, tx, r3); rowsEl.appendChild(d); fit();
         });
+        $e('#e-cnt').textContent = q ? shown + ' of ' + rows.length : rows.length + ' lines';
+        upBar();
       };
       const load = () => {
-        const t = cur(); if (!t) { eout.textContent = 'Play or select a track first.'; return; }
-        edId = t.dbId; hist = []; rows = [];
+        const t = cur(); if (!t) { toast('Play or select a track first.'); return false; }
+        edTrack = t; edId = t.dbId; hist = []; fut.length = 0; rows = []; sel = null;
         try {
           if (t.kind === 'video') { const o = JSON.parse(localStorage.getItem('playerSubtitles') || '{}')[t.dbId]; const c = o && (Array.isArray(o) ? o.map(x => [x.start, x.end, x.text]) : o.c); if (c) rows = c.map(x => ({ s: +x[0], e: +x[1], text: String(x[2]) })); }
-          else { const o = JSON.parse(localStorage.getItem('playerLyricsV1') || '{}')[t.dbId]; if (o) { rows = parseLrcText(o); if (!rows.length) rows = plain(String(o)); } }
+          else { const o = JSON.parse(localStorage.getItem('playerLyricsV1') || '{}')[t.dbId]; if (o) { rows = parseLrcText(o); if (!rows.length) rows = plain(String(o)); } if (!rows.length) { const s = JSON.parse(localStorage.getItem('playerSubtitles') || '{}')[t.dbId], c = s && (Array.isArray(s) ? s.map(x => [x.start, x.end, x.text]) : s.c); if (c) rows = c.map(x => ({ s: +x[0], e: +x[1], text: String(x[2]) })); } }
         } catch (e) {}
-        eout.textContent = rows.length ? rows.length + ' lines loaded.' : 'No saved ' + (t.kind === 'video' ? 'subtitles' : 'lyrics') + ' yet. Add lines, paste text, or generate with Whisper above.';
-        render();
+        { const am = rpAltsLoad(t.dbId); rows.forEach(r => { let b = null; am.forEach(a => { const d = Math.abs(a[0] - r.s); if (d < 1.0 && (!b || d < b.d)) b = { d, a: a[1] }; }); if (b) r.alts = b.a.slice(); }); }
+        savedSnap = JSON.stringify(rows); $e('#e-track').textContent = t.title + ' · ' + (t.kind === 'video' ? 'subtitles' : 'lyrics'); $e('#e-ban').classList.remove('on');
+        render(); return true;
       };
-      edet.addEventListener('toggle', () => { if (edet.open && (!rows.length || (cur() && cur().dbId !== edId))) load(); });
-      $('#ppv-edload').onclick = load;
-      $('#ppv-edundo').onclick = () => { if (!hist.length) return; rows = JSON.parse(hist.pop()); render(); };
-      $('#ppv-edadd').onclick = () => { const el = media(); snap(); rows.push({ s: el ? el.currentTime : 0, e: null, text: '' }); rows.sort((a, b) => a.s - b.s); render(); };
-      $('#ppv-edpaste').onclick = () => {
-        const v = prompt('Paste lyrics or subtitles (.lrc, .srt, or plain text with one line per row). Plain text is spaced 4 seconds apart so you can re-time it.'); if (!v || !v.trim()) return;
-        let r = /-->/.test(v) ? parseSrtText(v) : parseLrcText(v);
-        if (!r.length) r = plain(v);
-        snap(); rows = r; render(); eout.textContent = r.length + ' lines pasted. Not saved until you tap Save.';
-      };
-      const shift = d => { if (!rows.length) return; snap(); rows.forEach(r => { r.s = Math.max(0, r.s + d); if (r.e != null) r.e = Math.max(0, r.e + d); }); render(); };
-      $('#ppv-edm').onclick = () => shift(-0.5); $('#ppv-edp').onclick = () => shift(0.5);
-      $('#ppv-edsave').onclick = () => {
-        const t = cur(); if (!t) { eout.textContent = 'Play or select a track first.'; return; }
-        const cues = toCues(); if (!cues.length) { eout.textContent = 'Nothing to save: add at least one line with text.'; return; }
+      const open = () => { if (!edTrack || (cur() && cur().dbId !== edId)) { if (!load()) return; } else render(); ov.classList.add('open'); edet.open = true; document.body.style.overflow = 'hidden'; const m = media(); if (m) { prevRate = m.playbackRate || 1; m.playbackRate = +$e('#e-rate').value; } tickT(); };
+      const close = () => { ov.classList.remove('open'); edet.open = false; closeModal(); document.body.style.overflow = ''; const m = media(); if (m) m.playbackRate = prevRate; tapOn = false; $e('#e-tapbar').classList.remove('on'); $e('#e-tap').classList.remove('pri'); };
+      const back = () => { if (isDirty() && !confirm('Discard your unsaved changes?')) return; close(); };
+      const save = () => {
+        const t = edTrack || cur(); if (!t) { toast('Play or select a track first.'); return false; }
+        const cues = toCues(); if (!cues.length) { toast('Nothing to save: add at least one line with text.'); return false; }
         const a = A(), lyr = window.__ppLyrics;
         if (t.kind === 'video' || !lyr) a.setSubtitles(t.dbId, cues, 'Edited.srt'); else lyr.set(t.dbId, toLrc(cues)); if (t.kind !== 'video' && lyr) { try { a.setSubtitles(t.dbId, cues, 'Edited.srt'); } catch (e) {} }
         lastSrt = { name: t.title, text: toSrt(cues) }; wsrt.style.display = '';
-        edId = t.dbId; eout.textContent = cues.length + ' lines saved as ' + (t.kind === 'video' ? 'subtitles' : 'synced lyrics') + '.';
+        edId = t.dbId; savedSnap = JSON.stringify(rows); try { rpAltsSave(t.dbId, rows.map(r => ({ s: r.s, alts: r.alts }))); } catch (e) {} upBar(); toast('Saved ' + cues.length + ' lines as ' + (t.kind === 'video' ? 'subtitles' : 'synced lyrics') + '.'); return true;
       };
       const dlFile = ext => {
-        const t = cur(); if (!t) return; const cues = toCues(); if (!cues.length) { eout.textContent = 'Nothing to download yet.'; return; }
-        const blob = new Blob([ext === 'srt' ? toSrt(cues) : toLrc(cues)], { type: 'text/plain' }), name = t.title.replace(/[\\/:*?"<>|]+/g, '_') + '.' + ext;
+        const t = edTrack || cur(); if (!t) return; const cues = toCues(); if (!cues.length) { toast('Nothing to download yet.'); return; }
+        const body = ext === 'srt' ? toSrt(cues) : ext === 'lrc' ? toLrc(cues) : cues.map(c => c.text).join('\n'), blob = new Blob([body], { type: 'text/plain' }), name = t.title.replace(/[\\/:*?"<>|]+/g, '_') + '.' + ext;
         if (window.ppSaveBlob) { window.ppSaveBlob(blob, name); return; }
         const u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 10000);
       };
-      $('#ppv-edsrt').onclick = () => dlFile('srt'); $('#ppv-edlrc').onclick = () => dlFile('lrc');
+      // ---- transport ----
+      const fmtS = x => { x = Math.max(0, x || 0); const m = Math.floor(x / 60); return m + ':' + (x - m * 60).toFixed(2).padStart(5, '0'); };
+      const tickT = () => {
+        if (!edet.open) return; const m = media(); if (!m) return; const dur = isFinite(m.duration) ? m.duration : 0;
+        $e('#e-time').textContent = fmtS(m.currentTime) + ' / ' + mmss(dur); const sc = $e('#e-scrub'); sc.max = dur || 1; if (document.activeElement !== sc) sc.value = m.currentTime;
+        $e('#e-pp').textContent = m.paused ? '▶' : '⏸';
+        const t = cur(); $e('#e-ban').classList.toggle('on', !!(t && edTrack && t.dbId !== edTrack.dbId));
+        const n = m.currentTime; let act = -1; rows.forEach((r, i) => { if (n >= r.s && n < endOf(i)) act = i; });
+        const els = rowsEl.querySelectorAll('.er'); els.forEach((d, i) => d.classList.toggle('on', i === act));
+        if (act >= 0 && $e('#e-follow').checked && !m.paused && !ov.contains(document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT' ? document.activeElement : null) && els[act]) els[act].scrollIntoView({ block: 'center', behavior: 'smooth' });
+      };
+      ['audio', 'video-el'].forEach(id => { const e = document.getElementById(id); if (e) ['timeupdate', 'play', 'pause', 'seeked', 'loadedmetadata'].forEach(ev => e.addEventListener(ev, tickT)); });
+      $e('#e-pp').onclick = () => { const m = media(); if (!m) return; if (m.paused) m.play().catch(() => {}); else m.pause(); };
+      $e('#e-b5').onclick = () => { const m = media(); if (m) m.currentTime = Math.max(0, m.currentTime - 5); };
+      $e('#e-f5').onclick = () => { const m = media(); if (m) m.currentTime = m.currentTime + 5; };
+      $e('#e-scrub').oninput = () => { const m = media(); if (m) m.currentTime = +$e('#e-scrub').value; };
+      $e('#e-rate').onchange = () => { const m = media(); if (m) m.playbackRate = +$e('#e-rate').value; };
+      // ---- tabs ----
+      $e('#e-tabs').onclick = ev => { const b = ev.target.closest('button[data-t]'); if (!b) return; $e('#e-tabs').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); ov.querySelectorAll('.etool').forEach(p => p.classList.toggle('on', p.dataset.p === b.dataset.t)); const rp = b.dataset.t === 'rep'; rowsEl.style.display = rp ? 'none' : ''; const re = $e('#e-replist'); if (re) { re.style.display = rp ? '' : 'none'; if (rp) repRender(); } $e('.efilter').style.display = rp ? 'none' : ''; };
+      // ---- lines tab ----
+      $e('#e-undo').onclick = () => { if (!hist.length) return; fut.push(JSON.stringify(rows)); rows = JSON.parse(hist.pop()); sel = null; render(); };
+      $e('#e-redo').onclick = () => { if (!fut.length) return; hist.push(JSON.stringify(rows)); rows = JSON.parse(fut.pop()); sel = null; render(); };
+      $e('#e-add').onclick = () => { const m = media(); snap(); const n = { s: m ? m.currentTime : 0, e: null, text: '' }; rows.push(n); sortRows(); sel = n; render(); const i = rows.indexOf(n), t2 = rowsEl.querySelectorAll('textarea')[i]; if (t2) { t2.scrollIntoView({ block: 'center' }); t2.focus(); } };
+      $e('#e-sort').onclick = () => mut(() => sortRows());
+      const tapInfo = () => { const i = rows.indexOf(sel); $e('#e-tapinfo').textContent = sel ? 'Selected line ' + (i + 1) + ': ' + (sel.text.slice(0, 60) || '(empty)') : 'Tap a line to select it first.'; };
+      $e('#e-tap').onclick = () => { tapOn = !tapOn; $e('#e-tapbar').classList.toggle('on', tapOn); $e('#e-tap').classList.toggle('pri', tapOn); if (tapOn) { if (!sel && rows[0]) sel = rows[0]; render(); tapInfo(); const m = media(); if (m && m.paused) m.play().catch(() => {}); toast('Play the track, then tap at the start of each line.'); } };
+      $e('#e-tapbtn').onclick = () => {
+        const m = media(); if (!m || !sel) { tapInfo(); return; } snap(); sel.s = m.currentTime; fixE(sel); const i0 = rows.indexOf(sel); sortRows(); const i = rows.indexOf(sel), nx = rows[i + 1] || null;
+        if (i > 0 && rows[i - 1].e != null) rows[i - 1].e = null; sel = nx || sel; render(); tapInfo(); const els = rowsEl.querySelectorAll('.er'), idx = rows.indexOf(sel); if (els[idx]) els[idx].scrollIntoView({ block: 'center', behavior: 'smooth' });
+      };
+      // ---- timing tab ----
+      const inScope = r => { const sc = $e('#e-scope').value; if (sc === 'all') return true; if (!sel) return false; return sc === 'sel' ? r === sel : r.s >= sel.s; };
+      const shiftBy = d => { if (!rows.length) return; if ($e('#e-scope').value !== 'all' && !sel) { toast('Tap a line to select it first.'); return; } mut(() => { rows.forEach(r => { if (!inScope(r)) return; r.s = Math.max(0, r.s + d); if (r.e != null) r.e = Math.max(0, r.e + d); }); sortRows(); }); };
+      $e('#e-shm').onclick = () => shiftBy(-Math.abs(+$e('#e-sh').value || 0)); $e('#e-shp').onclick = () => shiftBy(Math.abs(+$e('#e-sh').value || 0));
+      $e('#e-stgo').onclick = () => { const f = +$e('#e-st').value; if (!(f > 0.5 && f < 2)) { toast('Use a factor between 0.5 and 2, e.g. 1.001.'); return; } mut(() => { rows.forEach(r => { r.s *= f; if (r.e != null) r.e *= f; }); }); };
+      $e('#e-fit').onclick = () => mut(() => { rows.forEach((r, i) => { if (rows[i + 1]) r.e = rows[i + 1].s; }); });
+      $e('#e-auto').onclick = () => mut(() => { rows.forEach(r => { r.e = null; }); });
+      $e('#e-ovl').onclick = () => mut(() => { rows.forEach((r, i) => { if (rows[i + 1] && r.e != null && r.e > rows[i + 1].s) r.e = rows[i + 1].s; }); });
+      $e('#e-rnd').onclick = () => mut(() => { const q = x => Math.round(x * 10) / 10; rows.forEach(r => { r.s = q(r.s); if (r.e != null) r.e = q(r.e); }); });
+      $e('#e-mingo').onclick = () => { const mn = +$e('#e-min').value || 1; let n = 0; mut(() => { rows.forEach((r, i) => { const e = endOf(i); if (e - r.s < mn) { const lim = rows[i + 1] ? rows[i + 1].s : r.s + mn; r.e = Math.min(r.s + mn, lim); if (r.e > r.s) n++; else r.e = null; } }); }); toast(n + ' line' + (n === 1 ? '' : 's') + ' lengthened (never past the next line).'); };
+      // ---- text tab ----
+      const mapText = fn => { if (!rows.length) return; mut(() => { rows.forEach(r => { r.text = fn(r.text); }); }); };
+      $e('#e-trim').onclick = () => mapText(s => s.replace(/[ \t]+/g, ' ').trim());
+      $e('#e-cap').onclick = () => mapText(s => s.replace(/^(\s*)(\S)/, (m, a, b) => a + b.toUpperCase()));
+      $e('#e-up').onclick = () => mapText(s => s.toUpperCase()); $e('#e-low').onclick = () => mapText(s => s.toLowerCase());
+      $e('#e-brk').onclick = () => mapText(s => s.replace(/\[[^\]]*\]|\([^)]*\)/g, '').replace(/\s{2,}/g, ' ').trim());
+      $e('#e-empty').onclick = () => { const n = rows.filter(r => !r.text.trim()).length; if (!n) { toast('No empty lines.'); return; } mut(() => { rows = rows.filter(r => r.text.trim()); sel = null; }); toast(n + ' empty line' + (n === 1 ? '' : 's') + ' deleted.'); };
+      $e('#e-dup').onclick = () => { let n = 0; mut(() => { rows = rows.filter((r, i) => { const dup = i > 0 && r.text.trim() && r.text.trim().toLowerCase() === rows[i - 1].text.trim().toLowerCase(); if (dup) n++; return !dup; }); }); toast(n ? n + ' repeated line' + (n === 1 ? '' : 's') + ' deleted.' : 'No repeated lines.'); };
+      $e('#e-fr').onclick = () => {
+        const w = mkEl('div'); w.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+        w.innerHTML = '<input type="text" id="e-fa" placeholder="Find"><input type="text" id="e-fb" placeholder="Replace with"><label style="font-size:12px"><input type="checkbox" id="e-fc"> Match case</label><div id="e-fn" style="font-size:12px;opacity:.7"></div>';
+        const cnt = () => { const f = w.querySelector('#e-fa').value, cs = w.querySelector('#e-fc').checked; if (!f) { w.querySelector('#e-fn').textContent = ''; return 0; } const re = new RegExp(f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), cs ? 'g' : 'gi'); let n = 0; rows.forEach(r => { const m = r.text.match(re); if (m) n += m.length; }); w.querySelector('#e-fn').textContent = n + ' match' + (n === 1 ? '' : 'es'); return n; };
+        w.oninput = cnt; w.onchange = cnt;
+        modal('Find & replace', w, [{ label: 'Cancel' }, { label: 'Replace all', pri: 1, fn: () => { const f = w.querySelector('#e-fa').value, rp = w.querySelector('#e-fb').value, cs = w.querySelector('#e-fc').checked; if (!f) return false; const re = new RegExp(f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), cs ? 'g' : 'gi'); const n = cnt(); mut(() => { rows.forEach(r => { r.text = r.text.replace(re, () => rp); }); }); toast(n + ' replaced.'); } }]);
+        setTimeout(() => w.querySelector('#e-fa').focus(), 50);
+      };
+      // ---- file tab ----
+      $e('#e-paste').onclick = () => {
+        const w = mkEl('div'); w.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+        w.innerHTML = '<div style="font-size:12px;opacity:.7">Paste .lrc, .srt, or plain text (one line per row). Plain text is spaced 4 seconds apart so you can re-time it.</div><textarea id="e-pt" placeholder="Paste here…"></textarea><label style="font-size:12px"><input type="checkbox" id="e-pa"> Add to the existing lines instead of replacing them</label>';
+        modal('Paste text', w, [{ label: 'Cancel' }, { label: 'Import', pri: 1, fn: () => { const v = w.querySelector('#e-pt').value; if (!v.trim()) return false; let r = /-->/.test(v) ? parseSrtText(v) : parseLrcText(v); if (!r.length) r = plain(v); mut(() => { rows = w.querySelector('#e-pa').checked ? rows.concat(r) : r; sortRows(); sel = null; }); toast(r.length + ' lines imported. Not saved until you confirm.'); } }]);
+      };
+      $e('#e-loadf').onclick = () => $e('#e-file').click();
+      $e('#e-file').onchange = async ev => { const f = ev.target.files[0]; ev.target.value = ''; if (!f) return; const txt = (await f.text()).replace(/^\uFEFF/, ''); let r = /-->/.test(txt) ? parseSrtText(txt) : parseLrcText(txt); if (!r.length) r = plain(txt); if (!r.length) { toast('Could not read any lines from that file.'); return; } mut(() => { rows = r; sel = null; }); toast(r.length + ' lines loaded from ' + f.name + '. Not saved until you confirm.'); };
+      $e('#e-revert').onclick = () => { if (isDirty() && !confirm('Throw away your edits and go back to the last saved version?')) return; load(); };
+      $e('#e-dsrt').onclick = () => dlFile('srt'); $e('#e-dlrc').onclick = () => dlFile('lrc'); $e('#e-dtxt').onclick = () => dlFile('txt');
+      // ---- view ----
+      $e('#e-ends').onchange = render; $e('#e-q').oninput = render;
+      $e('#e-fs').onchange = () => { ov.classList.remove('fs-s', 'fs-l', 'fs-x'); const v = $e('#e-fs').value; if (v !== 'm') ov.classList.add('fs-' + v); render(); };
+      // ---- header / footer ----
+      $e('#e-back').onclick = back; $e('#e-cancel').onclick = back;
+      $e('#e-save').onclick = save;
+      $e('#e-ok').onclick = () => { if (!rows.filter(r => r.text.trim()).length) { toast('Add at least one line with text first.'); return; } if (!isDirty()) { close(); return; } if (save()) close(); };
+      $e('#e-banload').onclick = () => { if (isDirty() && !confirm('Discard unsaved changes and edit the new track instead?')) return; load(); };
+      document.addEventListener('keydown', ev => { if (edet.open && ev.key === 'Escape' && !$e('#e-mod').classList.contains('on')) back(); else if (edet.open && ev.key === 'Escape') closeModal(); });
+      window.addEventListener('beforeunload', ev => { if (edet.open && isDirty()) { ev.preventDefault(); ev.returnValue = ''; } });
+      // ================= Repeats tab: pick the right wording for lines that were sung more than once =================
+      const rcss = document.createElement('style');
+      rcss.textContent = '#ppv-edpage .rg{border:1px solid var(--line,#3a3a40);border-radius:12px;padding:10px;margin-top:10px;background:rgba(127,127,127,.07)}#ppv-edpage .rg h4{margin:0 0 6px;font-size:13px}#ppv-edpage .rg .tms{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}#ppv-edpage .rg .tms button{padding:3px 8px;font-size:12px}' +
+        '#ppv-edpage .rv{display:flex;gap:8px;align-items:flex-start;padding:8px;border:1px solid var(--line,#444);border-radius:10px;margin-top:6px;cursor:pointer}#ppv-edpage .rv.on{border-color:var(--accent,#7c3aed);background:rgba(124,58,237,.14)}#ppv-edpage .rv input[type=radio]{margin-top:3px;accent-color:var(--accent,#7c3aed)}#ppv-edpage .rv .tx{flex:1;line-height:1.35}#ppv-edpage .rv .bd{font-size:11px;opacity:.75;white-space:nowrap}#ppv-edpage .rv input[type=text]{flex:1;width:100%}' +
+        '#ppv-edpage .rg .ap{width:100%;margin-top:8px;padding:11px}#ppv-edpage .rnote{font-size:12px;opacity:.7;margin-top:8px}';
+      document.head.appendChild(rcss);
+      const repEl = mkEl('div', 'elist'); repEl.id = 'e-replist'; repEl.style.display = 'none'; rowsEl.after(repEl);
+      let repGroups = [];                                                // [{rows:[row refs], pick:string|null, own:string}]
+      const repVariants = g => {
+        const m = new Map(); g.rows.forEach(r => { const k = rpNorm(r.text); if (!k) return; if (!m.has(k)) m.set(k, { text: r.text, n: 0, alt: false }); m.get(k).n++; });
+        g.rows.forEach(r => (r.alts || []).forEach(a => { const k = rpNorm(a); if (k && !m.has(k)) m.set(k, { text: a, n: 0, alt: true }); }));
+        return [...m.values()].sort((a, b) => b.n - a.n);
+      };
+      const repScan = async audio => {
+        if (!rows.length) { toast('No lines to check yet.'); return; }
+        const t = edTrack || cur(); let x = null; const b1 = $e('#e-rscan'), b2 = $e('#e-rscanA'); b1.disabled = b2.disabled = true;
+        try {
+          if (audio) { if (!t) { toast('Play or select a track first.'); return; } toast('Listening to the track… this can take a moment.'); const vs0 = findVocalsStem(A() && A().tracks(), t); x = await decodeMono(((vs0 || t).url), 16000); }
+          const items = rows.map((r, i) => ({ s: r.s, e: endOf(i), text: r.text })), gs = await rpFind(items, x); x = null;
+          repGroups = gs.map(ix => ({ rows: ix.map(i => rows[i]), pick: null, own: '' }));
+          repRender(); const n = repGroups.filter(g => repVariants(g).length > 1).length; toast(n ? n + ' repeated line' + (n === 1 ? ' has' : 's have') + ' different wordings.' : 'Every repeated line already matches.');
+        } catch (e) { console.error(e); toast('Scan failed: ' + errText(e)); }
+        b1.disabled = b2.disabled = false;
+      };
+      const repApply = (g, text) => { text = String(text || '').trim(); if (!text) { toast('Pick a version or write your own first.'); return; } snap(); g.rows.forEach(r => { r.text = text; }); render(); repRender(); toast('Applied to ' + g.rows.length + ' lines.'); };
+      const repSuggest = g => { const v = rpVote(g.rows.map(r => ({ text: r.text, alts: r.alts }))); return v ? v.text : ''; };
+      function repRender() {
+        repEl.textContent = '';
+        const showAll = $e('#e-rshow').checked; let shown = 0;
+        repGroups.forEach((g, gi) => {
+          const vs = repVariants(g), real = vs.filter(v => !v.alt).length;
+          if (real < 2 && !showAll && !(real === 1 && vs.length > 1)) return;
+          if (real < 2 && !showAll && !g.rows.some(r => r.alts && r.alts.length)) return;
+          shown++;
+          const sug = repSuggest(g), cur0 = g.pick != null ? g.pick : sug, card = mkEl('div', 'rg');
+          card.appendChild(mkEl('h4', '', 'Sung ' + g.rows.length + '× · ' + real + ' version' + (real === 1 ? '' : 's') + ' heard'));
+          const tms = mkEl('div', 'tms'); g.rows.forEach(r => { const b = mkEl('button', '', '▶ ' + fmtT(r.s).replace(/\.\d+$/, '')); b.title = 'Listen to this one'; b.onclick = () => { const m = media(); if (m) { m.currentTime = Math.max(0, r.s - 0.2); m.play && m.play().catch(() => {}); } }; tms.appendChild(b); }); card.appendChild(tms);
+          const pickIt = txt => { g.pick = txt; repRender(); };
+          vs.forEach(v => {
+            const on = rpNorm(v.text) === rpNorm(cur0) && g.pick !== '\u0000own', d = mkEl('label', 'rv' + (on ? ' on' : '')), rd = mkEl('input'); rd.type = 'radio'; rd.name = 'rg' + gi; rd.checked = on;
+            const tx = mkEl('span', 'tx'); tx.textContent = v.text; const bd = mkEl('span', 'bd', (v.n ? '×' + v.n : 'other pass') + (rpNorm(v.text) === rpNorm(sug) ? ' · suggested' : ''));
+            d.append(rd, tx, bd); d.onclick = ev => { ev.preventDefault(); pickIt(v.text); }; card.appendChild(d);
+          });
+          const own = mkEl('label', 'rv' + (g.pick === '\u0000own' ? ' on' : '')), orad = mkEl('input'); orad.type = 'radio'; orad.name = 'rg' + gi; orad.checked = g.pick === '\u0000own';
+          const oin = mkEl('input'); oin.type = 'text'; oin.placeholder = 'None of these — write my own'; oin.value = g.own || '';
+          oin.oninput = () => { g.own = oin.value; g.pick = '\u0000own'; own.classList.add('on'); orad.checked = true; card.querySelectorAll('.rv').forEach(x => { if (x !== own) x.classList.remove('on'); }); }; oin.onfocus = () => { if (g.pick !== '\u0000own') { g.pick = '\u0000own'; own.classList.add('on'); orad.checked = true; card.querySelectorAll('.rv').forEach(x => { if (x !== own) x.classList.remove('on'); }); } };
+          own.append(orad, oin); card.appendChild(own);
+          const ap = mkEl('button', 'pri ap', 'Apply to all ' + g.rows.length + ' lines'); ap.onclick = () => repApply(g, g.pick === '\u0000own' ? g.own : cur0); card.appendChild(ap);
+          repEl.appendChild(card);
+        });
+        if (!shown) repEl.appendChild(mkEl('div', 'eempty', repGroups.length ? 'Nothing to decide: every repeated line already has the same wording.' : 'Tap “Scan repeated lines” to find lines that were sung more than once and choose the right wording.<br><br>“Scan with audio” also catches repeats that Whisper wrote differently each time.'));
+        else repEl.appendChild(mkEl('div', 'rnote', 'Tip: tap ▶ to hear each time the line is sung. If none of the versions is right, write your own and apply it to all of them.'));
+      }
+      $e('#e-rscan').onclick = () => repScan(false); $e('#e-rscanA').onclick = () => repScan(true); $e('#e-rshow').onchange = repRender;
+      $e('#e-rall').onclick = () => { let n = 0; snap(); repGroups.forEach(g => { if (repVariants(g).filter(v => !v.alt).length < 2) return; const s = repSuggest(g); if (s) { g.rows.forEach(r => { r.text = s; }); n++; } }); if (!n) { hist.pop(); toast('Nothing to apply.'); return; } render(); repRender(); toast('Applied the suggested wording to ' + n + ' repeated line' + (n === 1 ? '' : 's') + '.'); };
+      // ================= Lyrics you already know: line them up with what the audio says =================
+      const lyricLines = txt => String(txt).split(/\r?\n/).map(l => l.replace(/^\s*(\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]\s*)+/, '').trim()).filter(l => l && !/^\[[^\]]*\]$/.test(l));
+      const srcRows = () => rows.filter(r => r.text.trim()).map(r => ({ s: r.s, e: endOf(rows.indexOf(r)), text: r.text }));
+      const needSrc = () => { const s = srcRows(); if (s.length < 2) { toast('Transcribe the track with Whisper first (or add lines), so there is something to match the lyrics to.'); return null; } return s; };
+      const useAligned = (lines, al) => { mut(() => { rows = lines.map((l, i) => ({ s: al.starts[i], e: null, text: l })); sel = null; }); toast('Lyrics synced. ' + Math.round(al.ratio * 100) + '% of the words matched the audio.' + (al.ratio < 0.5 ? ' Low match: check the timing.' : '')); };
+      $e('#e-sync').onclick = () => {
+        const w = mkEl('div'); w.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+        w.innerHTML = '<div style="font-size:12px;opacity:.75">Paste the correct lyrics, one line per row. The words stay exactly as you type them; only the timing comes from the audio, using the lines currently in the editor as a guide. Lines like [Chorus] are ignored.</div><textarea id="e-lt" placeholder="Paste lyrics here…"></textarea>';
+        modal('Sync my own lyrics', w, [{ label: 'Cancel' }, { label: 'Sync', pri: 1, fn: () => { const lines = lyricLines(w.querySelector('#e-lt').value); if (!lines.length) { toast('Paste some lyrics first.'); return false; } const src = needSrc(); if (!src) return false; const al = rpAlign(src, lines); if (al.ratio < 0.2) { toast('These lyrics barely match the audio (' + Math.round(al.ratio * 100) + '%). Is it the right song?'); return false; } useAligned(lines, al); } }]);
+      };
+      const lrcShift = (lrc, src) => { const al = rpAlign(src, lrc.map(r => r.text)), d = []; lrc.forEach((r, i) => { if (al.anchored[i]) d.push(al.starts[i] - r.s); }); d.sort((a, b) => a - b); return { ratio: al.ratio, shift: d.length >= 3 ? d[d.length >> 1] : 0, n: d.length }; };
+      $e('#e-net').onclick = () => {
+        const t = edTrack || cur(); if (!t) { toast('Play or select a track first.'); return; }
+        const w = mkEl('div'); w.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+        const q0 = ((t.artist && !/^(Unknown artist|Video|Stream)$/.test(t.artist) ? t.artist + ' ' : '') + t.title).replace(/\.(mp3|m4a|wav|flac|ogg|mp4|mkv|webm)$/i, '').replace(/\s*[\(\[][^\)\]]*[\)\]]/g, '').trim();
+        w.innerHTML = '<div style="font-size:12px;opacity:.75">Looks the song up on lrclib.net, a free lyrics database. Only the text you see below is sent, and only when you tap Search. Whatever you pick is checked against your audio before it is used.</div><input type="text" id="e-nq"><button id="e-nsearch" class="pri">Search</button><div id="e-nres" style="display:flex;flex-direction:column;gap:6px"></div>';
+        w.querySelector('#e-nq').value = q0; const res = w.querySelector('#e-nres');
+        const choose = it => {
+          const syn = it.syncedLyrics ? parseLrcText(it.syncedLyrics).filter(r => r.text) : [], plain2 = lyricLines(it.plainLyrics || ''), src = srcRows(); res.textContent = '';
+          res.appendChild(mkEl('div', '', '<b>' + (it.trackName || '') + '</b><br><small style="opacity:.7">' + (it.artistName || '') + (it.duration ? ' · ' + mmss(it.duration) : '') + '</small>'));
+          const add = (label, fn, pri, note) => { const b = mkEl('button', pri ? 'pri' : '', label); b.onclick = () => { closeModal(); fn(); }; res.appendChild(b); if (note) res.appendChild(mkEl('div', 'rnote', note)); };
+          const lines = syn.length ? syn.map(r => r.text) : plain2;
+          if (!lines.length) { res.appendChild(mkEl('div', 'rnote', 'That entry has no lyrics.')); return; }
+          if (src.length >= 2) {
+            const al = rpAlign(src, lines), pc = Math.round(al.ratio * 100);
+            res.appendChild(mkEl('div', 'rnote', 'Matches what your audio says: ' + pc + '%' + (al.ratio < 0.35 ? '. That is low, it may be a different song or version.' : '')));
+            add('Use these lyrics, timed from my audio', () => useAligned(lines, al), 1, 'Best choice: the words from the database, the timing from your own track.');
+            if (syn.length) { const sh = lrcShift(syn, src), s = Math.abs(sh.shift) > 0.25 ? sh.shift : 0; add('Use their timestamps' + (s ? ' (shifted ' + (s > 0 ? '+' : '') + s.toFixed(1) + 's to fit)' : ''), () => { mut(() => { rows = syn.map(r => ({ s: Math.max(0, r.s + s), e: null, text: r.text })); sel = null; }); toast('Loaded ' + syn.length + ' lines with the database timing.'); }, 0, s ? 'Their timing was measured against your audio and corrected.' : ''); }
+          } else {
+            if (syn.length) add('Use their timestamps (not checked against your audio)', () => { mut(() => { rows = syn.map(r => ({ s: r.s, e: null, text: r.text })); sel = null; }); toast('Loaded ' + syn.length + ' lines. Transcribe with Whisper later to verify them.'); }, 1);
+            if (plain2.length) add('Use plain text (lines 4 seconds apart)', () => { mut(() => { rows = plain2.map((l, i) => ({ s: i * 4, e: null, text: l })); sel = null; }); toast('Loaded. Re-time the lines, or transcribe with Whisper and use Sync.'); });
+          }
+          add('‹ Back to results', () => { $e('#e-mod').classList.add('on'); }, 0);
+        };
+        const search = async () => {
+          const q = w.querySelector('#e-nq').value.trim(); if (!q) return; res.textContent = 'Searching…';
+          try {
+            const r = await fetch('https://lrclib.net/api/search?q=' + encodeURIComponent(q)); if (!r.ok) throw new Error('HTTP ' + r.status); let j = await r.json(); const m = media(), du = m && isFinite(m.duration) ? m.duration : 0;
+            j = (Array.isArray(j) ? j : []).filter(it => it.plainLyrics || it.syncedLyrics); if (du) j.sort((a, b) => Math.abs((a.duration || 1e4) - du) - Math.abs((b.duration || 1e4) - du)); j = j.slice(0, 6); res.textContent = '';
+            if (!j.length) { res.textContent = 'No lyrics found. Try fewer words, e.g. just the song title.'; return; }
+            j.forEach(it => { const b = mkEl('button', '', '<b>' + (it.trackName || '?') + '</b> · ' + (it.artistName || '?') + '<br><small style="opacity:.7">' + (it.duration ? mmss(it.duration) : '') + (du && it.duration ? ' (yours ' + mmss(du) + ')' : '') + (it.syncedLyrics ? ' · has timestamps' : ' · text only') + '</small>'); b.style.textAlign = 'left'; b.onclick = () => choose(it); res.appendChild(b); });
+          } catch (e) { res.textContent = 'Could not reach lrclib.net. This needs an internet connection. (' + errText(e).slice(0, 80) + ')'; }
+        };
+        w.querySelector('#e-nsearch').onclick = search; w.querySelector('#e-nq').onkeydown = ev => { if (ev.key === 'Enter') search(); };
+        modal('Find lyrics online', w, [{ label: 'Close' }]); search();
+      };
+      $('#ppv-edopen').onclick = open;
       // refresh the editor after Whisper writes new text
       const origGo = $('#ppv-wgo').onclick;
       $('#ppv-wgo').onclick = async function () { await origGo.apply(this, arguments); if (edet.open) load(); };
-      // follow playback: highlight the current row
-      ['audio', 'video-el'].forEach(id => { const e = document.getElementById(id); if (e) e.addEventListener('timeupdate', () => { if (!edet.open) return; const t = cur(); if (!t || mediaOf(t) !== e) return; const n = e.currentTime; rowsEl.querySelectorAll('.er').forEach((d, i) => d.classList.toggle('on', !!rows[i] && n >= rows[i].s && (i + 1 >= rows.length || n < rows[i + 1].s))); }); });
       // ---------- Subtitles for audio tracks (CC button + line under the disc) ----------
       {
         const viz = document.getElementById('viz-wrap'), aud = document.getElementById('audio');
@@ -6035,7 +6484,16 @@
     }
     const p = document.createElement('div'); p.id = 'ppv-panel';
     p.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><b>Stem separator</b><button id="ppv-x" class="ppv-x" type="button" aria-label="Close">&times;</button></div><select id="ppv-model">' + Object.entries(MODELS).map(([k, m]) => '<option value="' + k + '">' + m.label + '</option>').join('') + '</select>' +
-      '<div style="margin-top:8px">Optimization</div><select id="ppv-lvl"><option value="0">Off</option><option value="1">Light (big savings)</option><option value="2">Medium (+ lean runtime)</option><option value="3">Max (+ every small saving)</option></select><div id="ppv-lvi" style="opacity:.6;font-size:11px;margin-top:4px"></div>' +
+      '<div style="margin-top:8px">Optimization</div><select id="ppv-lvl"><option value="0">Off</option><option value="1">Light (big savings)</option><option value="2">Medium (+ lean runtime)</option><option value="3">Max (+ every small saving)</option><option value="4">Custom (pick your own)</option></select><div id="ppv-lvi" style="opacity:.6;font-size:11px;margin-top:4px"></div>' +
+      '<div id="ppv-cust" style="display:none;margin-top:6px;padding:8px;border:1px solid rgba(128,128,128,.35);border-radius:8px">' +
+      '<div>CPU threads</div><select id="ppv-c-th"><option value="0">Auto (fast cores)</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="6">6</option><option value="8">8</option></select><div id="ppv-c-thn" style="opacity:.6;font-size:11px;margin-top:2px"></div>' +
+      '<div style="margin-top:8px">Rest between chunks: <span id="ppv-c-rv">0</span>%</div><input id="ppv-c-rest" type="range" min="0" max="100" step="5" value="0" style="width:100%"><div style="opacity:.6;font-size:11px">Idle time after each chunk. Higher = cooler and easier on the battery, but slower.</div>' +
+      '<label class="ppv-c" style="display:block;margin-top:8px"><input type="checkbox" id="ppv-c-lean"> Lean memory (less RAM, a bit slower)</label>' +
+      '<label class="ppv-c" style="display:block;margin-top:6px"><input type="checkbox" id="ppv-c-skip"> Skip stems I did not tick</label>' +
+      '<label class="ppv-c" style="display:block;margin-top:6px"><input type="checkbox" id="ppv-c-smooth"> Keep the app responsive during heavy loops</label>' +
+      '<label class="ppv-c" style="display:block;margin-top:6px"><input type="checkbox" id="ppv-c-wake"> Keep the screen awake</label>' +
+      '<label class="ppv-c" style="display:block;margin-top:6px"><input type="checkbox" id="ppv-c-blob"> Low-RAM model download</label>' +
+      '<label id="ppv-c-spinl" class="ppv-c" style="display:none;margin-top:6px"><input type="checkbox" id="ppv-c-spin"> Threads busy-wait between steps (faster, hotter, more battery)</label></div>' +
       '<div id="ppv-stems"></div>' +
       '<div style="margin-top:8px">Mute vocal gaps</div><select id="ppv-gate"><option value="0">Off</option><option value="1">Gentle</option><option value="2">Normal</option><option value="3">Strong</option></select><div style="opacity:.6;font-size:11px;margin-top:4px">Silences leftover noise between sung lines. Vocals stem only.</div>' +
       '<div id="ppv-spl" style="margin-top:8px">Strength: <span id="ppv-sv">1</span><input id="ppv-sl" type="range" min="1" max="4" step="0.5" value="1" style="width:100%"><div style="opacity:.6;font-size:11px">Higher = less bleed, more watery artifacts</div><div style="margin-top:8px">Quality</div><select id="ppv-q"><option value="0">Standard</option><option value="1">Better (smooth seams, ~1.3x time)</option><option value="2">Best (+ averaged 2nd pass, ~2.7x time)</option></select></div>' +
@@ -6128,7 +6586,7 @@
     if (!place()) { let n = 0; const iv = setInterval(() => { if (place() || ++n > 40) clearInterval(iv); }, 250); }
     setInterval(place, 2000);
     const $ = s => p.querySelector(s), st = $('#ppv-st'), bar = $('#ppv-bar i'), go = $('#ppv-go'), sel = $('#ppv-model'), sl = $('#ppv-sl'), sv = $('#ppv-sv'), gpu = $('#ppv-gpuc'), lsel = $('#ppv-lvl'), lvi = $('#ppv-lvi'), qsel = $('#ppv-q'), gsel = $('#ppv-gate');
-    const LV = () => LEVELS[+lsel.value] || null, showLv = () => lvi.textContent = LV() ? LV().info : 'No limits. Fastest, but can crash weak phones.';
+    const LV = () => +lsel.value === 4 ? customLevel() : LEVELS[+lsel.value] || null, showLv = () => { const l = LV(); lvi.textContent = !l ? 'No limits. Fastest, but can crash weak phones.' : l.custom ? 'Custom: ' + (l.threads ? l.threads + ' thread' + (l.threads > 1 ? 's' : '') : 'auto threads') + ', ' + Math.round(l.duty * 100) + '% rest.' : l.info; };
     let holdUntil = 0;                                                // keep "Done"/"Error" visible instead of being wiped by "Ready" a split second later
     const status = t => { st.textContent = t; document.querySelectorAll('.ppv-stx').forEach(e => { e.textContent = t; }); if (/^(Done|Error)/.test(t)) holdUntil = Date.now() + 5000; mas.react(t); }, ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} };
     const nnc = $('#ppv-nnc'); if (NATIVE) { $('#ppv-nn').style.display = 'block'; nnc.checked = ls('ppvNnapi') !== '0'; nnc.onchange = () => { ls('ppvNnapi', nnc.checked ? '1' : '0'); }; }
@@ -6159,7 +6617,16 @@
     { const A = window.__ppApi; A && A.setStemSections && A.setStemSections(sect.checked); }
     gsel.value = ls('ppvGate') || '0'; gsel.onchange = () => ls('ppvGate', gsel.value);
     qsel.value = ls('ppvQuality') || '1'; qsel.onchange = () => ls('ppvQuality', qsel.value);
-    lsel.onchange = () => { ls('ppvLevel', lsel.value); showLv(); refresh(); };
+    lsel.onchange = () => { ls('ppvLevel', lsel.value); syncCust(); showLv(); refresh(); };
+    // ---- Custom level controls (stored as JSON under ppvCustom) ----
+    const cEl = { th: $('#ppv-c-th'), rest: $('#ppv-c-rest'), rv: $('#ppv-c-rv'), lean: $('#ppv-c-lean'), skip: $('#ppv-c-skip'), smooth: $('#ppv-c-smooth'), wake: $('#ppv-c-wake'), blob: $('#ppv-c-blob'), spin: $('#ppv-c-spin') };
+    const cRead = () => ({ threads: +cEl.th.value, rest: +cEl.rest.value, lean: cEl.lean.checked, skip: cEl.skip.checked, smooth: cEl.smooth.checked, wake: cEl.wake.checked, blob: cEl.blob.checked, spin: cEl.spin.checked });
+    const cSave = () => { cEl.rv.textContent = cEl.rest.value; ls('ppvCustom', JSON.stringify(cRead())); showLv(); };
+    function syncCust() { $('#ppv-cust').style.display = +lsel.value === 4 ? 'block' : 'none'; }
+    { const c = customLoad(); cEl.th.value = String(c.threads); cEl.rest.value = c.rest; cEl.rv.textContent = c.rest; cEl.lean.checked = !!c.lean; cEl.skip.checked = !!c.skip; cEl.smooth.checked = !!c.smooth; cEl.wake.checked = !!c.wake; cEl.blob.checked = !!c.blob; cEl.spin.checked = !!c.spin;
+      if (NATIVE) $('#ppv-c-spinl').style.display = 'block';
+      $('#ppv-c-thn').textContent = NATIVE ? 'This phone reports ' + (navigator.hardwareConcurrency || '?') + ' cores. Auto uses the fast ones only (max 4). More threads is not always faster.' : 'On the web this needs Multi-thread ticked below (otherwise it runs on 1 thread).';
+      Object.values(cEl).forEach(e => { e.onchange = cSave; }); cEl.rest.oninput = cSave; syncCust(); showLv(); }
     const picked = () => [...p.querySelectorAll('#ppv-stems input:checked')].map(i => i.value);
     async function refresh() {
       const lo = !!LV();
