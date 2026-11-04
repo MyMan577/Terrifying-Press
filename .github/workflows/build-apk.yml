@@ -5,30 +5,42 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: write   # needed to publish the APK as a GitHub Release
+
+# A newer push cancels the older build that is still running
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Get the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 20
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
+
+      # Caches Gradle + dependencies between runs (the slowest part of the build)
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Check the web app is in www
         run: |
           for f in www/index.html www/native-bridge.js www/vocal-separator.js; do
             if [ ! -f "$f" ]; then echo "::error::Missing $f. Put it inside the www folder."; exit 1; fi
           done
-          if [ ! -f www/update-options.js ]; then echo "::warning::www/update-options.js is missing, the page will 404 on it."; fi
 
       - name: Use the updated native-bridge.js
         run: |
@@ -41,7 +53,7 @@ jobs:
 
       - name: Create the Android project
         run: |
-          npm install
+          if [ -f package-lock.json ]; then npm ci; else echo "::notice::No package-lock.json, using npm install. Commit one so builds are reproducible."; npm install; fi
           # Downloads/exports need these two Capacitor plugins (the page saves via Filesystem, then Share).
           # Install any that package.json does not already list, at the same major version as Capacitor.
           CAPV=$(node -p "require('./node_modules/@capacitor/core/package.json').version.split('.')[0]")
@@ -82,40 +94,25 @@ jobs:
 
       - name: Add the native player layer (Media3 service, GPU filters, library)
         run: |
-          if [ ! -f pp-native.zip ]; then echo "::error::pp-native.zip is missing from the repo root."; exit 1; fi
-          for k in MainActivity WebMirrorPlayer; do
+          for k in MainActivity WebMirrorPlayer LibraryPlugin JobsPlugin PlaybackService; do
             if [ ! -f "android-overrides/$k.kt" ]; then echo "::error::android-overrides/$k.kt is missing."; exit 1; fi
           done
-          rm -rf /tmp/ppn && mkdir -p /tmp/ppn && unzip -q pp-native.zip -d /tmp/ppn
-          SRC=/tmp/ppn/pp-native/android/app/src/main
+          for f in pp-manifest.xml res/xml/shortcuts.xml res/xml/automotive_app_desc.xml res/values/pp_strings.xml; do
+            if [ ! -f "android-overrides/$f" ]; then echo "::error::android-overrides/$f is missing."; exit 1; fi
+          done
           APPSRC=android/app/src/main
           PKG_DIR=$APPSRC/java/com/pressplay/media
 
-          # Kotlin sources. Our merged MainActivity (also registers the ONNX/Spleeter plugins) replaces both
-          # Capacitor's default MainActivity.java and the zip's MainActivity.kt.
+          # Kotlin sources. Our merged MainActivity (also registers the ONNX/Spleeter plugins) replaces
+          # Capacitor's default MainActivity.java.
           rm -f "$PKG_DIR/MainActivity.java"
-          cp "$SRC"/java/com/pressplay/media/*.kt "$PKG_DIR"/
-          # our fixed/merged files win over the zip
           cp android-overrides/*.kt "$PKG_DIR"/
           test "$(ls "$PKG_DIR"/*.kt | wc -l)" -eq 9 || { echo "::error::Expected 9 Kotlin files"; ls "$PKG_DIR"; exit 1; }
 
-          # Explicit imports for the nested Media3 types used inside PlaybackService's inner class
-          python3 - <<'PY2'
-          p = 'android/app/src/main/java/com/pressplay/media/PlaybackService.kt'
-          s = open(p).read()
-          add = 'import androidx.media3.session.MediaLibraryService.LibraryParams\nimport androidx.media3.session.MediaLibraryService.MediaLibrarySession\n'
-          if add not in s:
-              i = s.index('import ')
-              s = s[:i] + add + s[i:]
-          open(p, 'w').write(s)
-          PY2
-
           # Resources: shortcuts, Android Auto descriptor, strings
           mkdir -p $APPSRC/res/xml $APPSRC/res/values
-          cp "$SRC"/res/xml/*.xml $APPSRC/res/xml/
-          cp "$SRC"/res/values/pp_strings.xml $APPSRC/res/values/
-          # the zip's shortcuts.xml uses the wrong attribute names (AAPT: attribute android:shortLabel not found)
-          sed -i -e 's/android:shortLabel=/android:shortcutShortLabel=/g' -e 's/android:longLabel=/android:shortcutLongLabel=/g' $APPSRC/res/xml/shortcuts.xml
+          cp android-overrides/res/xml/*.xml $APPSRC/res/xml/
+          cp android-overrides/res/values/pp_strings.xml $APPSRC/res/values/
 
           # Gradle: Kotlin plugin, minSdk 26, Media3 1.4.1, opt in to Media3's @UnstableApi
           sed -i -E 's/minSdkVersion *= *[0-9]+/minSdkVersion = 26/' android/variables.gradle
@@ -186,7 +183,7 @@ jobs:
           dt.write(dst_path, encoding='utf-8', xml_declaration=True)
           print('manifest merged')
           PY3
-          python3 /tmp/merge_manifest.py $APPSRC/AndroidManifest.xml "$SRC/AndroidManifest.xml"
+          python3 /tmp/merge_manifest.py $APPSRC/AndroidManifest.xml android-overrides/pp-manifest.xml
           grep -q PlaybackService $APPSRC/AndroidManifest.xml
 
       - name: Sign with one fixed key and raise the version number
@@ -233,10 +230,11 @@ jobs:
           grep -nE "versionCode|versionName" android/app/build.gradle
 
       - name: Build the debug APK
+        shell: bash
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/gradle-build.log"
 
       - name: Show which key signed the APK
         continue-on-error: true   # informational only: never fail the build because of this check
@@ -251,8 +249,30 @@ jobs:
             keytool -printcert -jarfile "$APK" | grep -E "SHA256|Owner" || true
           fi
 
+      - name: Name the APK
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk "press-play-1.0.${GITHUB_RUN_NUMBER}.apk"
+
       - name: Upload the APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: press-play-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: press-play-1.0.${{ github.run_number }}.apk
+
+      # Direct download link on the repo's Releases page, easy to grab from the phone
+      - name: Publish a GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "build-${GITHUB_RUN_NUMBER}" "press-play-1.0.${GITHUB_RUN_NUMBER}.apk" \
+            --title "Press Play 1.0.${GITHUB_RUN_NUMBER}" \
+            --notes "Automatic build of commit ${GITHUB_SHA::7}" \
+            --target "$GITHUB_SHA"
+
+      - name: Upload the build log if the build failed
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-log
+          path: gradle-build.log
+          if-no-files-found: ignore
