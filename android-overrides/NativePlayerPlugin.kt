@@ -337,6 +337,25 @@ class NativePlayerPlugin : Plugin() {
         }
     }
 
+    /**
+     * The track the UI is on while the web engine (not ExoPlayer) plays it, e.g. a video. Written to the same
+     * prefs PlaybackService.lastPlayed() reads, so a headset / notification / car "play" resumes what the person
+     * actually sees instead of whatever ExoPlayer last paused on.
+     */
+    @PluginMethod
+    fun setResume(call: PluginCall) {
+        val uri = call.getString("uri")
+        if (uri.isNullOrEmpty()) { call.resolve(); return }
+        context.getSharedPreferences("pp_resume", Context.MODE_PRIVATE).edit()
+            .putString("id", call.getString("id") ?: uri)
+            .putString("uri", uri)
+            .putString("title", call.getString("title"))
+            .putString("artist", call.getString("artist"))
+            .putLong("pos", call.data.optLong("posMs", 0L).coerceAtLeast(0))
+            .apply()
+        call.resolve()
+    }
+
     // ---------- effects ----------
     @PluginMethod
     fun setFx(call: PluginCall) {

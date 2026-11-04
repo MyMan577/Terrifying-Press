@@ -101,6 +101,11 @@ class PlaybackService : MediaLibraryService() {
         session = MediaLibrarySession.Builder(this, UiForwardingPlayer(player), LibraryCallback())
             .setSessionActivity(openApp)
             .build()
+        // Media3 only attaches the notification / foreground-service logic to a session once it is added to the
+        // service, which normally happens when a MediaController binds. This app drives the player directly and
+        // never binds one, so without this the session stays invisible: no media notification, no Samsung
+        // quick-panel card, no lock-screen controls, and no foreground service while backgrounded.
+        session?.let { addSession(it) }
 
         instance = this
         val pending: List<(PlaybackService) -> Unit>
