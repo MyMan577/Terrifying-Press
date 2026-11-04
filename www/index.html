@@ -3730,7 +3730,18 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
   }
   body.player-layout.pl-video[data-pl-player] #controls-col,
   body.player-layout.pl-video[data-pl-player] #controls-col.custom-bg-active{
-    padding-bottom:calc(max(14px, env(safe-area-inset-bottom, 0px)) + 46px);
+    padding-bottom:max(14px, env(safe-area-inset-bottom, 0px));
+  }
+  /* Portrait: the volume bar sits in the same bottom row as Back (left) and Pin (right), between them,
+     instead of above a separate 46px strip reserved for those buttons (that strip pushed every other
+     control up by ~60px). The footer escapes the column's side padding and keeps the button zones clear. */
+  @media not all and (max-height:480px) and (orientation:landscape){
+    body.player-layout.pl-video[data-pl-player] #controls-footer{
+      box-sizing:border-box; width:auto; max-width:none; height:36px; margin:6px calc(-1 * clamp(14px, 4vw, 40px)) 0;
+      padding:0 calc(max(14px, env(safe-area-inset-right, 0px)) + 36px + 10px) 0 calc(max(14px, env(safe-area-inset-left, 0px)) + 36px + 10px);
+      align-items:center; justify-content:center;
+    }
+    body.player-layout.pl-video[data-pl-player] #vol-row{ width:min(280px, 100%); max-width:100%; margin:0 auto; }
   }
   @media (max-height:480px) and (orientation:landscape){
     body.player-layout.pl-video[data-pl-player] #controls-col,
