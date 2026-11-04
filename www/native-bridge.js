@@ -24,7 +24,7 @@
     N.setSrc = function (el, t) { el.src = t.url; return Promise.resolve(); };
     N.raw = function (el) { return el; };
     N.active = N.videoActive = function () { return false; };
-    N.decorateAnalyser = N.queueNext = N.updateMeta = N.setFxProvider = N.setVideoFilterCss = N.screenOn = N.scheduleRect = N.resync = N.enterPip = function () {};
+    N.decorateAnalyser = N.queueNext = N.nowPlaying = N.updateMeta = N.setFxProvider = N.setVideoFilterCss = N.screenOn = N.scheduleRect = N.resync = N.enterPip = function () {};
     N.boot = function () { return Promise.resolve(); };
     N.pushCatalog = N.migrateAll = function () {};
     N.snapshot = function () { return Promise.reject(new Error('not native')); };
@@ -113,7 +113,7 @@
         if (S.active) {
           switch (prop) {
             case 'currentTime': return curTime(S);
-            case 'duration': return S.durMs >= 0 ? S.durMs / 1000 : NaN;
+            case 'duration': return S.durMs >= 0 ? S.durMs / 1000 : ((S.track && S.track.duration > 0) ? S.track.duration : NaN);
             case 'paused': return !S.pwr;
             case 'ended': return S.ended;
             case 'seeking': return S.seeking;
@@ -249,6 +249,7 @@
     if (!S || !enabled) {
       // plain web <video>: make sure the native player is not still playing something else
       if (enabled && cur && cur.active) { var o = cur; deactivate(o); call(function () { return Player.stop(); }); }
+      if (enabled) N.nowPlaying(t);
       el.src = t.url; return Promise.resolve();
     }
     var other = wrappers[S.kind === 'video' ? 'audio' : 'video'];
@@ -301,12 +302,26 @@
   var nextToken = 0;
   N.queueNext = function (t) {
     var tok = ++nextToken;
-    if (!cur || !cur.active) return;
-    if (!t) { call(function () { return Player.setNext({ uri: '' }); }); return; }
-    ensureLocal(t).then(function (uri) {
-      if (tok !== nextToken || !cur || !cur.active) return;
+    var S = cur;
+    if (!S || !S.active) return;
+    var id = S.loadId;
+    // Player.loadMedia replaces ExoPlayer's whole queue, so a "next" queued while a load is still in flight is
+    // wiped (the race that made background auto-advance fail at random). Wait for the load, then queue.
+    var ready = S.loading || Promise.resolve();
+    var stale = function () { return tok !== nextToken || cur !== S || !S.active || id !== S.loadId; };
+    if (!t) { ready.then(function () { if (!stale()) return Player.setNext({ uri: '' }); }).catch(function () {}); return; }
+    ready.then(function () { return ensureLocal(t); }).then(function (uri) {
+      if (stale()) return;
       return Player.setNext(metaFor(t, uri));
     }).catch(function () {});
+  };
+
+  // Tell the native side which track the UI is on when ExoPlayer is NOT the one playing it (web <video>).
+  // Headset / notification / car "play" resumes from this, so it must match what the person sees.
+  N.nowPlaying = function (t) {
+    var uri = t && (t.nativeUri || t.remoteUrl);
+    if (!uri) return;
+    call(function () { return Player.setResume({ id: String(t.dbId || uri), uri: uri, title: t.title || '', artist: t.artist || '', posMs: 0 }); });
   };
 
   // ---------- native -> JS events ----------
@@ -349,7 +364,9 @@
     Player.addListener('time', function (t) {
       var S = cur; if (!S || !S.active || S.seeking) return;
       S.base = t.posMs; S.baseAt = now();
+      var hadDur = S.durMs >= 0;
       if (t.durMs >= 0) S.durMs = t.durMs;
+      if (!hadDur && S.durMs >= 0) emit(S, 'durationchange');   // length became known after 'ready' (VBR/headerless audio)
       emit(S, 'timeupdate');
     });
     Player.addListener('advanced', function (s) {
@@ -370,6 +387,7 @@
     Player.addListener('external', function (s) {          // Android Auto / Assistant / car kit started something
       if (N.hooks.syncTo && s.uri) N.hooks.syncTo(s.uri);
     });
+    Player.addListener('diag', function (d) { if (N.hooks.toast) N.hooks.toast(d.msg, 'error'); });
     Player.addListener('cmd', function (c) {
       if (N.hooks.command) N.hooks.command(c.name);
     });
