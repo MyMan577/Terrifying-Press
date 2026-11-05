@@ -6684,6 +6684,18 @@
       blTreeRows(); blSay('I want to get this right. Pick one of these, or say stop to end this chat.'); blTreeOpts(n); return true;
     }
     const MUSICY = /\b(songs?|music|tracks?|play(list|ing)?|artists?|albums?|genres?|vibes?|moods?|tags?|tagged|stems?|lyrics|library|listen(ing)?|playing)\b/i;
+    // What is playing right now, as a line for the chat prompt. send() reads the title back out of it with a regex,
+    // so keep the "NOW PLAYING ...: <title> by <artist>, ... . You already" shape (and only use it when a track exists).
+    const nowCtx = () => {
+      try {
+        const A = window.__ppApi; if (!A) return '';
+        const i = A.currentIndex(), t = i >= 0 ? A.tracks()[i] : null;
+        if (!t) return ' Nothing is playing right now. You already know the library facts above, do not invent a song.';
+        const c = loadTags()[t.dbId], tl = c ? tagLine(t) : '';
+        return ' NOW PLAYING (' + (t.kind === 'video' ? 'video' : 'song') + '): ' + t.title + (t.artist && !/^(Unknown artist|Video|Stream)$/i.test(t.artist) ? ' by ' + t.artist : '') +
+          (tl ? ', ' + tl : ', not tagged yet') + '. You already know only this about it, so never invent more.';
+      } catch (e) { return ''; }
+    };
     // Who Bloop is, always in the prompt so the model answers "who are you / what are you / can you hear this" truthfully and in character.
     const selfCtx = () => {
       let m = '', fs = '', fa = ''; try { m = CHAT_MODELS[chatKey()].label.replace(/\s*\(.*$/, ''); } catch (e) {}
