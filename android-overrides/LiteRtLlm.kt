@@ -6,10 +6,14 @@ import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.InputData
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.MessageCallback
 import com.google.ai.edge.litertlm.RepetitionPenaltyConfig
+import com.google.ai.edge.litertlm.ResponseCallback
 import com.google.ai.edge.litertlm.SamplerConfig
+import com.google.ai.edge.litertlm.Session
+import com.google.ai.edge.litertlm.SessionConfig
 import java.io.File
 import java.util.concurrent.CountDownLatch
 
@@ -24,6 +28,7 @@ fun interface TextSink { fun on(delta: String) }
 class LiteRtLlm {
     private var engine: Engine? = null
     @Volatile private var active: Conversation? = null
+    @Volatile private var activeSession: Session? = null
     @Volatile private var cancelled = false
     private var backendUsed = "CPU"
 
@@ -63,6 +68,8 @@ class LiteRtLlm {
         cancelled = true
         val c = active
         if (c != null) { try { c.cancelProcess() } catch (_: Throwable) { } }
+        val s = activeSession
+        if (s != null) { try { s.cancelProcess() } catch (_: Throwable) { } }
     }
 
     @Synchronized
@@ -90,6 +97,7 @@ class LiteRtLlm {
         val out = StringBuilder()
         var err: Throwable? = null
         val done = CountDownLatch(1)
+        var failure: Throwable? = null
         val conv = e.createConversation(cc)
         active = conv
         try {
@@ -107,9 +115,54 @@ class LiteRtLlm {
                 maxOutputToken = maxOf(1, maxNew),
             )
             done.await()
+            failure = err
+        } catch (x: Throwable) {
+            failure = x      // the template error is thrown right here, before any callback runs
         } finally {
             active = null
             try { conv.close() } catch (_: Throwable) { }
+        }
+        if (failure != null) {
+            // Some community builds (the 4-bit Qwen ones) ship a chat template that cannot take LiteRT-LM's list-shaped message
+            // content. Skip the template: build the ChatML prompt here and run it through a raw Session.
+            if (out.isEmpty() && Regex("apply template|unsupported types", RegexOption.IGNORE_CASE).containsMatchIn(describe(failure)))
+                return rawChat(e, system, history, user, maxNew, sampler, sink)
+            throw Exception(describe(failure))
+        }
+        return out.toString()
+    }
+
+    /** ChatML (Qwen) prompt run straight through a Session, no Jinja template involved. */
+    private fun rawChat(e: Engine, system: String?, history: List<Array<String>>, user: String, maxNew: Int,
+                        sampler: SamplerConfig, sink: TextSink?): String {
+        val p = StringBuilder()
+        if (!system.isNullOrEmpty()) p.append("<|im_start|>system\n").append(system).append("<|im_end|>\n")
+        for (h in history) p.append("<|im_start|>").append(if (h[0] == "assistant") "assistant" else "user").append("\n").append(h[1]).append("<|im_end|>\n")
+        p.append("<|im_start|>user\n").append(user).append("<|im_end|>\n<|im_start|>assistant\n")
+        val out = StringBuilder()
+        var err: Throwable? = null
+        var pieces = 0
+        val done = CountDownLatch(1)
+        val session = e.createSession(SessionConfig(samplerConfig = sampler))
+        activeSession = session
+        try {
+            session.generateContentStream(listOf(InputData.Text(p.toString())), object : ResponseCallback {
+                override fun onNext(response: String) {
+                    if (cancelled || response.isEmpty()) return
+                    var t = response
+                    val end = (out.toString() + t).indexOf("<|im_end|>")      // stop at the end-of-turn marker if the runtime does not
+                    if (end >= 0) { t = (out.toString() + t).substring(0, end).substring(out.length); cancelled = true }
+                    if (t.isNotEmpty()) { out.append(t); sink?.on(t) }
+                    if (++pieces >= maxNew) cancelled = true
+                    if (cancelled) { try { session.cancelProcess() } catch (_: Throwable) { } }
+                }
+                override fun onDone() { done.countDown() }
+                override fun onError(throwable: Throwable) { if (!cancelled) err = throwable; done.countDown() }
+            })
+            done.await()
+        } finally {
+            activeSession = null
+            try { session.close() } catch (_: Throwable) { }
         }
         val failure = err
         if (failure != null) throw Exception(describe(failure))
