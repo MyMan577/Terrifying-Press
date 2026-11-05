@@ -57,7 +57,7 @@ public class OnnxSeparatorPlugin extends Plugin {
     private File modelFile(String id) {
         File dir = new File(getContext().getFilesDir(), "models");
         dir.mkdirs();
-        return new File(dir, id + ".onnx");
+        return new File(dir, id + (id.startsWith("lm_") ? ".litertlm" : ".onnx"));
     }
 
     @PluginMethod
@@ -74,6 +74,7 @@ public class OnnxSeparatorPlugin extends Plugin {
         if (id != null) {
             unloadById(id);
             if (id.startsWith("llm_")) { llm.cancel(); llm.close(); }
+            if (id.startsWith("lm_")) { lite.close(); }
             modelFile(id).delete();
         }
         call.resolve();
@@ -89,6 +90,24 @@ public class OnnxSeparatorPlugin extends Plugin {
             File tmp = new File(out.getParentFile(), id + ".part");
             try {
                 if (out.exists() && out.length() > 1024) { call.resolve(); return; }
+                try {                                                    // several connections at once; falls through to the single download if the server cannot do ranges
+                    final int[] lastPct = { -1 };
+                    FastDownload.fetch(url, tmp, (got, total) -> {
+                        int p = (int) (got * 100 / total);
+                        if (p != lastPct[0]) {
+                            lastPct[0] = p;
+                            JSObject e = new JSObject();
+                            e.put("id", id);
+                            e.put("percent", p);
+                            notifyListeners("download", e);
+                        }
+                    });
+                    if (!tmp.renameTo(out)) throw new IOException("Could not save the model file");
+                    call.resolve();
+                    return;
+                } catch (FastDownload.NoRanges nr) {
+                    tmp.delete();
+                }
                 HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
                 c.setInstanceFollowRedirects(true);
                 c.setConnectTimeout(20000);
@@ -278,6 +297,78 @@ public class OnnxSeparatorPlugin extends Plugin {
     public void llmUnload(PluginCall call) {
         llm.cancel();
         new Thread(() -> { llm.close(); call.resolve(); }).start();   // close() waits for a running generate() to stop
+    }
+
+    // ---------- Chat model through LiteRT-LM (.litertlm): plain text in, text out, no tokenizer in JS ----------
+    private final LiteRtLlm lite = new LiteRtLlm();
+
+    /** Loads <id>.litertlm (id starts with "lm_"). gpu=true tries the GPU first and falls back to the CPU. Resolves {backend}. */
+    @PluginMethod
+    public void lmLoad(PluginCall call) {
+        final String id = call.getString("id");
+        if (id == null) { call.reject("id is required"); return; }
+        final File f = modelFile(id);
+        if (!f.exists()) { call.reject("Chat model not downloaded: " + id); return; }
+        final Boolean g = call.getBoolean("gpu", false);
+        final boolean gpu = g != null && g;
+        final int threads = call.getInt("threads", 0);
+        new Thread(() -> {
+            try {
+                File cache = new File(getContext().getCacheDir(), "litertlm");
+                cache.mkdirs();
+                String b = lite.load(f, cache, gpu, threads);
+                JSObject r = new JSObject();
+                r.put("backend", b);
+                call.resolve(r);
+            } catch (Throwable e) {
+                lite.close();
+                call.reject("Chat model: " + (e.getMessage() != null ? e.getMessage() : e.toString()));
+            }
+        }).start();
+    }
+
+    /** system (text), history ([{role, text}]), user (text). Emits "lmText" {text} per piece, resolves {text}. */
+    @PluginMethod
+    public void lmChat(PluginCall call) {
+        final String user = call.getString("user");
+        if (user == null || user.isEmpty()) { call.reject("user is required"); return; }
+        if (!lite.loaded()) { call.reject("Chat model not loaded"); return; }
+        final String system = call.getString("system", "");
+        final JSONArray hj = call.getArray("history");
+        final int maxNew = call.getInt("maxNew", 60);
+        final Double t = call.getDouble("temp", 0.5), p = call.getDouble("topP", 0.9), r = call.getDouble("rep", 1.1);
+        final int topK = call.getInt("topK", 40);
+        new Thread(() -> {
+            try { Process.setThreadPriority(5); } catch (Throwable ignored) { }
+            try {
+                List<String[]> hist = new ArrayList<>();
+                if (hj != null) for (int i = 0; i < hj.length(); i++) {
+                    org.json.JSONObject o = hj.getJSONObject(i);
+                    hist.add(new String[] { o.optString("role", "user"), o.optString("text", "") });
+                }
+                String out = lite.chat(system, hist, user, maxNew, t == null ? 0.5 : t, p == null ? 0.9 : p, topK, r == null ? 1.1 : r, piece -> {
+                    JSObject e = new JSObject();
+                    e.put("text", piece);
+                    notifyListeners("lmText", e);
+                });
+                JSObject res = new JSObject();
+                res.put("text", out);
+                call.resolve(res);
+            } catch (Throwable e) {
+                call.reject("Chat model: " + (e.getMessage() != null ? e.getMessage() : e.toString()));
+            }
+        }).start();
+    }
+
+    @PluginMethod
+    public void lmCancel(PluginCall call) {
+        lite.cancel();
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void lmUnload(PluginCall call) {
+        new Thread(() -> { lite.close(); call.resolve(); }).start();
     }
 
     private Throttle thermalProbe;
