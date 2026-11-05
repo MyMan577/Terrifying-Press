@@ -33,16 +33,16 @@
   //  2 Medium : + lean ONNX runtime, pauses between chunks, skip work for stems you didn't tick
   //  3 Max    : + longer pauses, UI yields inside the DSP loops, screen wake lock
   const LEVELS = [null,
-    { name: 'Light', info: 'Big savings only: CPU only, low-RAM model download, basic graph optimization.', blob: true, lean: false, pause: [0, 0], skip: false, ye: 0, wake: false },
-    { name: 'Medium', info: 'Light + lean runtime memory settings, short pauses between chunks, skips unused stems.', blob: true, lean: true, pause: [80, 150], skip: true, ye: 0, wake: false },
-    { name: 'Max', info: 'Medium + longer pauses, UI yields inside heavy loops, keeps the screen awake. Slowest, safest.', blob: true, lean: true, pause: [250, 400], skip: true, ye: 64, wake: true }
+    { name: 'Light', info: 'Basic savings: lowest memory use.', blob: true, lean: false, pause: [0, 0], skip: false, ye: 0, wake: false },
+    { name: 'Medium', info: 'Light, plus short pauses and skipping unused stems.', blob: true, lean: true, pause: [80, 150], skip: true, ye: 0, wake: false },
+    { name: 'Max', info: 'Medium, plus longer pauses and keeping the screen awake. Slowest, safest.', blob: true, lean: true, pause: [250, 400], skip: true, ye: 64, wake: true }
   ];
   // Custom level (option 4): the person picks each setting. Stored as JSON under ppvCustom.
   const CUSTOM_DEFAULT = { threads: 0, rest: 0, lean: false, skip: true, smooth: false, wake: false, blob: false, spin: false };
   const customLoad = () => { try { return Object.assign({}, CUSTOM_DEFAULT, JSON.parse(localStorage.getItem('ppvCustom') || '{}')); } catch (e) { return Object.assign({}, CUSTOM_DEFAULT); } };
   const customLevel = () => {
     const c = customLoad(), d = Math.max(0, Math.min(1, (+c.rest || 0) / 100));     // rest = % of each chunk's working time spent idle
-    return { name: 'Custom', custom: true, info: 'Your own mix. Pick each setting below.', blob: !!c.blob, lean: !!c.lean, skip: !!c.skip, ye: c.smooth ? 64 : 0, wake: !!c.wake,
+    return { name: 'Custom', custom: true, info: 'Custom mix. Pick each setting below.', blob: !!c.blob, lean: !!c.lean, skip: !!c.skip, ye: c.smooth ? 64 : 0, wake: !!c.wake,
       threads: Math.max(0, +c.threads || 0), spin: !!c.spin, duty: d, pause: [Math.round(500 * d), Math.round(800 * d)] };   // native sleeps via duty, the web path via the pause values (ms)
   };
 
@@ -95,7 +95,8 @@
   const cpuOnly = new Set((() => { try { return JSON.parse(localStorage.getItem('ppvCpuOnly') || '[]'); } catch (e) { return []; } })());   // models whose NNAPI output came back NaN: always CPU
   const markCpu = key => { cpuOnly.add(key); try { localStorage.setItem('ppvCpuOnly', JSON.stringify([...cpuOnly])); } catch (e) {} };
   const hasBad = d => { if (!d || !d.length) return true; const st = Math.max(1, (d.length / 512) | 0); for (let i = 0; i < d.length; i += st) if (!Number.isFinite(d[i])) return true; return !Number.isFinite(d[d.length - 1]); };
-  const wantNnapi = key => { if (cpuOnly.has(key) || /^demucs/.test(key) || /^(tgh_|tg_hinst$|tg_hvoice$|tg_hgenre$|ww_)/.test(key)) return false; try { return localStorage.getItem('ppvNnapi') !== '0'; } catch (e) { return true; } };
+  const wantNnapi = key => { if (cpuOnly.has(key) || /^demucs/.test(key) || /^(tgh_|tg_hinst$|tg_hvoice$|tg_hgenre$|tg_effnet$|tg_effstyle$|tg_mn10$|ww_)/.test(key)) return false;   // tagger models stay on CPU: NNAPI fp16 blurs the embedding and the in-graph log-mel, so every score came out weak
+     try { return localStorage.getItem('ppvNnapi') !== '0'; } catch (e) { return true; } };
   const b64Memo = new WeakMap();
   async function nativeSession(key) {
     let info = await NP.load({ id: key, nnapi: wantNnapi(key), tune: false });   // no NNAPI-vs-CPU timing pass: the NaN check below already falls back to CPU if NNAPI misbehaves
@@ -1263,9 +1264,10 @@
     if (r.whole) c.w = 1;
     if (r.style) {
       const par = {}; r.style.forEach(([n, p]) => { const m = n.match(/\(([^)]*)\)$/), g = m ? m[1] : n; par[g] = Math.max(par[g] || 0, p); });
-      c.gp = top(Object.entries(par), 3, 0.1); c.st = top(r.style, 5, 0.05);
+      c.gp = top(Object.entries(par), 3, 0.03); c.st = top(r.style, 5, 0.02);   // averaged style activations are small by nature, so the cut-offs are low
     }
     c.gn = top(r.genre, 3, 0.08); c.md = top(r.mood, 3, 0.08);
+    if (c.gp && c.gp.length) c.gn = c.gp;                              // Discogs-EffNet genres are far stronger than AudioSet's
     if (r.genre && !c.gn.length) c.gn = top(r.genre, 2, 0); if (r.mood && !c.md.length) c.md = top(r.mood, 2, 0);
     const ins = {}; (r.inst || []).forEach(([n, p]) => { if (p >= 0.4) ins[n] = p; }); (r.inst2 || []).forEach(([n, p]) => { if (p >= 0.2) ins[n] = Math.max(ins[n] || 0, p); });
     c.in = top(Object.entries(ins), 8, 0);
@@ -1274,6 +1276,10 @@
       if (h.kind === 'binary') c.hd[id] = Math.round(h.p[h.pos] * 100);
       else c.hm[id] = top(h.p.map((p, i) => [h.classes[i], p]), 5, 0.1);
     });
+    {                                                                  // Mood from the Essentia mood heads when they ran; AudioSet's mood classes are near noise
+      const MOODIDS = ['happy', 'sad', 'relaxed', 'aggressive', 'party'], mm = MOODIDS.filter(id => c.hd[id] != null).map(id => [id, c.hd[id] / 100]).sort((u, v) => v[1] - u[1]);
+      if (mm.length >= 3) { const strong = mm.filter(v => v[1] >= 0.4); c.md = (strong.length ? strong : mm.slice(0, 2)).slice(0, 3).map(v => [v[0], Math.round(v[1] * 100)]); }
+    }
     return c;
   }
   async function persistTags(dbId, r, autoEq) {
@@ -1810,7 +1816,7 @@
     if (o.clean) {                                                    // pull the vocals out first: far fewer made-up lines on songs
       const A0 = window.__ppApi, vs = findVocalsStem(A0 && A0.tracks(), t);
       if (vs || isVocalsStem(t)) {                                    // already split (or this IS the vocals): never split again
-        status(vs ? 'Using the vocals you already split…' : 'This is already a vocals track…'); x = await decodeMono((vs || t).url, 16000);
+        status(vs ? 'Using the previously split vocals…' : 'This is already a vocals track…'); x = await decodeMono((vs || t).url, 16000);
       } else {
       const SPM = 'spleeter2';                                        // the music-removal step always uses Spleeter (Fast 2 stems), whatever model is picked for splitting
       await downloadModel(SPM, status, !!(o.lv && o.lv.blob));
@@ -1912,13 +1918,13 @@
       '<label class="ppv-c"><input type="checkbox" id="ppv-aeq"> Auto-EQ from genre when tagging</label>' +
       '<label class="ppv-c"><input type="checkbox" id="ppv-askip"> Skip long intros (needs whole-track tags)</label>' +
 '<details id="ppv-bgd"><summary>Background tagging &amp; surprise playlists</summary>' +
-      '<div class="ppv-note">Runs only while this page is open and you are away.</div>' +
-      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-bg"> Tag untagged tracks while I am away</label>' +
+      '<div class="ppv-note">Runs only while this page is open and idle.</div>' +
+      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-bg"> Tag untagged tracks while idle</label>' +
       '<select id="ppv-bgidle"><option value="1">Away = 1 minute idle</option><option value="5">Away = 5 minutes idle</option><option value="15">Away = 15 minutes idle</option></select>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-bgplay"> Also while music is playing</label>' +
       '<label class="ppv-c" id="ppv-bgchl" style="display:block"><input type="checkbox" id="ppv-bgchg"> Only while charging</label>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-live"> Keep smart playlists up to date as tracks get tagged</label>' +
-      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-lmix"> Auto mixes: For You, Ones You May Like, Your Pattern (they change as you listen)</label>' +
+      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-lmix"> Auto mixes: For You, Ones You May Like, Your Pattern (they change with listening)</label>' +
       '<button id="ppv-lmixblk" class="ppv-sec">Block current track from auto mixes</button><div id="ppv-lmixlist" class="ppv-note"></div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-surp"> Assemble surprise playlists</label>' +
       '<select id="ppv-surpev"><option value="6">New surprise every 6 hours</option><option value="24">New surprise every day</option><option value="72">New surprise every 3 days</option><option value="168">New surprise every week</option></select>' +
@@ -1938,16 +1944,16 @@
       '<select id="ppv-wlang">' + LANGS.map(l => '<option value="' + l[0] + '">' + l[1] + '</option>').join('') + '</select>' +
       '<select id="ppv-wtask"><option value="transcribe">Write what is said</option><option value="translate">Translate to English</option></select>' +
       '<select id="ppv-wacc"><option value="0">Accuracy: Standard (1 pass, fastest)</option><option value="1">Accuracy: Careful (2 passes + beam search, ~2x slower)</option><option value="2">Accuracy: Max (3 passes, ~3x slower)</option></select>' +
-      '<div class="ppv-note">Careful and Max listen to the song more than once and vote on repeated lines such as choruses. Other wordings are kept so you can choose in the editor.</div>' +
-      '<label class="ppv-c"><input type="checkbox" id="ppv-wclean"> Remove the music first (uses Spleeter, or the vocals you already split; on by default for songs)</label>' +
-      '<label class="ppv-c" id="ppv-wgpu-l"><input type="checkbox" id="ppv-wgpu"> Use the GPU (experimental, much faster if your phone supports it)</label>' +
+      '<div class="ppv-note">Careful and Max pass over the song more than once and compare repeated lines such as choruses. Other wordings are kept for choosing in the editor.</div>' +
+      '<label class="ppv-c"><input type="checkbox" id="ppv-wclean"> Remove the music first (uses Spleeter, or previously split vocals; on by default for songs)</label>' +
+      '<label class="ppv-c" id="ppv-wgpu-l"><input type="checkbox" id="ppv-wgpu"> Use the GPU (experimental, much faster on supported devices)</label>' +
       '<div class="ppv-note">Songs get synced lyrics (Lyrics tab), videos get subtitles. Both can be exported as .srt or .lrc from the editor below. The music-removal step always uses Spleeter. If the song was already split, its saved vocals are reused and nothing is split again.</div>' +
       '<button id="ppv-wgo">Transcribe current track</button><button id="ppv-wsrt" class="ppv-sec" style="display:none">Download .srt</button><button id="ppv-wfree" class="ppv-sec">Free up Whisper download</button>' +
       '<div id="ppv-wout" class="ppv-out"></div>' +
       '<button id="ppv-edopen" class="ppv-sec" style="margin-top:12px;padding:10px;font-size:13px">✎ Open full-screen editor (lyrics &amp; timestamps)</button>';
     // AI tools no longer live in the one panel: tagging + smart playlists go to the Library tab, Whisper goes to captions (video) or Lyrics (songs)
     d1.querySelector('summary').textContent = 'AI tagging & smart playlists';
-    d1.insertAdjacentHTML('afterbegin', '<div class="ppv-stx ppv-note">Ready</div><div class="ppv-pbar ppv-bar-tag"><i></i></div><select id="ppv-scope"><option value="cur">Tag: current track</option><option value="pick">Tag: a track I choose</option><option value="all">Tag: all tracks</option></select><select id="ppv-pick" style="display:none"></select><label class="ppv-c" id="ppv-redo-l" style="display:none"><input type="checkbox" id="ppv-redo"> Also redo tracks that already have tags</label><div class="ppv-row"><button id="ppv-tag">Tag current track</button><button id="ppv-stop" class="ppv-sec" style="display:none;width:auto;padding:6px 14px" data-keep="1">Stop</button></div><div id="ppv-tags" class="ppv-out"></div><details id="ppv-saved" open><summary>Tagged tracks <span id="ppv-scount" style="opacity:.6;font-weight:400"></span></summary><input type="text" id="ppv-ss" placeholder="Filter by title, artist or tag (e.g. piano, 120 bpm)"><select id="ppv-sf"><option value="all">Everything tagged</option><option value="audio">Songs</option><option value="video">Videos</option></select><div id="ppv-slist" class="ppv-note"></div></details>');
+    d1.insertAdjacentHTML('afterbegin', '<div class="ppv-stx ppv-note">Ready</div><div class="ppv-pbar ppv-bar-tag"><i></i></div><select id="ppv-scope"><option value="cur">Tag: current track</option><option value="pick">Tag: a chosen track</option><option value="all">Tag: all tracks</option></select><select id="ppv-pick" style="display:none"></select><label class="ppv-c" id="ppv-redo-l" style="display:none"><input type="checkbox" id="ppv-redo"> Also redo tracks that already have tags</label><div class="ppv-row"><button id="ppv-tag">Tag current track</button><button id="ppv-stop" class="ppv-sec" style="display:none;width:auto;padding:6px 14px" data-keep="1">Stop</button></div><div id="ppv-tags" class="ppv-out"></div><details id="ppv-saved" open><summary>Tagged tracks <span id="ppv-scount" style="opacity:.6;font-weight:400"></span></summary><input type="text" id="ppv-ss" placeholder="Filter by title, artist or tag (e.g. piano, 120 bpm)"><select id="ppv-sf"><option value="all">Everything tagged</option><option value="audio">Songs</option><option value="video">Videos</option></select><div id="ppv-slist" class="ppv-note"></div></details>');
     d2.insertAdjacentHTML('afterbegin', '<div class="ppv-stx ppv-note">Ready</div><div class="ppv-pbar ppv-bar-wh"><i></i></div>');
     d2.style.borderTop = '0'; d2.style.marginTop = '4px';
     const libHost = document.createElement('div'); libHost.className = 'ppv-scope'; libHost.id = 'ppv-libhost'; libHost.appendChild(d1);
@@ -2272,7 +2278,7 @@
     $('#ppv-eqall').onclick = () => {
       const a = A(), tg = loadTags(); let n = 0, eqs = {}; try { eqs = JSON.parse(localStorage.getItem('playerTrackEq')) || {}; } catch (e) {}
       a.tracks().forEach(t => { const c = tg[t.dbId]; if (!c || (eqs[t.dbId] && !c.ae)) return; const name = eqPresetFor(c); if (name && a.setTrackEqPreset(t.dbId, name)) { c.ae = name; n++; } });
-      saveTagStore(); h.status('Auto-EQ set on ' + n + ' track' + (n === 1 ? '' : 's') + ' (your own EQ settings were left alone).');
+      saveTagStore(); h.status('Auto-EQ set on ' + n + ' track' + (n === 1 ? '' : 's') + ' (custom EQ settings were left alone).');
     };
 
     // Whisper
@@ -2417,7 +2423,7 @@
           B('⏱ End', 'Set end to current time', () => { const e2 = media(); if (!e2) return; if (e2.currentTime <= r.s) { toast('End must be after the start.'); return; } mut(() => { r.e = e2.currentTime; }); });
           B('＋ Below', 'Insert a new line after this one', () => { snap(); const n = { s: Math.min(endOf(i), r.s + 30), e: null, text: '' }; rows.splice(i + 1, 0, n); sel = n; render(); const t2 = rowsEl.querySelectorAll('textarea')[i + 1]; if (t2) t2.focus(); });
           B('⧉ Copy', 'Duplicate line', () => mut(() => { rows.splice(i + 1, 0, { s: endOf(i), e: null, text: r.text }); }));
-          B('✂ Split', 'Split at the text cursor', () => { const p = tx.selectionStart; if (!r.text.trim() || p <= 0 || p >= tx.value.length) { toast('Tap inside the text where you want to split first.'); return; } mut(() => { const a = r.text.slice(0, p).trim(), b = r.text.slice(p).trim(), mid = r.s + (endOf(i) - r.s) * (p / tx.value.length), oe = r.e; r.text = a; r.e = mid; rows.splice(i + 1, 0, { s: mid, e: oe, text: b }); }); });
+          B('✂ Split', 'Split at the text cursor', () => { const p = tx.selectionStart; if (!r.text.trim() || p <= 0 || p >= tx.value.length) { toast('Tap inside the text at the split point first.'); return; } mut(() => { const a = r.text.slice(0, p).trim(), b = r.text.slice(p).trim(), mid = r.s + (endOf(i) - r.s) * (p / tx.value.length), oe = r.e; r.text = a; r.e = mid; rows.splice(i + 1, 0, { s: mid, e: oe, text: b }); }); });
           if (rows[i + 1]) B('⤵ Merge', 'Merge with the next line', () => mut(() => { const n = rows[i + 1]; r.text = (r.text.trim() + ' ' + n.text.trim()).trim(); r.e = n.e != null ? n.e : null; rows.splice(i + 1, 1); }));
           B('✕ Delete', 'Delete line', () => mut(() => { rows.splice(i, 1); if (sel === r) sel = null; }), 'danger');
           d.append(r1, tx, r3); rowsEl.appendChild(d); fit();
@@ -2438,7 +2444,7 @@
       };
       const open = () => { if (!edTrack || (cur() && cur().dbId !== edId)) { if (!load()) return; } else render(); ov.classList.add('open'); edet.open = true; document.body.style.overflow = 'hidden'; const m = media(); if (m) { prevRate = m.playbackRate || 1; m.playbackRate = +$e('#e-rate').value; } tickT(); };
       const close = () => { ov.classList.remove('open'); edet.open = false; closeModal(); document.body.style.overflow = ''; const m = media(); if (m) m.playbackRate = prevRate; tapOn = false; $e('#e-tapbar').classList.remove('on'); $e('#e-tap').classList.remove('pri'); };
-      const back = () => { if (isDirty() && !confirm('Discard your unsaved changes?')) return; close(); };
+      const back = () => { if (isDirty() && !confirm('Discard unsaved changes?')) return; close(); };
       const save = () => {
         const t = edTrack || cur(); if (!t) { toast('Play or select a track first.'); return false; }
         const cues = toCues(); if (!cues.length) { toast('Nothing to save: add at least one line with text.'); return false; }
@@ -2512,12 +2518,12 @@
       // ---- file tab ----
       $e('#e-paste').onclick = () => {
         const w = mkEl('div'); w.style.cssText = 'display:flex;flex-direction:column;gap:8px';
-        w.innerHTML = '<div style="font-size:12px;opacity:.7">Paste .lrc, .srt, or plain text (one line per row). Plain text is spaced 4 seconds apart so you can re-time it.</div><textarea id="e-pt" placeholder="Paste here…"></textarea><label style="font-size:12px"><input type="checkbox" id="e-pa"> Add to the existing lines instead of replacing them</label>';
-        modal('Paste text', w, [{ label: 'Cancel' }, { label: 'Import', pri: 1, fn: () => { const v = w.querySelector('#e-pt').value; if (!v.trim()) return false; let r = /-->/.test(v) ? parseSrtText(v) : parseLrcText(v); if (!r.length) r = plain(v); mut(() => { rows = w.querySelector('#e-pa').checked ? rows.concat(r) : r; sortRows(); sel = null; }); toast(r.length + ' lines imported. Not saved until you confirm.'); } }]);
+        w.innerHTML = '<div style="font-size:12px;opacity:.7">Paste .lrc, .srt, or plain text (one line per row). Plain text is spaced 4 seconds apart for re-timing.</div><textarea id="e-pt" placeholder="Paste here…"></textarea><label style="font-size:12px"><input type="checkbox" id="e-pa"> Add to the existing lines instead of replacing them</label>';
+        modal('Paste text', w, [{ label: 'Cancel' }, { label: 'Import', pri: 1, fn: () => { const v = w.querySelector('#e-pt').value; if (!v.trim()) return false; let r = /-->/.test(v) ? parseSrtText(v) : parseLrcText(v); if (!r.length) r = plain(v); mut(() => { rows = w.querySelector('#e-pa').checked ? rows.concat(r) : r; sortRows(); sel = null; }); toast(r.length + ' lines imported. Not saved until confirmed.'); } }]);
       };
       $e('#e-loadf').onclick = () => $e('#e-file').click();
-      $e('#e-file').onchange = async ev => { const f = ev.target.files[0]; ev.target.value = ''; if (!f) return; const txt = (await f.text()).replace(/^\uFEFF/, ''); let r = /-->/.test(txt) ? parseSrtText(txt) : parseLrcText(txt); if (!r.length) r = plain(txt); if (!r.length) { toast('Could not read any lines from that file.'); return; } mut(() => { rows = r; sel = null; }); toast(r.length + ' lines loaded from ' + f.name + '. Not saved until you confirm.'); };
-      $e('#e-revert').onclick = () => { if (isDirty() && !confirm('Throw away your edits and go back to the last saved version?')) return; load(); };
+      $e('#e-file').onchange = async ev => { const f = ev.target.files[0]; ev.target.value = ''; if (!f) return; const txt = (await f.text()).replace(/^\uFEFF/, ''); let r = /-->/.test(txt) ? parseSrtText(txt) : parseLrcText(txt); if (!r.length) r = plain(txt); if (!r.length) { toast('Could not read any lines from that file.'); return; } mut(() => { rows = r; sel = null; }); toast(r.length + ' lines loaded from ' + f.name + '. Not saved until confirmed.'); };
+      $e('#e-revert').onclick = () => { if (isDirty() && !confirm('Discard edits and go back to the last saved version?')) return; load(); };
       $e('#e-dsrt').onclick = () => dlFile('srt'); $e('#e-dlrc').onclick = () => dlFile('lrc'); $e('#e-dtxt').onclick = () => dlFile('txt');
       // ---- view ----
       $e('#e-ends').onchange = render; $e('#e-q').oninput = render;
@@ -2553,7 +2559,7 @@
         } catch (e) { console.error(e); toast('Scan failed: ' + errText(e)); }
         b1.disabled = b2.disabled = false;
       };
-      const repApply = (g, text) => { text = String(text || '').trim(); if (!text) { toast('Pick a version or write your own first.'); return; } snap(); g.rows.forEach(r => { r.text = text; }); render(); repRender(); toast('Applied to ' + g.rows.length + ' lines.'); };
+      const repApply = (g, text) => { text = String(text || '').trim(); if (!text) { toast('Pick a version or write a custom one first.'); return; } snap(); g.rows.forEach(r => { r.text = text; }); render(); repRender(); toast('Applied to ' + g.rows.length + ' lines.'); };
       const repSuggest = g => { const v = rpVote(g.rows.map(r => ({ text: r.text, alts: r.alts }))); return v ? v.text : ''; };
       function repRender() {
         repEl.textContent = '';
@@ -2580,7 +2586,7 @@
           repEl.appendChild(card);
         });
         if (!shown) repEl.appendChild(mkEl('div', 'eempty', repGroups.length ? 'Nothing to decide: every repeated line already has the same wording.' : 'Tap “Scan repeated lines” to find lines that were sung more than once and choose the right wording.<br><br>“Scan with audio” also catches repeats that Whisper wrote differently each time.'));
-        else repEl.appendChild(mkEl('div', 'rnote', 'Tip: tap ▶ to hear each time the line is sung. If none of the versions is right, write your own and apply it to all of them.'));
+        else repEl.appendChild(mkEl('div', 'rnote', 'Tip: tap ▶ to hear each time the line is sung. If none of the versions is right, write a custom version and apply it to all of them.'));
       }
       $e('#e-rscan').onclick = () => repScan(false); $e('#e-rscanA').onclick = () => repScan(true); $e('#e-rshow').onchange = repRender;
       $e('#e-rall').onclick = () => { let n = 0; snap(); repGroups.forEach(g => { if (repVariants(g).filter(v => !v.alt).length < 2) return; const s = repSuggest(g); if (s) { g.rows.forEach(r => { r.text = s; }); n++; } }); if (!n) { hist.pop(); toast('Nothing to apply.'); return; } render(); repRender(); toast('Applied the suggested wording to ' + n + ' repeated line' + (n === 1 ? '' : 's') + '.'); };
@@ -2591,7 +2597,7 @@
       const useAligned = (lines, al) => { mut(() => { rows = lines.map((l, i) => ({ s: al.starts[i], e: null, text: l })); sel = null; }); toast('Lyrics synced. ' + Math.round(al.ratio * 100) + '% of the words matched the audio.' + (al.ratio < 0.5 ? ' Low match: check the timing.' : '')); };
       $e('#e-sync').onclick = () => {
         const w = mkEl('div'); w.style.cssText = 'display:flex;flex-direction:column;gap:8px';
-        w.innerHTML = '<div style="font-size:12px;opacity:.75">Paste the correct lyrics, one line per row. The words stay exactly as you type them; only the timing comes from the audio, using the lines currently in the editor as a guide. Lines like [Chorus] are ignored.</div><textarea id="e-lt" placeholder="Paste lyrics here…"></textarea>';
+        w.innerHTML = '<div style="font-size:12px;opacity:.75">Paste the correct lyrics, one line per row. The words stay exactly as typed; only the timing comes from the audio, using the lines currently in the editor as a guide. Lines like [Chorus] are ignored.</div><textarea id="e-lt" placeholder="Paste lyrics here…"></textarea>';
         modal('Sync my own lyrics', w, [{ label: 'Cancel' }, { label: 'Sync', pri: 1, fn: () => { const lines = lyricLines(w.querySelector('#e-lt').value); if (!lines.length) { toast('Paste some lyrics first.'); return false; } const src = needSrc(); if (!src) return false; const al = rpAlign(src, lines); if (al.ratio < 0.2) { toast('These lyrics barely match the audio (' + Math.round(al.ratio * 100) + '%). Is it the right song?'); return false; } useAligned(lines, al); } }]);
       };
       const lrcShift = (lrc, src) => { const al = rpAlign(src, lrc.map(r => r.text)), d = []; lrc.forEach((r, i) => { if (al.anchored[i]) d.push(al.starts[i] - r.s); }); d.sort((a, b) => a - b); return { ratio: al.ratio, shift: d.length >= 3 ? d[d.length >> 1] : 0, n: d.length }; };
@@ -2599,7 +2605,7 @@
         const t = edTrack || cur(); if (!t) { toast('Play or select a track first.'); return; }
         const w = mkEl('div'); w.style.cssText = 'display:flex;flex-direction:column;gap:8px';
         const q0 = ((t.artist && !/^(Unknown artist|Video|Stream)$/.test(t.artist) ? t.artist + ' ' : '') + t.title).replace(/\.(mp3|m4a|wav|flac|ogg|mp4|mkv|webm)$/i, '').replace(/\s*[\(\[][^\)\]]*[\)\]]/g, '').trim();
-        w.innerHTML = '<div style="font-size:12px;opacity:.75">Looks the song up on lrclib.net, a free lyrics database. Only the text you see below is sent, and only when you tap Search. Whatever you pick is checked against your audio before it is used.</div><input type="text" id="e-nq"><button id="e-nsearch" class="pri">Search</button><div id="e-nres" style="display:flex;flex-direction:column;gap:6px"></div>';
+        w.innerHTML = '<div style="font-size:12px;opacity:.75">Looks the song up on lrclib.net, a free lyrics database. Only the text shown below is sent, and only when Search is tapped. Whatever is picked is checked against the audio before use.</div><input type="text" id="e-nq"><button id="e-nsearch" class="pri">Search</button><div id="e-nres" style="display:flex;flex-direction:column;gap:6px"></div>';
         w.querySelector('#e-nq').value = q0; const res = w.querySelector('#e-nres');
         const choose = it => {
           const syn = it.syncedLyrics ? parseLrcText(it.syncedLyrics).filter(r => r.text) : [], plain2 = lyricLines(it.plainLyrics || ''), src = srcRows(); res.textContent = '';
@@ -2609,11 +2615,11 @@
           if (!lines.length) { res.appendChild(mkEl('div', 'rnote', 'That entry has no lyrics.')); return; }
           if (src.length >= 2) {
             const al = rpAlign(src, lines), pc = Math.round(al.ratio * 100);
-            res.appendChild(mkEl('div', 'rnote', 'Matches what your audio says: ' + pc + '%' + (al.ratio < 0.35 ? '. That is low, it may be a different song or version.' : '')));
-            add('Use these lyrics, timed from my audio', () => useAligned(lines, al), 1, 'Best choice: the words from the database, the timing from your own track.');
-            if (syn.length) { const sh = lrcShift(syn, src), s = Math.abs(sh.shift) > 0.25 ? sh.shift : 0; add('Use their timestamps' + (s ? ' (shifted ' + (s > 0 ? '+' : '') + s.toFixed(1) + 's to fit)' : ''), () => { mut(() => { rows = syn.map(r => ({ s: Math.max(0, r.s + s), e: null, text: r.text })); sel = null; }); toast('Loaded ' + syn.length + ' lines with the database timing.'); }, 0, s ? 'Their timing was measured against your audio and corrected.' : ''); }
+            res.appendChild(mkEl('div', 'rnote', 'Match with the audio: ' + pc + '%' + (al.ratio < 0.35 ? '. That is low, it may be a different song or version.' : '')));
+            add('Use these lyrics, timed from my audio', () => useAligned(lines, al), 1, 'Best choice: the words from the database, the timing from the track itself.');
+            if (syn.length) { const sh = lrcShift(syn, src), s = Math.abs(sh.shift) > 0.25 ? sh.shift : 0; add('Use their timestamps' + (s ? ' (shifted ' + (s > 0 ? '+' : '') + s.toFixed(1) + 's to fit)' : ''), () => { mut(() => { rows = syn.map(r => ({ s: Math.max(0, r.s + s), e: null, text: r.text })); sel = null; }); toast('Loaded ' + syn.length + ' lines with the database timing.'); }, 0, s ? 'Their timing was measured against the audio and corrected.' : ''); }
           } else {
-            if (syn.length) add('Use their timestamps (not checked against your audio)', () => { mut(() => { rows = syn.map(r => ({ s: r.s, e: null, text: r.text })); sel = null; }); toast('Loaded ' + syn.length + ' lines. Transcribe with Whisper later to verify them.'); }, 1);
+            if (syn.length) add('Use their timestamps (not checked against the audio)', () => { mut(() => { rows = syn.map(r => ({ s: r.s, e: null, text: r.text })); sel = null; }); toast('Loaded ' + syn.length + ' lines. Transcribe with Whisper later to verify them.'); }, 1);
             if (plain2.length) add('Use plain text (lines 4 seconds apart)', () => { mut(() => { rows = plain2.map((l, i) => ({ s: i * 4, e: null, text: l })); sel = null; }); toast('Loaded. Re-time the lines, or transcribe with Whisper and use Sync.'); });
           }
           add('‹ Back to results', () => { $e('#e-mod').classList.add('on'); }, 0);
@@ -2624,7 +2630,7 @@
             const r = await fetch('https://lrclib.net/api/search?q=' + encodeURIComponent(q)); if (!r.ok) throw new Error('HTTP ' + r.status); let j = await r.json(); const m = media(), du = m && isFinite(m.duration) ? m.duration : 0;
             j = (Array.isArray(j) ? j : []).filter(it => it.plainLyrics || it.syncedLyrics); if (du) j.sort((a, b) => Math.abs((a.duration || 1e4) - du) - Math.abs((b.duration || 1e4) - du)); j = j.slice(0, 6); res.textContent = '';
             if (!j.length) { res.textContent = 'No lyrics found. Try fewer words, e.g. just the song title.'; return; }
-            j.forEach(it => { const b = mkEl('button', '', '<b>' + (it.trackName || '?') + '</b> · ' + (it.artistName || '?') + '<br><small style="opacity:.7">' + (it.duration ? mmss(it.duration) : '') + (du && it.duration ? ' (yours ' + mmss(du) + ')' : '') + (it.syncedLyrics ? ' · has timestamps' : ' · text only') + '</small>'); b.style.textAlign = 'left'; b.onclick = () => choose(it); res.appendChild(b); });
+            j.forEach(it => { const b = mkEl('button', '', '<b>' + (it.trackName || '?') + '</b> · ' + (it.artistName || '?') + '<br><small style="opacity:.7">' + (it.duration ? mmss(it.duration) : '') + (du && it.duration ? ' (this track ' + mmss(du) + ')' : '') + (it.syncedLyrics ? ' · has timestamps' : ' · text only') + '</small>'); b.style.textAlign = 'left'; b.onclick = () => choose(it); res.appendChild(b); });
           } catch (e) { res.textContent = 'Could not reach lrclib.net. This needs an internet connection. (' + errText(e).slice(0, 80) + ')'; }
         };
         w.querySelector('#e-nsearch').onclick = search; w.querySelector('#e-nq').onkeydown = ev => { if (ev.key === 'Enter') search(); };
@@ -2695,7 +2701,7 @@
         { id: 'savedmenu', label: 'Tagged tracks menu', key: 'ppvShowSaved', def: 1, ui: 1 },
         { id: 'savedvid', label: 'Tagged videos in that menu', key: 'ppvShowVid', def: 1, ui: 1 },
         { id: 'lyrics', label: 'Lyrics & subtitles (Whisper) menu', key: 'ppvShowLyr', def: 1, ui: 1 },
-        { g: 'Automatic', id: 'live', label: 'Live smart playlists (follow your tags)', key: 'ppvLive', def: 1, box: 'ppv-live' },
+        { g: 'Automatic', id: 'live', label: 'Live smart playlists (follow tags)', key: 'ppvLive', def: 1, box: 'ppv-live' },
         { id: 'mixes', label: 'Auto mixes: For You, Ones You May Like, Your Pattern', key: 'ppvLiveMix', def: 1, box: 'ppv-lmix' },
         { id: 'surp', label: 'Surprise playlists', key: 'ppvSurp', def: 0, box: 'ppv-surp' },
         { id: 'bg', label: 'Background tagging while I am away', key: 'ppvBg', def: 0, box: 'ppv-bg' },
@@ -2728,7 +2734,7 @@
       const box = document.createElement('div'); box.className = 'ppv-scope'; box.id = 'ppv-smartset';
       box.innerHTML = '<details open><summary>Smart features</summary>' +
         '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-fs-all"> <b>All smart features</b></label>' +
-        '<div class="ppv-note">Off hides the smart menus and stops the automatic playlists and background work. Your tags, playlists and listening history are kept. Turning it back on restores what you had.</div>' +
+        '<div class="ppv-note">Off hides the smart menus and stops the automatic playlists and background work. Tags, playlists and listening history are kept. Turning it back on restores everything.</div>' +
         FEATS.map(f => (f.g ? '<div style="margin-top:8px"><b>' + f.g + '</b></div>' : '') + '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-fs-' + f.id + '"> ' + f.label + '</label>').join('') + '</details>';
       const syncBoxes = () => { FEATS.forEach(f => { const el = box.querySelector('#ppv-fs-' + f.id); if (el) el.checked = isOn(f); }); box.querySelector('#ppv-fs-all').checked = FEATS.some(isOn); };
       FEATS.forEach(f => { box.querySelector('#ppv-fs-' + f.id).onchange = e => { setF(f, e.target.checked); syncBoxes(); }; });
@@ -3176,7 +3182,7 @@
     const cfab = document.createElement('div'); cfab.id = 'ppv-cfab'; cfab.setAttribute('role', 'button'); cfab.setAttribute('aria-label', 'Chat with Bloop');
     const cball = ball(); cfab.appendChild(cball);
     const cbox = document.createElement('div'); cbox.id = 'ppv-chat';
-    cbox.innerHTML = '<div class="ch-h"><b>Bloop</b><span class="ch-n">Helper on your device. Free chat uses a tiny AI, so it can be wrong. Not a counselor.</span><button class="ch-c" data-a="clear">Clear</button><button class="ch-c" data-a="x" aria-label="Close">&times;</button></div><div class="ch-l"></div><div class="ch-i"><input type="text" maxlength="400" placeholder="Say something to Bloop" enterkeyhint="send"><button data-a="mic" class="ch-mic" aria-label="Talk to Bloop" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg></button><button data-a="send">Send</button></div>';
+    cbox.innerHTML = '<div class="ch-h"><b>Bloop</b><span class="ch-n">Helper that runs on the device. Free chat uses a tiny AI, so it can be wrong. Not a counselor.</span><button class="ch-c" data-a="clear">Clear</button><button class="ch-c" data-a="x" aria-label="Close">&times;</button></div><div class="ch-l"></div><div class="ch-i"><input type="text" maxlength="400" placeholder="Say something to Bloop" enterkeyhint="send"><button data-a="mic" class="ch-mic" aria-label="Talk to Bloop" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg></button><button data-a="send">Send</button></div>';
     document.body.append(cfab, cbox);
     const clist = cbox.querySelector('.ch-l'), cin = cbox.querySelector('input');
     const cm = m => { cball.className = 'ppv-ball m-' + m; blFace(cball, m); };
@@ -3265,7 +3271,7 @@
       for (let i = 0; i < want.length; i += 48) {
         const part = want.slice(i, i + 48), vs = await mEmbed(part.map(w => w.x), null);
         part.forEach((w, k) => { semIdx[w.id] = { h: w.h, v: vs[k] }; });
-        say && say('Learning your songs\u2026 ' + Math.min(want.length, i + 48) + ' of ' + want.length);
+        say && say('Learning songs\u2026 ' + Math.min(want.length, i + 48) + ' of ' + want.length);
       }
       if (want.length) { try { await idbPut('mini_trk', semIdx); } catch (e) {} }
       return tr.map((t, i) => !t.stem && semIdx[t.dbId] ? { i, v: semIdx[t.dbId].v } : null).filter(Boolean);
@@ -6484,21 +6490,21 @@
     }
     const p = document.createElement('div'); p.id = 'ppv-panel';
     p.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><b>Stem separator</b><button id="ppv-x" class="ppv-x" type="button" aria-label="Close">&times;</button></div><select id="ppv-model">' + Object.entries(MODELS).map(([k, m]) => '<option value="' + k + '">' + m.label + '</option>').join('') + '</select>' +
-      '<div style="margin-top:8px">Optimization</div><select id="ppv-lvl"><option value="0">Off</option><option value="1">Light (big savings)</option><option value="2">Medium (+ lean runtime)</option><option value="3">Max (+ every small saving)</option><option value="4">Custom (pick your own)</option></select><div id="ppv-lvi" style="opacity:.6;font-size:11px;margin-top:4px"></div>' +
+      '<div style="margin-top:8px">Optimization</div><select id="ppv-lvl"><option value="0">Off</option><option value="1">Light</option><option value="2">Medium</option><option value="3">Max</option><option value="4">Custom (pick each setting)</option></select><div id="ppv-lvi" style="opacity:.6;font-size:11px;margin-top:4px"></div>' +
       '<div id="ppv-cust" style="display:none;margin-top:6px;padding:8px;border:1px solid rgba(128,128,128,.35);border-radius:8px">' +
       '<div>CPU threads</div><select id="ppv-c-th"><option value="0">Auto (fast cores)</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="6">6</option><option value="8">8</option></select><div id="ppv-c-thn" style="opacity:.6;font-size:11px;margin-top:2px"></div>' +
       '<div style="margin-top:8px">Rest between chunks: <span id="ppv-c-rv">0</span>%</div><input id="ppv-c-rest" type="range" min="0" max="100" step="5" value="0" style="width:100%"><div style="opacity:.6;font-size:11px">Idle time after each chunk. Higher = cooler and easier on the battery, but slower.</div>' +
       '<label class="ppv-c" style="display:block;margin-top:8px"><input type="checkbox" id="ppv-c-lean"> Lean memory (less RAM, a bit slower)</label>' +
-      '<label class="ppv-c" style="display:block;margin-top:6px"><input type="checkbox" id="ppv-c-skip"> Skip stems I did not tick</label>' +
-      '<label class="ppv-c" style="display:block;margin-top:6px"><input type="checkbox" id="ppv-c-smooth"> Keep the app responsive during heavy loops</label>' +
+      '<label class="ppv-c" style="display:block;margin-top:6px"><input type="checkbox" id="ppv-c-skip"> Skip stems that are not ticked</label>' +
+      '<label class="ppv-c" style="display:block;margin-top:6px"><input type="checkbox" id="ppv-c-smooth"> Keep the app responsive while processing</label>' +
       '<label class="ppv-c" style="display:block;margin-top:6px"><input type="checkbox" id="ppv-c-wake"> Keep the screen awake</label>' +
       '<label class="ppv-c" style="display:block;margin-top:6px"><input type="checkbox" id="ppv-c-blob"> Low-RAM model download</label>' +
-      '<label id="ppv-c-spinl" class="ppv-c" style="display:none;margin-top:6px"><input type="checkbox" id="ppv-c-spin"> Threads busy-wait between steps (faster, hotter, more battery)</label></div>' +
+      '<label id="ppv-c-spinl" class="ppv-c" style="display:none;margin-top:6px"><input type="checkbox" id="ppv-c-spin"> Keep threads busy between steps (faster, hotter, uses more battery)</label></div>' +
       '<div id="ppv-stems"></div>' +
       '<div style="margin-top:8px">Mute vocal gaps</div><select id="ppv-gate"><option value="0">Off</option><option value="1">Gentle</option><option value="2">Normal</option><option value="3">Strong</option></select><div style="opacity:.6;font-size:11px;margin-top:4px">Silences leftover noise between sung lines. Vocals stem only.</div>' +
       '<div id="ppv-spl" style="margin-top:8px">Strength: <span id="ppv-sv">1</span><input id="ppv-sl" type="range" min="1" max="4" step="0.5" value="1" style="width:100%"><div style="opacity:.6;font-size:11px">Higher = less bleed, more watery artifacts</div><div style="margin-top:8px">Quality</div><select id="ppv-q"><option value="0">Standard</option><option value="1">Better (smooth seams, ~1.3x time)</option><option value="2">Best (+ averaged 2nd pass, ~2.7x time)</option></select></div>' +
       '<label id="ppv-gpu" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-gpuc"> Use GPU (faster, experimental)</label>' +
-      '<label id="ppv-nn" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-nnc"> Phone GPU/NPU (NNAPI), tested per model on first use. Demucs always uses CPU. Toggling re-tests</label>' +
+      '<label id="ppv-nn" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-nnc"> Phone GPU/NPU (experimental). Demucs always uses the CPU</label>' +
       '<label id="ppv-mt" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-mtc"> Multi-thread (faster, uses more memory, reloads the app)</label>' +
       '<label id=\"ppv-vidl\" class=\"ppv-c\" style=\"display:block;margin-top:8px\"><input type=\"checkbox\" id=\"ppv-vid\"> Keep the original video (video tracks only)</label><div class=\"ppv-note\">Saves each stem as a video with its sound replaced. Takes the video\u2019s full length per stem, keep the screen on.</div>' +
       '<details><summary>Where split tracks go</summary><div class="ppv-note">Split tracks never count as new library tracks. They are all kept together under \u201cSplit tracks\u201d in the library\u2019s view selector.</div>' +
@@ -6529,8 +6535,8 @@
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-brain-on"> Chat brain: talk about anything with a tiny AI (optional, one-time download)</label>' +
       '<div class="ppv-note">Off: Bloop only does tasks and answers app questions. On: he can also chat. It is taken out of memory whenever he does a task. It is a tiny model: it can be wrong, and it is not a counselor.</div>' +
       '<label class="ppv-c" style="display:block">Bloop\'s memory: <b id="ppv-mem-val"></b><input type="range" id="ppv-mem" min="0" max="8" step="1" style="width:100%;display:block"></label>' +
-      '<div class="ppv-note">How many of your recent messages and his replies he remembers while chatting. 0 means he forgets each message right away. Higher is more context, but slower and uses more RAM. Tasks and commands never need memory.</div>' +
-      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-agent-on"> Let Bloop do things when I ask (play, playlists, tagging, volume\u2026)</label>' +
+      '<div class="ppv-note">How many recent messages and replies are remembered while chatting. 0 forgets each message right away. Higher keeps more context but is slower. Tasks and commands never need memory.</div>' +
+      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-agent-on"> Allow Bloop to run commands (play, playlists, tagging, volume\u2026)</label>' +
       '<label id="ppv-chatgpul" class="ppv-c" style="display:none"><input type="checkbox" id="ppv-chatgpu"> Use GPU (experimental, ~270 MB download)</label>' +
       '<button id="ppv-chatfree" class="ppv-sec" type="button">Free up chat download</button>');
     { const co = p.querySelector('#ppv-chat-on'), cg = p.querySelector('#ppv-chatgpu'), cl = p.querySelector('#ppv-chatgpul');
@@ -6550,14 +6556,14 @@
       p.querySelector('#ppv-chatfree').onclick = async () => { try { await mas.chat.free(); status('Chat download removed.'); } catch (e) { status('Error: ' + errText(e)); } }; }
     p.insertAdjacentHTML('beforeend', '<div style="margin-top:10px"><b>Bloop voice and listening</b></div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-mini-on"> Smarter understanding (MiniLM, ~25 MB download)</label>' +
-      '<div class="ppv-note">Loose wording finds the right command, and you can ask for songs by meaning, like something for a rainy drive. Runs on your device. Needs the assistant on.</div>' +
+      '<div class="ppv-note">Loose wording finds the right command, and songs can be requested by meaning, like something for a rainy drive. Needs the assistant on.</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-voice-on"> Bloop speaks (Kokoro voice, ~90 MB download)</label>' +
-      '<select id="ppv-voice-who"></select><select id="ppv-voice-when"><option value="talk">Only when I talk to him</option><option value="all">Every reply</option></select>' +
+      '<select id="ppv-voice-who"></select><select id="ppv-voice-when"><option value="talk">Only when spoken to</option><option value="all">Every reply</option></select>' +
       '<div class="ppv-note">A warm, calm voice. Music dips while he talks.</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-mic-on"> Talk to Bloop (Moonshine, ~50 MB download)</label>' +
-      '<div class="ppv-note">Adds a mic button to his chat. Tap it, speak, and it sends when you pause.</div>' +
+      '<div class="ppv-note">Adds a mic button to his chat. Tap it, speak, and it sends after a pause.</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-wake-on"> Wake word (listens while this page is open)</label>' +
-      '<div class="ppv-note">Say the wake phrase and he listens. It uses the mic continuously, which costs some battery, and loud music can hide your voice or cause false wakes. The phrase is Hey Jarvis until a hey_bloop.onnx is uploaded next to your models.</div>' +
+      '<div class="ppv-note">Say the wake phrase and he listens. It uses the mic continuously, which costs some battery, and loud music can hide the voice or cause false wakes. The phrase is Hey Jarvis.</div>' +
       '<button id="ppv-voicefree" class="ppv-sec" type="button">Free up voice downloads</button>');
     { const V = mas.voice, g = id => p.querySelector('#' + id);
       const boxes = [['ppv-mini-on', 'ppvMini'], ['ppv-voice-on', 'ppvVoice'], ['ppv-mic-on', 'ppvMic'], ['ppv-wake-on', 'ppvWake']];

@@ -3912,7 +3912,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
   <div class="pp-ld-spin pp-ld-plus"><svg viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></svg></div>
   <div class="pp-ld-spin pp-ld-premium"><i></i><i></i><b></b></div>
   <div class="pp-ld-title">Press Play Media</div>
-  <div class="pp-ld-sub">Loading your library…</div>
+  <div class="pp-ld-sub">Loading library…</div>
 </div>
 <script>
 (function(){
@@ -4110,7 +4110,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
                       <div class="dj-knob-val" id="tremolo-val">0%</div>
                     </div>
                   </div>
-                  <p class="boost-hint">Drag a knob up/down (or scroll, or use arrow keys) to turn it. Double-click to reset. Bass Boost shelves up the low end; Reverb blends in a convolved room decay; Filter sweeps a low-pass to the left of center and a high-pass to the right; Distortion drives a soft-clip waveshaper; Bitcrush crushes bit depth and sample rate for a lo-fi/glitch sound; Echo repeats the signal with decaying slap-back delays; Tremolo pulses the volume rhythmically. All run through the same Web Audio graph as the equalizer.</p>
+                  <p class="boost-hint">Drag a knob to turn it. Double-click to reset.</p>
                   <button class="full-row" id="fx-reset-btn">Reset FX</button>
                 </div>
               </div>
@@ -4287,19 +4287,19 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
                   <input type="number" id="latency-preset-input" min="-2000" max="2000" step="50" value="150" title="Preset value (ms)">
                   <button id="latency-preset-btn" title="Switch this preset on or off">Use <span id="latency-preset-btn-value">150</span> ms</button>
                 </div>
-                <p class="menu-section-hint" style="margin:6px 0 0 0;">Set this once for your earbuds, then tap the button to switch it on or off instead of resetting the slider each time.</p>
+                <p class="menu-section-hint" style="margin:6px 0 0 0;">Set once per Bluetooth device, then tap the button to switch it on or off without resetting the slider.</p>
                 <hr style="margin:10px 0;">
                 <label class="override-toggle" style="margin-top:8px;" title="Renders the picture delay on the GPU when smoothing is off. Lighter on the CPU, but see the note below.">
                   <input type="checkbox" id="memc-delay-gl-toggle">
                   <span>Delay on GPU</span>
                 </label>
-                <p class="menu-section-hint" style="margin:4px 0 0 0;">Runs the latency delay on the GPU, which stops heavy videos dropping frames. Trade-offs: uses more graphics memory, needs WebGL2, may use a little more battery than the plain video player, and colours can differ slightly (HDR is not tone-mapped). Turn it off if a video looks wrong or the delay misbehaves; the older method is used instead.</p>
+                <p class="menu-section-hint" style="margin:4px 0 0 0;">Stops heavy videos dropping frames while latency is on. Turn it off if a video looks wrong.</p>
                 <hr style="margin:10px 0;">
                 <label class="override-toggle">
                   <input type="checkbox" id="latency-metronome-toggle">
                   <span>Latency ruler</span>
                 </label>
-                <p class="menu-section-hint" style="margin:6px 0 0 0;">A line sweeps across the ruler and a click plays the instant it crosses each bar. Watch the bar you hear the click on, read its number, and set the slider to that.</p>
+                <p class="menu-section-hint" style="margin:6px 0 0 0;">A line sweeps across the ruler and a click plays as it crosses each bar. Note the bar number at the click and set the slider to it.</p>
                 <div id="latency-ruler-wrap" style="display:none;">
                   <svg id="latency-ruler" viewBox="0 0 300 60" preserveAspectRatio="none"></svg>
                 </div>
@@ -4347,7 +4347,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
                   <button type="button" class="memc-mode-btn" data-memc-q="2">High</button>
                   <button type="button" class="memc-mode-btn" data-memc-q="3">4K</button>
                 </div>
-                <p class="menu-section-hint" style="margin:6px 0 0 0;">Adds in-between frames to low-fps video. Simple suits low-end devices, Advanced tracks motion and needs a decent GPU. Ultra tracks motion at a finer scale in both directions and avoids ghosting around moving objects; it needs a strong GPU. "Smooth up to" skips videos faster than that (set 60 to smooth 60 fps video). "Output up to" caps how many frames per second are shown; lower saves battery. Smoothing quality sets the resolution the smoothing works at (High and 4K need a strong GPU and lots of memory; the player steps down by itself if memory runs out). Adds about one frame of delay, covered by the latency setting.</p>
+                <p class="menu-section-hint" style="margin:6px 0 0 0;">Adds in-between frames to low-fps video. Simple suits low-end devices; Advanced and Ultra look smoother but need a strong device. "Smooth up to" skips videos faster than that. "Output up to" caps frames per second; lower saves battery.</p>
                 <label class="override-toggle" style="margin-top:8px;" title="On: slowing playback counts as a lower source rate, so slowed 60 fps video is smoothed and output fills up to the Output limit. Off: speed is ignored.">
                   <input type="checkbox" id="memc-speed-toggle" checked>
                   <span>Smooth slowed playback</span>
@@ -4376,14 +4376,14 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
                 <span id="upscale-pill-label">Off</span>
               </button>
               <div id="upscale-dropdown">
-                <div class="latency-dropdown-row" style="margin:9px 0 4px 0;"><span class="tool-dropdown-label" style="padding:0;" title="Sharper enlargement (bicubic) when your screen has more pixels than the smoothing quality provides. Never goes above your screen's real resolution.">Upscale up to</span></div>
+                <div class="latency-dropdown-row" style="margin:9px 0 4px 0;"><span class="tool-dropdown-label" style="padding:0;" title="Sharper enlargement (bicubic) on screens with more pixels than the smoothing quality provides. Never goes above the screen's real resolution.">Upscale up to</span></div>
                 <div class="memc-mode-row">
                   <button type="button" class="memc-mode-btn" data-memc-up="0">Off</button>
                   <button type="button" class="memc-mode-btn" data-memc-up="1">1080p</button>
                   <button type="button" class="memc-mode-btn" data-memc-up="2">1440p</button>
                   <button type="button" class="memc-mode-btn" data-memc-up="3">4K</button>
                 </div>
-                <p class="menu-section-hint" style="margin:6px 0 0 0;">Sharper enlargement (bicubic) for when your screen has more pixels than the smoothing quality provides. It never goes above your screen's real resolution, so it only does something when your screen is larger than the smoothing resolution. Works together with Motion smoothing.</p>
+                <p class="menu-section-hint" style="margin:6px 0 0 0;">Sharper picture on high-resolution screens. Works together with Motion smoothing.</p>
               </div>
             </div>
           </div>
@@ -4501,7 +4501,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <div id="backup-speed-row">
           <div id="backup-speed-head"><span>Backup speed</span><span id="backup-speed-value">Max</span></div>
           <input type="range" id="backup-speed-slider" min="1" max="10" step="1" value="10">
-          <div id="backup-speed-hint">Applies to both export and restore. Lower is slower but gentler on memory and battery. Try a low setting if the page crashes.</div>
+          <div id="backup-speed-hint">Applies to export and restore. Try a lower setting if backups fail.</div>
         </div>
         <input type="file" id="library-import-input" accept="application/zip,.zip">
       </div>
@@ -4510,7 +4510,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <div class="settings-row">
           <div class="settings-row-text">
             <div class="settings-row-title">Frame-drop protection</div>
-            <div class="settings-row-sub" id="perf-mode-sub">Browsers decide hardware vs software decoding themselves, so this lightens everything else. Auto: if a video keeps skipping frames, filters, motion smoothing and UI animation switch off for that video. Light: always off while this is set.</div>
+            <div class="settings-row-sub" id="perf-mode-sub">Reduces effects to keep video smooth. Auto: only when a video starts skipping frames. Light: always.</div>
           </div>
           <select id="perf-mode-select">
             <option value="off">Off</option>
@@ -4521,7 +4521,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <div class="settings-row" style="margin-top:12px;">
           <div class="settings-row-text">
             <div class="settings-row-title">Audio lead (no frame drops)</div>
-            <div class="settings-row-sub">Instead of delaying the picture, plays the sound slightly ahead of the video by the latency amount. The video is never processed, so it can't drop frames. Subtitles stay with the picture. The visualizer is silent on video while this is on.</div>
+            <div class="settings-row-sub">Plays the sound ahead of the video instead of delaying the picture, so video never drops frames. The visualizer is silent on video while this is on.</div>
           </div>
           <label class="settings-switch">
             <input type="checkbox" id="audio-lead-toggle">
@@ -4531,7 +4531,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <div class="settings-row" style="margin-top:12px;">
           <div class="settings-row-text">
             <div class="settings-row-title">Decode compensation (+300 ms)</div>
-            <div class="settings-row-sub">Adds a fixed 300 ms picture delay to every video to cover browser decoding lag.</div>
+            <div class="settings-row-sub">Delays the picture by 300 ms to keep it in sync with the sound.</div>
           </div>
           <label class="settings-switch">
             <input type="checkbox" id="decode-comp-toggle" checked>
@@ -4541,7 +4541,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <div class="settings-row" style="margin-top:12px;">
           <div class="settings-row-text">
             <div class="settings-row-title">Lossless latency (no dropped frames)</div>
-            <div class="settings-row-sub">When the latency slider delays the picture, capture every decoded frame off the main thread instead of grabbing frames one at a time. Fixes videos losing frames while latency is on. Needs a Chromium-based browser; elsewhere the normal GPU delay is used. Motion smoothing still uses the GPU when it is on.</div>
+            <div class="settings-row-sub">Fixes videos losing frames while the latency delay is on. Needs a Chromium-based browser.</div>
           </div>
           <label class="settings-switch">
             <input type="checkbox" id="lossless-latency-toggle">
@@ -4551,7 +4551,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <div class="settings-row" id="lossless-quality-row" style="margin-top:10px;padding-left:14px;border-left:2px solid var(--line);display:none;">
           <div class="settings-row-text">
             <div class="settings-row-title">Delayed picture sharpness</div>
-            <div class="settings-row-sub">Size of the frames held for the delay. Low is the original 640 px: lightest on memory but soft. High is sharper: Auto spends up to 512 MB (sharp for short delays, softer for long ones), and fixed widths are still shrunk if they would need over 2 GB.</div>
+            <div class="settings-row-sub">Picture sharpness while the delay is on. Low is lightest but soft; High is sharper and uses more memory.</div>
           </div>
           <select id="lossless-quality-select">
             <option value="640">Low: 640 px (original)</option>
@@ -4564,7 +4564,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <div class="settings-row" style="margin-top:12px;">
           <div class="settings-row-text">
             <div class="settings-row-title">Lighten UI while video plays</div>
-            <div class="settings-row-sub">Animated gradient backgrounds and blur effects repaint behind the video and can cause dropped frames. Stop animation &amp; blur freezes them during playback. Flatten gradients also turns gradient backgrounds into a solid colour. Everything returns when the video is paused.</div>
+            <div class="settings-row-sub">Freezes animated backgrounds while a video plays to prevent dropped frames. They return when paused.</div>
           </div>
           <select id="video-ui-select">
             <option value="off">Off</option>
@@ -4577,7 +4577,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
       </div>
       <div class="settings-section" id="progress-section">
         <div class="settings-section-label">Progress &amp; settings</div>
-        <div class="settings-row-sub" style="margin:-4px 0 10px;">Preferences, EQ, gestures, customization, and game progress — everything except your media files. Use "Export backup" above for those.</div>
+        <div class="settings-row-sub" style="margin:-4px 0 10px;">Settings and game progress, without media files.</div>
         <div id="progress-backup-row">
           <button id="progress-export-btn" type="button">Export progress</button>
           <button id="progress-import-btn" type="button">Restore progress</button>
@@ -4597,7 +4597,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <div class="settings-row">
           <div class="settings-row-text">
             <div class="settings-row-title">Keep earning grooves in background</div>
-            <div class="settings-row-sub">Keeps generators earning while the game tab is closed.</div>
+            <div class="settings-row-sub">Keep earning while the game tab is closed.</div>
           </div>
           <label class="settings-switch">
             <input type="checkbox" id="dc-background-earn-toggle">
@@ -4608,8 +4608,8 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
       <div class="settings-section">
         <div class="settings-row">
           <div class="settings-row-text">
-            <div class="settings-row-title">Media player layout</div>
-            <div class="settings-row-sub">Browse your library with a bottom tab bar and a mini-player. Tapping a video opens a full-screen player page; closing it brings you back to the library. Turn off to go back to the original layout.</div>
+            <div class="settings-row-title">Retro layout</div>
+            <div class="settings-row-sub">The original layout, without the bottom tab bar and mini-player.</div>
           </div>
           <label class="settings-switch">
             <input type="checkbox" id="player-layout-toggle">
@@ -4620,8 +4620,8 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
       <div class="settings-section">
         <div class="settings-row">
           <div class="settings-row-text">
-            <div class="settings-row-title">Detailed playlist mode</div>
-            <div class="settings-row-sub">Thumbnails, video size and length per track, plus multiple playlists.</div>
+            <div class="settings-row-title">Simple playlist mode</div>
+            <div class="settings-row-sub">A plain track list, without thumbnails, sizes or multiple playlists.</div>
           </div>
           <label class="settings-switch">
             <input type="checkbox" id="detailed-mode-toggle">
@@ -4633,7 +4633,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <div class="settings-row">
           <div class="settings-row-text">
             <div class="settings-row-title">Keep MP3 conversions on reload</div>
-            <div class="settings-row-sub">On: a video converted to audio-only stays that way. Off: it switches back to video the next time the library loads.</div>
+            <div class="settings-row-sub">Keeps videos converted to audio as audio-only.</div>
           </div>
           <label class="settings-switch">
             <input type="checkbox" id="keep-mp3-conversions-toggle" checked>
@@ -4645,7 +4645,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <div class="settings-row">
           <div class="settings-row-text">
             <div class="settings-row-title">Remember playback position</div>
-            <div class="settings-row-sub">On: switching tracks or reopening the player picks up where you left off. Off: every track always starts from the beginning.</div>
+            <div class="settings-row-sub">Resumes tracks where they stopped. Off: tracks always start from the beginning.</div>
           </div>
           <label class="settings-switch">
             <input type="checkbox" id="remember-position-toggle" checked>
@@ -4655,7 +4655,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <div class="settings-row" id="playback-position-interval-row" style="margin-top:12px;">
           <div class="settings-row-text">
             <div class="settings-row-title">Save progress every</div>
-            <div class="settings-row-sub">How often the current spot is saved while playing.</div>
+            <div class="settings-row-sub">How often the current spot is saved.</div>
           </div>
           <div style="display:flex; align-items:center;">
             <input type="number" id="playback-position-interval-input" class="settings-number-input" min="1" max="60" step="1" value="1">
@@ -4668,22 +4668,22 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <div class="settings-row">
           <div class="settings-row-text">
             <div class="settings-row-title">ReplayGain</div>
-            <div class="settings-row-sub">Levels songs to a similar loudness using the ReplayGain tags in the file (MP3, FLAC, Ogg, M4A). Tracks without tags are left alone.</div>
+            <div class="settings-row-sub">Keeps songs at a similar loudness.</div>
           </div>
           <label class="settings-switch">
             <input type="checkbox" id="rg-toggle">
             <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
           </label>
         </div>
-        <div class="settings-row-sub" style="margin-top:12px;">M3U playlists. Export saves whatever list you're viewing; import matches entries to tracks in your library by filename.</div>
+        <div class="settings-row-sub" style="margin-top:12px;">Export the current list, or import a playlist.</div>
         <div class="pp-set-row">
           <button class="pp-btn" id="m3u-export-btn" type="button">Export M3U</button>
           <button class="pp-btn" id="m3u-import-btn" type="button">Import M3U</button>
         </div>
       </div>
       <div class="settings-section" id="playlists-manager-section">
-        <div class="settings-section-label">Your playlists</div>
-        <div class="settings-row-sub" id="playlists-manager-hint" style="display:none; margin:-6px 0 10px;">Turn on Detailed playlist mode above to assign tracks to playlists.</div>
+        <div class="settings-section-label">Playlists</div>
+        <div class="settings-row-sub" id="playlists-manager-hint" style="display:none; margin:-6px 0 10px;">Turn off Simple playlist mode above to assign tracks to playlists.</div>
         <div id="playlists-list"></div>
         <div id="new-playlist-row">
           <input type="text" id="new-playlist-name" placeholder="New playlist name" maxlength="40">
@@ -4694,7 +4694,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <div class="settings-row">
           <div class="settings-row-text">
             <div class="settings-row-title">Tap &amp; gesture controls</div>
-            <div class="settings-row-sub">Tap, double-tap, triple-tap, swipe, long-press, pinch, and two-finger gestures on the video/disc area.</div>
+            <div class="settings-row-sub">Tap, swipe, pinch and other gestures on the video or disc.</div>
           </div>
           <label class="settings-switch">
             <input type="checkbox" id="gestures-enabled-toggle" checked>
@@ -4718,7 +4718,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
           <div id="gesture-map-list"></div>
           </div>
           <div id="gesture-pm-pane">
-            <div class="settings-row-sub" style="margin:12px 0 4px;">Used while Media player layout is on. A single tap shows the player controls on video, so one-tap gestures are left out here.</div>
+            <div class="settings-row-sub" style="margin:12px 0 4px;">Used unless Retro layout is on. A single tap shows the controls, so it can't be assigned.</div>
             <div class="settings-section-label" style="margin-top:10px;">Assign actions</div>
             <div id="gesture-pm-list"></div>
             <button type="button" class="full-row" id="gesture-pm-reset" style="margin-top:8px;">Reset to defaults</button>
@@ -5154,7 +5154,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
   <div id="sort-modal">
     <div id="sort-modal-header">
       <h2>Manual order</h2>
-      <p>Click tracks below in the order you want them to play.</p>
+      <p>Click tracks below in the order to play them.</p>
     </div>
     <div id="sort-modal-body">
       <p class="sort-section-label" id="sort-pool-label">All tracks</p>
@@ -5252,7 +5252,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
       </div>
 
       <div id="thumbnail-upload-row">
-        <p class="thumbnail-section-label">Or use your own image</p>
+        <p class="thumbnail-section-label">Or use a custom image</p>
         <button type="button" class="thumbnail-upload-btn" id="thumbnail-upload-btn">🖼️ Upload image…</button>
         <button type="button" class="thumbnail-remove-btn" id="thumbnail-remove-btn">Remove custom thumbnail</button>
         <input type="file" id="thumbnail-file-input" accept="image/*" style="display:none">
@@ -5312,7 +5312,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
       </div>
       <div id="cutter-fx-box">
         <label id="cutter-fx-master"><input type="checkbox" id="cutter-fx-master-input"> <span>Apply my current effects to the clip</span></label>
-        <p id="cutter-fx-sub">Uses whatever is set in the player right now. Preview plays with the same effects, so what you hear is what gets exported.</p>
+        <p id="cutter-fx-sub">Uses whatever is set in the player right now. Preview plays with the same effects, so the export sounds the same.</p>
         <div id="cutter-fx-list"></div>
         <div id="cutter-fx-note"></div>
       </div>
@@ -7448,7 +7448,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   const trackPlPopover = document.getElementById('track-pl-popover');
 
   const PLAYLISTS_KEY = 'playerPlaylistsV1';
-  let detailedPlaylistMode = false;
+  let detailedPlaylistMode = true;
   let playlists = []; // [{ id, name }]
   let activePlaylistView = '__all__'; // '__all__' or a playlist id
   // On by default: this matches how conversion always behaved before this
@@ -7590,14 +7590,14 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
   // ---------- Detailed mode toggle ----------
   function applyDetailedModeUI(){
-    detailedModeToggle.checked = detailedPlaylistMode;
+    detailedModeToggle.checked = !detailedPlaylistMode;
     const hint = document.getElementById('playlists-manager-hint');
     if (hint) hint.style.display = detailedPlaylistMode ? 'none' : '';
     if (!viewAllowed(activePlaylistView)) activePlaylistView = '__all__';
     syncViewRow();
   }
   detailedModeToggle.addEventListener('change', () => {
-    detailedPlaylistMode = detailedModeToggle.checked;
+    detailedPlaylistMode = !detailedModeToggle.checked;
     applyDetailedModeUI();
     saveSettings();
     renderPlaylist();
@@ -7731,7 +7731,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   function deletePlaylist(id){
     const pl = playlists.find(p => p.id === id);
     if (!pl) return;
-    if (!confirm(`Delete playlist "${pl.name}"? Tracks will stay in your library.`)) return;
+    if (!confirm(`Delete playlist "${pl.name}"? Tracks will stay in the library.`)) return;
     playlists = playlists.filter(p => p.id !== id);
     tracks.forEach(t => { if (t.playlistIds) t.playlistIds = t.playlistIds.filter(pid => pid !== id); });
     if (activePlaylistView === id) activePlaylistView = '__all__';
@@ -16392,7 +16392,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   function deleteSelected(){
     const n = selectedTracks.size;
     if (!n) return;
-    if (!confirm(`Delete ${n} track${n > 1 ? 's' : ''} from your library?`)) return;
+    if (!confirm(`Delete ${n} track${n > 1 ? 's' : ''} from the library?`)) return;
     const idxs = [];
     tracks.forEach((t, i) => { if (selectedTracks.has(t)) idxs.push(i); });
     exitSelectMode();
@@ -18232,9 +18232,9 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   };
 
   const CUTTER_HINTS = {
-    fast: 'Instant and lossless: the original video data is copied without re-encoding, so quality is unchanged and the clip starts and ends exactly where you set it.',
-    encode: 'Re-encodes the clip on your device\'s video hardware, usually much faster than real time, and applies any effects you turned on. Quality is very close to the original but not bit-for-bit. Falls back to real-time recording if the browser cannot do it.',
-    video: 'Re-records the selection in real time, so a 30 second clip takes about 30 seconds. Use this if Fast copy is not available for your file. Keep this tab open while it runs.'
+    fast: 'Instant and lossless: the original video data is copied without re-encoding, so quality is unchanged and the clip starts and ends exactly at the chosen points.',
+    encode: 'Re-encodes the clip, usually much faster than real time, and applies any enabled effects. Quality is very close to the original but not bit-for-bit. Falls back to real-time recording if the browser cannot do it.',
+    video: 'Re-records the selection in real time, so a 30 second clip takes about 30 seconds. Use when Fast copy is not available for the file. Keep this tab open while it runs.'
   };
   function applyCutterFormatHints(){
     cutterMp3QualityRow.classList.toggle('show', cutterFormat === 'mp3');
@@ -18624,7 +18624,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   function cutterFxItems(live, kind, fmt){
     const videoOut = kind === 'video' && (fmt === 'video' || fmt === 'fast' || fmt === 'encode');
     const items = [];
-    items.push({ id: 'eq', label: 'Equalizer', active: live.eqActive, detail: live.eqActive ? 'your curve' : 'off' });
+    items.push({ id: 'eq', label: 'Equalizer', active: live.eqActive, detail: live.eqActive ? 'custom curve' : 'off' });
     items.push({ id: 'gain', label: 'Volume boost', active: Math.abs(live.gain - 1) > 0.005, detail: Math.round(live.gain * 100) + '%' });
     const pct = v => Math.round(v * 100) + '%';
     const names = [];
@@ -19775,7 +19775,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   // powers "convert to MP3" for both kinds of source.
   async function exportMp3Clip(track, start, end, kbps, onProgress, fx){
     if (typeof lamejs === 'undefined'){
-      throw new Error('The MP3 encoder failed to load (check your connection), try WAV or the video clip instead.');
+      throw new Error('The MP3 encoder failed to load (check the connection), try WAV or the video clip instead.');
     }
     const rendered = await cutterRenderAudio(track, start, end, fx, onProgress);
     const sampleRate = rendered.sampleRate;
@@ -20021,8 +20021,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
     if (typeof s.detailedPlaylistMode === 'boolean'){
       detailedPlaylistMode = s.detailedPlaylistMode;
-      applyDetailedModeUI();
     }
+    applyDetailedModeUI();
 
     if (typeof s.keepMp3Conversions === 'boolean'){
       keepMp3Conversions = s.keepMp3Conversions;
@@ -20554,9 +20554,9 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       if (idx < 0){ missing++; return; }
       used.add(idx); matched.push(idx);
     });
-    if (!matched.length){ ppToast('No tracks in that M3U matched your library. Add the files first, then import again.'); return; }
+    if (!matched.length){ ppToast('No tracks in that M3U matched the library. Add the files first, then import again.'); return; }
     const tg = ppEl('detailed-mode-toggle');
-    if (tg && !tg.checked){ tg.checked = true; tg.dispatchEvent(new Event('change', { bubbles: true })); }
+    if (tg && tg.checked){ tg.checked = false; tg.dispatchEvent(new Event('change', { bubbles: true })); }
     const pl = { id: 'pl_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8), name: file.name.replace(/\.(m3u8?|txt)$/i, '') || 'Imported playlist' };
     playlists.push(pl);
     matched.forEach(i => { const t = tracks[i]; t.playlistIds = t.playlistIds || []; if (!t.playlistIds.includes(pl.id)) t.playlistIds.push(pl.id); });
@@ -20566,7 +20566,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const sel = ppEl('playlist-view-select');
     if (sel){ sel.value = pl.id; sel.dispatchEvent(new Event('change', { bubbles: true })); }
     renderPlaylist();
-    ppToast('Imported "' + pl.name + '": ' + matched.length + ' matched' + (missing ? ', ' + missing + ' not found in your library.' : '.'));
+    ppToast('Imported "' + pl.name + '": ' + matched.length + ' matched' + (missing ? ', ' + missing + ' not found in the library.' : '.'));
   }
   ppEl('m3u-export-btn').addEventListener('click', ppExportM3U);
   ppEl('m3u-import-btn').addEventListener('click', () => ppEl('m3u-input').click());
@@ -20820,7 +20820,7 @@ async function ppMp4Chapters(blob){
     const box = ppEl('ly-list'), t = tracks[currentIndex];
     ppEl('ly-load').disabled = !t; ppEl('ly-clear').style.display = ppLrcText ? '' : 'none';
     if (!t){ box.innerHTML = '<div class="pp-empty">Play a track to load lyrics for it.</div>'; return; }
-    if (!ppLrcText){ box.innerHTML = '<div class="pp-empty">No lyrics for this track. Load an .lrc file, or pick one together with your audio files (same name) when adding them.</div>'; return; }
+    if (!ppLrcText){ box.innerHTML = '<div class="pp-empty">No lyrics for this track. Load an .lrc file, or pick one together with the audio files (same name) when adding them.</div>'; return; }
     box.innerHTML = '';
     if (!ppLrc.length){ const pre = document.createElement('div'); pre.id = 'ly-plain'; pre.textContent = ppLrcText; box.appendChild(pre); return; }
     ppLrc.forEach(l => {
@@ -21787,15 +21787,15 @@ async function ppMp4Chapters(blob){
       parts.push(bannerHtml(seed++, 'TIME IN THE APP',
         centerHtml({ artUrl: null, fallbackIcon: ICON.clock }),
         state.totalAppMs > 0
-          ? 'You have spent ' + formatDuration(state.totalAppMs) + ' in Press Play Media.'
-          : 'No time logged yet. Come back after you have spent some time in the app.'));
+          ? 'Total time in Press Play Media: ' + formatDuration(state.totalAppMs) + '.'
+          : 'No time logged yet.'));
 
       // Total listening time
       parts.push(bannerHtml(seed++, 'TIME SPENT LISTENING',
         centerHtml({ artUrl: null, fallbackIcon: ICON.headphones }),
         state.totalListenMs > 0
-          ? 'You have played ' + formatDuration(state.totalListenMs) + ' of music and video.'
-          : 'No playback time recorded yet. Play something to get this started.'));
+          ? 'Total playback: ' + formatDuration(state.totalListenMs) + ' of music and video.'
+          : 'No playback time recorded yet.'));
 
       // Most played track
       const topTrack = topEntry(state.trackPlays);
@@ -21822,8 +21822,8 @@ async function ppMp4Chapters(blob){
       if (avTotal > 0){
         const audioPct = Math.round((state.totalAudioMs / avTotal) * 100);
         avText = audioPct >= 50
-          ? audioPct + '% of your listening time has gone to audio tracks.'
-          : (100 - audioPct) + '% of your listening time has gone to video.';
+          ? audioPct + '% of listening time has gone to audio tracks.'
+          : (100 - audioPct) + '% of listening time has gone to video.';
       }
       parts.push(bannerHtml(seed++, 'AUDIO OR VIDEO',
         centerHtml({ artUrl: null, fallbackIcon: ICON.sliders }),
@@ -21834,10 +21834,10 @@ async function ppMp4Chapters(blob){
       const bgArt = topBg ? resolveArt(topBg.key, topBg.value.artUrl) : null;
       const bgFallback = topBg && topBg.value.kind === 'video' ? ICON.film : ICON.bee;
       const bgTimeText = state.totalBackgroundMs > 0
-        ? 'You have kept it playing in the background for ' + formatDuration(state.totalBackgroundMs) + '.'
+        ? 'Background playback totals ' + formatDuration(state.totalBackgroundMs) + '.'
         : 'Nothing has played in the background yet.';
       const bgTrackText = topBg
-        ? 'Your background favorite is ' + (topBg.value.title || 'Untitled') + ' by ' + (topBg.value.artist || 'Unknown') + '.'
+        ? 'Top background track: ' + (topBg.value.title || 'Untitled') + ' by ' + (topBg.value.artist || 'Unknown') + '.'
         : '';
       parts.push(bannerHtml(seed++, 'BUSY BEE',
         centerHtml({ artUrl: bgArt, fallbackIcon: bgFallback }),
@@ -21848,7 +21848,7 @@ async function ppMp4Chapters(blob){
       parts.push(bannerHtml(seed++, 'MOST TINKERED WITH',
         centerHtml({ artUrl: null, fallbackIcon: ICON.gear }),
         topSetting
-          ? 'You have adjusted "' + topSetting.key + '" ' + topSetting.value + (topSetting.value === 1 ? ' time.' : ' times.')
+          ? '"' + topSetting.key + '" adjusted ' + topSetting.value + (topSetting.value === 1 ? ' time.' : ' times.')
           : 'No settings changed yet.'));
 
       // Favorite video filter
@@ -21856,7 +21856,7 @@ async function ppMp4Chapters(blob){
       parts.push(bannerHtml(seed++, 'FAVORITE LOOK',
         centerHtml({ artUrl: null, fallbackIcon: ICON.sliders }),
         topFilter
-          ? 'Your most used video filter is ' + topFilter.key + ', applied ' + topFilter.value + (topFilter.value === 1 ? ' time.' : ' times.')
+          ? 'Most used video filter: ' + topFilter.key + ', applied ' + topFilter.value + (topFilter.value === 1 ? ' time.' : ' times.')
           : 'No video filters applied yet.'));
 
 
@@ -21868,53 +21868,53 @@ async function ppMp4Chapters(blob){
       const days = Object.keys(x.dayMs).filter(k => x.dayMs[k] > 0);
       const none = 'Nothing recorded yet. Keep listening and check back.';
       add('SESSIONS', ICON.clock, x.sessions
-        ? 'You have had ' + pl(x.sessions, 'session') + '. Your longest lasted ' + formatDuration(x.longestSessionMs) + ', and a typical one runs about ' + formatDuration(state.totalAppMs / x.sessions) + '.' : none);
-      add('OPEN COUNT', ICON.calendar, 'You have opened Press Play Media ' + pl(x.launches, 'time') + ' across ' + pl(days.length, 'listening day') + '.');
+        ? pl(x.sessions, 'session') + ' so far. The longest lasted ' + formatDuration(x.longestSessionMs) + ', and a typical one runs about ' + formatDuration(state.totalAppMs / x.sessions) + '.' : none);
+      add('OPEN COUNT', ICON.calendar, 'Press Play Media has been opened ' + pl(x.launches, 'time') + ' across ' + pl(days.length, 'listening day') + '.');
       // Streaks (consecutive calendar days with listening)
       const dayNums = days.map(k => { const p = k.split('-'); return Math.round(Date.UTC(+p[0], +p[1] - 1, +p[2]) / 864e5); }).sort((a, b) => a - b);
       let best = 0, run = 0, prev = null;
       dayNums.forEach(n => { run = (prev !== null && n - prev === 1) ? run + 1 : 1; best = Math.max(best, run); prev = n; });
       const t0 = new Date(), today = Math.round(Date.UTC(t0.getFullYear(), t0.getMonth(), t0.getDate()) / 864e5);
       let cur = 0; if (prev !== null && today - prev <= 1) cur = run;
-      add('STREAKS', ICON.trophy, dayNums.length ? 'Your current streak is ' + pl(cur, 'day') + ' and your longest is ' + pl(best, 'day') + '.' : none);
+      add('STREAKS', ICON.trophy, dayNums.length ? 'Current streak: ' + pl(cur, 'day') + '. Longest: ' + pl(best, 'day') + '.' : none);
       const peak = x.hourMs.indexOf(Math.max.apply(null, x.hourMs));
-      add('PEAK HOUR', ICON.clock, sum(x.hourMs) ? 'You listen most around ' + hr(peak) + ', with ' + formatDuration(x.hourMs[peak]) + ' logged in that hour.' : none);
+      add('PEAK HOUR', ICON.clock, sum(x.hourMs) ? 'Peak listening is around ' + hr(peak) + ', with ' + formatDuration(x.hourMs[peak]) + ' logged in that hour.' : none);
       add('NIGHT OWL', ICON.disc, x.nightPlays ? pl(x.nightPlays, 'track') + ' started between midnight and 5 AM.' : 'No tracks started in the small hours. Early bird, then.');
       let bd = null; days.forEach(k => { if (!bd || x.dayMs[k] > x.dayMs[bd]) bd = k; });
-      add('BUSIEST DAY', ICON.calendar, bd ? 'Your biggest day was ' + formatDate(new Date(bd.split('-')[0], bd.split('-')[1] - 1, bd.split('-')[2]).getTime()) + ' with ' + formatDuration(x.dayMs[bd]) + ' of playback.' : none);
+      add('BUSIEST DAY', ICON.calendar, bd ? 'The biggest day was ' + formatDate(new Date(bd.split('-')[0], bd.split('-')[1] - 1, bd.split('-')[2]).getTime()) + ' with ' + formatDuration(x.dayMs[bd]) + ' of playback.' : none);
       const names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       const wd = x.weekdayMs.indexOf(Math.max.apply(null, x.weekdayMs)), wk = sum(x.weekdayMs);
-      add('FAVORITE DAY', ICON.calendar, wk ? names[wd] + ' is your day: ' + Math.round(x.weekdayMs[wd] / wk * 100) + '% of all your listening.' : none);
+      add('FAVORITE DAY', ICON.calendar, wk ? names[wd] + ' is the favorite day: ' + Math.round(x.weekdayMs[wd] / wk * 100) + '% of all listening.' : none);
       const wkend = x.weekdayMs[0] + x.weekdayMs[6];
-      add('WEEKEND VS WEEKDAY', ICON.sliders, wk ? Math.round(wkend / wk * 100) + '% of your listening happens on weekends, ' + Math.round(100 - wkend / wk * 100) + '% on weekdays.' : none);
-      add('DAILY AVERAGE', ICON.headphones, days.length ? 'On days you listen, you average ' + formatDuration(state.totalListenMs / days.length) + '.' : none);
+      add('WEEKEND VS WEEKDAY', ICON.sliders, wk ? Math.round(wkend / wk * 100) + '% of listening happens on weekends, ' + Math.round(100 - wkend / wk * 100) + '% on weekdays.' : none);
+      add('DAILY AVERAGE', ICON.headphones, days.length ? 'On listening days, the average is ' + formatDuration(state.totalListenMs / days.length) + '.' : none);
       const topArt = topEntry(x.artistPlays), topArtMs = topByField(Object.keys(x.artistMs).reduce((o, k) => { o[k] = { v: x.artistMs[k] }; return o; }, {}), 'v');
-      add('TOP ARTIST', ICON.disc, topArt ? topArt.key + ' leads with ' + pl(topArt.value, 'play') + (topArtMs ? ' and is your most listened to at ' + formatDuration(x.artistMs[topArtMs.key]) + '.' : '.') : none);
-      add('VARIETY', ICON.sliders, Object.keys(state.trackPlays).length ? 'You have played ' + pl(Object.keys(state.trackPlays).length, 'different track') + ' by ' + pl(Object.keys(x.artistPlays).length, 'artist') + '.' : none);
-      add('FINISHER', ICON.trophy, x.completions ? 'You let ' + pl(x.completions, 'track') + ' play to the very end' + (totalPlays ? ' (' + Math.min(100, Math.round(x.completions / totalPlays * 100)) + '% of everything you start).' : '.') : none);
-      add('SKIPPER', ICON.gear, 'You have skipped past ' + pl(x.skips, 'track') + ' within 30 seconds of starting.');
-      add('ON REPEAT', ICON.disc, x.bestRepeat > 1 ? 'Your longest repeat streak is ' + x.bestRepeat + ' plays of the same track in a row.' : 'No track has been played twice in a row yet.');
-      add('SEEKER', ICON.sliders, 'You have jumped around inside tracks ' + pl(x.seeks, 'time') + '.');
-      add('SPEED', ICON.sliders, (x.speedUpMs || x.slowMs) ? 'You have listened ' + formatDuration(x.speedUpMs) + ' faster than normal and ' + formatDuration(x.slowMs) + ' slower, changing speed ' + pl(x.rateChanges, 'time') + '.' : 'Everything has played at normal speed so far.');
+      add('TOP ARTIST', ICON.disc, topArt ? topArt.key + ' leads with ' + pl(topArt.value, 'play') + (topArtMs ? ' and is the most listened to at ' + formatDuration(x.artistMs[topArtMs.key]) + '.' : '.') : none);
+      add('VARIETY', ICON.sliders, Object.keys(state.trackPlays).length ? pl(Object.keys(state.trackPlays).length, 'different track') + ' played, by ' + pl(Object.keys(x.artistPlays).length, 'artist') + '.' : none);
+      add('FINISHER', ICON.trophy, x.completions ? pl(x.completions, 'track') + ' played to the very end' + (totalPlays ? ' (' + Math.min(100, Math.round(x.completions / totalPlays * 100)) + '% of everything started).' : '.') : none);
+      add('SKIPPER', ICON.gear, pl(x.skips, 'track') + ' skipped within 30 seconds of starting.');
+      add('ON REPEAT', ICON.disc, x.bestRepeat > 1 ? 'The longest repeat streak is ' + x.bestRepeat + ' plays of the same track in a row.' : 'No track has been played twice in a row yet.');
+      add('SEEKER', ICON.sliders, 'Jumped around inside tracks ' + pl(x.seeks, 'time') + '.');
+      add('SPEED', ICON.sliders, (x.speedUpMs || x.slowMs) ? 'Listened ' + formatDuration(x.speedUpMs) + ' faster than normal and ' + formatDuration(x.slowMs) + ' slower, with speed changed ' + pl(x.rateChanges, 'time') + '.' : 'Everything has played at normal speed so far.');
       const topBtn = topEntry(x.buttons);
-      add('FAVORITE CONTROL', ICON.gear, topBtn ? 'The "' + topBtn.key + '" button is your most pressed, ' + pl(topBtn.value, 'time') + '.' : 'No control buttons pressed yet.');
+      add('FAVORITE CONTROL', ICON.gear, topBtn ? 'The "' + topBtn.key + '" button is the most pressed, ' + pl(topBtn.value, 'time') + '.' : 'No control buttons pressed yet.');
       const topKey = topEntry(x.keys);
-      add('KEYBOARD', ICON.gear, topKey ? 'You have pressed ' + pl(sum(Object.keys(x.keys).map(k => x.keys[k])), 'key') + ', favoring "' + topKey.key + '" (' + topKey.value + ').' : 'No keyboard shortcuts used yet.');
+      add('KEYBOARD', ICON.gear, topKey ? 'Pressed ' + pl(sum(Object.keys(x.keys).map(k => x.keys[k])), 'key') + ', favoring "' + topKey.key + '" (' + topKey.value + ').' : 'No keyboard shortcuts used yet.');
       add('BIG SCREEN', ICON.film, pl(x.fsCount, 'time') + ' in fullscreen and ' + pl(x.pipCount, 'time') + ' in picture-in-picture.');
       add('LIBRARY GROWTH', ICON.film, pl(x.filesAdded, 'file') + ' added and ' + pl(x.subsLoaded, 'subtitle file') + ' loaded since tracking began.');
       const longest = topByField(state.trackPlays, 'totalMs');
-      add('LONGEST LISTEN', ICON.headphones, longest ? (longest.value.title || 'Untitled') + ' has taken ' + formatDuration(longest.value.totalMs) + ' of your time.' : none);
+      add('LONGEST LISTEN', ICON.headphones, longest ? (longest.value.title || 'Untitled') + ' has taken ' + formatDuration(longest.value.totalMs) + ' of listening time.' : none);
       const ofKind = k => { const o = {}; Object.keys(state.trackPlays).forEach(i => { if (state.trackPlays[i].kind === k) o[i] = state.trackPlays[i]; }); return topEntry(o); };
       const tv = ofKind('video'), ta = ofKind('audio');
       add('VIDEO AND AUDIO PICKS', ICON.film, (ta ? 'Top audio: ' + (ta.value.title || 'Untitled') + '. ' : '') + (tv ? 'Top video: ' + (tv.value.title || 'Untitled') + '.' : '') || none);
       let bestQ = null; try { bestQ = localStorage.getItem('ppxpQuizBestV2'); } catch(e){}
       const gr = window.PPXpGrooves ? window.PPXpGrooves.getGrooves() : null;
-      add('SIDE QUESTS', ICON.trophy, (gr !== null ? 'You are holding ' + window.PPXpGrooves.formatNum(gr) + ' grooves. ' : '') + (bestQ ? 'Your best quiz score is ' + bestQ + '%.' : 'You have not taken the quiz yet.'));
+      add('SIDE QUESTS', ICON.trophy, (gr !== null ? 'Grooves held: ' + window.PPXpGrooves.formatNum(gr) + '. ' : '') + (bestQ ? 'Best quiz score: ' + bestQ + '%.' : 'Quiz not taken yet.'));
 
       // Member since
       parts.push(bannerHtml(seed++, 'MEMBER SINCE',
         centerHtml({ artUrl: null, fallbackIcon: ICON.calendar }),
-        'You started using Press Play Media on ' + formatDate(state.firstOpened) + '.'));
+        'First opened on ' + formatDate(state.firstOpened) + '.'));
 
       return parts.join('');
     }
@@ -22041,7 +22041,7 @@ async function ppMp4Chapters(blob){
       entrySection.innerHTML = `
         <div class="settings-row" id="ppp-entry-row" style="cursor:pointer;">
           <div class="settings-row-text">
-            <div class="settings-row-title">View your adventures with Press Play Media</div>
+            <div class="settings-row-title">View adventures with Press Play Media</div>
           </div>
         </div>
       `;
@@ -22267,27 +22267,27 @@ async function ppMp4Chapters(blob){
       { level: 3,  desc: 'New backgrounds: Deep Space & Sunset Groove.' },
       { level: 6,  desc: 'Expanded equalizer: Symphonic & Basshead Pro presets, plus two extra EQ bands (500Hz & 6K).' },
       { level: 10, desc: 'New backgrounds: Neon Wave & Aurora Drift.' },
-      { level: 15, desc: 'New setting: pick your own app-wide accent color.' },
+      { level: 15, desc: 'New setting: pick a custom app-wide accent color.' },
       { level: 21, desc: 'New backgrounds: Midnight Amber & Retro Grid, plus Cinematic & Crystal Air EQ presets.' },
       { level: 28, desc: 'New background type: slow animated gradients.' },
       { level: 36, desc: 'New backgrounds: Royal Purple & Golden Hour.' },
-      { level: 45, desc: 'Your level badge now glows with a legendary gold finish.' },
+      { level: 45, desc: 'The level badge now glows with a legendary gold finish.' },
       { level: 60, desc: 'The crown: an exclusive Monarch\u2019s Gold background and a crowned badge.' },
       { level: 75,  desc: 'New backgrounds: Emerald Canopy & Desert Mirage.' },
       { level: 90,  desc: 'New EQ presets: Warm Vinyl & Stadium Live.' },
       { level: 105, desc: 'New backgrounds: Harvest Fields & Stormy Coast.' },
       { level: 120, desc: 'New backgrounds: Autumn Ember & Frontier Bronze.' },
-      { level: 140, desc: 'New EQ preset: Caesar\u2019s Laurel, and your badge picks up a bronze finish.' },
+      { level: 140, desc: 'New EQ preset: Caesar\u2019s Laurel, and the badge picks up a bronze finish.' },
       { level: 160, desc: 'A grand milestone: an exclusive Imperial Marble background and a laurelled badge for Press Play Media\u2019s Caesar.' },
       { level: 175, desc: 'New backgrounds: Nebula Bloom & Obsidian Tide.' },
       { level: 195, desc: 'New backgrounds: Sandstone Sun & Nile Teal, plus the Pharaoh\u2019s Pulse EQ preset.' },
-      { level: 215, desc: 'New EQ presets: Concert Hall & Deep Resonance, and your badge picks up a platinum finish.' },
+      { level: 215, desc: 'New EQ presets: Concert Hall & Deep Resonance, and the badge picks up a platinum finish.' },
       { level: 235, desc: 'New backgrounds: Celestial Dusk & Starlit Indigo.' },
       { level: 255, desc: 'New EQ presets: Titan Bass & Silk Highs.' },
       { level: 275, desc: 'New backgrounds: Titan Steel & Molten Core.' },
       { level: 290, desc: 'New EQ preset: Eternal Encore.' },
       { level: 300, desc: 'An exclusive Immortal Prism animated background and a star-crowned, rainbow-finish badge for Press Play Media\u2019s Immortal.' },
-      { level: 320, desc: 'Custom EQ presets: save your own equalizer curves (1 slot), plus the Crimson Eclipse background.' },
+      { level: 320, desc: 'Custom EQ presets: save custom equalizer curves (1 slot), plus the Crimson Eclipse background.' },
       { level: 340, desc: 'Quick speed buttons in the speed menu and the Crescendo EQ preset.' },
       { level: 360, desc: 'Skip intro & outro: automatically skip the start and end of every track (Settings > Level perks). A second custom EQ slot and the Arctic Night background.' },
       { level: 380, desc: 'Jump buttons: skip back and forward by 5, 10, 15 or 30 seconds with buttons right by Speed.' },
@@ -22386,11 +22386,11 @@ async function ppMp4Chapters(blob){
     // percentage of the current level's total bar, which may or may not
     // be enough to cross into the next level.
     const INSTANT_LEVEL_ITEMS = [
-      { id: 'instant-half', name: 'Groove Boost', description: 'Instantly fills 50% of your current level bar.',
+      { id: 'instant-half', name: 'Groove Boost', description: 'Instantly fills 50% of the current level bar.',
         pct: 0.5, cooldownMs: 45 * 60 * 1000,      cost: 2000000000000 },
-      { id: 'instant-70',   name: 'Groove Surge',  description: 'Instantly fills 70% of your current level bar.',
+      { id: 'instant-70',   name: 'Groove Surge',  description: 'Instantly fills 70% of the current level bar.',
         pct: 0.7, cooldownMs: 90 * 60 * 1000,      cost: 6000000000000 },
-      { id: 'instant-full', name: 'Instant Level Up', description: 'Immediately completes your current level.',
+      { id: 'instant-full', name: 'Instant Level Up', description: 'Immediately completes the current level.',
         levels: 1, cooldownMs: 4 * 60 * 60 * 1000,  cost: 20000000000000 }
     ];
 
@@ -22610,7 +22610,7 @@ async function ppMp4Chapters(blob){
       const newRewards = REWARDS.filter(r => r.level > before && r.level <= after);
       if (typeof showToast === 'function'){
         if (afterRank.name !== beforeRank.name){
-          showToast('🎉 Rank up! You are now "' + afterRank.name + '" (Lv ' + after + ')' +
+          showToast('🎉 Rank up! New rank: "' + afterRank.name + '" (Lv ' + after + ')' +
             (newRewards.length ? ' — ' + newRewards.map(r => r.desc).join(' ') : ''));
         } else if (newRewards.length){
           showToast('🎉 Level ' + after + ' — ' + newRewards.map(r => r.desc).join(' '));
@@ -22862,7 +22862,7 @@ async function ppMp4Chapters(blob){
       const name = eqCustom[i] ? eqCustom[i].name : 'Custom ' + (i + 1);
       eqCustom[i] = { name, gains: eqcCurrentGains() };
       saveEqCustom();
-      eqcToast('💾 Saved your current EQ to "' + name + '"');
+      eqcToast('💾 Saved current EQ to "' + name + '"');
       renderEqCustom();
     }
     function eqcApply(i){
@@ -22925,7 +22925,7 @@ async function ppMp4Chapters(blob){
         if (level < req){
           slot.appendChild(eqcBtn('ppxp-eqc-main locked', '🔒 Lv ' + req, () => eqcToast('🔒 This slot unlocks at Level ' + req)));
         } else if (!saved){
-          slot.appendChild(eqcBtn('ppxp-eqc-main empty', '+ Save here', () => eqcSave(i), 'Save your current EQ here'));
+          slot.appendChild(eqcBtn('ppxp-eqc-main empty', '+ Save here', () => eqcSave(i), 'Save the current EQ here'));
         } else {
           slot.appendChild(eqcBtn('ppxp-eqc-main', saved.name, () => { if (eqCustomEditing) eqcSave(i); else eqcApply(i); }, saved.name));
           if (eqCustomEditing){
@@ -23220,8 +23220,8 @@ async function ppMp4Chapters(blob){
       overlay.innerHTML = `
         <div id="ppxp-rank-modal">
           <div id="ppxp-rank-modal-header">
-            <h2>Your rank</h2>
-            <p>Levels come from the time you actually spend listening and watching. Skipped sections don't count. Each rank unlocks something new.</p>
+            <h2>Rank</h2>
+            <p>Levels come from time actually spent listening and watching. Skipped sections don't count. Each rank unlocks something new.</p>
           </div>
           <div id="ppxp-rank-modal-body"></div>
           <div id="ppxp-rank-modal-footer">
@@ -23246,7 +23246,7 @@ async function ppMp4Chapters(blob){
               <div class="ppxp-rank-badge">${achieved ? (r.level >= 500 ? '♾️' : (r.level >= 400 ? '💫' : (r.level >= 300 ? '🌟' : (r.level >= 160 ? '🌿' : (r.level >= 60 ? '👑' : '✓'))))) : '🔒'}</div>
               <div>
                 <div class="ppxp-rank-name">${r.name}</div>
-                <div class="ppxp-rank-level">Level ${r.level}${isCurrent ? ' — your current rank' : ''}</div>
+                <div class="ppxp-rank-level">Level ${r.level}${isCurrent ? ' — current rank' : ''}</div>
                 ${rewardHtml}
               </div>
             </div>
@@ -23364,7 +23364,7 @@ async function ppMp4Chapters(blob){
           const affordable = grooves >= item.cost;
           const isThisOne = state.sprint.activeId === item.id;
           let sub = 'Cost: ' + fmt(item.cost) + ' grooves. Drains grooves every hour, 40% more each hour, ' +
-            'and ends when you run out of grooves or you\'ve paid ' + SPRINT_PAYOFF_MULT + 'x the up-front cost.';
+            'and ends when grooves run out or the total paid reaches ' + SPRINT_PAYOFF_MULT + 'x the up-front cost.';
           let label = 'Activate';
           let disabled = !affordable;
           if (isThisOne){ label = 'Active'; disabled = true; sub = 'This sprint is currently active.'; }
@@ -23373,7 +23373,7 @@ async function ppMp4Chapters(blob){
             const result = activateSprint(item);
             if (result === true) render();
             else if (result === 'active'){
-              if (typeof showToast === 'function') showToast('Cancel your active sprint before starting another.');
+              if (typeof showToast === 'function') showToast('Cancel the active sprint before starting another.');
             } else if (typeof showToast === 'function') showToast('Not enough grooves for "' + item.name + '".');
           });
         });
@@ -23386,7 +23386,7 @@ async function ppMp4Chapters(blob){
         TEMP_EXP_ITEMS.forEach(item => {
           const affordable = grooves >= item.cost;
           const sub = 'Cost: ' + fmt(item.cost) + ' grooves.' +
-            (tempActive ? ' Stacks with the time remaining on your active boost.' : '');
+            (tempActive ? ' Stacks with the time remaining on the active boost.' : '');
           itemRow(item, sub, 'Activate', !affordable, () => {
             const ok = buyTempExpItem(item);
             if (ok) render();
@@ -23466,49 +23466,49 @@ async function ppMp4Chapters(blob){
 
     // [question, correct answer, wrong, wrong, wrong, explanation]
     const QUIZ_BANK = [
-      ['How is XP earned?', 'By time actually played, counted from where you start', 'Only by finishing tracks', 'By opening the app', 'By adding tracks', 'Seeking is allowed, but skipped sections earn nothing.'],
-      ['Does time you skip over by seeking earn XP?', 'No, only time actually played counts', 'Yes, the full track length counts', 'Only when skipping forward', 'Only at 2x speed', 'Seeking never voids XP, it just earns nothing for skipped parts.'],
+      ['How is XP earned?', 'By time actually played, counted from where playback starts', 'Only by finishing tracks', 'By opening the app', 'By adding tracks', 'Seeking is allowed, but skipped sections earn nothing.'],
+      ['Does time skipped by seeking earn XP?', 'No, only time actually played counts', 'Yes, the full track length counts', 'Only when skipping forward', 'Only at 2x speed', 'Seeking never voids XP, it just earns nothing for skipped parts.'],
       ['How much base XP is earned per minute played?', '30', '1', '60', '100', 'XP is 30 per minute before multipliers.'],
       ['What is the maximum level?', '500', '100', '160', '300', 'The cap was raised to Lv 500.'],
       ['How much XP does Level 1 cost?', '60', '10', '205', '300', 'Costs climb from 60 XP at level 1.'],
-      ['What is the hard cap on shop XP multipliers?', '3x', '5x', '10x', 'There is no cap', 'Timed boosts and sprints combined can never exceed 3x. Your daily streak bonus is separate.'],
-      ['Which rank do you start with?', 'New Presser', 'Casual Player', 'Media Enthusiast', 'Pro Media Player', 'Everyone starts as a New Presser at Lv 1.'],
+      ['What is the hard cap on shop XP multipliers?', '3x', '5x', '10x', 'There is no cap', 'Timed boosts and sprints combined can never exceed 3x. The daily streak bonus is separate.'],
+      ['Which rank is the starting rank?', 'New Presser', 'Casual Player', 'Media Enthusiast', 'Pro Media Player', 'Everyone starts as a New Presser at Lv 1.'],
       ['Which rank is reached at Level 3?', 'Casual Player', 'Experienced Player', 'Media Enthusiast', 'Media Virtuoso', 'Casual Player unlocks the first backgrounds.'],
       ['Which rank is reached at Level 60?', "Press Play's Media Monarch", 'Press Play Legend', 'Regent of the Realm', 'Media Maestro', 'Level 60 earns the crown.'],
       ['Which rank sits at Level 160?', "Press Play Media's Caesar", "Press Play's Emperor", 'Warlord of the Waves', 'Sovereign of Sound', 'Caesar was the original top rank.'],
       ['What is the final rank at Level 500?', "Press Play Media's Eternal", "Press Play Media's Immortal", 'Eternal Encore', 'Press Play Titan', 'Eternal is the summit.'],
       ['Which rank sits at Level 300?', "Press Play Media's Immortal", "Press Play Media's Eternal", 'Eternal Encore', 'Mythic Maestro', 'Immortal was the original summit.'],
       ['What unlocks at Level 320?', 'Custom EQ preset slots', 'Accent colors', 'Extra EQ bands', 'Animated gradients', 'Ascendant of the Airwaves can save its own EQ curves.'],
-      ['How many custom EQ slots do you have at Level 500?', '5', '12', '8', '3', 'Slots unlock one at a time from Lv 320 to Lv 500.'],
+      ['How many custom EQ slots are available at Level 500?', '5', '12', '8', '3', 'Slots unlock one at a time from Lv 320 to Lv 500.'],
       ['What unlocks at Level 360?', 'Skip intro and outro', 'Quick speed buttons', 'Jump buttons', 'Quick boost buttons', 'It lives under Settings > Level perks.'],
-      ['What does Press Play PLUS do?', 'Unlocks every level perk from the start and keeps levels', 'Removes levels and EXP', 'Doubles your XP', 'Hides all backgrounds', 'PLUS keeps the leveling system.'],
-      ['What does the Level 380 perk add?', 'Skip back and forward buttons', 'Quick boost buttons', 'Skip intro and outro', 'Custom EQ slots', 'You pick 5, 10, 15 or 30 seconds.'],
-      ['What unlocks at Level 15?', 'Choosing your own accent color', 'Animated gradients', 'The crown badge', 'Extra EQ bands', 'Pro Media Player lets you recolor the app.'],
+      ['What does Press Play PLUS do?', 'Unlocks every level perk from the start and keeps levels', 'Removes levels and EXP', 'Doubles XP', 'Hides all backgrounds', 'PLUS keeps the leveling system.'],
+      ['What does the Level 380 perk add?', 'Skip back and forward buttons', 'Quick boost buttons', 'Skip intro and outro', 'Custom EQ slots', 'The choices are 5, 10, 15 or 30 seconds.'],
+      ['What unlocks at Level 15?', 'Choosing a custom accent color', 'Animated gradients', 'The crown badge', 'Extra EQ bands', 'Pro Media Player unlocks app recoloring.'],
       ['What unlocks at Level 6?', 'Two extra EQ bands (500Hz and 6K)', 'Accent colors', 'The crown badge', 'Animated gradients', 'Level 6 also adds Symphonic and Basshead Pro presets.'],
       ['What unlocks at Level 28?', 'Slow animated gradient backgrounds', 'A gold badge glow', 'Accent colors', 'The crown', 'Press Play Elite unlocks animated gradients.'],
-      ['What happens at Level 45?', 'Your badge gets a legendary gold glow', 'You get a crown', 'You unlock the EQ', 'Nothing', 'Press Play Legend adds the gold finish.'],
+      ['What happens at Level 45?', 'The badge gets a legendary gold glow', 'A crown is awarded', 'The EQ unlocks', 'Nothing', 'Press Play Legend adds the gold finish.'],
       ['What does Level 60 unlock?', "A crowned badge and the Monarch's Gold background", 'Accent colors', 'Extra EQ bands', 'A platinum badge', 'The crown arrives at 60.'],
       ['What new badge finish arrives at Level 215?', 'Platinum', 'Bronze', 'Gold', 'Rainbow', 'Maestro of Millennia gets platinum.'],
       ['What does the Level 300 badge look like?', 'Star-crowned with a rainbow finish', 'Laurelled bronze', 'Plain', 'Platinum', 'Immortal gets the star crown.'],
       ["Which EQ preset unlocks at Level 140?", "Caesar's Laurel", 'Warm Vinyl', 'Stadium Live', 'Cinematic', 'It comes with a bronze badge finish.'],
       ['Which EQ presets unlock at Level 90?', 'Warm Vinyl and Stadium Live', 'Symphonic and Basshead Pro', 'Cinematic and Crystal Air', 'Titan Bass and Silk Highs', 'Grand Duke of Media adds these two.'],
       ['What is the in-app currency called?', 'Grooves', 'Beats', 'Credits', 'Tokens', 'Grooves are spent in the EXP shop.'],
-      ['Where do you earn grooves?', 'The disc clicker minigame', 'Playing tracks', 'Making playlists', 'Opening the app daily', 'Generators and clicks in the game produce them.'],
+      ['Where are grooves earned?', 'The disc clicker minigame', 'Playing tracks', 'Making playlists', 'Opening the app daily', 'Generators and clicks in the game produce them.'],
       ['What is the first generator in the disc clicker?', 'Spare Needle', 'Speaker', 'DJ Booth', 'Radio Station', 'The needle is the cheapest generator.'],
       ['What does the "Keep earning grooves in background" setting do?', 'Generators keep earning while the game tab is closed', 'Plays music in the background', 'Earns XP while idle', 'Hides the game', 'It affects groove production only.'],
       ['What does Groove Focus do?', 'Multiplies XP by 3x for 1 hour', 'Multiplies XP by 2x for 1 hour', 'Adds 0.25x permanently', 'Fills 50% of a level', 'It is the shortest and strongest temporary boost.'],
       ['What does Groove Marathon do?', 'Multiplies XP by 1.5x for 24 hours', 'Multiplies XP by 3x for 1 hour', 'Multiplies XP by 2x for 10 hours', 'Adds 0.5x permanently', 'It is the longest, weakest temporary boost.'],
-      ['How does the daily streak bonus grow?', 'It compounds each day, up to 5x', 'It adds a flat 5% per day', 'It never grows', 'It resets every day', 'Streak XP is 1.08 to the power of your streak days, capped at 5x.'],
-      ['What does Groove Boost do?', 'Fills 50% of your current level bar', 'Fills 70% of the bar', 'Completes the level', 'Doubles XP', 'It has a 45 minute cooldown.'],
+      ['How does the daily streak bonus grow?', 'It compounds each day, up to 5x', 'It adds a flat 5% per day', 'It never grows', 'It resets every day', 'Streak XP is 1.08 to the power of the streak days, capped at 5x.'],
+      ['What does Groove Boost do?', 'Fills 50% of the current level bar', 'Fills 70% of the bar', 'Completes the level', 'Doubles XP', 'It has a 45 minute cooldown.'],
       ['What is the cooldown on Instant Level Up?', '4 hours', '45 minutes', '90 minutes', '24 hours', 'It is the only item that guarantees a full level.'],
       ['How much of the level bar does Groove Surge fill?', '70%', '50%', '100%', '25%', 'Its cooldown is 90 minutes.'],
       ['How much does a sprint drain in its first hour?', '10% of its up-front price', '1%', '50%', '100%', 'The drain then grows each hour.'],
       ['How fast does a sprint drain grow?', '40% more each hour', 'It stays flat', 'It doubles each hour', '10% more each hour', 'The growth compounds hourly.'],
-      ['When does a sprint end by itself?', 'When grooves hit 0 or 20x its cost has drained', 'After exactly one hour', 'When you close the app', 'When you level up', 'Either condition stops it.'],
+      ['When does a sprint end by itself?', 'When grooves hit 0 or 20x its cost has drained', 'After exactly one hour', 'When the app closes', 'When a level up happens', 'Either condition stops it.'],
       ['Which sprint gives the largest multiplier?', 'Red Line Sprint (6x)', 'Overdrive Sprint (4x)', 'Hard Sprint (2.5x)', 'Quick Sprint (1.5x)', 'It is also the most expensive.'],
-      ['Can a sprint push you past the 3x cap?', 'No, the combined total is capped at 3x', 'Yes, sprints are uncapped', 'Only at Lv 300', 'Only for one hour', 'Sprints stack with boosts but share the cap.'],
-      ['If you cancel a sprint, what happens to grooves already drained?', 'They are not refunded', 'They are fully refunded', 'Half are refunded', 'They go to XP', 'Cancelling just stops further drain.'],
-      ['What does passing the Playmedia quiz reward?', 'A permanent +1x XP multiplier', '250 grooves', 'An instant level up', 'A new background', 'You need more than 70% accuracy, once.'],
+      ['Can a sprint push XP past the 3x cap?', 'No, the combined total is capped at 3x', 'Yes, sprints are uncapped', 'Only at Lv 300', 'Only for one hour', 'Sprints stack with boosts but share the cap.'],
+      ['If a sprint is cancelled, what happens to grooves already drained?', 'They are not refunded', 'They are fully refunded', 'Half are refunded', 'They go to XP', 'Cancelling just stops further drain.'],
+      ['What does passing the Playmedia quiz reward?', 'A permanent +1x XP multiplier', '250 grooves', 'An instant level up', 'A new background', 'More than 70% accuracy is needed, once.'],
       ['What is the default shortcut for play/pause?', 'Space', 'Enter', 'P', 'Tab', 'Shortcuts can be remapped in Settings.'],
       ['What does Shift + Right Arrow do by default?', 'Next track', 'Seek +10 s', 'Speed up', 'Fullscreen', 'Shift + Left goes to the previous track.'],
       ['How far does the plain Right Arrow seek by default?', '5 seconds', '10 seconds', '30 seconds', '1 second', 'J and L jump 10 seconds instead.'],
@@ -23522,8 +23522,8 @@ async function ppMp4Chapters(blob){
       ['What does "Audio lead" do?', 'Plays sound slightly ahead instead of delaying the picture', 'Raises volume', 'Mutes video', 'Adds subtitles', 'The video is never processed, so no frames drop.'],
       ['How much delay does Decode compensation add?', '300 ms', '30 ms', '1 second', '3 seconds', 'It covers browser decoding lag.'],
       ['Which gestures does tap and gesture control support?', 'Tap, double-tap, swipe and long-press', 'Pinch only', 'Shake only', 'Voice commands', 'They work on the video or disc area.'],
-      ['What does Detailed playlist mode add?', 'Thumbnails, size, length and multiple playlists', 'Cloud sync', 'Lyrics', 'Online radio', 'It is a settings toggle.'],
-      ['Where can you see every rank and its rewards?', 'View your rank & rewards in Settings', 'The equalizer', 'The sleep timer', 'The playlist', 'It lists all ranks and what each unlocks.']
+      ['What does Simple playlist mode remove?', 'Thumbnails, size, length and multiple playlists', 'Cloud sync', 'Lyrics', 'Online radio', 'It is a settings toggle.'],
+      ['Where is every rank and its rewards shown?', 'View rank & rewards in Settings', 'The equalizer', 'The sleep timer', 'The playlist', 'It lists all ranks and what each unlocks.']
     ].map(a => ({ q: a[0], correct: a[1], options: a.slice(1, 5), explain: a[5] }));
 
     // App & player features (the bulk of each attempt)
@@ -23531,11 +23531,11 @@ async function ppMp4Chapters(blob){
       ['What is the playback speed range?', '0.25x to 4x', '0.5x to 2x', '1x to 10x', '0.1x to 3x', 'The speed slider moves in 0.05 steps.'],
       ['What does the repeat button cycle through?', 'Off, repeat all, repeat one', 'Off and on only', 'Repeat one, shuffle, off', 'Repeat all and shuffle', 'Three states, tapped in turn.'],
       ['Which is a sleep timer option?', 'End of current track', 'End of playlist', 'At sunrise', 'After 3 songs', 'Presets are 15, 30, 45 and 60 minutes plus end of track.'],
-      ['Which subtitle formats can you load?', '.vtt, .srt, .ass and .ssa', 'Only .srt', '.docx and .pdf', '.mp4 and .mkv', 'Lyrics can also be loaded from .lrc files.'],
-      ['How much can you nudge subtitle timing per button?', '0.1 s or 0.5 s earlier or later', '1 s only', '5 s only', 'Not adjustable', 'Four buttons shift the subtitles.'],
+      ['Which subtitle formats can be loaded?', '.vtt, .srt, .ass and .ssa', 'Only .srt', '.docx and .pdf', '.mp4 and .mkv', 'Lyrics can also be loaded from .lrc files.'],
+      ['How much can subtitle timing be nudged per button?', '0.1 s or 0.5 s earlier or later', '1 s only', '5 s only', 'Not adjustable', 'Four buttons shift the subtitles.'],
       ['What does Trim & export clip do?', 'Cuts a section of the media into a clip', 'Deletes the file', 'Converts to a playlist', 'Mutes the video', 'It lives in the player toolbar.'],
       ['What does "Set loop point A" do?', 'Marks the start of a section to loop', 'Starts the sleep timer', 'Sets the volume to max', 'Adds a bookmark to the cloud', 'It is the start of an A-B loop.'],
-      ['What does Picture-in-picture do?', 'Floats the video in a small window', 'Splits the screen in two', 'Mirrors the video', 'Upscales the video', 'It keeps video visible while you use other apps.'],
+      ['What does Picture-in-picture do?', 'Floats the video in a small window', 'Splits the screen in two', 'Mirrors the video', 'Upscales the video', 'It keeps video visible while other apps are in use.'],
       ['What is Batch rename artists for?', 'Changing artist names on many tracks at once', 'Renaming playlists', 'Renaming files on disk', 'Merging albums', 'It is a library tool in the menu.'],
       ['What does the visualizer sensitivity setting change?', 'How strongly the visualizer reacts to sound', 'Its color', 'Its position', 'Its frame rate', 'Higher is more reactive.'],
       ['What does "Web audio: keep sound playing with the screen off" help with?', 'Audio continuing when the screen turns off', 'Saving battery by muting', 'Hiding the player', 'Casting to TVs', 'It is a background playback toggle.'],
@@ -23546,24 +23546,24 @@ async function ppMp4Chapters(blob){
       ['What is the latency control for?', 'Syncing picture with audio', 'Faster loading', 'Lowering volume', 'Subtitle size', 'It delays the picture to match late audio.'],
       ['What does Lossless latency need?', 'A Chromium-based browser', 'Safari only', 'A paid plan', 'An internet connection', 'It captures decoded frames off the main thread.'],
       ['What does "Lighten UI while video plays" reduce?', 'Animated gradients and blur that cause dropped frames', 'Video resolution', 'Volume', 'Subtitle size', 'It can freeze animation or flatten gradients.'],
-      ['What does Media player layout give you?', 'A bottom tab bar and a mini-player', 'A bigger visualizer', 'Dual playlists', 'Cloud sync', 'Turn it off to restore the original layout.'],
+      ['What does Retro layout turn off?', 'A bottom tab bar and a mini-player', 'A bigger visualizer', 'Dual playlists', 'Cloud sync', 'Retro layout restores the original layout.'],
       ['What does "Keep MP3 conversions on reload" do when on?', 'A video converted to audio-only stays audio-only', 'Saves MP3 files to disk', 'Uploads MP3s', 'Converts all videos', 'Off means it reverts to video on next load.'],
-      ['What does "Save progress every" control?', 'How often your current playback spot is saved', 'Autosave of playlists', 'Backup frequency', 'Subtitle refresh', 'It supports Remember playback position.'],
-      ['How do you change the sidebar width?', 'Drag the handle on its edge', 'Pinch the playlist', 'Use the volume key', 'It is fixed', 'The handle highlights as you drag.'],
+      ['What does "Save progress every" control?', 'How often the current playback spot is saved', 'Autosave of playlists', 'Backup frequency', 'Subtitle refresh', 'It supports Remember playback position.'],
+      ['How is the sidebar width changed?', 'Drag the handle on its edge', 'Pinch the playlist', 'Use the volume key', 'It is fixed', 'The handle highlights while dragging.'],
       ['What happens when a custom shortcut clashes with a default?', 'The custom key wins', 'The default wins', 'Both fire', 'Neither works', 'Custom keys add on top of the defaults.'],
-      ['How do you clear a custom shortcut while capturing a key?', 'Press Delete', 'Press Escape', 'Press Enter', 'Press Space', 'Escape cancels the capture without changing anything.'],
-      ['Is ASS subtitle styling on by default?', 'No, it is an opt-in toggle', 'Yes, always', 'Only for video files', 'Only on mobile', 'You may need to reload older subtitle files after enabling it.'],
+      ['How is a custom shortcut cleared while capturing a key?', 'Press Delete', 'Press Escape', 'Press Enter', 'Press Space', 'Escape cancels the capture without changing anything.'],
+      ['Is ASS subtitle styling on by default?', 'No, it is an opt-in toggle', 'Yes, always', 'Only for video files', 'Only on mobile', 'Older subtitle files may need reloading after enabling it.'],
       ['What does the Z key do by default?', 'Video zoom', 'Mute', 'Fullscreen', 'Fit', 'A fits the video and M mutes.'],
       ['What do Up and Down arrows do by default?', 'Change volume', 'Change speed', 'Seek 10 seconds', 'Change track', 'Brackets change speed.'],
       ['How long can a crossfade be, relative to the track?', 'At most half the track length', 'Always 10 seconds', 'The full track', 'Any length', 'It is capped at half the duration.'],
       ['What happens to repeat-one with the sleep timer on "end of track"?', 'The track will not loop, so it can end and stop', 'It loops forever', 'It switches to shuffle', 'The timer is ignored', 'This lets the timer actually finish.'],
-      ['Which file types can you add to the player?', 'Audio, video, and subtitle or lyric files', 'Only MP3', 'Only video', 'Documents', 'The file picker accepts all of those.'],
-      ['Can Press Play Media be added to your home screen like an app?', 'Yes, it ships a web app manifest and icons', 'No, browser only', 'Only on Windows', 'Only with a paid plan', 'It also sets mobile app meta tags.'],
-      ['What does the Customize appearance menu let you set?', 'Background color, gradient or image', 'Audio codec', 'Keyboard layout', 'Playlist order', 'Unlockable presets appear there too.'],
-      ['What is "Detailed playlist mode"?', 'Thumbnails, size, length and multiple playlists', 'A debug view', 'A lyrics view', 'A grid of covers', 'It is a toggle in Settings.'],
+      ['Which file types can be added to the player?', 'Audio, video, and subtitle or lyric files', 'Only MP3', 'Only video', 'Documents', 'The file picker accepts all of those.'],
+      ['Can Press Play Media be added to a home screen like an app?', 'Yes, it ships a web app manifest and icons', 'No, browser only', 'Only on Windows', 'Only with a paid plan', 'It also sets mobile app meta tags.'],
+      ['What can be set in the Customize appearance menu?', 'Background color, gradient or image', 'Audio codec', 'Keyboard layout', 'Playlist order', 'Unlockable presets appear there too.'],
+      ['What does "Simple playlist mode" turn off?', 'Thumbnails, size, length and multiple playlists', 'A debug view', 'A lyrics view', 'A grid of covers', 'It is a toggle in Settings.'],
       ['What does Audio lead do?', 'Plays sound ahead instead of delaying the picture', 'Boosts volume', 'Adds an intro', 'Mutes video', 'Video is untouched, so no frames drop.'],
       ['What does "Tap & gesture controls" cover?', 'Tap, double-tap, swipe and long-press on the video area', 'Voice commands', 'Shaking the phone', 'Mouse wheel only', 'It can be switched off in Settings.'],
-      ['What does ReplayGain rely on?', 'Loudness tags stored in the file', 'The internet', 'Your equalizer', 'Playlist order', 'Untagged tracks are left alone.'],
+      ['What does ReplayGain rely on?', 'Loudness tags stored in the file', 'The internet', 'The equalizer', 'Playlist order', 'Untagged tracks are left alone.'],
       ['Which key jumps back 10 seconds by default?', 'J', 'L', 'K', 'H', 'L jumps forward 10 seconds.']
     ].map(a => ({ q: a[0], correct: a[1], options: a.slice(1, 5), explain: a[5] }));
 
@@ -23653,10 +23653,10 @@ async function ppMp4Chapters(blob){
         let rewardLine;
         if (!passed){
           rewardLine = alreadyClaimed()
-            ? `Not a pass this time (you need ${needed}/${total}), but you already have your +${QUIZ_BONUS}x bonus.`
-            : `You need more than ${Math.round(QUIZ_PASS * 100)}% (${needed}/${total} or better) to earn the bonus. Try again!`;
+            ? `Not a pass this time (${needed}/${total} needed), but the +${QUIZ_BONUS}x bonus is already earned.`
+            : `More than ${Math.round(QUIZ_PASS * 100)}% (${needed}/${total} or better) is needed to earn the bonus. Try again!`;
         } else if (alreadyClaimed()){
-          rewardLine = `Passed! You already claimed your permanent +${QUIZ_BONUS}x bonus.`;
+          rewardLine = `Passed! The permanent +${QUIZ_BONUS}x bonus is already claimed.`;
         } else {
           state.expMods.permanentMult = (state.expMods.permanentMult || 1) + QUIZ_BONUS;
           state.quizBonusClaimed = true;
@@ -23672,7 +23672,7 @@ async function ppMp4Chapters(blob){
         res.appendChild(el('div', 'ppxp-quiz-result-sub', `Best accuracy: ${best}%. The bonus can only be earned once; retakes use a fresh random set.`));
         body.appendChild(res);
         if (missed.length){
-          body.appendChild(el('div', 'ppxp-quiz-progress', 'Review your misses:'));
+          body.appendChild(el('div', 'ppxp-quiz-progress', 'Review the misses:'));
           missed.forEach(m => {
             body.appendChild(el('div', 'ppxp-quiz-question', m.q));
             body.appendChild(el('div', 'ppxp-quiz-explain', `Answer: ${m.correct}. ${m.explain}`));
@@ -23718,7 +23718,7 @@ async function ppMp4Chapters(blob){
       section.innerHTML = `
         <div class="settings-row" id="ppxp-view-rank-row">
           <div class="settings-row-text">
-            <div class="settings-row-title">View your rank &amp; rewards</div>
+            <div class="settings-row-title">View rank &amp; rewards</div>
             <div class="settings-row-sub">See every rank and what leveling up unlocks.</div>
           </div>
         </div>
@@ -23873,7 +23873,7 @@ async function ppMp4Chapters(blob){
     body.classList.toggle('player-layout', on);
     if (window.__ppSyncTitle) window.__ppSyncTitle();
     try { renderStrip(true); } catch(e){}
-    toggle.checked = on;
+    toggle.checked = !on;
     if (on){
       syncMini(); syncProgress();
       syncVideoMode();
@@ -24038,8 +24038,8 @@ async function ppMp4Chapters(blob){
   obs.observe(artImg, { attributes:true, attributeFilter:['src','style'] });
 
   toggle.addEventListener('change', () => {
-    try { localStorage.setItem(KEY, toggle.checked ? '1' : '0'); } catch(e){}
-    apply(toggle.checked);
+    try { localStorage.setItem(KEY, toggle.checked ? '0' : '1'); } catch(e){}
+    apply(!toggle.checked);
   });
 
 
@@ -24293,7 +24293,7 @@ async function ppMp4Chapters(blob){
           ? '<button type="button" class="ph-pl-playall" data-act="pl-play" data-id="' + esc(pl.id) + '" data-idx="' + d.idxs[0] + '"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Play all</button>' + rows
           : '<div class="ph-empty" style="padding:6px 0;">This playlist is empty.</div>') + '</div></div>';
     } else if (!plData.length){
-      plHTML = '<div class="ph-empty">No playlists yet. Turn on \u201cDetailed playlist mode\u201d in Settings to create them.</div>';
+      plHTML = '<div class="ph-empty">No playlists yet. Turn off \u201cSimple playlist mode\u201d in Settings to create them.</div>';
     } else {
       plHTML = plData.map(({ pl, idxs }) => {
         const n = plInfo(idxs);
@@ -24319,7 +24319,7 @@ async function ppMp4Chapters(blob){
           '<span class="ph-count">' + (items.length || '') + '</span><span class="ph-spacer"></span>' +
           (openSec === 'history' && items.length ? '<button type="button" class="ph-link dim" data-act="clear-history">Clear</button>' : '') + '</div>' +
         (items.length ? '<div class="ph-row expanded ph-page-grid">' + items.join('') + '</div>'
-          : '<div class="ph-empty">' + (openSec === 'videos' ? 'No videos yet. Add files from the Library tab.' : openSec === 'audio' ? 'No audio yet. Add files from the Library tab.' : 'Tracks you play show up here.') + '</div>');
+          : '<div class="ph-empty">' + (openSec === 'videos' ? 'No videos yet. Add files from the Library tab.' : openSec === 'audio' ? 'No audio yet. Add files from the Library tab.' : 'Played tracks show up here.') + '</div>');
     }
     const ed = window.__ppEdition ? window.__ppEdition() : '';
     homeEl.dataset.ed = ed;
@@ -24327,7 +24327,7 @@ async function ppMp4Chapters(blob){
       const histBtn = hCards.length ? '<button type="button" class="ph-link dim" data-act="clear-history">Clear</button>' : '';
       const vSec = sectionHTML('videos', 'Videos', vCards, 'No videos yet. Add files from the Library tab.');
       const aSec = sectionHTML('audio', 'Audio', aCards, 'No audio yet. Add files from the Library tab.');
-      const hSec = sectionHTML('history', 'History', hCards, 'Tracks you play show up here.', histBtn);
+      const hSec = sectionHTML('history', 'History', hCards, 'Played tracks show up here.', histBtn);
       const tabs = tabsHTML('all');
       // Featured video: what's playing, else the last one watched, else the first video
       const curIsVid = cur >= 0 && tracks[cur] && tracks[cur].kind === 'video';
@@ -24698,8 +24698,8 @@ async function ppMp4Chapters(blob){
   window.__ppGestureMap = () => on ? pmMap : null;
   renderPmList();
 
-  let saved = false;
-  try { saved = localStorage.getItem(KEY) === '1'; } catch(e){}
+  let saved = true;
+  try { const v = localStorage.getItem(KEY); if (v !== null) saved = v === '1'; } catch(e){}
   apply(saved);
 })();
 </script>
@@ -24825,7 +24825,7 @@ async function ppMp4Chapters(blob){
     '<div class="settings-section-label">Transitions</div>' +
     '<div class="settings-row"><div class="settings-row-text">' +
       '<div class="settings-row-title">Between songs</div>' +
-      '<div class="settings-row-sub">Off: normal. Gapless: learns how long your device takes to start the next song and starts it that far before this one ends, so there is no pause. Timing settles within a few songs. Crossfade: fades one song out while the next fades in. On video, the picture cuts to the next item while the sound crossfades.</div>' +
+      '<div class="settings-row-sub">Off: normal. Gapless: no pause between songs. Crossfade: one song fades out as the next fades in.</div>' +
     '</div><select id="xf-mode"><option value="off">Off</option><option value="gapless">Gapless</option><option value="crossfade">Crossfade</option></select></div>' +
     '<div class="settings-row" id="xf-secs-row" style="margin-top:12px;"><div class="settings-row-text">' +
       '<div class="settings-row-title">Crossfade length <span id="xf-secs-val"></span></div></div>' +
@@ -24947,10 +24947,10 @@ async function ppMp4Chapters(blob){
   sec.innerHTML =
     '<div class="settings-section-label">Subtitles &amp; shortcuts</div>' +
     '<div class="settings-row"><div class="settings-row-text"><div class="settings-row-title">ASS subtitle styling</div>' +
-    '<div class="settings-row-sub">Shows colors, bold, italic, underline, strike-through, text size, alignment (top/middle/sides), exact positions and fade in/out from .ass/.ssa files. Karaoke, rotation, drawings and moving text are not applied. Reload the subtitle file after turning this on for files loaded before.</div></div>' +
+    '<div class="settings-row-sub">Shows styled .ass/.ssa subtitles (colors, fonts, positions). Reload the subtitle file after turning this on.</div></div>' +
     '<label class="settings-switch"><input type="checkbox" id="pp-ass-toggle"><span class="settings-switch-track"><span class="settings-switch-thumb"></span></span></label></div>' +
     '<div class="settings-row" style="margin-top:12px;"><div class="settings-row-text"><div class="settings-row-title">Custom shortcuts</div>' +
-    '<div class="settings-row-sub">Adds your own keys on top of the defaults. A custom key wins if it clashes with a default.</div></div>' +
+    '<div class="settings-row-sub">Add custom keys. They override the defaults.</div></div>' +
     '<label class="settings-switch"><input type="checkbox" id="pp-keys-toggle"><span class="settings-switch-track"><span class="settings-switch-thumb"></span></span></label></div>' +
     '<div id="pp-keys-list" style="display:none;margin-top:8px;"></div>';
   anchor.parentNode.insertBefore(sec, anchor);
@@ -25133,7 +25133,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     var sec=document.getElementById('pp-lite-section');if(!sec)return;
     var old=document.getElementById('pp-lite-confirm');if(old){old.remove();}
     var c=document.createElement('div');c.id='pp-lite-confirm';
-    c.innerHTML='<div class="pl-q">'+(turningOn?'Switch to Press Play Lite?':'Switch back to full Press Play?')+'</div><div class="pl-d">'+(turningOn?'The app will reset and reopen with a simpler layout: fewer presets and backgrounds, no levels, EXP or games. Your progress is kept.'+(plusOn()?' This also turns off Press Play PLUS.':''):'The app will reset and reopen with all features, levels and games restored.')+'</div><button type="button" class="pl-yes">'+(turningOn?'Yes, go Lite':'Yes, restore everything')+'</button><button type="button" class="pl-no">Cancel</button>';
+    c.innerHTML='<div class="pl-q">'+(turningOn?'Switch to Press Play Lite?':'Switch back to full Press Play?')+'</div><div class="pl-d">'+(turningOn?'The app will reset and reopen with a simpler layout: fewer presets and backgrounds, no levels, EXP or games. Progress is kept.'+(plusOn()?' This also turns off Press Play PLUS.':''):'The app will reset and reopen with all features, levels and games restored.')+'</div><button type="button" class="pl-yes">'+(turningOn?'Yes, go Lite':'Yes, restore everything')+'</button><button type="button" class="pl-no">Cancel</button>';
     sec.appendChild(c);
     var tb=document.getElementById('pp-lite-toggle');if(tb)tb.style.display='none';
     function close(){c.remove();if(tb)tb.style.display='';}
@@ -25243,7 +25243,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     var c=document.createElement('div');c.id='pp-plus-confirm';
     var d=turningOn
       ?'The app will reset and reopen with every level reward unlocked from the start: all EQ presets and bands, custom EQ slots, backgrounds, accent color, quick speed and boost buttons, skip intro/outro, and jump buttons. Levels and EXP stay.'+(liteOn()?' This also turns off Press Play Lite.':'')
-      :'The app will reset and reopen with perks unlocking by level again. Your progress is kept.';
+      :'The app will reset and reopen with perks unlocking by level again. Progress is kept.';
     c.innerHTML='<div class="pl-q">'+(turningOn?'Switch to Press Play PLUS?':'Switch back to normal Press Play?')+'</div><div class="pl-d">'+d+'</div><button type="button" class="pl-yes">'+(turningOn?'Yes, go PLUS':'Yes, switch back')+'</button><button type="button" class="pl-no">Cancel</button>';
     sec.appendChild(c);
     var tb=document.getElementById('pp-plus-toggle');if(tb)tb.style.display='none';
@@ -25397,8 +25397,8 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   function taskText(m){
     var st=G.state();
     if(m==='lite')return 'Lite is playback with nothing on top, so prove it: play '+Math.round(G.cleanGoal/60000)+' minutes with the equalizer off, boost at 100%, no DJ effects, normal speed, and no video filters, smoothing or delay ('+mmss(Math.min(G.cleanGoal,(st.clean||0)))+' / '+mmss(G.cleanGoal)+' so far).';
-    if(m==='plus')return 'PLUS is for people who know the app, so pass the Press Play quiz in Settings (75% or better; your best so far: '+G.quizBest()+'%).';
-    return 'ace The Marathon in Settings: 30 questions, 10 seconds each, all correct (your best so far: '+G.marathonBest()+'%).';
+    if(m==='plus')return 'PLUS is for people who know the app, so pass the Press Play quiz in Settings (75% or better; best so far: '+G.quizBest()+'%).';
+    return 'ace The Marathon in Settings: 30 questions, 10 seconds each, all correct (best so far: '+G.marathonBest()+'%).';
   }
   // True while playback has no processing layered on top of it.
   function plain(){
@@ -25431,7 +25431,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     d.style.cssText='position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:99998;max-width:460px;margin:0 auto;box-sizing:border-box;background:var(--bg-elev);color:var(--text);border:1px solid var(--accent-dim,var(--line));border-radius:14px;padding:14px 16px;box-shadow:0 10px 30px rgba(0,0,0,.55);font-size:12.5px;line-height:1.5';
     d.innerHTML='<div style="font-weight:700;font-size:14px;margin-bottom:6px">App modes are now earned</div>'
       +'<div style="color:var(--text-dim)">New users now unlock <b>Lite</b> by playing an hour of plain, unprocessed audio and video, <b>PLUS</b> by passing the quiz, and <b>PREMIUM</b> by acing The Marathon, a 30-question quiz with a 10-second timer.</div>'
-      +'<div style="margin-top:8px"><b style="color:var(--accent)">Nothing changes for you.</b> You already had data here, so all three modes stay unlocked, and your progress, levels and settings are untouched.</div>'
+      +'<div style="margin-top:8px"><b style="color:var(--accent)">Nothing changes.</b> Existing data was found, so all three modes stay unlocked, and progress, levels and settings are untouched.</div>'
       +'<button type="button" id="pp-gate-ok" style="margin-top:12px;padding:8px 16px;border-radius:8px;border:1px solid var(--accent-dim,var(--line));background:transparent;color:var(--accent);font:600 12.5px system-ui,sans-serif;cursor:pointer">Got it</button>';
     document.body.appendChild(d);
     d.querySelector('#pp-gate-ok').addEventListener('click',function(){G.state().notice=true;try{localStorage.setItem('ppModeGateV1',JSON.stringify(G.state()))}catch(e){}d.remove()});
@@ -25444,7 +25444,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   var bt=null;
   function banner(m){
     var old=document.getElementById('pp-mode-banner'); if(old)old.remove(); clearTimeout(bt);
-    var d={lite:['Press Play Lite','Simple. Just play.'],plus:['\u2728 Press Play PLUS \u2728','Everything unlocked. Turn it up.'],premium:['<span class="cr">\uD83D\uDC51</span> <span class="g">Press Play PREMIUM</span> <span class="cr">\uD83D\uDC51</span>','Welcome. Everything is yours.']}[m];
+    var d={lite:['Press Play Lite','Simple. Just play.'],plus:['\u2728 Press Play PLUS \u2728','Everything unlocked. Turn it up.'],premium:['<span class="cr">\uD83D\uDC51</span> <span class="g">Press Play PREMIUM</span> <span class="cr">\uD83D\uDC51</span>','Welcome. Everything is unlocked.']}[m];
     var el=document.createElement('div'); el.id='pp-mode-banner'; el.className=m; el.innerHTML='<span class="t">'+d[0]+'</span><small>'+d[1]+'</small>'; document.body.appendChild(el);
     requestAnimationFrame(function(){requestAnimationFrame(function(){el.classList.add('show')})});
     bt=setTimeout(function(){el.classList.remove('show');setTimeout(function(){el.remove()},700)}, m==='premium'?6000:4500);
@@ -25477,7 +25477,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     sh.style.cssText='background:var(--bg-elev);color:var(--text);border:1px solid var(--line);border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));width:min(480px,100%);max-height:86vh;overflow:auto';
     sh.innerHTML='<div style="font-weight:600;font-size:15px;margin-bottom:6px">App mode</div>'+MODES.map(function(m){var on=m[0]===c,lk=!G.unlocked(m[0]);
       return '<button type="button" data-mode="'+m[0]+'" style="display:block;width:100%;text-align:left;margin:8px 0;padding:12px 14px;border-radius:12px;background:var(--bg);color:var(--text);font:inherit;cursor:pointer;opacity:'+(lk?'.7':'1')+';border:'+(on?'2px':'1px')+' solid '+(on?EDGE[m[0]]:'var(--line)')+'"><span style="display:flex;justify-content:space-between;font-weight:600;font-size:14px"><span>'+m[1]+'</span><span style="font-size:12px;color:'+EDGE[m[0]]+'">'+(on?'On':(lk?'\uD83D\uDD12 Locked':''))+'</span></span><span style="display:block;margin-top:4px;font-size:12px;color:var(--text-dim);line-height:1.4;font-weight:400">'+m[2]+'</span>'+(lk?'<span style="display:block;margin-top:6px;font-size:11.5px;color:'+EDGE[m[0]]+'">To unlock: '+taskText(m[0])+'</span>':'')+'</button>'}).join('')
-      +'<div style="font-size:11px;color:var(--text-dim);margin-top:8px;line-height:1.45">Tap the active mode again to return to standard. Switching never stops playback.'+(G.legacy()?' Everything is already unlocked for you.':' Locked modes unlock by completing their task.')+'</div>';
+      +'<div style="font-size:11px;color:var(--text-dim);margin-top:8px;line-height:1.45">Tap the active mode again to return to standard. Switching never stops playback.'+(G.legacy()?' Everything is already unlocked.':' Locked modes unlock by completing their task.')+'</div>';
     o.appendChild(sh); document.body.appendChild(o);
     o.addEventListener('click',function(e){
       if(e.target===o){closeMenu();return}
@@ -25533,7 +25533,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   function status(){
     var bits=['Best: '+best()+'%'];
     bits.push(bgHave()?'Finish Line background unlocked':'80% unlocks the Finish Line background');
-    bits.push(G.unlocked('premium')?(G.legacy()?'Premium is unlocked for you':'Premium unlocked'):'100% grants Premium');
+    bits.push(G.unlocked('premium')?(G.legacy()?'Premium is unlocked':'Premium unlocked'):'100% grants Premium');
     return bits.join('  \u00b7  ');
   }
   function refreshStatus(){if(statEl)statEl.textContent=status()}
@@ -25565,7 +25565,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     if(!B||!B.app||!B.xp||B.app.length<LEN-XP_N||B.xp.length<XP_N){body.appendChild(mk('div','ppxp-quiz-explain','The question bank is not available right now. Try again after the app finishes loading.'));return}
     body.appendChild(mk('div','ppxp-quiz-question','Ready for the Marathon?'));
     var ul=mk('ul','pp-mar-list');
-    ['30 random questions, mostly about the app.','You get 10 seconds per question. Running out of time counts as a miss, and the clock keeps running if you switch away.','Score 80% (24 right) to unlock the Finish Line background.','Score 100% to earn Press Play PREMIUM.','Closing this window ends the run.'].forEach(function(t){ul.appendChild(mk('li',null,t))});
+    ['30 random questions, mostly about the app.','Each question has 10 seconds. Running out of time counts as a miss, and the clock keeps running when switching away.','Score 80% (24 right) to unlock the Finish Line background.','Score 100% to earn Press Play PREMIUM.','Closing this window ends the run.'].forEach(function(t){ul.appendChild(mk('li',null,t))});
     body.appendChild(ul);
     body.appendChild(mk('div','ppxp-quiz-progress',status()));
     var go=mk('button','ppxp-quiz-next-btn','Start the Marathon');go.type='button';go.addEventListener('click',start);body.appendChild(go);
@@ -25614,10 +25614,10 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     if(right>=BG_NEED){
       if(!bgHave()){ls.s(BG,'1');lines.push('Finish Line unlocked. Find it under Customize appearance \u2192 Unlockable presets.');toast('Finish Line background unlocked');try{window.PPXpApi&&window.PPXpApi.refreshUnlocks&&window.PPXpApi.refreshUnlocks()}catch(e){}}
       else lines.push('Finish Line background: already unlocked.');
-    }else lines.push('You need '+BG_NEED+' of '+total+' (80%) for the Finish Line background.');
+    }else lines.push(BG_NEED+' of '+total+' (80%) needed for the Finish Line background.');
     if(right===total){
       try{G.check()}catch(e){}
-      lines.push(G.legacy()||was?'A perfect run! Premium was already unlocked for you.':'A perfect run! Press Play PREMIUM is unlocked. Find it under Settings \u2192 App mode.');
+      lines.push(G.legacy()||was?'A perfect run! Premium was already unlocked.':'A perfect run! Press Play PREMIUM is unlocked. Find it under Settings \u2192 App mode.');
     }else lines.push('Only a perfect 30 of 30 earns Press Play PREMIUM.');
     body.innerHTML='';
     var res=mk('div','ppxp-quiz-result');
@@ -25626,7 +25626,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     res.appendChild(mk('div','ppxp-quiz-result-sub','Best: '+best()+'%. Every run draws a fresh random set.'));
     body.appendChild(res);
     if(missed.length){
-      body.appendChild(mk('div','ppxp-quiz-progress','Review your misses:'));
+      body.appendChild(mk('div','ppxp-quiz-progress','Review the misses:'));
       missed.forEach(function(m){body.appendChild(mk('div','ppxp-quiz-question',m.q));body.appendChild(mk('div','ppxp-quiz-explain','Answer: '+m.correct+'. '+m.explain))});
     }
     var again=mk('button','ppxp-quiz-next-btn','Run it again');again.type='button';again.addEventListener('click',openIntro);body.appendChild(again);
@@ -25714,7 +25714,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     if(id==='playback-position-section'||sec.querySelector('#xf-mode'))return 'play';
     if(id==='extras-settings-section'||id==='playlists-manager-section'||sec.querySelector('#detailed-mode-toggle')||/^Keep MP3 conversions/.test(ft))return 'lib';
     if(id==='storage-section'||id==='progress-section')return 'data';
-    if(/^Media player layout/.test(ft)||id==='ppxp-accent-section'||id==='pp-modes-section')return 'look';
+    if(/^Retro layout/.test(ft)||id==='ppxp-accent-section'||id==='pp-modes-section')return 'look';
     return 'fun';
   }
 
