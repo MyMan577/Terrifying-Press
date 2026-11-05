@@ -2052,10 +2052,24 @@
   }
   const sumOk = r => { const L = (r.match(/\p{L}/gu) || []).length, W = (r.match(/\p{L}{2,}/gu) || []).length; return r.length >= 20 && L / r.length >= 0.6 && W >= 4; };
   // Long videos are read in pieces (each piece summarized, then the pieces combined). At most 5 pieces, spread over the whole thing, so it stays quick.
-  async function aiSummary(t, c, tr, ask, say) {
-    const kind = t.kind === 'video' ? 'video' : 'song', prof = soundProfile(c, t.kind);
-    const sys = 'You write short summaries for a music and video player. Use ONLY the transcript and the audio facts you are given. Never invent names, places, events or lyrics. Do not quote lyrics, describe them instead. If the text is too unclear, say so in a few words. Reply in English with 2 or 3 plain sentences, no lists.';
-    const opt = { max_new_tokens: 120, do_sample: true, temperature: 0.3, top_p: 0.9, repetition_penalty: 1.1 };
+  // Summary length choices: how much to ask for (words), how many tokens the reply may use (tok), and for long videos how long each piece summary may be (part).
+  const SUM_LENS = {
+    short:    { label: 'Short (2 to 3 sentences)', words: '2 or 3 plain sentences', adj: 'short', tok: 120, part: 70 },
+    medium:   { label: 'Medium (4 to 5 sentences)', words: '4 or 5 plain sentences', adj: 'medium-length', tok: 230, part: 100 },
+    long:     { label: 'Long (6 to 8 sentences)', words: '6 to 8 plain sentences covering the main points, themes and feel', adj: 'detailed', tok: 360, part: 140 },
+    detailed: { label: 'Very detailed (two paragraphs)', words: 'two short paragraphs of plain sentences: first what it is about and the main points, then how it sounds and feels', adj: 'thorough', tok: 500, part: 170 }
+  };
+  const sumLenKey = () => { try { const k = localStorage.getItem('ppvSumLen'); return SUM_LENS[k] ? k : 'short'; } catch (e) { return 'short'; } };
+  // A summary that hit the token cap ends mid-sentence: cut back to the last full sentence.
+  const sumTrim = r => {
+    r = String(r).trim(); if (!r || /[.!?\u2026)"'\u201d\u2019]$/.test(r)) return r;
+    let end = -1, m; const re = /[.!?\u2026](?=["'\u201d\u2019)]*(?:\s|$))/g; while ((m = re.exec(r))) end = m.index + 1;
+    return end >= 20 && end >= r.length * 0.4 ? r.slice(0, end) : r.replace(/[\s,;:\-]+$/, '') + '\u2026';
+  };
+  async function aiSummary(t, c, tr, ask, say, lenKey, ctx) {
+    const kind = t.kind === 'video' ? 'video' : 'song', prof = soundProfile(c, t.kind), LN = SUM_LENS[lenKey] || SUM_LENS.short;
+    const sys = 'You write summaries for a music and video player. Use ONLY the transcript and the audio facts you are given. Never invent names, places, events or lyrics. Do not quote lyrics, describe them instead. If the text is too unclear, say so in a few words. Reply in English with ' + LN.words + ', no lists.';
+    const opt = { max_new_tokens: LN.tok, do_sample: true, temperature: 0.3, top_p: 0.9, repetition_penalty: 1.1 };
     const facts = (prof.hint ? '\nAudio analysis: ' + prof.hint : '');
     let user;
     if (tr.words <= 450) user = 'Title: ' + t.title + '\nType: ' + kind + facts + '\nTranscript (automatic, may contain mistakes):\n' + tr.lines.join('\n') + '\n\nSummarize what this ' + kind + ' is about and how it feels.';
@@ -2067,16 +2081,18 @@
       const parts = [];
       for (let i = 0; i < chunks.length; i++) {
         say('Reading part ' + (i + 1) + ' of ' + chunks.length + '…');
-        const r = await ask([{ role: 'system', content: sys }, { role: 'user', content: 'Part ' + (i + 1) + ' of ' + chunks.length + ' of a ' + kind + ' transcript (automatic, may contain mistakes):\n' + chunks[i] + '\n\nSummarize this part in one or two sentences.' }], Object.assign({}, opt, { max_new_tokens: 70 }), say);
+        const r = await ask([{ role: 'system', content: sys }, { role: 'user', content: 'Part ' + (i + 1) + ' of ' + chunks.length + ' of a ' + kind + ' transcript (automatic, may contain mistakes):\n' + chunks[i] + '\n\nSummarize this part in one or two sentences.' }], Object.assign({}, opt, { max_new_tokens: LN.part }), say);
         if (sumOk(r)) parts.push(r.replace(/\s+/g, ' '));
       }
       if (!parts.length) return '';
       say('Putting it together…');
-      user = 'Title: ' + t.title + '\nType: ' + kind + facts + '\nSummaries of ' + (sampled ? 'some parts of it' : 'each part') + ', in order:\n- ' + parts.join('\n- ') + '\n\nWrite a short summary of the whole ' + kind + '.';
+      user = 'Title: ' + t.title + '\nType: ' + kind + facts + '\nSummaries of ' + (sampled ? 'some parts of it' : 'each part') + ', in order:\n- ' + parts.join('\n- ') + '\n\nWrite a ' + LN.adj + ' summary of the whole ' + kind + '.';
     }
     say('Writing the summary…');
+    // Keep the reply inside the model's context: a small model cannot take a long transcript and a long reply together.
+    if (ctx) opt.max_new_tokens = Math.max(100, Math.min(LN.tok, Math.floor(ctx * 0.9) - Math.ceil((sys.length + user.length) / 3) - 30));
     const out = await ask([{ role: 'system', content: sys }, { role: 'user', content: user }], opt, say);
-    return sumOk(out) ? out.trim() : '';
+    return sumOk(out) ? sumTrim(out) : '';
   }
   function smartUI(p, h) {
     const css = document.createElement('style');
@@ -2122,6 +2138,7 @@
       '<div class="ppv-note">Songs get synced lyrics (Lyrics tab), videos get subtitles. Both can be exported as .srt or .lrc from the editor below. The music-removal step always uses Spleeter. If the song was already split, its saved vocals are reused and nothing is split again.</div>' +
       '<button id="ppv-wgo">Transcribe current track</button><button id="ppv-wsrt" class="ppv-sec" style="display:none">Download .srt</button><button id="ppv-wfree" class="ppv-sec">Free up Whisper download</button>' +
       '<div id="ppv-wout" class="ppv-out"></div>' +
+      '<label class="ppv-c" style="display:block;margin-top:10px">Summary length: <select id="ppv-sumlen" style="width:100%;display:block">' + Object.keys(SUM_LENS).map(k => '<option value="' + k + '">' + SUM_LENS[k].label + '</option>').join('') + '</select></label>' +
       '<button id="ppv-sumgo" class="ppv-sec" style="margin-top:10px">Summarize current track (AI)</button>' +
       '<div class="ppv-note">Combines the track\u2019s tags (tempo, key, genre, mood, instruments) with its lyrics or subtitles, so it knows both how it sounds and what it is about. Tags are made first if missing. The written part uses the Bloop AI brain (one-time download). Without lyrics or subtitles you get the sound summary only.</div>' +
       '<div id="ppv-sumout" class="ppv-out"></div>' +
@@ -2498,6 +2515,7 @@
       try { if (NATIVE) { const ids = PK_FILES.map(f => f[0]).concat(Object.values(WHN).flatMap(k => [k + '_enc', k + '_dec', k + '_encf'])); for (const id of ids) { try { await NP.remove({ id }); } catch (e) {} } } if (asr) { await asr.dispose(); asr = null; asrId = ''; } const ks = await caches.keys(); for (const k of ks) if (/transformers/i.test(k)) await caches.delete(k); h.status('Whisper download removed.'); } catch (e) { h.status('Error: ' + errText(e)); }
     };
     // ---------- AI summary ----------
+    { const sl = $('#ppv-sumlen'); sl.value = sumLenKey(); sl.onchange = () => { try { localStorage.setItem('ppvSumLen', sl.value); } catch (e) {} }; }
     $('#ppv-sumgo').onclick = async () => {
       const sumout = $('#ppv-sumout'); busy(true); sumout.textContent = '';
       try {
@@ -2511,7 +2529,7 @@
         let ai = '', note = '';
         if (tr.words >= 12) {
           if (!ch.ready() && !confirm('The written summary uses the AI brain: a one-time download of about ' + ch.mb() + ' MB. Continue? (Cancel keeps just the sound summary.)')) note = 'No AI brain download, so this is the sound summary only.';
-          else { try { ai = await aiSummary(t, c, tr, ch.ask, say); } catch (e) { console.warn(e); note = 'The AI brain could not run: ' + errText(e); } if (!ai && !note) note = 'The AI summary came out unusable, so only the sound summary is shown.'; }
+          else { try { ai = await aiSummary(t, c, tr, ch.ask, say, $('#ppv-sumlen').value, ch.ctx && ch.ctx()); } catch (e) { console.warn(e); note = 'The AI brain could not run: ' + errText(e); } if (!ai && !note) note = 'The AI summary came out unusable, so only the sound summary is shown.'; }
         } else note = 'No lyrics or subtitles saved for this track, so this is based on the sound only. Tap "Transcribe current track" above for a fuller summary.';
         const text = [ai, prof.line ? 'Sound: ' + prof.line : ''].filter(Boolean).join('\n\n');
         if (!text) throw new Error('Nothing to summarize yet. Tag the track first.');
@@ -2934,7 +2952,7 @@
         { id: 'mixes', label: 'Auto mixes: For You, Ones You May Like, Your Pattern', key: 'ppvLiveMix', def: 1, box: 'ppv-lmix' },
         { id: 'surp', label: 'Surprise playlists', key: 'ppvSurp', def: 0, box: 'ppv-surp' },
         { id: 'bg', label: 'Background tagging while I am away', key: 'ppvBg', def: 0, box: 'ppv-bg' },
-        { id: 'lyfetch', label: 'Fetch lyrics for my songs in the background, for offline use (sends song titles to lrclib.net and lyrics.ovh)', key: 'ppvLyAuto', def: 1 },
+        { id: 'lyfetch', label: 'Fetch lyrics for my songs in the background, for offline use (sends song titles to lrclib.net and lyrics.ovh)', key: 'ppvLyAuto', def: 0 },
         { id: 'aeq', label: 'Auto-EQ when tagging', key: 'ppvAutoEq', def: 0, box: 'ppv-aeq' },
         { id: 'askip', label: 'Skip long intros', key: 'ppvAutoSkip', def: 0, box: 'ppv-askip' },
         { g: 'Bloop', id: 'mascot', label: 'Bloop, the mascot', box: 'ppv-mas', def: 1, get: () => h.mas.isOn() },
@@ -3392,7 +3410,7 @@
     };
     const webId = k => (CHAT_MODELS[k].lm ? CHAT_MODELS.qwen05 : CHAT_MODELS[k]).id;   // the browser cannot run .litertlm, so it uses Qwen instead
     let CHAT_MODEL = webId(chatKey());
-    let pendingJob = null, holdModel = false, idleT = 0, chatOn = lsGet('ppvChat') === '1', gen = null, genP = null, chatBusy = false, dlOk = false, hist = [];
+    let pendingJob = null, holdModel = false, idleT = 0, chatOn = lsGet('ppvChat') === '1', gen = null, genP = null, chatBusy = false, dlOk = false, hist = [], musicMode = lsGet('ppvMusicMode') === '1', aiOnly = lsGet('ppvAiOnly') === '1';
     // How many past exchanges (your message + Bloop's reply) he remembers during a chat. 0 = none. More memory = slower and more RAM on a tiny model.
     const MEM_MAX = 8, memN = () => { const v = parseInt(lsGet('ppvMem'), 10); return isNaN(v) ? 4 : Math.max(0, Math.min(MEM_MAX, v)); };
     const setMem = v => { v = Math.max(0, Math.min(MEM_MAX, parseInt(v, 10) || 0)); lsSet('ppvMem', String(v)); hist = memN() ? hist.slice(-2 * memN()) : []; return v; };
@@ -3420,12 +3438,24 @@
     const cfab = document.createElement('div'); cfab.id = 'ppv-cfab'; cfab.setAttribute('role', 'button'); cfab.setAttribute('aria-label', 'Chat with Bloop');
     const cball = ball(); cfab.appendChild(cball);
     const cbox = document.createElement('div'); cbox.id = 'ppv-chat';
-    cbox.innerHTML = '<div class="ch-h"><b>Bloop</b><span class="ch-n">Helper that runs on the device. Free chat uses a tiny AI, so it can be wrong. Not a counselor.</span><button class="ch-c" data-a="clear">Clear</button><button class="ch-c" data-a="x" aria-label="Close">&times;</button></div><div class="ch-l"></div><div class="ch-i"><input type="text" maxlength="400" placeholder="Say something to Bloop" enterkeyhint="send"><button data-a="mic" class="ch-mic" aria-label="Talk to Bloop" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg></button><button data-a="send">Send</button></div>';
+    cbox.innerHTML = '<div class="ch-h"><b>Bloop</b><span class="ch-n">Helper that runs on the device. Free chat uses a tiny AI, so it can be wrong. Not a counselor.</span><button class="ch-c" data-a="aionly" aria-pressed="false" title="Send everything to the AI. Bloop will not jump in on keywords">AI only: off</button><button class="ch-c" data-a="music" aria-pressed="false" title="Only talk about the music in your library and playlists">Music: off</button><button class="ch-c" data-a="clear">Clear</button><button class="ch-c" data-a="x" aria-label="Close">&times;</button></div><div class="ch-l"></div><div class="ch-i"><input type="text" maxlength="400" placeholder="Say something to Bloop" enterkeyhint="send"><button data-a="mic" class="ch-mic" aria-label="Talk to Bloop" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg></button><button data-a="send">Send</button></div>';
     document.body.append(cfab, cbox);
     const clist = cbox.querySelector('.ch-l'), cin = cbox.querySelector('input');
+    // Music mode: Bloop only talks about the user's own songs and playlists, using real library data in the prompt.
+    const musicBtn = cbox.querySelector('[data-a="music"]');
+    const setMusicMode = v => {
+      musicMode = !!v; lsSet('ppvMusicMode', musicMode ? '1' : '0'); hist = [];                 // a fresh memory, so the two modes do not mix
+      musicBtn.textContent = musicMode ? 'Music: on' : 'Music: off'; musicBtn.setAttribute('aria-pressed', String(musicMode));
+      musicBtn.style.opacity = musicMode ? '1' : '.65'; cin.placeholder = musicMode ? 'Talk about your music' : 'Say something to Bloop';
+    };
+    setMusicMode(musicMode);
+    // AI only: skip every keyword rule, command and scripted reply, and send the message straight to the AI. The crisis safety check still runs.
+    const aiBtn = cbox.querySelector('[data-a="aionly"]');
+    const setAiOnly = v => { aiOnly = !!v; lsSet('ppvAiOnly', aiOnly ? '1' : '0'); aiBtn.textContent = aiOnly ? 'AI only: on' : 'AI only: off'; aiBtn.setAttribute('aria-pressed', String(aiOnly)); aiBtn.style.opacity = aiOnly ? '1' : '.65'; };
+    setAiOnly(aiOnly);
     const cm = m => { cball.className = 'ppv-ball m-' + m; blFace(cball, m); };
     const scrollDown = () => { clist.scrollTop = clist.scrollHeight; };
-    const add = (who, text) => { const d = document.createElement('div'); d.className = 'ch-m ' + who; d.textContent = text; clist.appendChild(d); scrollDown(); if (who === 'bot') { blReact(text); blFollowUp(d, text); try { vSpeak(text); } catch (e) {} } return d; };
+    const add = (who, text) => { const d = document.createElement('div'); d.className = 'ch-m ' + who; d.textContent = text; clist.appendChild(d); scrollDown(); if (who === 'bot') { blReact(text); if (!aiOnly) blFollowUp(d, text); try { vSpeak(text); } catch (e) {} } return d; };
     const actions = btns => { const d = document.createElement('div'); d.className = 'ch-a'; btns.forEach(([t, fn]) => { const b = document.createElement('button'); b.textContent = t; b.onclick = () => { fn(b, d); }; d.appendChild(b); }); clist.appendChild(d); scrollDown(); return d; };
     // ---------- Voice and meaning (all optional, all on-device, all off until ticked) ----------
     // MiniLM (~25 MB): loose wording finds the right command, and songs are found by meaning ("something for a rainy drive").
@@ -3892,6 +3922,8 @@
     cbox.addEventListener('click', e => {
       const a = e.target.closest && e.target.closest('[data-a]'); if (!a) return;
       if (a.dataset.a === 'x') cbox.style.display = 'none';
+      else if (a.dataset.a === 'aionly') { setAiOnly(!aiOnly); add('bot', aiOnly ? (brainOn() ? 'AI only is on. I will not jump in on keywords or commands. Everything goes to the AI. Switch it off to use commands like play something chill.' : 'AI only is on, but my AI brain is switched off in the settings, so I will keep using the normal helper until you turn the brain on.') : 'AI only is off. Commands and quick replies are back.'); }
+      else if (a.dataset.a === 'music') { setMusicMode(!musicMode); add('bot', musicMode ? 'Music mode on. Ask me about your songs, artists and playlists, and I will stick to those.' : 'Music mode off. We can chat about anything again.'); }
       else if (a.dataset.a === 'clear') { clist.textContent = ''; hist = []; try { clearTimeout(blTr && blTr.timer); } catch (e) {} blTr = null; }
       else if (a.dataset.a === 'send') { const v = cin.value; cin.value = ''; vTyped(); send(v); }
       else if (a.dataset.a === 'mic') { vPrime(); dictate(); }
@@ -4303,7 +4335,7 @@
       const vol = () => $id('volume');
       const setVol = v => { const e = vol(); if (!e) return false; v = Math.max(0, Math.min(100, Math.round(v))); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); return done('Volume ' + v + '%.'); };
       const sleepSet = (v, msg) => { const b = document.querySelector('#sleep-dropdown [data-sleep="' + v + '"]'); if (!b) return say('I cannot reach the sleep timer.'); b.click(); return done(msg); };
-      const tagWith = scope => { const sc = $id('ppv-scope'); if (!sc || !$id('ppv-tag')) return say('Tagging is not ready yet.'); runJob('tag', scope === 'all' ? 'tagging your whole library' : 'tagging this track', () => { const prev = sc.value; sc.value = scope; const ok = click('ppv-tag'); sc.value = prev; return ok; }); return true; };
+      const tagWith = scope => { const sc = $id('ppv-scope'); if (!sc || !$id('ppv-tag')) return say('Tagging is not ready yet.'); { const saved = Object.assign({}, loadTags()), scp = scope === 'all' ? 'your library' : 'this track'; uPush({ label: 'Put the old tags back on ' + scp + '.', undo: () => { const st = loadTags(); Object.keys(st).forEach(k => delete st[k]); Object.assign(st, saved); saveTagStore(); } }); } runJob('tag', scope === 'all' ? 'tagging your whole library' : 'tagging this track', () => { const prev = sc.value; sc.value = scope; const ok = click('ppv-tag'); sc.value = prev; return ok; }); return true; };
 
       if (!skip) { const ip = interpret(t); if (ip) { if (ip.q) return ask(ip.q, () => agent(ip.cmd, true)); t = ip.cmd; } }
       if (/^(help|commands|what can you do|what can i ask( you)?|what do you do)$/i.test(t)) return say(HELP + HELP_SMART + HELP_MIX + HELP_MORE);
@@ -4687,13 +4719,26 @@
     // SMART START
     // ---------- Smarter interpreter in front of the agent. It only works out WHAT you meant; every action still runs through the
     // agent's own safe commands. No chat-model guessing: low confidence asks first, and anything it cannot do it says so. ----------
-    const smartSt = { last: null, at: 0, snap: null, noRoute: '', pu: null };
-    const sRec = (snap, cmd) => { smartSt.snap = snap; smartSt.last = cmd; smartSt.at = Date.now(); smartSt.pu = null; };
+    // Undo history: every undoable change is pushed here, newest last, so "undo" can step back through many of them, not just the last.
+    // Entries are either { media: true, snap, ui } (volume, track, shuffle, play state, and any settings controls the command flipped)
+    // or { label, undo } (playlists, mixes, tags and anything that registers itself through smartSt.pu / lcUndo).
+    const undoStack = [];
+    const uPush = e => { e.at = Date.now(); undoStack.push(e); if (undoStack.length > 40) undoStack.shift(); };
+    const smartSt = { last: null, at: 0, snap: null, noRoute: '', get pu() { return null; }, set pu(v) { if (v) uPush(v); } };
+    const sRec = (snap, cmd) => {
+      smartSt.snap = snap; smartSt.last = cmd; smartSt.at = Date.now();
+      let ui = []; try { const A = window.__ppApi; if (snap && A && snap.idx === A.currentIndex()) ui = uiDiff(snap.ui, uiNow()); } catch (e) {}   // a track change reloads many controls by itself, so skip those
+      uPush({ media: true, snap, ui, cmd });
+    };
     const HELP_SMART = '\n\u2022 \u201cundo\u201d, \u201cagain\u201d, \u201ca bit more\u201d, \u201cmuch quieter\u201d, \u201cvolume up 15\u201d\n\u2022 several at once: \u201cplay something chill and turn it down a bit\u201d\n\u2022 goals: \u201cbedtime\u201d, \u201cgym time\u201d, \u201cstudy mode\u201d, \u201cparty mode\u201d\n\u2022 questions: \u201cis it paused\u201d, \u201cwhat\u2019s the volume\u201d, \u201cis shuffle on\u201d\n\u2022 \u201cmake a playlist for me\u201d, \u201csomething new\u201d, \u201cforgotten favorites\u201d, \u201cplaylist like <song>\u201d\n\u2022 \u201cmake a chill playlist with <song> without <artist>\u201d, \u201cadd <song> to <playlist>\u201d, \u201cremove the slow songs from <playlist>\u201d\n\u2022 typos are fine, and if I am unsure I will ask \u201cdid you mean\u2026\u201d';
     const sClean = r => String(r).trim().replace(/^(hey |hi |ok |okay )?(bloop[,:]?\s*)?/i, '').replace(/^((can|could|would|will) you( please)?|please|pls|i want you to|i'?d like you to|go ahead and)\s+/i, '').replace(/\s*(please|pls|thanks|thank you)[.!?]*$/i, '').replace(/[.!?]+$/, '').trim();
     const sSay = s => { add('bot', blTone(s)); return true; }, sDone = s => sSay('\u2713 ' + s);
     const S_Q = /^(?:what|how|who|which|where|when|why|is|are|am|do|does|did|list|show|tell|my|help)\b|\?$/i;
-    const snapNow = () => { const A = window.__ppApi, v = $id('volume'), s = $id('seek'), sb = $id('shuffle-btn'); return { vol: v ? parseFloat(v.value) : null, pos: s ? parseFloat(s.value) : null, idx: A ? A.currentIndex() : -1, shuffle: !!(sb && sb.classList.contains('toggled')), playing: mediaOn() }; };
+    const snapNow = () => { const A = window.__ppApi, v = $id('volume'), s = $id('seek'), sb = $id('shuffle-btn'); return { vol: v ? parseFloat(v.value) : null, pos: s ? parseFloat(s.value) : null, idx: A ? A.currentIndex() : -1, shuffle: !!(sb && sb.classList.contains('toggled')), playing: mediaOn(), ui: uiNow() }; };
+    // Sliders, switches and drop-downs with an id (equaliser, speed, the settings tickboxes). Volume and the seek bar are handled on their own.
+    const uiNow = () => { const o = {}; document.querySelectorAll('input[type=range][id],input[type=checkbox][id],select[id]').forEach(e => { if (e.id === 'seek' || e.id === 'volume' || e.closest('#ppv-chat,#bl-react,#ppv-cfab')) return; o[e.id] = e.type === 'checkbox' ? e.checked : e.value; }); return o; };
+    const uiDiff = (a, b) => { const out = []; if (!a || !b) return out; Object.keys(a).forEach(k => { if (k in b && a[k] !== b[k]) out.push([k, a[k]]); }); return out.length > 25 ? [] : out; };   // a huge change list means the page redrew, not the user
+    const uiRestore = list => { const n = []; (list || []).forEach(([id, v]) => { const e = document.getElementById(id); if (!e) return; if (e.type === 'checkbox') { if (e.checked === v) return; e.checked = v; e.dispatchEvent(new Event('change', { bubbles: true })); } else { if (e.value === v) return; e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); } n.push(id); }); return n; };
     function sExec(cmd) { const b = snapNow(), ok = agent(cmd); if (ok && !S_Q.test(cmd)) { sRec(b, cmd); } return ok; }
     const sKind = s => /\b(louder|quieter|softer|volume|loud|turn (?:it |the \w+ )?(?:up|down))\b/i.test(s) ? 'vol' : /\b(faster|slower|speed|slow)\b/i.test(s) ? 'speed' : /\b(rewind|forward|skip (?:\d|ahead|back|forward)|jump|seek|ff)\b/i.test(s) ? 'seek' : '';
     const sDir = s => /\b(quieter|softer|down|lower|decrease|reduce|slower|slow|rewind|back|backward)\b/i.test(s) ? -1 : /\b(louder|up|raise|increase|higher|faster|forward|ahead|skip|jump)\b/i.test(s) ? 1 : 0;
@@ -4718,10 +4763,9 @@
       return sDone('Volume ' + v + '% (was ' + was + '%).');
     }
 
-    // undo: puts back what the last action changed (volume, shuffle, which track, position, pause/play)
-    function sUndo() {
-      if (smartSt.pu) { const u = smartSt.pu; smartSt.pu = null; try { u.undo(); } catch (e) { console.error(e); return sSay('I could not undo that: ' + e.message); } return sDone(u.label); }
-      const s = smartSt.snap, A = window.__ppApi; if (!s || !A) return sSay('There is nothing to undo yet. I can undo volume, shuffle, skips, seeking and pause/play.');
+    // undo: steps back through the undo history, newest first. Entries that changed nothing are skipped.
+    function sUndoMedia(s) {
+      const A = window.__ppApi; if (!s || !A) return [];
       const now = snapNow(), out = [];
       if (s.vol != null && now.vol != null && Math.round(s.vol) !== Math.round(now.vol)) { const e = $id('volume'); e.value = s.vol; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); out.push('volume back to ' + Math.round(s.vol) + '%'); }
       if (s.shuffle !== now.shuffle) { const b = $id('shuffle-btn'); if (b) { b.click(); out.push('shuffle ' + (s.shuffle ? 'on' : 'off')); } }
@@ -4731,8 +4775,26 @@
         const sk = $id('seek'); if (sk && s.pos != null && now.pos != null && Math.abs(s.pos - now.pos) > 2) { sk.value = s.pos; sk.dispatchEvent(new Event('input', { bubbles: true })); sk.dispatchEvent(new Event('change', { bubbles: true })); out.push('back to ' + Math.floor(s.pos / 60) + ':' + String(Math.round(s.pos) % 60).padStart(2, '0')); }
         if (s.playing !== now.playing) { const pb = $id('play-btn'); if (pb) { pb.click(); out.push(s.playing ? 'playing again' : 'paused'); } }
       }
-      smartSt.snap = null;
-      return out.length ? sDone('Undid that: ' + out.join(', ') + '.') : sSay('I could not find anything I can undo. Undo covers volume, shuffle, skips, seeking and pause/play.');
+      return out;
+    }
+    // One step back. Returns the sentence to show, or null when there is nothing left to undo.
+    function uStep() {
+      while (undoStack.length) {
+        const u = undoStack.pop();
+        if (u.media) {
+          const out = sUndoMedia(u.snap), st = uiRestore(u.ui); if (st.length) out.push('put ' + st.length + ' setting' + (st.length > 1 ? 's' : '') + ' back');
+          if (out.length) return 'Undid that: ' + out.join(', ') + '.'; continue;
+        }
+        try { u.undo(); } catch (e) { console.error(e); return 'I could not undo that: ' + e.message; }
+        return u.label;
+      }
+      return null;
+    }
+    function sUndo(n) {
+      if (!window.__ppApi) return false;
+      if (!n || n < 2) { const r = uStep(); return r ? sDone(r) : sSay('There is nothing to undo yet.'); }
+      const done = []; for (let i = 0; i < n; i++) { const r = uStep(); if (!r) break; done.push(r.replace(/^Undid that: /, '')); }
+      return done.length ? sDone('Undid ' + done.length + ' thing' + (done.length > 1 ? 's' : '') + ': ' + done.join(' ')) : sSay('There is nothing to undo yet.');
     }
 
     // goals -> a short plan of ordinary commands
@@ -4857,6 +4919,7 @@
       if (!noAl && !blChain) blQueue = [];
       if (!noAl) { const al = blAlias(t); if (al) { add('bot', '(Reading that as \u201c' + al + '\u201d.)'); if (!smart(al, true)) add('bot', 'I learned \u201c' + t + '\u201d as \u201c' + al + '\u201d, but I cannot do that. Say \u201cforget ' + t + '\u201d to remove it.'); return true; } }
       if (/^(?:undo|undo (?:that|it|this)|take (?:that|it) back|revert(?: that)?|put it back|go back to how it was)$/i.test(t)) return sUndo();
+      { const mu = t.match(/^undo (?:(all|everything)(?: you did| i did| that)?|(?:the )?(?:last )?(\d{1,2})(?: times| things| actions| steps| changes)?)$/i); if (mu) return sUndo(mu[1] ? 40 : Math.max(1, +mu[2])); }
       if (/^(?:again|do (?:that|it) again|one more time|once more|same again|repeat that|do the same)$/i.test(t)) return smartSt.last ? smart(smartSt.last) : sSay('I have nothing to repeat yet.');
       const before = snapNow();
       const fin = (ok, cmd) => { if (ok && cmd && !S_Q.test(cmd)) { sRec(before, cmd); } return ok; };
@@ -6711,12 +6774,46 @@
       'You love bass and a good beat. You cheer on the user\'s taste, ask a short curious question back when it fits, and celebrate small things. You are humble about being tiny and laugh at your own mistakes. ' +
       'You are never sarcastic or rude. If the user is sad, stressed or serious, drop the jokes and be calm and kind. ' +
       'How you sound (never copy these word for word): to "I like this song" you might say "Ooh, great pick! I am bouncing already. Want more like it?"; to "I am bored" you might say "Boing! Let us fix that. Want me to surprise you with something?"; to "good morning" you might say "Morning! Rolling in with good vibes. What shall we listen to?".';
-    const chatSys = (text, found) => {
+    // ---------- Limits for the small on-device models: keep replies whole and keep the prompt inside the model's context ----------
+    const CHAT_CTX = { qwen05i4: 1280, qwen15i4: 4096, qwen15lm: 4096, gemma4: 4096, gemma4e4b: 4096 };   // tokens the model can hold (prompt + reply); other models: 2048
+    const ctxOf = () => CHAT_CTX[chatKey()] || 2048;
+    const replyMax = () => Math.max(60, Math.min(140, Math.floor(ctxOf() / 9)));                     // room for a full one-or-two sentence reply
+    const estTok = x => Math.ceil(String(x).length / 3);
+    const msgTok = a => a.reduce((n, m) => n + estTok(m.content) + 4, 0);
+    // Drop the oldest history pairs until the prompt plus the reply fit. over = even system + new message alone are too big.
+    const fitMsgs = (msgs, maxNew) => {
+      const budget = Math.floor(ctxOf() * 0.85) - maxNew, sys = msgs[0], last = msgs[msgs.length - 1]; let mid = msgs.slice(1, -1);
+      while (mid.length && msgTok([sys].concat(mid, [last])) > budget) mid = mid.slice(2);
+      return { msgs: [sys].concat(mid, [last]), over: msgTok([sys, last]) > budget };
+    };
+    // A reply that hit the length cap ends mid-sentence: cut back to the last full sentence (or add an ellipsis if there is none).
+    const finishSentence = r => {
+      r = String(r).trim(); if (!r || /[.!?\u2026)"'\u201d\u2019]$/.test(r)) return r;
+      let end = -1, m; const re = /[.!?\u2026](?=["'\u201d\u2019)]*(?:\s|$))/g;
+      while ((m = re.exec(r))) end = m.index + 1;
+      return end >= 20 && end >= r.length * 0.4 ? r.slice(0, end) : r.replace(/[\s,;:\-]+$/, '') + '\u2026';
+    };
+    // Music mode: real facts about the user's library, so Bloop talks about their music and not generic music.
+    const musicRules = ' MUSIC MODE IS ON: you only talk about the music in this user\'s own library and playlists. Use the MUSIC LIBRARY data and any LOOKED UP data, name only songs, artists and playlists that appear in them, and never invent one.' +
+      ' If they ask about something that is not music, say in one short sentence that music mode is for talking about their songs and they can switch it off with the Music button at the top. Be specific, mention real titles from their library, and ask a short question about their taste.';
+    const musicCtx = () => {
+      try {
+        const A = window.__ppApi; if (!A) return '';
+        const S = tagStats(), tr = S.real, gn = [], md = [], art = tr.map(t => t.artist).filter(a => a && !/^(Unknown artist|Video|Stream)$/i.test(a));
+        const top = (arr, n) => { const o = {}; arr.forEach(k => { if (k) o[k] = (o[k] || 0) + 1; }); return Object.entries(o).sort((x, y) => y[1] - x[1]).slice(0, n).map(e => e[0] + ' (' + e[1] + ')').join(', '); };
+        S.tagged.forEach(t => { const c = S.tg[t.dbId] || {}; (c.gn || []).slice(0, 1).forEach(v => gn.push(v[0])); (c.md || []).slice(0, 1).forEach(v => md.push(v[0])); });
+        const pls = A.playlists().filter(x => !x.stemOf && !x.libOnly), inPl = p => tr.filter(x => (x.playlistIds || []).includes(p.id)).length;
+        return ' MUSIC LIBRARY (real data from the user\'s player): ' + tr.length + ' songs, ' + S.tagged.length + ' tagged.' + (art.length ? ' Top artists: ' + top(art, 4) + '.' : '') +
+          (gn.length ? ' Top genres: ' + top(gn, 4) + '.' : '') + (md.length ? ' Top moods: ' + top(md, 4) + '.' : '') +
+          (pls.length ? ' Playlists: ' + pls.slice(0, 6).map(p => p.name + ' (' + inPl(p) + ')').join(', ') + '.' : ' No playlists yet.');
+      } catch (e) { return ''; }
+    };
+    const chatSys = (text, found, compact) => {
       const A = window.__ppApi, t = A && A.tracks()[A.currentIndex()];
-      return 'You are Bloop, a small bouncy ball who lives in a music player. You are friendly, playful and a little silly.' + blSkinNote() + selfCtx() + PERSONA +
+      return 'You are Bloop, a small bouncy ball who lives in a music player. You are friendly, playful and a little silly.' + blSkinNote() + selfCtx() + (compact ? '' : PERSONA) +
         ' Reply to exactly what the user just said, in one or two short plain sentences. Answer their question or react to their statement first. Do not repeat yourself or earlier replies. Stay on their topic. No lists, no markdown, no emoji.' +
-        ' You cannot press buttons or change the player. If they want an action, tell them what to type, such as play something chill, or say help. You are not a doctor, lawyer or counselor. If someone sounds distressed, be kind and suggest talking to someone they trust.' +
-        nowCtx() + (found ? ' LOOKED UP JUST NOW from the user\'s player (real data, answer from it; if it says nothing was found, say you could not find it and never invent songs): ' + found.replace(/\n/g, ' | ') : '');
+        ' You cannot press buttons yourself. When an ACTION RESULT line appears below, the app already did it for the user: confirm it in one short sentence, and never say you did something that is not listed there. If they want something else done, tell them what to type, such as play something chill, or say help. You are not a doctor, lawyer or counselor. If someone sounds distressed, be kind and suggest talking to someone they trust.' +
+        nowCtx() + (musicMode ? musicCtx() + musicRules : '') + (found ? ' LOOKED UP OR DONE JUST NOW in the user\'s player (real data and ACTION RESULTs, answer from it; if it says nothing was found, say you could not find it and never invent songs): ' + found.replace(/\n/g, ' | ') : '');
     };
     // ---------- Lookup tools: the model decides what to look up, the app runs it, the model answers from the result ----------
     // Plan -> act -> answer. The planner is a tiny greedy pass that picks ONE number from a menu (small models do this reliably;
@@ -6728,8 +6825,21 @@
       return i >= 0 ? i : (A.currentIndex() >= 0 ? A.currentIndex() : -1);
     };
     const lkLine = t => songLine(t) + (tagLine(t) ? ' (' + tagLine(t) + ')' : ' (not tagged yet)');
+    // ---------- Actions: the AI picks one, the app runs it through the same code as a typed command ----------
+    // lkAct runs a command string like the chat box would, takes back the replies it printed (the AI answers instead), and reports what happened.
+    // If the command asks the user to choose ("Did you mean ..."), those buttons stay on screen.
+    const LK_CTRL = /^(pause|resume|next|previous|shuffle|shuffle on|shuffle off|volume up|volume down|louder|quieter|faster|slower)$/;
+    function lkAct(cmd) {
+      if (!agentOn()) return 'ACTION NOT DONE: the user switched off Bloop doing things in the app (assistant setting), so just tell them what to type';
+      const before = clist.children.length; let ok = false;
+      try { ok = smart(cmd); } catch (e) { console.error(e); return 'ACTION FAILED (' + cmd + '): ' + e.message; }
+      const nodes = Array.from(clist.children).slice(before), say = nodes.filter(n => n.classList.contains('bot')).map(n => n.textContent.trim()).filter(Boolean).join(' ');
+      if (nodes.some(n => n.classList.contains('ch-a'))) return 'ACTION NEEDS A CHOICE (' + cmd + '): the app is showing the user buttons to pick from, so say nothing more than one short line';
+      nodes.forEach(n => n.remove());
+      return ok ? 'ACTION DONE (' + cmd + '): ' + (say || 'done') : 'ACTION NOT DONE (' + cmd + '): the app could not do that' + (say ? ' (' + say + ')' : '');
+    }
     const LK = {
-      1: { name: 'now_playing', what: 'the song that is playing', run: () => { const A = window.__ppApi, t = A.currentIndex() >= 0 && A.tracks()[A.currentIndex()]; return t ? lkLine(t) : 'nothing is playing'; } },
+      1: { name: 'keywords', what: 'what you asked for', run: (arg, text) => { const ps = lkKeywords(text).slice(0, 2); return ps.length ? ps.map(p => LK[p.id].name + (p.arg ? '(' + p.arg + ')' : '') + ': ' + String(LK[p.id].run(p.arg, text) || '').slice(0, 500)).join('\n') : 'no keyword in the message matched anything in the player'; } },
       2: { name: 'find_song', what: 'your library', run: (arg, text) => {
         const A = window.__ppApi, tr = A.tracks(), q = blNrm(arg || ''), ids = sReal(), hit = [];
         if (q) ids.forEach(i => { if (blNrm(tr[i].title).includes(q) || blNrm(tr[i].artist || '').includes(q)) hit.push(i); });
@@ -6761,19 +6871,39 @@
       9: { name: 'song_playlists', what: 'where the song is saved', run: (arg, text) => {
         const A = window.__ppApi, i = lkIdx(arg, text); if (i < 0) return 'no song found and nothing is playing';
         const t = A.tracks()[i], ids = t.playlistIds || [], pl = A.playlists().filter(x => !x.stemOf && ids.includes(x.id));
-        return songLine(t) + (pl.length ? ' is in: ' + pl.map(x => x.name).join(', ') : ' is not in any playlist'); } }
+        return songLine(t) + (pl.length ? ' is in: ' + pl.map(x => x.name).join(', ') : ' is not in any playlist'); } },
+      10: { name: 'play', what: 'the player', run: arg => lkAct(arg ? 'play ' + arg : 'resume') },
+      11: { name: 'control', what: 'the player', run: arg => { const a = String(arg || '').toLowerCase().replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim(); return LK_CTRL.test(a) ? lkAct(a) : 'ACTION NOT DONE: unsupported control "' + a + '"'; } },
+      12: { name: 'make_playlist', what: 'the playlist maker', run: arg => arg ? lkAct('make a playlist of ' + arg) : 'ACTION NOT DONE: no description of the playlist was given' },
+      13: { name: 'tag_song', what: 'the tagger', run: () => lkAct('tag this song') },
+      14: { name: 'undo', what: 'the undo history', run: arg => { const a = String(arg || 'undo').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim(); return /^undo( all| everything| \d{1,2})?$/.test(a) ? lkAct(a) : lkAct('undo'); } }
     };
-    const LK_MENU = 'You decide whether a music player assistant must look something up before replying. Reply with ONLY a number, or a number, a colon and a short search text. Menu:\n' +
-      '0 = no lookup needed (small talk, general chat)\n1 = the song that is playing right now (when the user says this, it, this one, or reacts to what is on)\n2: <title or artist> = search the library\n3: <title> = details of a song: mood, genre, tempo, key (current song if no title)\n4: <title> = the lyrics of a song (current song if no title)\n5: <mood, genre, instrument or tempo> = songs that match\n6: <song or artist> = what the user plays most\n7 = library size, tagged count\n8: <playlist name> = what is in a playlist, or list all playlists if no name\n9: <title> = which playlists a song is in (current song if no title)\n' +
-      'Examples:\nI love this song -> 1\ndo I have anything by Drake -> 2: Drake\nwhat is this song about -> 4\nany sad songs? -> 5: sad\nwhat do I listen to most -> 6: song\nhow many songs do I have -> 7\nwhat is in my gym playlist -> 8: gym\nwhat playlists do I have -> 8\nis this song in a playlist -> 9\nhow are you -> 0';
-    const lkParse = r => { const m = String(r || '').match(/(\d)\s*(?:[:\-\u2013]\s*)?([^\n]*)/); if (!m) return null; return { id: +m[1], arg: m[2].replace(/->.*$/, '').replace(/^["'\u201c\u2018]+|["'\u201d\u2019.!?]+$/g, '').trim().slice(0, 60) }; };
+    // Which lookup does a message need? Plain keyword rules, no AI call: nothing to wait for, nothing for a small model to get wrong.
+    // Each rule is [tool number from LK, test]; a test may return a search text for the tool. At most two lookups per message.
+    const lkKeywords = text => {
+      const t = String(text), low = t.toLowerCase(), plans = [], add = (id, arg) => { if (!plans.some(p => p.id === id)) plans.push({ id, arg: String(arg || '').trim().slice(0, 60) }); };
+      const after = re => { const m = t.match(re); return m ? m[1].replace(/^["'“‘]+|["'”’.!?]+$/g, '').trim() : ''; };
+      if (/\b(lyrics?|words to|what (are|were) they (saying|singing)|what('?s| is| was) (this|it|the) (song|track|one) about)\b/.test(low)) add(4, after(/\blyrics (?:of |for )(.+)$/i));
+      if (/\b(which|what) playlists?\b.*\b(this|that|it)\b|\b(is|in) (this|that) (song|track|one)\b.*\bplaylist|\bplaylists? (is|has) (this|that)\b/.test(low)) add(9, '');
+      if (/\bplaylists?\b/.test(low) && !plans.some(p => p.id === 9)) add(8, after(/\b(?:in|on|from|of|called|named) (?:my |the )?(.{2,40}?) playlist\b/i) || after(/\bplaylist (?:called|named) (.+)$/i));
+      if (/\b(most played|listen(ed)? (to )?(the )?most|top (songs?|tracks?|artists?)|favou?rite (songs?|tracks?|artists?)|play counts?|how (often|many times)|play history|my stats)\b/.test(low)) add(6, /artist/.test(low) ? 'artist' : 'song');
+      if (/\bhow many (songs?|tracks?|videos?|playlists?|are tagged|have been tagged)\b|\b(library|collection) (size|stats)\b|\bhow big is (my|the) (library|collection)\b/.test(low)) add(7, '');
+      try { const ws = vibeWordsOf(t); if (ws.length && /\b(songs?|tracks?|music|anything|something|any|got|have|find|show|which|playlist)\b/.test(low)) add(5, ws.join(' ')); } catch (e) {}
+      if (/\b(do i have|have i got|got any|is there|are there|find|search( for)?|look(ing)? for)\b/.test(low) && !plans.some(p => p.id === 7)) add(2, after(/\b(?:by|called|named) (.+)$/i) || after(/\b(?:do i have|have i got|got any|find|search for|look for) (?:any |some |a |the |songs? |tracks? )*(?:by |called |named )?(.+)$/i));
+      if (/\b(tempo|bpm|key|genre|mood|how fast|who (sings|sang|is the artist|made)|tell me about|info(rmation)? (on|about))\b/.test(low) && (/\b(this|that|it|current|playing)\b/.test(low) || (() => { try { return (blNamed(t) || []).length > 0; } catch (e) { return false; } })())) add(3, '');
+      return plans;
+    };
+    const LK_MENU = 'You decide whether a music player assistant must look something up or do something in the player before replying. Reply with ONLY a number, or a number, a colon and a short search text. Menu:\n' +
+      '0 = no lookup needed (small talk, general chat)\n1 = the user asks you to find something and names what: keywords like lyrics, playlist, most played, how many songs, a mood, a title (the app scans the message for them)\n2: <title or artist> = search the library\n3: <title> = details of a song: mood, genre, tempo, key (current song if no title)\n4: <title> = the lyrics of a song (current song if no title)\n5: <mood, genre, instrument or tempo> = songs that match\n6: <song or artist> = what the user plays most\n7 = library size, tagged count\n8: <playlist name> = what is in a playlist, or list all playlists if no name\n9: <title> = which playlists a song is in (current song if no title)\n10: <what to play> = PLAY a song, artist, playlist or mood now\n11: <pause, resume, next, previous, shuffle on, shuffle off, volume up, volume down> = control playback\n12: <description> = MAKE a new playlist, such as sad songs or songs like Hello\n13 = TAG (analyse) the current song\n14 = UNDO what was just done (undo, undo all, or undo 3)\n' +
+      'Examples:\nfind the lyrics for me -> 1\nI love this song -> 0\ndo I have anything by Drake -> 2: Drake\nwhat is this song about -> 4\nany sad songs? -> 5: sad\nwhat do I listen to most -> 6: song\nhow many songs do I have -> 7\nwhat is in my gym playlist -> 8: gym\nwhat playlists do I have -> 8\nis this song in a playlist -> 9\nplay Hello by Adele -> 10: Hello by Adele\nplay something chill -> 10: something chill\npause the music -> 11: pause\nturn it up -> 11: volume up\nmake me a playlist of sad songs -> 12: sad songs\ntag this song -> 13\nundo that -> 14: undo\nundo everything -> 14: undo all\nhow are you -> 0';
+    const lkParse = r => { const m = String(r || '').match(/(\d{1,2})\s*(?:[:\-\u2013]\s*)?([^\n]*)/); if (!m) return null; return { id: +m[1], arg: m[2].replace(/->.*$/, '').replace(/^["'\u201c\u2018]+|["'\u201d\u2019.!?]+$/g, '').trim().slice(0, 60) }; };
     async function lookup(g, text, status) {
       const done = [], seen = new Set();
       for (let round = 0; round < 2; round++) {                          // at most two lookups per message
         let plan = null;
         try {
           const ask = text + (done.length ? '\n[Already looked up: ' + done.map(d => d.tool + ' -> ' + d.out).join(' | ').slice(0, 300) + '. Reply 0 unless something else is still needed.]' : '');
-          const o = await g([{ role: 'system', content: LK_MENU }, { role: 'user', content: ask }], { max_new_tokens: 16, do_sample: false, temperature: 0, top_k: 1, repetition_penalty: 1 });
+          const o = await g([{ role: 'system', content: LK_MENU }, { role: 'user', content: ask }], { max_new_tokens: 24, do_sample: false, temperature: 0, top_k: 1, repetition_penalty: 1 });
           let r = o && o[0] && o[0].generated_text; r = Array.isArray(r) ? (r[r.length - 1] || {}).content : r; plan = lkParse(r);
         } catch (e) { console.warn('lookup plan failed', e); }
         if (!plan || !plan.id || !LK[plan.id]) break;
@@ -6787,19 +6917,20 @@
     async function send(raw, noEcho) {
       const text = String(raw || '').trim().slice(0, 400); if (!text || chatBusy) return;
       blLastSent = text.toLowerCase();
+      const direct = aiOnly && brainOn();                              // AI only: no keyword rules, commands or scripted replies
       if (!noEcho) add('me', text);
-      try { blEquip(blPropFor(text)); } catch (e) { console.error(e); }
+      if (!direct) { try { blEquip(blPropFor(text)); } catch (e) { console.error(e); } }
       if (CRISIS.test(text)) { clearTimeout(blTr && blTr.timer); blTr = null; add('bot', CRISIS_MSG); return; }
       if (!noEcho && blTr) { try { if (blTreeText(text)) return; } catch (e) { console.error(e); blTr = null; } }
-      if (!blTr) { try { if (blTreeEntry(text)) return; } catch (e) { console.error(e); blTr = null; } }
-      try { if (roleplay(text)) return; } catch (e) { console.error(e); }
-      try { if (blNamedTalk(text)) return; } catch (e) { console.error(e); }
-      if (agentOn()) { let hit = false; try { hit = smart(text); } catch (e) { console.error(e); hit = true; add('bot', 'Oops, that did not work: ' + e.message); } if (hit) return; }
-      try { if (tagTalk(text)) return; } catch (e) { console.error(e); }
-      try { if (blTalk(text)) return; } catch (e) { console.error(e); }
-      const f = FAQ.find(x => x[0].test(text)); if (f) { const r = f[1]; add('bot', typeof r === 'function' ? r() : Array.isArray(r) ? pick(r) : r); return; }
-      if (agentOn()) { try { if (routeIntent(text)) return; } catch (e) { console.error(e); } }
-      if (agentOn()) { try { if (await semRoute(text)) return; } catch (e) { console.error(e); } }
+      if (!blTr && !direct) { try { if (blTreeEntry(text)) return; } catch (e) { console.error(e); blTr = null; } }
+      if (!direct) try { if (roleplay(text)) return; } catch (e) { console.error(e); }
+      if (!direct) try { if (blNamedTalk(text)) return; } catch (e) { console.error(e); }
+      if (agentOn() && !direct) { let hit = false; try { hit = smart(text); } catch (e) { console.error(e); hit = true; add('bot', 'Oops, that did not work: ' + e.message); } if (hit) return; }
+      if (!direct) try { if (tagTalk(text)) return; } catch (e) { console.error(e); }
+      if (!direct) try { if (blTalk(text)) return; } catch (e) { console.error(e); }
+      const f = !direct && FAQ.find(x => x[0].test(text)); if (f) { const r = f[1]; add('bot', typeof r === 'function' ? r() : Array.isArray(r) ? pick(r) : r); return; }
+      if (agentOn() && !direct) { try { if (routeIntent(text)) return; } catch (e) { console.error(e); } }
+      if (agentOn() && !direct) { try { if (await semRoute(text)) return; } catch (e) { console.error(e); } }
       if (!brainOn()) { fallbackReply(text); return; }
       if (heavyBusy()) { add('bot', "I'm busy with a heavy job (split, lyrics or tagging), so I'm staying out of memory until it's done. Commands still work, and I can chat after."); return; }
       if (!gen && !dlOk && lsGet('ppvChatDl') !== '1') {
@@ -6812,8 +6943,11 @@
       try {
         const g = await ensureModel(s => { el.textContent = s; });
         const found = await lookup(g, text, st => { el.textContent = st; }), np = nowCtx().match(/NOW PLAYING[^:]*: ([^.]*?)(?:, [^.]*)?\. You already/);
-        const msgs = [{ role: 'system', content: chatSys(text, found) }].concat(memN() ? hist.slice(-2 * memN()) : [], [{ role: 'user', content: text + (np ? '\n[Currently playing: ' + np[1] + ']' : '') }]);
-        let acc = '', opts = { max_new_tokens: 80, do_sample: true, temperature: 0.75, top_p: 0.92, top_k: 50, repetition_penalty: 1.18 };
+        const mx = replyMax(), uMsg = { role: 'user', content: text + (np ? '\n[Currently playing: ' + np[1] + ']' : '') }, mem = memN() ? hist.slice(-2 * memN()) : [];
+        let fit = fitMsgs([{ role: 'system', content: chatSys(text, found) }].concat(mem, [uMsg]), mx);
+        if (fit.over) fit = fitMsgs([{ role: 'system', content: chatSys(text, found, true) }].concat(mem, [uMsg]), mx);   // still too big: drop the personality text
+        const msgs = fit.msgs;
+        let acc = '', opts = { max_new_tokens: mx, do_sample: true, temperature: 0.75, top_p: 0.92, top_k: 50, repetition_penalty: 1.18 };
         const onPiece = t => { acc += t; el.textContent = acc; scrollDown(); };
         if (g.lm) opts.streamer = { callback_function: onPiece };                       // LiteRT-LM streams text itself, no TextStreamer or tokenizer needed
         else if (tfMod.TextStreamer) opts.streamer = new tfMod.TextStreamer(g.tokenizer, { skip_prompt: true, skip_special_tokens: true, callback_function: onPiece });
@@ -6825,8 +6959,9 @@
           try { const o2 = await g(msgs, Object.assign({}, opts, { streamer: undefined, temperature: 1.0, repetition_penalty: 1.3 })); let r2 = o2 && o2[0] && o2[0].generated_text; r2 = Array.isArray(r2) ? (r2[r2.length - 1] || {}).content : r2; if (r2 && looksOk(String(r2)) && nz(r2) !== nz(prevBot)) r = String(r2).trim(); } catch (e) {}
         }
         if (!looksOk(r)) { el.textContent = "Sorry, that came out as gibberish. Try again, or tap Clear."; return void (chatBusy = false); }   // never feed garbage back into the history
+        r = finishSentence(r);
         el.textContent = r; try { vSpeak(r); } catch (e) {} hist.push({ role: 'user', content: text }, { role: 'assistant', content: r }); hist = memN() ? hist.slice(-2 * memN()) : [];
-        moodChip(text);
+        if (!direct) moodChip(text);
       } catch (e) { console.error(e); dlOk = false; el.textContent = "Oops, my brain would not load: " + e.message; }
       chatBusy = false; scrollDown(); cm('greet'); setTimeout(() => cm('idle'), 1300);
       clearTimeout(idleT); idleT = setTimeout(async () => { if (gen && !chatBusy) { try { await gen.dispose(); } catch (e) {} gen = null; } }, 60000);   // hand the RAM back when idle
@@ -6834,7 +6969,7 @@
     return {
       react,
       voice: ppVoiceApi,
-      chat: { ready: () => !!gen || lsGet('ppvChatDl') === '1', mb: () => CHAT_MODELS[chatKey()].mb, ask: async (msgs, opts, say) => { if (chatBusy) throw new Error('Bloop is busy chatting. Try again in a moment.'); clearTimeout(idleT); const g = await ensureModel(say || (() => {})); try { const o = await g(msgs, opts || {}); const gt = o[0].generated_text; return String(Array.isArray(gt) ? gt[gt.length - 1].content : gt).trim(); } finally { clearTimeout(idleT); idleT = setTimeout(() => { if (!chatBusy) unloadModel(); }, 30000); } }, isOn: () => chatOn, setOn: setChatOn, free: freeChat, setModel: setChatModel, models: CHAT_MODELS, key: chatKey, brainOn, setBrain, memory: { get: memN, set: setMem, max: MEM_MAX } },
+      chat: { ctx: ctxOf, ready: () => !!gen || lsGet('ppvChatDl') === '1', mb: () => CHAT_MODELS[chatKey()].mb, ask: async (msgs, opts, say) => { if (chatBusy) throw new Error('Bloop is busy chatting. Try again in a moment.'); clearTimeout(idleT); const g = await ensureModel(say || (() => {})); try { const o = await g(msgs, opts || {}); const gt = o[0].generated_text; return String(Array.isArray(gt) ? gt[gt.length - 1].content : gt).trim(); } finally { clearTimeout(idleT); idleT = setTimeout(() => { if (!chatBusy) unloadModel(); }, 30000); } }, isOn: () => chatOn, setOn: setChatOn, free: freeChat, setModel: setChatModel, models: CHAT_MODELS, key: chatKey, brainOn, setBrain, memory: { get: memN, set: setMem, max: MEM_MAX } },
       start() { key = ''; set('start', blLine('start', L.start), 900); },
       opened() {
         if (greeted || !on) return; greeted = true;
