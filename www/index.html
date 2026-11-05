@@ -4458,6 +4458,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
           <div id="add-dropdown">
             <button type="button" id="add-files-btn">Files…</button>
             <button type="button" id="add-folder-btn">Folder…</button>
+            <button type="button" id="add-device-btn" style="display:none">Scan phone…</button>
             <button type="button" id="add-url-btn">Open URL…</button>
             <button type="button" id="add-m3u-btn">Import M3U…</button>
           </div>
@@ -17644,6 +17645,12 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     addBtn.classList.remove('open');
     if (!ppNativePick('files')) fileInput.click();
   });
+  const addDeviceBtn = document.getElementById('add-device-btn');
+  if (addDeviceBtn) addDeviceBtn.addEventListener('click', () => {
+    addDropdown.classList.remove('open');
+    addBtn.classList.remove('open');
+    if (typeof ppScanDevice === 'function') ppScanDevice();
+  });
   addFolderBtn.addEventListener('click', () => {
     addDropdown.classList.remove('open');
     addBtn.classList.remove('open');
@@ -20463,6 +20470,22 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (kind === 'folder') showToast('Scanning folder…');
     return true;
   }
+  // "Scan phone": asks for media access if needed, then adds every song and video the phone's media library knows about.
+  async function ppScanDevice(){
+    if (!(window.PPNative && PPNative.enabled && PPNative.lib && PPNative.lib.scanDevice)) return;
+    try {
+      let a = await PPNative.lib.mediaAccess();
+      if (!a.audio && !a.video) a = await PPNative.lib.requestMediaAccess();
+      if (!a.audio && !a.video){
+        showToast('Media access is off. Allow it in Android Settings under Apps, Press Play, Permissions, or add files with Files or Folder.', 'error');
+        return;
+      }
+      showToast('Scanning this phone…');
+      const r = await PPNative.lib.scanDevice(tracks.map(t => t.nativeUri).filter(Boolean), true);
+      const n = (r && r.total) || 0;
+      showToast(n ? ('Added ' + n + ' new file' + (n === 1 ? '' : 's')) : 'No new music or videos found');
+    } catch(e){ showToast('Could not scan: ' + ((e && e.message) || e), 'error'); }
+  }
   const PP_FOLDERS_KEY = 'ppNativeFolders';
   function ppRememberFolder(tree){
     try {
@@ -20595,6 +20618,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       bitcrush: bitcrushAmount, echo: echoMix, tremolo: tremoloAmount
     }));
     libP.then(() => { PPNative.boot(); ppRescanFolders(); });
+    { const b = document.getElementById('add-device-btn'); if (b && PPNative.enabled) b.style.display = 'block'; }
   }
   loadCustomization();
   renderPlaylistsManager();
