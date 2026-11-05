@@ -1477,9 +1477,11 @@
   const WH_CODE = { english: 'en', spanish: 'es', french: 'fr', german: 'de', italian: 'it', portuguese: 'pt', dutch: 'nl', russian: 'ru', polish: 'pl', turkish: 'tr', arabic: 'ar', hindi: 'hi', japanese: 'ja', korean: 'ko', chinese: 'zh', indonesian: 'id', swedish: 'sv', ukrainian: 'uk' };
   let wNativeFailed = false;
   const whNativeOn = () => { try { return !!NATIVE && !wNativeFailed && localStorage.getItem('ppvWNative') !== '0'; } catch (e) { return !!NATIVE && !wNativeFailed; } };
-  async function whNativeFiles(size, status) {
+  // Phone GPU/NPU for subtitles (app only): the encoder (the heavy part) can run through NNAPI. It needs the float encoder file, not the int8 one.
+  const whNativeGpu = size => { try { return !!NATIVE && localStorage.getItem('ppvWGpu') === '1' && !(WH[size] && WH[size][2] && (WH[size][2].noGpu || WH[size][2].pk)); } catch (e) { return false; } };
+  async function whNativeFiles(size, status, gpu) {
     const base = 'https://huggingface.co/' + WH[size][0] + '/resolve/main/onnx/';
-    for (const [k, f] of [[WHN[size] + '_enc', 'encoder_model_quantized.onnx'], [WHN[size] + '_dec', 'decoder_model_merged_quantized.onnx']]) {
+    for (const [k, f] of [[WHN[size] + '_enc', 'encoder_model_quantized.onnx'], [WHN[size] + '_dec', 'decoder_model_merged_quantized.onnx']].concat(gpu ? [[WHN[size] + '_encf', 'encoder_model.onnx']] : [])) {
       if ((await NP.exists({ id: k })).ready) continue;
       status('Downloading ' + f + '…'); await nativeFetch(k, base + f, status);
     }
@@ -1556,19 +1558,26 @@
     const size = o.size, k = WHN[size], nMel = (WH[size][2] && WH[size][2].mel) || 80;   // Large-v3 uses 128 mel bins, the rest 80
     status('Preparing native Whisper…');
     const [c, tok] = await Promise.all([whConfig(size), whTokenizer(WH[size][0], status)]);
-    await whNativeFiles(size, status);
+    const gpuOn = whNativeGpu(size);
+    try { await whNativeFiles(size, status, gpuOn); } catch (e) { if (!gpuOn) throw e; console.warn('float encoder download failed, using the CPU', e); await whNativeFiles(size, status, false); }
+    const hasF = gpuOn && (await NP.exists({ id: k + '_encf' })).ready;
     const code = o.lang ? WH_CODE[o.lang] : '';
     let langId = c.lang && code ? (c.lang['<|' + code + '|>'] || 0) : 0;   // 0 = let the model detect it on the first window, then keep it
     const langIds = c.lang ? Object.values(c.lang) : [], taskId = c.task ? (o.task === 'translate' ? c.task.translate : c.task.transcribe) : 0;
-    const total = regs.reduce((n, r) => n + r[1] - r[0], 0) || 1, raw = []; let done = 0;
+    const total = regs.reduce((n, r) => n + r[1] - r[0], 0) || 1, raw = []; let done = 0, gpuNote = '';
     for (const [ra, rb] of regs) {
       let seek = ra;
       while (seek < rb - 0.3) {
         const t0 = performance.now(), wl = Math.min(30, rb - seek);
         status('Transcribing… ' + Math.round((done + seek - ra) / total * 100) + '%'); await tick();
         const mel = whMel(x, Math.floor(seek * 16000), Math.floor((seek + wl) * 16000), nMel);
-        const r = await NP.whisperRun({ enc: k + '_enc', dec: k + '_dec', mel: await toB64(mel), dims: [1, nMel, 3000], sot: c.sot, eot: c.eot, noTs: c.noTs, tsBegin: c.tsBegin, useLang: !!c.lang, lang: langId, langIds: langId ? [] : langIds, task: taskId, suppress: c.suppress, beginSuppress: c.beginSuppress, timestamps: true, maxTokens: 224 });
+        const r = await NP.whisperRun({ enc: k + '_enc', dec: k + '_dec', mel: await toB64(mel), dims: [1, nMel, 3000], sot: c.sot, eot: c.eot, noTs: c.noTs, tsBegin: c.tsBegin, useLang: !!c.lang, lang: langId, langIds: langId ? [] : langIds, task: taskId, suppress: c.suppress, beginSuppress: c.beginSuppress, timestamps: true, maxTokens: 224, encFloat: hasF ? k + '_encf' : undefined });
         if (r.lang) langId = r.lang;
+        if (hasF && !gpuNote) {                                          // first window tells us where the encoder really ran
+          gpuNote = r.accel === 'GPU' ? 'Subtitles: encoder is running on the phone GPU/NPU.' : 'The phone GPU was not faster than the CPU here, so the CPU is used. The GPU option was turned off.';
+          if (r.accel !== 'GPU') { try { localStorage.setItem('ppvWGpu', '0'); const cb = document.getElementById('ppv-wgpu'); if (cb) cb.checked = false; await NP.remove({ id: k + '_encf' }); } catch (e) {} }
+          status(gpuNote); await tick();
+        }
         const segs = whParse(r.tokens || [], c.tsBegin), complete = segs.filter(g => g.e != null);
         let adv = wl;                                                   // next window starts where the last finished line ended, so no line is cut in half
         if (complete.length) { const le = complete[complete.length - 1].e; if (le >= 1 && le < wl - 0.5) adv = le; }
@@ -1906,6 +1915,65 @@
   }
 
   // ---------- Panel: library tools + lyrics ----------
+  // ---------- AI summary: the tags say what it SOUNDS like, the lyrics/subtitles say what it is ABOUT ----------
+  const SUM_KEY = 'ppSummaryV1';
+  const sumLoad = () => { try { return JSON.parse(localStorage.getItem(SUM_KEY)) || {}; } catch (e) { return {}; } };
+  const sumSave = (id, v) => { try { const o = sumLoad(); o[id] = v; localStorage.setItem(SUM_KEY, JSON.stringify(o)); } catch (e) {} };
+  const andJoin = a => a.length < 2 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
+  function getTranscript(dbId) {                                       // subtitle cues first, else the saved lyrics; repeated lines (choruses, "yeah") counted once
+    let lines = [];
+    try { const e = (JSON.parse(localStorage.getItem('playerSubtitles')) || {})[dbId]; if (e && e.c) lines = e.c.map(c => String(c[2] || '').trim()); } catch (x) {}
+    if (!lines.length) { try { const l = (JSON.parse(localStorage.getItem('playerLyricsV1')) || {})[dbId]; if (l) lines = String(l).split('\n').map(q => q.replace(/\[[^\]]*\]/g, '').trim()); } catch (x) {} }
+    const seen = new Set(), out = [];
+    for (const q of lines) { const k = q.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); if (!k || seen.has(k)) continue; seen.add(k); out.push(q); }
+    return { lines: out, words: out.join(' ').split(/\s+/).filter(Boolean).length };
+  }
+  function soundProfile(c, kind) {                                     // plain-language description straight from the saved tags, no AI involved
+    if (!c) return { line: '', hint: '' };
+    const nm = q => String(q).replace(/\s*\([^)]*\)$/, '').replace(/ music$/i, '').toLowerCase();
+    const INSTN = { acousticguitar: 'acoustic guitar', electricguitar: 'electric guitar', classicalguitar: 'classical guitar', acousticbassguitar: 'acoustic bass', electricpiano: 'electric piano', drummachine: 'drum machine', pipeorgan: 'pipe organ', doublebass: 'double bass' };
+    if (c.mu != null && c.mu < 30) { const q = 'Mostly speech or non-musical sound (' + c.mu + '% music).'; return { line: q, hint: q }; }
+    const bpm = c.bpm, tempo = !bpm ? '' : bpm < 70 ? 'slow' : bpm < 100 ? 'mid-tempo' : bpm < 128 ? 'upbeat' : 'fast';
+    const genres = ((c.st && c.st.length ? c.st : c.gn) || []).slice(0, 2).map(v => nm(v[0]));
+    const feel = Object.entries(c.hd || {}).filter(e => e[1] >= 50 && ['happy', 'sad', 'relaxed', 'aggressive', 'party', 'danceable'].includes(e[0])).sort((u, v) => v[1] - u[1]).slice(0, 3).map(e => e[0]);
+    const moods = feel.length ? feel : (c.md || []).slice(0, 2).map(v => nm(v[0]));
+    const inst = (c.in || []).filter(v => v[0] !== 'voice').slice(0, 3).map(v => INSTN[v[0]] || v[0]);
+    const voc = c.v == null ? '' : c.v >= 50 ? 'with vocals' : 'mostly instrumental';
+    let head = [tempo, genres.join(' / '), kind === 'video' ? 'video soundtrack' : 'track'].filter(Boolean).join(' '); head = head.charAt(0).toUpperCase() + head.slice(1);
+    const tail = [bpm ? 'about ' + bpm + ' BPM' : '', c.key ? 'key of ' + c.key : '', voc].filter(Boolean);
+    let line = head + (tail.length ? ', ' + tail.join(', ') : '') + '.';
+    if (moods.length) line += ' Feels ' + andJoin(moods) + '.';
+    if (inst.length) line += ' Instruments heard: ' + inst.join(', ') + '.';
+    return { line, hint: line };
+  }
+  const sumOk = r => { const L = (r.match(/\p{L}/gu) || []).length, W = (r.match(/\p{L}{2,}/gu) || []).length; return r.length >= 20 && L / r.length >= 0.6 && W >= 4; };
+  // Long videos are read in pieces (each piece summarized, then the pieces combined). At most 5 pieces, spread over the whole thing, so it stays quick.
+  async function aiSummary(t, c, tr, ask, say) {
+    const kind = t.kind === 'video' ? 'video' : 'song', prof = soundProfile(c, t.kind);
+    const sys = 'You write short summaries for a music and video player. Use ONLY the transcript and the audio facts you are given. Never invent names, places, events or lyrics. Do not quote lyrics, describe them instead. If the text is too unclear, say so in a few words. Reply in English with 2 or 3 plain sentences, no lists.';
+    const opt = { max_new_tokens: 120, do_sample: true, temperature: 0.3, top_p: 0.9, repetition_penalty: 1.1 };
+    const facts = (prof.hint ? '\nAudio analysis: ' + prof.hint : '');
+    let user;
+    if (tr.words <= 450) user = 'Title: ' + t.title + '\nType: ' + kind + facts + '\nTranscript (automatic, may contain mistakes):\n' + tr.lines.join('\n') + '\n\nSummarize what this ' + kind + ' is about and how it feels.';
+    else {
+      let chunks = [], cur = [], n = 0;
+      for (const q of tr.lines) { cur.push(q); n += q.split(/\s+/).length; if (n >= 320) { chunks.push(cur.join('\n')); cur = []; n = 0; } }
+      if (cur.length) chunks.push(cur.join('\n'));
+      const sampled = chunks.length > 5; if (sampled) chunks = [0, 1, 2, 3, 4].map(i => chunks[Math.round(i * (chunks.length - 1) / 4)]);
+      const parts = [];
+      for (let i = 0; i < chunks.length; i++) {
+        say('Reading part ' + (i + 1) + ' of ' + chunks.length + '…');
+        const r = await ask([{ role: 'system', content: sys }, { role: 'user', content: 'Part ' + (i + 1) + ' of ' + chunks.length + ' of a ' + kind + ' transcript (automatic, may contain mistakes):\n' + chunks[i] + '\n\nSummarize this part in one or two sentences.' }], Object.assign({}, opt, { max_new_tokens: 70 }), say);
+        if (sumOk(r)) parts.push(r.replace(/\s+/g, ' '));
+      }
+      if (!parts.length) return '';
+      say('Putting it together…');
+      user = 'Title: ' + t.title + '\nType: ' + kind + facts + '\nSummaries of ' + (sampled ? 'some parts of it' : 'each part') + ', in order:\n- ' + parts.join('\n- ') + '\n\nWrite a short summary of the whole ' + kind + '.';
+    }
+    say('Writing the summary…');
+    const out = await ask([{ role: 'system', content: sys }, { role: 'user', content: user }], opt, say);
+    return sumOk(out) ? out.trim() : '';
+  }
   function smartUI(p, h) {
     const css = document.createElement('style');
     css.textContent = '#ppv-panel details,.ppv-scope details{margin-top:10px;border-top:1px solid #333;padding-top:8px}#ppv-panel summary,.ppv-scope summary{cursor:pointer;font-weight:600;padding:2px 0}#ppv-panel input[type=text],.ppv-scope input[type=text]{width:100%;box-sizing:border-box;margin-top:6px;padding:7px;border-radius:8px;background:#2a2b31;color:#eee;border:1px solid #444}#ppv-panel .ppv-note,.ppv-scope .ppv-note{opacity:.6;font-size:11px;margin-top:4px}#ppv-panel .ppv-out,.ppv-scope .ppv-out{margin-top:6px;font-size:12px;white-space:pre-wrap}#ppv-panel .ppv-row,.ppv-scope .ppv-row{display:flex;gap:6px}#ppv-panel .ppv-row button,.ppv-scope .ppv-row button{margin-top:8px}#ppv-panel .ppv-grid label,.ppv-scope .ppv-grid label{display:block;margin:4px 0}.ppv-scope{color:var(--text,#eee);font:13px system-ui,sans-serif;margin:8px 0;padding:0 2px}.ppv-scope button{width:100%;margin-top:8px;padding:9px;border-radius:8px;border:0;background:var(--accent,#7c3aed);color:#fff;font:600 13px system-ui}.ppv-scope button:disabled{opacity:.5}.ppv-scope button.ppv-sec{background:transparent;border:1px solid var(--line,#555);color:inherit;font-weight:500;font-size:12px;padding:6px}.ppv-scope select{width:100%;margin-top:6px;padding:7px;border-radius:8px;background:var(--bg,#2a2b31);color:inherit;border:1px solid var(--line,#444)}.ppv-scope label.ppv-c{display:inline-block;margin:6px 10px 0 0}.ppv-scope details{border-top-color:var(--line,#333)}#ppv-edrows .er{display:flex;gap:4px;align-items:center;margin-top:5px}#ppv-edrows .er input{margin:0!important;padding:6px!important}#ppv-edrows .et{width:74px!important;flex:none;text-align:center}#ppv-edrows .er button{width:auto;margin:0;padding:5px 8px;flex:none}#ppv-edrows .er.on input{border-color:var(--accent,#7c3aed)}.ppv-pbar{height:6px;background:var(--line,#333);border-radius:3px;margin-top:8px}.ppv-pbar i{display:block;height:100%;width:0;background:var(--accent,#7c3aed);border-radius:3px}';
@@ -1950,6 +2018,9 @@
       '<div class="ppv-note">Songs get synced lyrics (Lyrics tab), videos get subtitles. Both can be exported as .srt or .lrc from the editor below. The music-removal step always uses Spleeter. If the song was already split, its saved vocals are reused and nothing is split again.</div>' +
       '<button id="ppv-wgo">Transcribe current track</button><button id="ppv-wsrt" class="ppv-sec" style="display:none">Download .srt</button><button id="ppv-wfree" class="ppv-sec">Free up Whisper download</button>' +
       '<div id="ppv-wout" class="ppv-out"></div>' +
+      '<button id="ppv-sumgo" class="ppv-sec" style="margin-top:10px">Summarize current track (AI)</button>' +
+      '<div class="ppv-note">Combines the track\u2019s tags (tempo, key, genre, mood, instruments) with its lyrics or subtitles, so it knows both how it sounds and what it is about. Tags are made first if missing. The written part uses the Bloop AI brain (one-time download). Without lyrics or subtitles you get the sound summary only.</div>' +
+      '<div id="ppv-sumout" class="ppv-out"></div>' +
       '<button id="ppv-edopen" class="ppv-sec" style="margin-top:12px;padding:10px;font-size:13px">✎ Open full-screen editor (lyrics &amp; timestamps)</button>';
     // AI tools no longer live in the one panel: tagging + smart playlists go to the Library tab, Whisper goes to captions (video) or Lyrics (songs)
     d1.querySelector('summary').textContent = 'AI tagging & smart playlists';
@@ -2287,7 +2358,7 @@
     wsize.value = whOk(ls('ppvWSize')) ? ls('ppvWSize') : 'base_en'; wlang.value = ls('ppvWLang') === null ? 'english' : ls('ppvWLang'); wtask.value = ls('ppvWTask') || 'transcribe'; wclean.checked = ls('ppvWClean') === '1';
     const syncEn = () => { wlang.disabled = whEn(wsize.value) && wtask.value !== 'translate'; };   // English models need no language; translating does
     wsize.onchange = () => { ls('ppvWSize', wsize.value); syncEn(); }; wlang.onchange = () => ls('ppvWLang', wlang.value); wtask.onchange = () => { ls('ppvWTask', wtask.value); syncEn(); }; wclean.onchange = () => ls('ppvWClean', wclean.checked ? '1' : '0');
-    { const wg = $('#ppv-wgpu'); wg.checked = ls('ppvWGpu') === '1'; wg.onchange = () => ls('ppvWGpu', wg.checked ? '1' : '0'); if (!navigator.gpu) $('#ppv-wgpu-l').style.display = 'none'; }
+    { const wg = $('#ppv-wgpu'); wg.checked = ls('ppvWGpu') === '1'; wg.onchange = () => ls('ppvWGpu', wg.checked ? '1' : '0'); if (NATIVE) { const l = $('#ppv-wgpu-l'); l.lastChild.textContent = ' Use the phone GPU/NPU (experimental). Downloads a bigger model file once; if it is not faster it switches itself off'; } else if (!navigator.gpu) $('#ppv-wgpu-l').style.display = 'none'; }
     syncEn();
     { const wa = $('#ppv-wacc'); wa.value = ls('ppvWAcc') || '0'; wa.onchange = () => ls('ppvWAcc', wa.value); }
     let lastSrt = null;
@@ -2320,7 +2391,31 @@
       a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 10000);
     };
     $('#ppv-wfree').onclick = async () => {
-      try { if (NATIVE) { const ids = PK_FILES.map(f => f[0]).concat(Object.values(WHN).flatMap(k => [k + '_enc', k + '_dec'])); for (const id of ids) { try { await NP.remove({ id }); } catch (e) {} } } if (asr) { await asr.dispose(); asr = null; asrId = ''; } const ks = await caches.keys(); for (const k of ks) if (/transformers/i.test(k)) await caches.delete(k); h.status('Whisper download removed.'); } catch (e) { h.status('Error: ' + errText(e)); }
+      try { if (NATIVE) { const ids = PK_FILES.map(f => f[0]).concat(Object.values(WHN).flatMap(k => [k + '_enc', k + '_dec', k + '_encf'])); for (const id of ids) { try { await NP.remove({ id }); } catch (e) {} } } if (asr) { await asr.dispose(); asr = null; asrId = ''; } const ks = await caches.keys(); for (const k of ks) if (/transformers/i.test(k)) await caches.delete(k); h.status('Whisper download removed.'); } catch (e) { h.status('Error: ' + errText(e)); }
+    };
+    // ---------- AI summary ----------
+    $('#ppv-sumgo').onclick = async () => {
+      const sumout = $('#ppv-sumout'); busy(true); sumout.textContent = '';
+      try {
+        const t = cur(); if (!t) throw new Error('Play or select a track first.');
+        const old = sumLoad()[t.dbId];
+        if (old && !confirm('This track already has a saved summary. Make a new one?')) { sumout.textContent = old.t; busy(false); return; }
+        const say = x => h.status(x);
+        let c = loadTags()[t.dbId];
+        if (!c) { say('Tagging first, so the summary knows what it hears…'); const r = await tagTrack(t.url, say, h.LV(), {}); await persistTags(t.dbId, r, false); c = loadTags()[t.dbId]; }
+        const tr = getTranscript(t.dbId), prof = soundProfile(c, t.kind), ch = h.mas.chat;
+        let ai = '', note = '';
+        if (tr.words >= 12) {
+          if (!ch.ready() && !confirm('The written summary uses the AI brain: a one-time download of about ' + ch.mb() + ' MB. Continue? (Cancel keeps just the sound summary.)')) note = 'No AI brain download, so this is the sound summary only.';
+          else { try { ai = await aiSummary(t, c, tr, ch.ask, say); } catch (e) { console.warn(e); note = 'The AI brain could not run: ' + errText(e); } if (!ai && !note) note = 'The AI summary came out unusable, so only the sound summary is shown.'; }
+        } else note = 'No lyrics or subtitles saved for this track, so this is based on the sound only. Tap "Transcribe current track" above for a fuller summary.';
+        const text = [ai, prof.line ? 'Sound: ' + prof.line : ''].filter(Boolean).join('\n\n');
+        if (!text) throw new Error('Nothing to summarize yet. Tag the track first.');
+        sumSave(t.dbId, { t: text, ts: Date.now() });
+        sumout.textContent = text + (note ? '\n\n' + note : '');
+        h.status('Done.');
+      } catch (e) { console.error(e); h.status('Error: ' + errText(e)); }
+      busy(false);
     };
     // ---------- Lyrics & timestamp editor ----------
     {
@@ -6461,7 +6556,7 @@
     return {
       react,
       voice: ppVoiceApi,
-      chat: { isOn: () => chatOn, setOn: setChatOn, free: freeChat, setModel: setChatModel, models: CHAT_MODELS, key: chatKey, brainOn, setBrain, memory: { get: memN, set: setMem, max: MEM_MAX } },
+      chat: { ready: () => !!gen || lsGet('ppvChatDl') === '1', mb: () => CHAT_MODELS[chatKey()].mb, ask: async (msgs, opts, say) => { if (chatBusy) throw new Error('Bloop is busy chatting. Try again in a moment.'); clearTimeout(idleT); const g = await ensureModel(say || (() => {})); try { const o = await g(msgs, opts || {}); const gt = o[0].generated_text; return String(Array.isArray(gt) ? gt[gt.length - 1].content : gt).trim(); } finally { clearTimeout(idleT); idleT = setTimeout(() => { if (!chatBusy) unloadModel(); }, 30000); } }, isOn: () => chatOn, setOn: setChatOn, free: freeChat, setModel: setChatModel, models: CHAT_MODELS, key: chatKey, brainOn, setBrain, memory: { get: memN, set: setMem, max: MEM_MAX } },
       start() { key = ''; set('start', blLine('start', L.start), 900); },
       opened() {
         if (greeted || !on) return; greeted = true;
