@@ -143,6 +143,8 @@ public class OnnxSeparatorPlugin extends Plugin {
         if (encId == null || decId == null || b64 == null || dimsJ == null) { call.reject("enc, dec, mel and dims are required"); return; }
         final File ef = modelFile(encId), df = modelFile(decId);
         if (!ef.exists() || !df.exists()) { call.reject("Whisper model not downloaded"); return; }
+        final String encFloatId = call.getString("encFloat");                 // optional float encoder for the phone GPU/NPU
+        final File ff = encFloatId != null && modelFile(encFloatId).exists() && modelFile(encFloatId).length() > 1024 ? modelFile(encFloatId) : null;
         final WhisperNative.Cfg c = new WhisperNative.Cfg();
         c.sot = call.getInt("sot", 0); c.eot = call.getInt("eot", 0); c.noTs = call.getInt("noTs", 0); c.tsBegin = call.getInt("tsBegin", 0);
         c.task = call.getInt("task", 0); c.lang = call.getInt("lang", 0); c.maxTokens = call.getInt("maxTokens", 224);
@@ -157,12 +159,13 @@ public class OnnxSeparatorPlugin extends Plugin {
                 d.rewind();
                 long[] dims = new long[dimsJ.length()];
                 for (int i = 0; i < dims.length; i++) dims[i] = dimsJ.getLong(i);
-                WhisperNative.Out o = whisper.run(env(), encId + "|" + decId, ef, df, d.asFloatBuffer(), dims, c);
+                WhisperNative.Out o = whisper.run(env(), encId + "|" + decId + (ff != null ? "|gpu" : ""), ef, df, ff, d.asFloatBuffer(), dims, c);
                 JSONArray t = new JSONArray();
                 for (int v : o.tokens) t.put(v);
                 JSObject r = new JSObject();
                 r.put("tokens", t);
                 r.put("lang", o.lang);
+                r.put("accel", o.accel);
                 call.resolve(r);
             } catch (Throwable e) {
                 call.reject("Whisper: " + (e.getMessage() != null ? e.getMessage() : e.toString()));

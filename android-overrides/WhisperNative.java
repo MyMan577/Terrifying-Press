@@ -30,11 +30,12 @@ final class WhisperNative {
         int maxTokens = 224;
     }
 
-    static final class Out { int[] tokens; int lang; }
+    static final class Out { int[] tokens; int lang; String accel = "CPU"; }
 
     private static final float NEG = Float.NEGATIVE_INFINITY;
 
     private OrtSession enc, dec;
+    private Accel.Sess encS;                                       // set when the encoder runs through Accel (phone GPU/NPU via NNAPI)
     private String key = "", encIn;
     private final List<String> pastNames = new ArrayList<>();
     private final Map<String, long[]> pastDims = new HashMap<>();      // name -> {heads, headDim}
@@ -43,15 +44,23 @@ final class WhisperNative {
     private boolean hasHidden;
 
     synchronized void close() {
-        try { if (enc != null) enc.close(); } catch (Throwable ignored) { }
+        try { if (encS != null) Accel.close(encS); else if (enc != null) enc.close(); } catch (Throwable ignored) { }
+        encS = null;
         try { if (dec != null) dec.close(); } catch (Throwable ignored) { }
         enc = null; dec = null; key = "";
     }
 
-    private void ensure(OrtEnvironment env, String k, File ef, File df) throws Exception {
+    private void ensure(OrtEnvironment env, String k, File ef, File df, File efFloat, long[] melDims) throws Exception {
         if (enc != null && dec != null && k.equals(key)) return;
         close();
-        OrtSession e = Accel.build(env, ef, false, false);
+        // GPU/NPU: the float encoder goes through Accel, which times NNAPI against the CPU once on a real window and keeps the winner.
+        // If NNAPI is not clearly faster (or fails), the small int8 encoder on the CPU is used instead, as before.
+        Accel.Sess es = null;
+        if (efFloat != null) {
+            try { Accel.Sess t = Accel.open(env, "whenc_" + k, efFloat, true, melDims, true); if (t.nn) es = t; else Accel.close(t); }
+            catch (Throwable ignored) { es = null; }
+        }
+        OrtSession e = es != null ? es.s : Accel.build(env, ef, false, false);
         OrtSession d = null;
         try {
             d = Accel.build(env, df, false, false);
@@ -78,22 +87,23 @@ final class WhisperNative {
             }
             encIn = e.getInputNames().iterator().next();
         } catch (Exception ex) {
-            try { e.close(); } catch (Throwable ignored) { }
+            try { if (es != null) Accel.close(es); else e.close(); } catch (Throwable ignored) { }
             if (d != null) try { d.close(); } catch (Throwable ignored) { }
             throw ex;
         }
-        enc = e; dec = d; key = k;
+        enc = e; encS = es; dec = d; key = k;
     }
 
     /** One 30 s window: mel [1, nMel, 3000] in, generated tokens (text + timestamp tokens, no prompt, no end token) out. */
-    synchronized Out run(OrtEnvironment env, String k, File ef, File df, FloatBuffer mel, long[] melDims, Cfg c) throws Exception {
-        ensure(env, k, ef, df);
+    synchronized Out run(OrtEnvironment env, String k, File ef, File df, File efFloat, FloatBuffer mel, long[] melDims, Cfg c) throws Exception {
+        ensure(env, k, ef, df, efFloat, melDims);
         Out out = new Out();
         OnnxTensor melT = null;
         OrtSession.Result encRes = null, first = null, prev = null;
         try {
-            melT = OnnxTensor.createTensor(env, mel, melDims);
-            encRes = enc.run(Collections.singletonMap(encIn, melT));
+            if (encS != null) encRes = Accel.run(env, encS, mel, melDims);       // NNAPI; swaps itself to the CPU on a crash or NaN
+            else { melT = OnnxTensor.createTensor(env, mel, melDims); encRes = enc.run(Collections.singletonMap(encIn, melT)); }
+            out.accel = encS != null && encS.nn ? "GPU" : "CPU";
             OnnxTensor hidden = (OnnxTensor) encRes.get(0);
 
             int lang = c.lang;
