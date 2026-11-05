@@ -1,8 +1,11 @@
 package com.pressplay.media
 
+import android.Manifest
 import android.app.Activity
 import android.content.ContentValues
+import android.content.ContentUris
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
@@ -11,6 +14,7 @@ import android.os.Build
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import androidx.activity.result.ActivityResult
+import androidx.core.content.ContextCompat
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -118,23 +122,83 @@ class LibraryPlugin : Plugin() {
             try {
                 val found = ArrayList<Found>()
                 walk(tree, DocumentsContract.getTreeDocumentId(tree), 0, found, known)
-                val total = found.size
-                var done = 0
-                val batch = JSArray()
-                val futures = ArrayList<Future<JSObject?>>()
-                for (f in found) futures.add(pool.submit(Callable { describe(f.uri, f.name, f.mime, f.size, f.mod, f.sidecars) }))
-                for (fu in futures) {
-                    val o = try { fu.get() } catch (_: Exception) { null }
-                    done++
-                    if (o != null) batch.put(o)
-                    if (batch.length() >= 25 || done == total) {
-                        if (batch.length() > 0) notifyListeners("scanBatch", JSObject().put("tree", tree.toString()).put("entries", copy(batch)))
-                        clear(batch)
-                        notifyListeners("scanProgress", JSObject().put("done", done).put("total", total))
-                    }
-                }
-                call.resolve(JSObject().put("tree", tree.toString()).put("total", total))
+                stream(found, tree.toString(), call)
             } catch (e: Exception) { call.reject(e.message ?: "scan failed") }
+        }
+    }
+
+    /** Reads tags and artwork for [found] on the pool and sends them to the page in batches (scanBatch / scanProgress). */
+    private fun stream(found: List<Found>, tag: String, call: PluginCall) {
+        val total = found.size
+        var done = 0
+        val batch = JSArray()
+        val futures = ArrayList<Future<JSObject?>>()
+        for (f in found) futures.add(pool.submit(Callable { describe(f.uri, f.name, f.mime, f.size, f.mod, f.sidecars) }))
+        for (fu in futures) {
+            val o = try { fu.get() } catch (_: Exception) { null }
+            done++
+            if (o != null) batch.put(o)
+            if (batch.length() >= 25 || done == total) {
+                if (batch.length() > 0) notifyListeners("scanBatch", JSObject().put("tree", tag).put("entries", copy(batch)))
+                clear(batch)
+                notifyListeners("scanProgress", JSObject().put("done", done).put("total", total))
+            }
+        }
+        call.resolve(JSObject().put("tree", tag).put("total", total))
+    }
+
+    // ---------- whole-phone scan (needs the media permission) ----------
+    private fun has(p: String) = ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
+    private fun audioOk() = if (Build.VERSION.SDK_INT >= 33) has(Manifest.permission.READ_MEDIA_AUDIO) else has(Manifest.permission.READ_EXTERNAL_STORAGE)
+    private fun videoOk() = if (Build.VERSION.SDK_INT >= 33) has(Manifest.permission.READ_MEDIA_VIDEO) else has(Manifest.permission.READ_EXTERNAL_STORAGE)
+    private fun access() = JSObject().put("audio", audioOk()).put("video", videoOk())
+
+    /** Resolves {audio, video}: which kinds of media this app is currently allowed to read. */
+    @PluginMethod
+    fun mediaAccess(call: PluginCall) { call.resolve(access()) }
+
+    /** Shows the system permission prompt if needed, then resolves {audio, video}. */
+    @PluginMethod
+    fun requestMediaAccess(call: PluginCall) {
+        val a = MainActivity.instance
+        if (a == null) { call.resolve(access()); return }
+        a.runOnUiThread { a.requestMediaAccess { call.resolve(access()) } }
+    }
+
+    /** Finds every song (and, unless video=false, every video) on the phone. [known] = URIs already in the library (skipped). */
+    @PluginMethod
+    fun scanDevice(call: PluginCall) {
+        val wantVideo = call.getBoolean("video", true) ?: true
+        val known = HashSet<String>()
+        call.data.optJSONArray("known")?.let { a -> for (k in 0 until a.length()) known.add(a.optString(k)) }
+        val doAudio = audioOk()
+        val doVideo = wantVideo && videoOk()
+        if (!doAudio && !doVideo) { call.reject("Media access was not allowed"); return }
+        pool.execute {
+            try {
+                val found = ArrayList<Found>()
+                if (doAudio) queryStore(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, true, known, found)
+                if (doVideo) queryStore(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, false, known, found)
+                stream(found, "device", call)
+            } catch (e: Exception) { call.reject(e.message ?: "scan failed") }
+        }
+    }
+
+    private fun queryStore(base: Uri, audio: Boolean, known: Set<String>, out: MutableList<Found>) {
+        val cols = arrayOf(
+            MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE,
+            MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_MODIFIED
+        )
+        // Music only: leaves out ringtones, alarms, notification sounds and voice recordings.
+        val sel = if (audio) "${MediaStore.Audio.AudioColumns.IS_MUSIC} != 0 AND ${MediaStore.Audio.AudioColumns.IS_RINGTONE} = 0 AND " +
+            "${MediaStore.Audio.AudioColumns.IS_ALARM} = 0 AND ${MediaStore.Audio.AudioColumns.IS_NOTIFICATION} = 0 AND ${MediaStore.MediaColumns.SIZE} > 0"
+            else "${MediaStore.MediaColumns.SIZE} > 0"
+        context.contentResolver.query(base, cols, sel, null, "${MediaStore.MediaColumns.DISPLAY_NAME} COLLATE NOCASE ASC")?.use { c ->
+            while (c.moveToNext()) {
+                val uri = ContentUris.withAppendedId(base, c.getLong(0))
+                if (known.contains(uri.toString())) continue
+                out.add(Found(uri, c.getString(1) ?: "", c.getString(2), c.getLong(3), c.getLong(4) * 1000L, emptyList()))
+            }
         }
     }
 

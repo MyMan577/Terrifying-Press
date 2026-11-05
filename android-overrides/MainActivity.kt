@@ -55,7 +55,7 @@ class MainActivity : BridgeActivity() {
         instance = this
         installVideoLayer()
         handleIntent(intent)
-        askNotificationPermission()
+        askPermissions()
     }
 
     private fun installVideoLayer() {
@@ -165,12 +165,46 @@ class MainActivity : BridgeActivity() {
         if (Build.VERSION.SDK_INT >= 33) i.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
         else @Suppress("DEPRECATION") i.getParcelableExtra(Intent.EXTRA_STREAM)
 
-    private fun askNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7)
+    /**
+     * Asks for notifications (Android 13+) and for access to the device's audio and video, in one system prompt.
+     * Media access is only asked once so a "Don't allow" is never nagged about; the system picker keeps working either way.
+     */
+    private fun askPermissions() {
+        val need = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= 33 && !granted(Manifest.permission.POST_NOTIFICATIONS))
+            need.add(Manifest.permission.POST_NOTIFICATIONS)
+
+        val prefs = getSharedPreferences("pp_permissions", MODE_PRIVATE)
+        if (!prefs.getBoolean("asked_media", false)) {
+            val missing = mediaPermissions().filter { !granted(it) }
+            if (missing.isNotEmpty()) need.addAll(missing)
+            prefs.edit().putBoolean("asked_media", true).apply()
         }
+
+        if (need.isNotEmpty()) ActivityCompat.requestPermissions(this, need.toTypedArray(), 7)
     }
+
+    private fun mediaPermissions(): Array<String> =
+        if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_AUDIO, Manifest.permission.READ_MEDIA_VIDEO)
+        else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+
+    private var mediaDone: (() -> Unit)? = null
+
+    /** Called from LibraryPlugin ("Scan phone"): shows the media prompt if needed, then runs [done] either way. */
+    fun requestMediaAccess(done: () -> Unit) {
+        val need = mediaPermissions().filter { !granted(it) }
+        if (need.isEmpty()) { done(); return }
+        mediaDone = done
+        ActivityCompat.requestPermissions(this, need.toTypedArray(), 8)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 8) { val cb = mediaDone; mediaDone = null; cb?.invoke() }
+    }
+
+    private fun granted(permission: String) =
+        ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
     override fun onDestroy() {
         if (instance === this) { instance = null; playerView = null }
