@@ -1914,6 +1914,110 @@
     return await rpFinish(passes, x);
   }
 
+  // ---------- Free lyrics sites, language guess, translation, background fetch ----------
+  const LY_LANGS = [['', 'Any language'], ['en', 'English'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'], ['it', 'Italian'], ['pt', 'Portuguese'], ['nl', 'Dutch'], ['tr', 'Turkish'], ['id', 'Indonesian'], ['sv', 'Swedish'], ['pl', 'Polish'], ['ru', 'Russian'], ['uk', 'Ukrainian'], ['ar', 'Arabic'], ['hi', 'Hindi'], ['ja', 'Japanese'], ['ko', 'Korean'], ['zh', 'Chinese'], ['th', 'Thai'], ['he', 'Hebrew'], ['el', 'Greek']];
+  const lyName = c => { const l = LY_LANGS.find(x => x[0] === c); return l ? l[1] : c; };
+  const LY_STOP = {
+    en: "the you and to it me my is in of that on we be this for with your are i'm don't just like love", es: 'que el los una por con para te mi tu es lo las pero como yo si muy más está',
+    fr: 'le les des une est pas que je tu il nous vous dans pour mon ma qui avec', de: 'der die das und ich du nicht ist ein eine mit den von zu sie wir auf mir dir',
+    it: 'che non per con sono una gli il mi ti ma più come anche', pt: 'que não uma para com você os as do da em eu meu minha mas está',
+    nl: 'de het een en ik je niet van dat is op te zijn maar', tr: 'bir ve ben sen bu da de ne için çok ama gibi',
+    id: 'yang dan aku kamu di ini itu tidak untuk dengan ada', sv: 'och jag du det är en som på inte att med', pl: 'nie to się na że jestem ty ja w z jak tak'
+  };
+  const LY_STOPSET = {}; for (const k in LY_STOP) LY_STOPSET[k] = new Set(LY_STOP[k].split(' '));
+  const LY_CHARS = { es: /[ñ¿¡]/, pt: /[ãõ]/, de: /[ßäöü]/, tr: /[şğı]/, pl: /[łąęż]/, sv: /[åäö]/, fr: /[èêçœ]/ };
+  // Rough guess from the text alone: script first (kana, hangul, cyrillic...), then common words. Returns '' when unsure.
+  function guessLang(txt) {
+    txt = String(txt || '').slice(0, 4000).toLowerCase(); const letters = (txt.match(/\p{L}/gu) || []).length; if (letters < 12) return '';
+    const cnt = re => (txt.match(re) || []).length;
+    const sc = { ja: cnt(/[\u3040-\u30ff]/g), ko: cnt(/[\uac00-\ud7af]/g), zh: cnt(/[\u4e00-\u9fff]/g), ru: cnt(/[\u0400-\u04ff]/g), ar: cnt(/[\u0600-\u06ff]/g), hi: cnt(/[\u0900-\u097f]/g), th: cnt(/[\u0e00-\u0e7f]/g), he: cnt(/[\u0590-\u05ff]/g), el: cnt(/[\u0370-\u03ff]/g) };
+    if (sc.ja >= 3 && (sc.ja + sc.zh) / letters > 0.3) return 'ja';
+    for (const k of ['ko', 'zh', 'ru', 'ar', 'hi', 'th', 'he', 'el']) if (sc[k] / letters > 0.3) return k === 'ru' && /[іїєґ]/.test(txt) ? 'uk' : k;
+    const words = txt.match(/[\p{L}']+/gu) || [], score = {};
+    for (const k in LY_STOPSET) { let n = 0; for (const w of words) if (LY_STOPSET[k].has(w)) n++; if (LY_CHARS[k] && LY_CHARS[k].test(txt)) n += 3; score[k] = n; }
+    const top = Object.keys(score).sort((a, b) => score[b] - score[a]);
+    return score[top[0]] >= 3 && score[top[0]] >= score[top[1]] * 1.3 ? top[0] : '';
+  }
+  const lyLines = txt => String(txt).split(/\r?\n/).map(l => l.replace(/^\s*(\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]\s*)+/, '').trim()).filter(l => l && !/^\[[^\]]*\]$/.test(l));
+  const lyText = it => lyLines(it.syncedLyrics || it.plainLyrics || '').slice(0, 60).join('\n');
+  const lyLrcLine = (sec, text) => '[' + String(Math.floor(sec / 60)).padStart(2, '0') + ':' + (sec % 60).toFixed(2).padStart(5, '0') + ']' + text;
+  const lyNorm = s => String(s || '').toLowerCase().replace(/\.(mp3|m4a|wav|flac|ogg|mp4|mkv|webm)$/i, '').replace(/\s*[\(\[][^\)\]]*[\)\]]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const lyArtistOk = a => !!a && !/^(Unknown artist|Video|Stream)$/i.test(a);
+  const lyQuery = t => ((lyArtistOk(t.artist) ? t.artist + ' ' : '') + lyNorm(t.title)).trim();
+  // Every source returns [{src, trackName, artistName, duration, syncedLyrics?, plainLyrics?, load?}]. load() fills plainLyrics for sources that need a second request.
+  const LY_SRC = {
+    lrclib: { name: 'LRCLIB', auto: 1, async find(q) {
+      const r = await fetch('https://lrclib.net/api/search?q=' + encodeURIComponent(q)); if (!r.ok) throw new Error('HTTP ' + r.status); const j = await r.json();
+      return (Array.isArray(j) ? j : []).filter(it => it.plainLyrics || it.syncedLyrics).map(it => ({ src: 'LRCLIB', trackName: it.trackName, artistName: it.artistName, duration: it.duration, syncedLyrics: it.syncedLyrics, plainLyrics: it.plainLyrics }));
+    } },
+    ovh: { name: 'Lyrics.ovh', auto: 1, async find(q) {
+      const r = await fetch('https://api.lyrics.ovh/suggest/' + encodeURIComponent(q)); if (!r.ok) throw new Error('HTTP ' + r.status); const j = await r.json();
+      return (j.data || []).slice(0, 6).map(d => { const it = { src: 'Lyrics.ovh', trackName: d.title_short || d.title, artistName: d.artist && d.artist.name, duration: d.duration };
+        it.load = async () => { const x = await fetch('https://api.lyrics.ovh/v1/' + encodeURIComponent(it.artistName || '') + '/' + encodeURIComponent(it.trackName || '')); if (!x.ok) throw new Error('HTTP ' + x.status); const k = await x.json(); it.plainLyrics = String(k.lyrics || '').replace(/\r/g, '').replace(/^Paroles de la chanson[^\n]*\n/i, '').trim(); };
+        return it; });
+    } },
+    textyl: { name: 'Textyl', auto: 0, async find(q) {   // timed lyrics, no title in the reply, so it is only used when the person searches by hand
+      const r = await fetch('https://api.textyl.co/api/lyrics?q=' + encodeURIComponent(q)); if (r.status === 404) return []; if (!r.ok) throw new Error('HTTP ' + r.status); const j = await r.json();
+      return Array.isArray(j) && j.length ? [{ src: 'Textyl', trackName: q, artistName: '', syncedLyrics: j.map(x => lyLrcLine(+x.seconds || 0, String(x.lyrics || ''))).join('\n') }] : [];
+    } }
+  };
+  async function lyEnsure(it) { if (it.load) { const f = it.load; it.load = null; try { await f(); } catch (e) { it.plainLyrics = ''; throw e; } } }
+  async function lySearch(q, keys) {
+    const rs = await Promise.allSettled(keys.map(k => LY_SRC[k].find(q))), items = [], failed = [];
+    rs.forEach((r, i) => { if (r.status === 'fulfilled') items.push(...r.value); else failed.push(LY_SRC[keys[i]].name); });
+    return { items, failed };
+  }
+  // Translation. Both return an array the same length as lines (a line that could not be translated stays as it was).
+  const lyChunks = (lines, max) => { const out = []; let cur = [], n = 0; lines.forEach((l, i) => { if (cur.length && n + l.length > max) { out.push(cur); cur = []; n = 0; } cur.push(i); n += l.length + 1; }); if (cur.length) out.push(cur); return out; };
+  const lyWait = ms => new Promise(r => setTimeout(r, ms));
+  async function lyTrNative(NT, lines, from, to, prog, alive) {
+    const out = lines.slice();
+    for (let a = 0; a < lines.length; a += 12) {
+      if (!alive()) return null; prog(a, lines.length);
+      const r = await NT.translate({ lines: lines.slice(a, a + 12), from: from || '', to });
+      (r.lines || []).forEach((l, k) => { if (l && String(l).trim()) out[a + k] = String(l).trim(); });
+    }
+    return out;
+  }
+  async function lyTrAi(lines, to, ask, say, prog, alive) {
+    const out = lines.slice(), sys = 'You translate song lyrics into ' + lyName(to) + '. The user sends numbered lines. Reply with the same numbered lines translated, one per line, same numbers. Keep the meaning and the feel. No notes, no extra text.';
+    let done = 0;
+    for (let a = 0; a < lines.length; a += 8) {
+      if (!alive()) return null; prog(done, lines.length);
+      const idx = lines.slice(a, a + 8).map((_, k) => a + k), r = await ask([{ role: 'system', content: sys }, { role: 'user', content: idx.map((i, k) => (k + 1) + '. ' + lines[i]).join('\n') }], { max_new_tokens: 420, do_sample: false, repetition_penalty: 1.05 }, say);
+      String(r).split(/\r?\n/).forEach(l => { const m = /^\s*(\d+)[.)]\s*(.+)$/.exec(l); if (m && +m[1] >= 1 && +m[1] <= idx.length) out[idx[+m[1] - 1]] = m[2].trim(); });
+      done += idx.length;
+    }
+    return out;
+  }
+  // Background fetch: while online, quietly saves lyrics for songs that have none, so they are there offline. Only a near-exact title (and artist or length) match is accepted.
+  const lyParseLrc = txt => { const out = [], re = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g; String(txt).split(/\r?\n/).forEach(raw => { const st = []; let m, last = 0; re.lastIndex = 0; while ((m = re.exec(raw))) { st.push(+m[1] * 60 + +m[2] + (m[3] ? +m[3].padEnd(3, '0').slice(0, 3) / 1000 : 0)); last = re.lastIndex; } const tx = raw.slice(last).trim(); if (st.length && tx) st.forEach(s => out.push({ start: s, text: tx })); }); out.sort((a, b) => a.start - b.start); return out.map((c, i) => ({ start: c.start, end: out[i + 1] ? out[i + 1].start : c.start + 4, text: c.text })); };
+  let lyRunning = false; const lyTried = {};   // misses are only remembered until the app reloads
+  async function lyPrefetch(enabled) {
+    if (lyRunning || !enabled() || !navigator.onLine) return; const A = window.__ppApi, lyr = window.__ppLyrics; if (!A || !lyr || !A.tracks) return;
+    lyRunning = true;
+    try {
+      let subs = {}; try { subs = JSON.parse(localStorage.getItem('playerSubtitles') || '{}') || {}; } catch (e) {}
+      const tags = loadTags(), keys = Object.keys(LY_SRC).filter(k => LY_SRC[k].auto);
+      const todo = A.tracks().filter(t => !t.stem && t.kind !== 'video' && t.dbId != null && t.title && !lyr.has(t.dbId) && !subs[t.dbId] && !lyTried[t.dbId]);
+      for (const t of todo) {
+        if (!enabled() || !navigator.onLine) break;
+        const dur = tags[t.dbId] && tags[t.dbId].d || 0, art = lyArtistOk(t.artist); if (!art && !dur) { lyTried[t.dbId] = 1; continue; }   // title alone is too vague to trust
+        const { items, failed } = await lySearch(lyQuery(t), keys); if (failed.length === keys.length) break;   // offline or blocked: try again next time
+        const tt = lyNorm(t.title), ta = lyNorm(t.artist);
+        const ok = items.filter(it => lyNorm(it.trackName) === tt && (!art || (() => { const a = lyNorm(it.artistName); return a === ta || a.includes(ta) || ta.includes(a); })()) && (!dur || !it.duration || Math.abs(it.duration - dur) <= 4));
+        ok.sort((a, b) => (b.syncedLyrics ? 1 : 0) - (a.syncedLyrics ? 1 : 0));
+        let got = null; for (const it of ok) { try { await lyEnsure(it); } catch (e) { continue; } if (lyLines(it.syncedLyrics || it.plainLyrics || '').length >= 4) { got = it; break; } }
+        lyTried[t.dbId] = 1;
+        if (got) { try { if (got.syncedLyrics) { const cues = lyParseLrc(got.syncedLyrics); lyr.set(t.dbId, got.syncedLyrics); if (cues.length) { try { A.setSubtitles(t.dbId, cues, 'Online.lrc'); } catch (e) {} } } else lyr.set(t.dbId, got.plainLyrics); } catch (e) { console.warn('lyrics save failed', e); } }
+        await lyWait(1500);
+      }
+    } catch (e) { console.warn('lyrics background fetch', e); }
+    lyRunning = false;
+  }
+  let lyStarted = false;
+  function lyStart(enabled) { if (lyStarted) return; lyStarted = true; setTimeout(() => lyPrefetch(enabled), 20000); window.addEventListener('online', () => setTimeout(() => lyPrefetch(enabled), 4000)); }
+
   // ---------- Panel: library tools + lyrics ----------
   // ---------- AI summary: the tags say what it SOUNDS like, the lyrics/subtitles say what it is ABOUT ----------
   const SUM_KEY = 'ppSummaryV1';
@@ -2470,7 +2574,7 @@
           '<div class="sep"></div><label>Min length<input type="number" id="e-min" value="1" step="0.1" min="0.3" style="width:70px"> s</label><button id="e-mingo">Make short lines longer</button></div>' +
         '<div class="etool" data-p="text"><button id="e-fr">Find &amp; replace…</button><button id="e-trim">Trim spaces</button><button id="e-cap">Capitalise first letter</button><button id="e-up">UPPER</button><button id="e-low">lower</button><button id="e-brk">Remove [bracketed] text</button><button id="e-empty">Delete empty lines</button><button id="e-dup">Delete repeated lines</button></div>' +
         '<div class="etool" data-p="rep"><button id="e-rscan">Scan repeated lines</button><button id="e-rscanA">Scan with audio</button><button id="e-rall" class="pri">Apply all suggestions</button><label><input type="checkbox" id="e-rshow"> Also show repeats that already agree</label></div>' +
-        '<div class="etool" data-p="file"><button id="e-sync">Sync my own lyrics…</button><button id="e-net">Find lyrics online…</button><div class="sep"></div><button id="e-paste">Paste text…</button><button id="e-loadf">Open file…</button><button id="e-revert">Revert to saved</button><div class="sep"></div><button id="e-dsrt">Download .srt</button><button id="e-dlrc">Download .lrc</button><button id="e-dtxt">Download .txt</button><input type="file" id="e-file" accept=".srt,.vtt,.lrc,.txt" style="display:none"></div>' +
+        '<div class="etool" data-p="file"><button id="e-sync">Sync my own lyrics…</button><button id="e-net">Find lyrics online…</button><button id="e-tr">Translate lyrics…</button><div class="sep"></div><button id="e-paste">Paste text…</button><button id="e-loadf">Open file…</button><button id="e-revert">Revert to saved</button><div class="sep"></div><button id="e-dsrt">Download .srt</button><button id="e-dlrc">Download .lrc</button><button id="e-dtxt">Download .txt</button><input type="file" id="e-file" accept=".srt,.vtt,.lrc,.txt" style="display:none"></div>' +
         '<div class="etool" data-p="view"><label><input type="checkbox" id="e-follow" checked> Follow playback</label><label><input type="checkbox" id="e-ends" checked> Show end times</label><label>Text size <select id="e-fs"><option value="s">Small</option><option value="m" selected>Medium</option><option value="l">Large</option><option value="x">Extra large</option></select></label></div>' +
         '<div class="efilter"><input type="text" id="e-q" placeholder="Search lines…"><span class="ecount" id="e-cnt"></span></div>' +
         '<div class="elist" id="e-list"></div>' +
@@ -2699,10 +2803,11 @@
       $e('#e-net').onclick = () => {
         const t = edTrack || cur(); if (!t) { toast('Play or select a track first.'); return; }
         const w = mkEl('div'); w.style.cssText = 'display:flex;flex-direction:column;gap:8px';
-        const q0 = ((t.artist && !/^(Unknown artist|Video|Stream)$/.test(t.artist) ? t.artist + ' ' : '') + t.title).replace(/\.(mp3|m4a|wav|flac|ogg|mp4|mkv|webm)$/i, '').replace(/\s*[\(\[][^\)\]]*[\)\]]/g, '').trim();
-        w.innerHTML = '<div style="font-size:12px;opacity:.75">Looks the song up on lrclib.net, a free lyrics database. Only the text shown below is sent, and only when Search is tapped. Whatever is picked is checked against the audio before use.</div><input type="text" id="e-nq"><button id="e-nsearch" class="pri">Search</button><div id="e-nres" style="display:flex;flex-direction:column;gap:6px"></div>';
+        const q0 = lyQuery(t);
+        w.innerHTML = '<div style=\"font-size:12px;opacity:.75\">Looks the song up on free lyrics sites (LRCLIB, Lyrics.ovh, Textyl). Only the text shown below is sent, and only when Search is tapped. Whatever is picked is checked against the audio before use. The language filter is a guess from the lyrics text.</div><input type=\"text\" id=\"e-nq\"><select id=\"e-nsrc\"><option value=\"all\">All sites</option>' + Object.keys(LY_SRC).map(k => '<option value=\"' + k + '\">' + LY_SRC[k].name + '</option>').join('') + '</select><select id=\"e-nlang\">' + LY_LANGS.map(l => '<option value=\"' + l[0] + '\">' + l[1] + '</option>').join('') + '</select><button id=\"e-nsearch\" class=\"pri\">Search</button><div id=\"e-nres\" style=\"display:flex;flex-direction:column;gap:6px\"></div>';
         w.querySelector('#e-nq').value = q0; const res = w.querySelector('#e-nres');
-        const choose = it => {
+        const choose = async it => {
+          res.textContent = 'Loading…'; try { await lyEnsure(it); } catch (e) { res.textContent = 'Could not load those lyrics (' + errText(e).slice(0, 80) + ')'; return; }
           const syn = it.syncedLyrics ? parseLrcText(it.syncedLyrics).filter(r => r.text) : [], plain2 = lyricLines(it.plainLyrics || ''), src = srcRows(); res.textContent = '';
           res.appendChild(mkEl('div', '', '<b>' + (it.trackName || '') + '</b><br><small style="opacity:.7">' + (it.artistName || '') + (it.duration ? ' · ' + mmss(it.duration) : '') + '</small>'));
           const add = (label, fn, pri, note) => { const b = mkEl('button', pri ? 'pri' : '', label); b.onclick = () => { closeModal(); fn(); }; res.appendChild(b); if (note) res.appendChild(mkEl('div', 'rnote', note)); };
@@ -2721,15 +2826,44 @@
         };
         const search = async () => {
           const q = w.querySelector('#e-nq').value.trim(); if (!q) return; res.textContent = 'Searching…';
-          try {
-            const r = await fetch('https://lrclib.net/api/search?q=' + encodeURIComponent(q)); if (!r.ok) throw new Error('HTTP ' + r.status); let j = await r.json(); const m = media(), du = m && isFinite(m.duration) ? m.duration : 0;
-            j = (Array.isArray(j) ? j : []).filter(it => it.plainLyrics || it.syncedLyrics); if (du) j.sort((a, b) => Math.abs((a.duration || 1e4) - du) - Math.abs((b.duration || 1e4) - du)); j = j.slice(0, 6); res.textContent = '';
-            if (!j.length) { res.textContent = 'No lyrics found. Try fewer words, e.g. just the song title.'; return; }
-            j.forEach(it => { const b = mkEl('button', '', '<b>' + (it.trackName || '?') + '</b> · ' + (it.artistName || '?') + '<br><small style="opacity:.7">' + (it.duration ? mmss(it.duration) : '') + (du && it.duration ? ' (this track ' + mmss(du) + ')' : '') + (it.syncedLyrics ? ' · has timestamps' : ' · text only') + '</small>'); b.style.textAlign = 'left'; b.onclick = () => choose(it); res.appendChild(b); });
-          } catch (e) { res.textContent = 'Could not reach lrclib.net. This needs an internet connection. (' + errText(e).slice(0, 80) + ')'; }
+          const sv = w.querySelector('#e-nsrc').value, lg = w.querySelector('#e-nlang').value; ls('ppvLySrc', sv); ls('ppvLyLang', lg);
+          const m = media(), du = m && isFinite(m.duration) ? m.duration : 0;
+          let { items: j, failed } = await lySearch(q, sv === 'all' ? Object.keys(LY_SRC) : [sv]);
+          j = j.filter(it => it.load || it.plainLyrics || it.syncedLyrics); if (du) j.sort((a, b) => Math.abs((a.duration || 1e4) - du) - Math.abs((b.duration || 1e4) - du)); j = j.slice(0, lg ? 12 : 8);
+          if (lg) { res.textContent = 'Checking languages…'; await Promise.all(j.map(it => lyEnsure(it).catch(() => {}))); j = j.filter(it => (it.plainLyrics || it.syncedLyrics) && guessLang(lyText(it)) === lg); }
+          res.textContent = '';
+          if (failed.length) res.appendChild(mkEl('div', 'rnote', 'Could not reach: ' + failed.join(', ') + '.'));
+          if (!j.length) { res.appendChild(mkEl('div', '', failed.length && sv !== 'all' || failed.length === Object.keys(LY_SRC).length ? 'Could not reach the lyrics sites. This needs an internet connection.' : (lg ? 'No lyrics found in ' + lyName(lg) + '. Try Any language or fewer words.' : 'No lyrics found. Try fewer words, e.g. just the song title.'))); return; }
+          j.forEach(it => { const gl = (it.plainLyrics || it.syncedLyrics) ? guessLang(lyText(it)) : '', b = mkEl('button', '', '<b>' + (it.trackName || '?') + '</b> · ' + (it.artistName || '?') + '<br><small style=\"opacity:.7\">' + it.src + (gl ? ' · ' + lyName(gl) : '') + (it.duration ? ' · ' + mmss(it.duration) : '') + (du && it.duration ? ' (this track ' + mmss(du) + ')' : '') + (it.syncedLyrics ? ' · has timestamps' : ' · text only') + '</small>'); b.style.textAlign = 'left'; b.onclick = () => choose(it); res.appendChild(b); });
         };
+        w.querySelector('#e-nsrc').value = ls('ppvLySrc') || 'all'; w.querySelector('#e-nlang').value = ls('ppvLyLang') || '';
         w.querySelector('#e-nsearch').onclick = search; w.querySelector('#e-nq').onkeydown = ev => { if (ev.key === 'Enter') search(); };
         modal('Find lyrics online', w, [{ label: 'Close' }]); search();
+      };
+      $e('#e-tr').onclick = () => {
+        const src = rows.filter(r => r.text.trim()); if (!src.length) { toast('Nothing to translate. Add or find lyrics first.'); return; }
+        const NT = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PPTranslate;
+        const w = mkEl('div'); w.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+        w.innerHTML = '<div style=\"font-size:12px;opacity:.75\">Replaces the text of each line with its translation. Timing stays the same. Undo or Revert to saved brings the original back until you save. Nothing leaves the device.</div><select id=\"e-trl\">' + LY_LANGS.filter(l => l[0]).map(l => '<option value=\"' + l[0] + '\">' + l[1] + '</option>').join('') + '</select><select id=\"e-tre\">' + (NT ? '<option value=\"nat\">Device translator (Google ML Kit): fast, offline after a one-time language download</option>' : '') + '<option value=\"ai\">On-device AI (Bloop brain): rougher</option></select><div id=\"e-trs\" class=\"rnote\"></div>';
+        const tl = w.querySelector('#e-trl'), te = w.querySelector('#e-tre'), ts = w.querySelector('#e-trs'); tl.value = ls('ppvTrLang') || 'en'; te.value = ls('ppvTrEng') === 'ai' || !NT ? 'ai' : 'nat';
+        let running = false; const alive = () => $e('#e-mod').classList.contains('on');
+        const run = async () => {
+          if (running) return; const to = tl.value, eng = te.value; ls('ppvTrLang', to); ls('ppvTrEng', eng);
+          const lines = src.map(r => r.text.replace(/\s+/g, ' ').trim()), from = guessLang(lines.join('\n'));
+          if (from === to) { ts.textContent = 'These lyrics already look like ' + lyName(to) + '. Pick another language.'; return; }
+          const ch = h.mas.chat; if (eng === 'ai' && !ch.ready() && !confirm('The on-device translator uses the AI brain: a one-time download of about ' + ch.mb() + ' MB. Continue?')) return;
+          running = true; ts.textContent = eng === 'nat' ? 'Preparing the translator. The first time for a language it downloads a small pack, so it needs internet once…' : 'Starting…';
+          try {
+            const prog = (d, n) => { ts.textContent = 'Translating… ' + d + ' of ' + n + ' lines'; };
+            const out = eng === 'ai' ? await lyTrAi(lines, to, ch.ask, x => { ts.textContent = x; }, prog, alive) : await lyTrNative(NT, lines, from, to, prog, alive);
+            if (!out) { running = false; return; }
+            const n = out.filter((x, i) => x !== lines[i]).length;
+            if (!n) { ts.textContent = 'Nothing came back. Try the other translator.'; running = false; return; }
+            mut(() => { src.forEach((r, i) => { if (out[i]) r.text = out[i]; }); }); closeModal(); toast('Translated ' + n + ' lines to ' + lyName(to) + '.');
+          } catch (e) { ts.textContent = 'Could not translate: ' + errText(e).slice(0, 120); }
+          running = false;
+        };
+        modal('Translate lyrics', w, [{ label: 'Cancel' }, { label: 'Translate', pri: 1, fn: () => { run(); return false; } }]);
       };
       $('#ppv-edopen').onclick = open;
       // refresh the editor after Whisper writes new text
@@ -2800,6 +2934,7 @@
         { id: 'mixes', label: 'Auto mixes: For You, Ones You May Like, Your Pattern', key: 'ppvLiveMix', def: 1, box: 'ppv-lmix' },
         { id: 'surp', label: 'Surprise playlists', key: 'ppvSurp', def: 0, box: 'ppv-surp' },
         { id: 'bg', label: 'Background tagging while I am away', key: 'ppvBg', def: 0, box: 'ppv-bg' },
+        { id: 'lyfetch', label: 'Fetch lyrics for my songs in the background, for offline use (sends song titles to lrclib.net and lyrics.ovh)', key: 'ppvLyAuto', def: 1 },
         { id: 'aeq', label: 'Auto-EQ when tagging', key: 'ppvAutoEq', def: 0, box: 'ppv-aeq' },
         { id: 'askip', label: 'Skip long intros', key: 'ppvAutoSkip', def: 0, box: 'ppv-askip' },
         { g: 'Bloop', id: 'mascot', label: 'Bloop, the mascot', box: 'ppv-mas', def: 1, get: () => h.mas.isOn() },
@@ -2843,7 +2978,7 @@
       (document.getElementById('sidebar-pane-settings') || p).appendChild(box);
       if (sb) sb.addEventListener('click', () => setTimeout(applyShow, 0));
       if (eb) eb.addEventListener('click', () => setTimeout(applyShow, 0));
-      syncBoxes(); applyShow();
+      syncBoxes(); applyShow(); lyStart(() => on('lyfetch'));
     }
   }
 
