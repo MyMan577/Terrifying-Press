@@ -73,7 +73,7 @@ jobs:
 
       - name: Add the native ONNX plugin
         run: |
-          for f in OnnxSeparatorPlugin Accel StemNative SpleeterNative KeepAliveService SpleeterSeparatorPlugin BackupPlugin EmbedPlugin StoragePlugin Throttle WhisperNative ParakeetNative LlmNative FastDownload; do
+          for f in OnnxSeparatorPlugin Accel StemNative SpleeterNative KeepAliveService SpleeterSeparatorPlugin BackupPlugin EmbedPlugin StoragePlugin TranslatePlugin Throttle WhisperNative ParakeetNative LlmNative FastDownload; do
             f="android-overrides/$f.java"
             if [ ! -f "$f" ]; then echo "::error::Missing file in the repo: $f. Add it at that exact path (folder included) and run again."; exit 1; fi
           done
@@ -84,6 +84,8 @@ jobs:
           sed -i '/^dependencies {/a\    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.22.0"' android/app/build.gradle
           # LiteRT-LM (chat models in .litertlm files). Pin this to an exact version after the first green build.
           sed -i '/^dependencies {/a\    implementation "com.google.ai.edge.litertlm:litertlm-android:latest.release"' android/app/build.gradle
+          # ML Kit on-device translation + language detection (TranslatePlugin). Language packs download on first use.
+          sed -i '/^dependencies {/a\    implementation "com.google.mlkit:translate:17.0.3"\n    implementation "com.google.mlkit:language-id:17.0.6"' android/app/build.gradle
           # both native stacks may ship the same C++ runtime library: keep the first one instead of failing the build
           sed -i '/^android {/a\    packaging { jniLibs { pickFirsts += ["**/libc++_shared.so"] } }' android/app/build.gradle
           sed -i 's/<application/<application android:largeHeap="true"/' android/app/src/main/AndroidManifest.xml
