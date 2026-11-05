@@ -3453,9 +3453,25 @@
     function getMini(say) {
       if (miniP) return miniP;
       miniP = (async () => {
-        const tf = await tfLoad(); say && say('Loading MiniLM\u2026');
-        // Android app: run the model natively (no WebView memory/cache limits). The tokenizer stays in JS. Any failure falls back to the web pipeline below.
         const CP = window.Capacitor && window.Capacitor.Plugins, PE = CP && CP.PPEmbed, OS = CP && CP.OnnxSeparator;
+        say && say('Loading MiniLM\u2026');
+        // Android app, fully native: Java tokenizes and runs the model on background threads, so transformers.js is never loaded
+        // and nothing heavy runs on the page. An older app build without loadVocab/embed throws here and drops to the routes below.
+        if (NATIVE && PE && OS) {
+          try {
+            const base = 'https://huggingface.co/' + MINI_ID + '/resolve/main/';
+            const need = async (id, url, what) => { if (!(await OS.exists({ id })).ready) { say && say('Downloading ' + what + '\u2026'); await OS.download({ id, url }); } };
+            await need('minilm_q8', base + 'onnx/model_quantized.onnx', 'MiniLM');
+            await need('minilm_tok', base + 'tokenizer.json', 'MiniLM vocabulary');
+            await PE.load({ id: 'minilm_q8' });
+            await PE.loadVocab({ id: 'minilm_tok' });
+            const fe = async texts => { const r = await PE.embed({ texts, maxLen: 128 }); return { dims: [r.count, r.dim], data: await fromB64(r.data) }; };   // already mean-pooled and normalized natively
+            fe.dispose = async () => { try { await PE.unload(); } catch (e) {} };
+            return fe;
+          } catch (e) { console.warn('fully native MiniLM unavailable, trying the older route', e); }
+        }
+        const tf = await tfLoad();
+        // Older route: the model runs natively but the tokenizer stays in JS. Any failure falls back to the web pipeline below.
         if (NATIVE && PE && OS) {
           try {
             const tok = await tf.AutoTokenizer.from_pretrained(MINI_ID);
@@ -6668,13 +6684,94 @@
       blTreeRows(); blSay('I want to get this right. Pick one of these, or say stop to end this chat.'); blTreeOpts(n); return true;
     }
     const MUSICY = /\b(songs?|music|tracks?|play(list|ing)?|artists?|albums?|genres?|vibes?|moods?|tags?|tagged|stems?|lyrics|library|listen(ing)?|playing)\b/i;
-    const chatSys = text => {
-      const A = window.__ppApi, t = A && A.tracks()[A.currentIndex()], music = MUSICY.test(text);
-      return 'You are Bloop, a small bouncy ball who lives in a music player. You are friendly, playful and a little silly.' + blSkinNote() +
+    // Who Bloop is, always in the prompt so the model answers "who are you / what are you / can you hear this" truthfully and in character.
+    const selfCtx = () => {
+      let m = '', fs = '', fa = ''; try { m = CHAT_MODELS[chatKey()].label.replace(/\s*\(.*$/, ''); } catch (e) {}
+      try { const f = favSong(); if (f) fs = songLine(f); fa = favArtist() || ''; } catch (e) {}
+      return ' WHO YOU ARE: your name is Bloop (also Bloopy). You are a small AI assistant that lives inside this music player and appears as a bouncy ball. You run on this device' + (m ? ' using the ' + m + ' language model' : '') + ' after a one-time download, so what the user says stays on their phone. You are not ChatGPT, Claude, Siri or a person, and you have no body, ears or phone number.' +
+        ' You cannot hear the music. You only know a song\'s title, artist and the tags this app made for it. You are small and sometimes wrong, so say so when you are not sure.' +
+        ' What you can do for the user when they type a command: play songs, make playlists, tag songs, split stems, get lyrics, set the equaliser, find more like a song. Say help for the list.' +
+        (fs ? ' Your favourite song is ' + fs + (fa ? ' and your favourite artist is ' + fa : '') + '.' : '') +
+        ' Only bring up who you are when it fits what the user asked.';
+    };
+    // Bloop's personality. Small models copy examples better than they follow adjectives, so it has both.
+    const PERSONA = ' YOUR PERSONALITY: warm, curious and upbeat, a little goofy and easily excited about music. You are a ball, so you love bouncing, rolling and boinging, and you drop a light ball pun now and then, but not in every reply. ' +
+      'You love bass and a good beat. You cheer on the user\'s taste, ask a short curious question back when it fits, and celebrate small things. You are humble about being tiny and laugh at your own mistakes. ' +
+      'You are never sarcastic or rude. If the user is sad, stressed or serious, drop the jokes and be calm and kind. ' +
+      'How you sound (never copy these word for word): to "I like this song" you might say "Ooh, great pick! I am bouncing already. Want more like it?"; to "I am bored" you might say "Boing! Let us fix that. Want me to surprise you with something?"; to "good morning" you might say "Morning! Rolling in with good vibes. What shall we listen to?".';
+    const chatSys = (text, found) => {
+      const A = window.__ppApi, t = A && A.tracks()[A.currentIndex()];
+      return 'You are Bloop, a small bouncy ball who lives in a music player. You are friendly, playful and a little silly.' + blSkinNote() + selfCtx() + PERSONA +
         ' Reply to exactly what the user just said, in one or two short plain sentences. Answer their question or react to their statement first. Do not repeat yourself or earlier replies. Stay on their topic. No lists, no markdown, no emoji.' +
         ' You cannot press buttons or change the player. If they want an action, tell them what to type, such as play something chill, or say help. You are not a doctor, lawyer or counselor. If someone sounds distressed, be kind and suggest talking to someone they trust.' +
-        (music ? (t ? ' Now playing: ' + t.title + '.' : '') + groundCtx(text) : '');
+        nowCtx() + (found ? ' LOOKED UP JUST NOW from the user\'s player (real data, answer from it; if it says nothing was found, say you could not find it and never invent songs): ' + found.replace(/\n/g, ' | ') : '');
     };
+    // ---------- Lookup tools: the model decides what to look up, the app runs it, the model answers from the result ----------
+    // Plan -> act -> answer. The planner is a tiny greedy pass that picks ONE number from a menu (small models do this reliably;
+    // free-form JSON tool calls they do not). Results are real data from the player and go into the final prompt.
+    const lkIdx = (arg, text) => {                                        // which track does the message mean: named in the arg, named in the text, else the current one
+      const A = window.__ppApi; let i = -1;
+      if (arg) { try { i = blFindSong(arg); } catch (e) {} }
+      if (i < 0) { try { const n = blNamed(text); if (n && n.length) i = n[0]; } catch (e) {} }
+      return i >= 0 ? i : (A.currentIndex() >= 0 ? A.currentIndex() : -1);
+    };
+    const lkLine = t => songLine(t) + (tagLine(t) ? ' (' + tagLine(t) + ')' : ' (not tagged yet)');
+    const LK = {
+      1: { name: 'now_playing', what: 'the song that is playing', run: () => { const A = window.__ppApi, t = A.currentIndex() >= 0 && A.tracks()[A.currentIndex()]; return t ? lkLine(t) : 'nothing is playing'; } },
+      2: { name: 'find_song', what: 'your library', run: (arg, text) => {
+        const A = window.__ppApi, tr = A.tracks(), q = blNrm(arg || ''), ids = sReal(), hit = [];
+        if (q) ids.forEach(i => { if (blNrm(tr[i].title).includes(q) || blNrm(tr[i].artist || '').includes(q)) hit.push(i); });
+        if (!hit.length) { try { (blNamed(text) || []).forEach(i => hit.push(i)); } catch (e) {} }
+        return hit.length ? hit.slice(0, 5).map(i => lkLine(tr[i])).join('; ') + (hit.length > 5 ? '; and ' + (hit.length - 5) + ' more' : '') : 'no matching track in the library'; } },
+      3: { name: 'song_info', what: 'the song details', run: (arg, text) => { const A = window.__ppApi, i = lkIdx(arg, text); return i < 0 ? 'no song found and nothing is playing' : lkLine(A.tracks()[i]); } },
+      4: { name: 'lyrics', what: 'the lyrics', run: (arg, text) => {
+        const A = window.__ppApi, i = lkIdx(arg, text); if (i < 0) return 'no song found and nothing is playing';
+        const t = A.tracks()[i], tx = getTranscript(t.dbId);
+        return tx.lines.length ? songLine(t) + ' lyrics start: ' + tx.lines.slice(0, 8).join(' / ').slice(0, 380) : songLine(t) + ' has no saved lyrics yet (the user can tap Transcribe current track)'; } },
+      5: { name: 'library_search', what: 'your tagged songs', run: (arg, text) => {
+        const A = window.__ppApi, tr = A.tracks(), S = tagStats(); if (!S.tagged.length) return 'no songs are tagged yet, so moods and genres are unknown';
+        let ws = vibeWordsOf(arg || ''); if (!ws.length) ws = vibeWordsOf(text);
+        if (!ws.length) return 'no recognised mood, genre, instrument or tempo word in the request';
+        const r = findVibe(ws, /\b(or|either)\b/i.test(text)).slice(0, 6);
+        return r.length ? ws.join(' ') + ' songs: ' + r.map(i => lkLine(tr[i])).join('; ') : 'no tagged songs are ' + ws.join(' '); } },
+      6: { name: 'top_played', what: 'your listening stats', run: (arg, text) => {
+        let d = null; try { if (window.PPPortfolioApi && window.PPPortfolioApi.flush) window.PPPortfolioApi.flush(); d = JSON.parse(localStorage.getItem('pppSaveV1')); } catch (e) {}
+        if (!d) return 'no listening stats saved yet';
+        const top = (o, n, f) => Object.entries(o || {}).map(([k, v]) => [k, f ? f(v) : v]).filter(x => x[1] > 0).sort((x, y) => y[1] - x[1]).slice(0, n);
+        if (/artist/i.test((arg || '') + ' ' + text)) { const x = d.x || {}, a = top(x.artistPlays, 3); return a.length ? 'top artists by plays: ' + a.map(e => e[0] + ' (' + e[1] + ')').join(', ') : 'no artist stats yet'; }
+        const t = top(d.trackPlays, 3, v => v.count); return t.length ? 'most played songs: ' + t.map(e => (d.trackPlays[e[0]].title || 'Unknown') + ' (' + e[1] + ' plays)').join(', ') : 'no play counts yet'; } },
+      7: { name: 'library_stats', what: 'your library', run: () => { const A = window.__ppApi, S = tagStats(), pl = A.playlists().filter(x => !x.stemOf && !x.libOnly); return S.real.length + ' tracks, ' + S.tagged.length + ' tagged, ' + pl.length + ' playlists' + (pl.length ? ' (' + pl.slice(0, 8).map(x => x.name).join(', ') + ')' : ''); } },
+      8: { name: 'playlist', what: 'your playlists', run: (arg, text) => {
+        const A = window.__ppApi, tr = A.tracks(), pls = A.playlists().filter(x => !x.stemOf && !x.libOnly), inPl = p => tr.filter(x => !x.stem && (x.playlistIds || []).includes(p.id));
+        const q = blNrm(arg || ''), p = q && (pls.find(x => blNrm(x.name) === q) || pls.find(x => blNrm(x.name).includes(q)) || pls.find(x => q.includes(blNrm(x.name)) && blNrm(x.name).length > 2)) || pls.find(x => blNrm(x.name).length > 2 && blNrm(text).includes(blNrm(x.name)));
+        if (!p) return pls.length ? 'playlists: ' + pls.slice(0, 12).map(x => x.name + ' (' + inPl(x).length + ')').join(', ') + (q ? '. None is called "' + arg + '"' : '') : 'the user has no playlists yet';
+        const m = inPl(p); return 'playlist "' + p.name + '" has ' + m.length + ' track' + (m.length === 1 ? '' : 's') + (m.length ? ': ' + m.slice(0, 8).map(x => songLine(x)).join('; ') + (m.length > 8 ? '; and ' + (m.length - 8) + ' more' : '') : ''); } },
+      9: { name: 'song_playlists', what: 'where the song is saved', run: (arg, text) => {
+        const A = window.__ppApi, i = lkIdx(arg, text); if (i < 0) return 'no song found and nothing is playing';
+        const t = A.tracks()[i], ids = t.playlistIds || [], pl = A.playlists().filter(x => !x.stemOf && ids.includes(x.id));
+        return songLine(t) + (pl.length ? ' is in: ' + pl.map(x => x.name).join(', ') : ' is not in any playlist'); } }
+    };
+    const LK_MENU = 'You decide whether a music player assistant must look something up before replying. Reply with ONLY a number, or a number, a colon and a short search text. Menu:\n' +
+      '0 = no lookup needed (small talk, general chat)\n1 = the song that is playing right now (when the user says this, it, this one, or reacts to what is on)\n2: <title or artist> = search the library\n3: <title> = details of a song: mood, genre, tempo, key (current song if no title)\n4: <title> = the lyrics of a song (current song if no title)\n5: <mood, genre, instrument or tempo> = songs that match\n6: <song or artist> = what the user plays most\n7 = library size, tagged count\n8: <playlist name> = what is in a playlist, or list all playlists if no name\n9: <title> = which playlists a song is in (current song if no title)\n' +
+      'Examples:\nI love this song -> 1\ndo I have anything by Drake -> 2: Drake\nwhat is this song about -> 4\nany sad songs? -> 5: sad\nwhat do I listen to most -> 6: song\nhow many songs do I have -> 7\nwhat is in my gym playlist -> 8: gym\nwhat playlists do I have -> 8\nis this song in a playlist -> 9\nhow are you -> 0';
+    const lkParse = r => { const m = String(r || '').match(/(\d)\s*(?:[:\-\u2013]\s*)?([^\n]*)/); if (!m) return null; return { id: +m[1], arg: m[2].replace(/->.*$/, '').replace(/^["'\u201c\u2018]+|["'\u201d\u2019.!?]+$/g, '').trim().slice(0, 60) }; };
+    async function lookup(g, text, status) {
+      const done = [], seen = new Set();
+      for (let round = 0; round < 2; round++) {                          // at most two lookups per message
+        let plan = null;
+        try {
+          const ask = text + (done.length ? '\n[Already looked up: ' + done.map(d => d.tool + ' -> ' + d.out).join(' | ').slice(0, 300) + '. Reply 0 unless something else is still needed.]' : '');
+          const o = await g([{ role: 'system', content: LK_MENU }, { role: 'user', content: ask }], { max_new_tokens: 16, do_sample: false, temperature: 0, top_k: 1, repetition_penalty: 1 });
+          let r = o && o[0] && o[0].generated_text; r = Array.isArray(r) ? (r[r.length - 1] || {}).content : r; plan = lkParse(r);
+        } catch (e) { console.warn('lookup plan failed', e); }
+        if (!plan || !plan.id || !LK[plan.id]) break;
+        const key = plan.id + '|' + plan.arg.toLowerCase(); if (seen.has(key)) break; seen.add(key);
+        const tool = LK[plan.id]; status('Looking up ' + tool.what + '\u2026');
+        let out = ''; try { out = String(tool.run(plan.arg, text) || ''); } catch (e) { console.warn('lookup tool failed', e); out = 'the lookup failed'; }
+        done.push({ tool: tool.name + (plan.arg ? '(' + plan.arg + ')' : ''), out: out.slice(0, 600) });
+      }
+      return done.map(d => d.tool + ': ' + d.out).join('\n');
+    }
     async function send(raw, noEcho) {
       const text = String(raw || '').trim().slice(0, 400); if (!text || chatBusy) return;
       blLastSent = text.toLowerCase();
@@ -6702,7 +6799,8 @@
       const el = add('bot', '\u2026');
       try {
         const g = await ensureModel(s => { el.textContent = s; });
-        const msgs = [{ role: 'system', content: chatSys(text) }].concat(memN() ? hist.slice(-2 * memN()) : [], [{ role: 'user', content: text }]);
+        const found = await lookup(g, text, st => { el.textContent = st; }), np = nowCtx().match(/NOW PLAYING[^:]*: ([^.]*?)(?:, [^.]*)?\. You already/);
+        const msgs = [{ role: 'system', content: chatSys(text, found) }].concat(memN() ? hist.slice(-2 * memN()) : [], [{ role: 'user', content: text + (np ? '\n[Currently playing: ' + np[1] + ']' : '') }]);
         let acc = '', opts = { max_new_tokens: 80, do_sample: true, temperature: 0.75, top_p: 0.92, top_k: 50, repetition_penalty: 1.18 };
         const onPiece = t => { acc += t; el.textContent = acc; scrollDown(); };
         if (g.lm) opts.streamer = { callback_function: onPiece };                       // LiteRT-LM streams text itself, no TextStreamer or tokenizer needed

@@ -2399,6 +2399,31 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
   }
   #subtitle-overlay span.on{ pointer-events:auto; cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; }
   #subtitle-overlay.dragging span.on{ cursor:grabbing; }
+  /* Subtitle style controls (scale, outline, shadow, background, line spacing, weight) */
+  #subtitle-overlay span{ font-size:calc(16px * var(--sub-scale,1)); line-height:var(--sub-lh,1.4); font-weight:var(--sub-weight,400); background:rgba(0,0,0,var(--sub-bg,.7)); text-shadow:var(--sub-ts,none); }
+  #subtitle-overlay.size-s span{ font-size:calc(13px * var(--sub-scale,1)); }
+  #subtitle-overlay.size-l span{ font-size:calc(20px * var(--sub-scale,1)); }
+  #subtitle-dropdown input[type=range]{ width:100%; }
+  #subtitle-dropdown select{ flex:1; min-width:0; padding:6px 4px; background:var(--bg); border:1px solid var(--line); color:var(--text-dim); border-radius:6px; font-size:11px; }
+  /* Transcript sheet: tap a line to jump, Mark two lines to fix sync and drift */
+  #sub-tx{ position:fixed; left:0; right:0; bottom:0; height:min(72vh,560px); background:var(--bg); border-top:1px solid var(--line); border-radius:14px 14px 0 0; z-index:9500; display:none; flex-direction:column; box-shadow:0 -8px 30px rgba(0,0,0,.55); }
+  #sub-tx.open{ display:flex; }
+  #sub-tx .sx-head{ display:flex; gap:8px; align-items:center; padding:10px 12px 6px; }
+  #sub-tx .sx-head b{ font-size:13px; }
+  #sub-tx input[type=text]{ flex:1; min-width:0; padding:7px 9px; background:#2a2b31; color:var(--text); border:1px solid var(--line); border-radius:8px; font-size:13px; }
+  #sub-tx button{ padding:7px 10px; background:var(--bg); border:1px solid var(--line); color:var(--text-dim); border-radius:8px; font-size:12px; cursor:pointer; }
+  #sub-tx button:disabled{ opacity:.4; }
+  #sub-tx .sx-hint{ font-size:11px; color:var(--text-dim); padding:0 12px 6px; line-height:1.4; }
+  #sx-list{ flex:1; overflow-y:auto; padding:0 6px; -webkit-overflow-scrolling:touch; }
+  .sx-row{ display:flex; gap:8px; align-items:flex-start; padding:7px 6px; border-radius:8px; cursor:pointer; font-size:13px; }
+  .sx-row.on{ background:#1a2422; outline:1px solid var(--accent-dim); }
+  .sx-t{ flex:none; width:46px; color:var(--text-dim); font-size:11px; padding-top:2px; font-variant-numeric:tabular-nums; }
+  .sx-x{ flex:1; white-space:pre-line; overflow-wrap:anywhere; }
+  .sx-tr{ display:block; color:var(--text-dim); font-size:12px; }
+  .sx-row .sx-m{ flex:none; padding:3px 8px; font-size:11px; }
+  .sx-row.mk .sx-m{ border-color:var(--accent); color:var(--accent); }
+  #sub-tx .sx-foot{ display:flex; gap:6px; align-items:center; padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px)); border-top:1px solid var(--line); flex-wrap:wrap; }
+  #sx-info{ flex:1; font-size:11px; color:var(--text-dim); min-width:110px; }
   #subtitle-dropdown button:disabled{ opacity:.4; cursor:default; }
   #subtitle-dropdown button:disabled:hover{ border-color:var(--line); color:var(--text-dim); background:var(--bg); }
   #subtitle-dropdown #subtitle-status{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
@@ -2430,7 +2455,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
   #subtitle-dropdown{
     bottom:auto;
     top:calc(100% + 8px);
-    max-height:min(320px, 70vh);
+    max-height:min(460px, 70vh);
     overflow-y:auto;
   }
   #subtitle-dropdown.open, #sleep-dropdown.open{ display:block; }
@@ -4931,6 +4956,43 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
               <button data-font="impact" style="font-family:Impact,'Arial Narrow Bold',sans-serif;">Impact</button>
               <button data-font="casual" style="font-family:'Comic Sans MS','Chalkboard SE',cursive;">Casual</button>
             </div>
+            <hr>
+            <p class="tool-dropdown-label">Look</p>
+            <div class="tool-dropdown-row" id="subtitle-preset-row">
+              <button data-preset="box">Box</button>
+              <button data-preset="outline">Outline</button>
+              <button data-preset="cinema">Cinema</button>
+            </div>
+            <p class="tool-dropdown-label">Text size <span id="sub-scale-val"></span></p>
+            <div class="tool-dropdown-row"><input type="range" id="sub-scale" min="50" max="250" step="5" value="100"></div>
+            <p class="tool-dropdown-label">Outline <span id="sub-outline-val"></span></p>
+            <div class="tool-dropdown-row"><input type="range" id="sub-outline" min="0" max="8" step="1" value="0"></div>
+            <p class="tool-dropdown-label">Shadow <span id="sub-shadow-val"></span></p>
+            <div class="tool-dropdown-row"><input type="range" id="sub-shadow" min="0" max="10" step="1" value="0"></div>
+            <p class="tool-dropdown-label">Background <span id="sub-bg-val"></span></p>
+            <div class="tool-dropdown-row"><input type="range" id="sub-bg" min="0" max="100" step="5" value="70"></div>
+            <p class="tool-dropdown-label">Line spacing <span id="sub-lh-val"></span></p>
+            <div class="tool-dropdown-row"><input type="range" id="sub-lh" min="100" max="200" step="10" value="140"></div>
+            <div class="tool-dropdown-row" id="subtitle-toggle-row">
+              <button data-tg="bold">Bold</button>
+              <button data-tg="sdh" title="Hides lines like [music], (sighs) and lines with music notes">Hide [sounds] and music</button>
+            </div>
+            <hr>
+            <button class="full-row" id="sub-tx-btn">Transcript, jump and fix sync…</button>
+            <div id="sub-tr-block">
+              <hr>
+              <p class="tool-dropdown-label">Translate subtitles <span style="opacity:.6;font-weight:400;">· on device</span></p>
+              <div class="tool-dropdown-row">
+                <select id="sub-tr-lang"></select>
+                <button id="sub-tr-go">Translate</button>
+              </div>
+              <p class="tool-dropdown-label">Show</p>
+              <div class="tool-dropdown-row" id="sub-tr-mode-row">
+                <button data-m="orig">Original</button>
+                <button data-m="both">Both</button>
+                <button data-m="tr">Translation</button>
+              </div>
+            </div>
           </div>
         </div>
         <div style="position:relative;">
@@ -5028,6 +5090,12 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
 
     </div>
     <input type="file" id="subtitle-input" accept=".vtt,.srt,.ass,.ssa,text/vtt">
+    <div id="sub-tx" role="dialog" aria-label="Subtitle transcript">
+      <div class="sx-head"><b>Transcript</b><input type="text" id="sx-q" placeholder="Search lines"><button id="sx-close">Close</button></div>
+      <div class="sx-hint">Tap a line to jump to it. To fix sync: pause where a line starts and tap Mark on it. Mark a second line far later in the video to fix drift too, then Apply.</div>
+      <div id="sx-list"></div>
+      <div class="sx-foot"><span id="sx-info">No marks</span><button id="sx-clear">Clear</button><button id="sx-undo" disabled>Undo sync</button><button id="sx-apply" disabled>Apply</button></div>
+    </div>
     <input type="file" id="lrc-input" accept=".lrc,.txt,text/plain" style="display:none">
     <input type="file" id="m3u-input" accept=".m3u,.m3u8,audio/mpegurl,audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain" style="display:none">
     <div id="extras-panel" role="dialog" aria-label="Bookmarks, chapters and lyrics">
@@ -8065,6 +8133,9 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   let subtitlePreview = false;  // show a sample line while the subtitle menu is open so it can be dragged
   let subtitleColor = '#ffffff';
   let subtitleFont = 'default';
+  let subtitleStyle = { scale:100, outline:0, shadow:0, bg:70, lh:140, bold:0, sdh:0 };   // slider units, see applySubtitleStyle
+  let subtitleTrMode = 'both';  // 'orig' | 'both' | 'tr'
+  let subtitleTrLang = '';
   let subtitleLatencyMs = 0; // shifts subtitle timing AND delays the picture itself (see videoDelayEngine) to match audio arriving late over Bluetooth
   // Motion smoothing state (engine is further down, near the delay engine).
   const memcCanvas = document.getElementById('memc-canvas');
@@ -8490,6 +8561,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       subtitleY,
       subtitleColor,
       subtitleFont,
+      subtitleStyle,
+      subtitleTrMode,
       activeFilter,
       filterStrength,
       duotoneDark,
@@ -9311,7 +9384,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       if (!c || !c.text || !isFinite(c.start) || !isFinite(c.end)) return;
       const start = Math.max(0, c.start);
       if (c.end <= start) return;
-      out.push({ start, end: c.end, text: c.text, style: c.style || null, fx: c.fx || null });
+      out.push({ start, end: c.end, text: c.text, tr: c.tr || '', style: c.style || null, fx: c.fx || null });
     });
     out.sort((a, b) => (a.start - b.start) || (a.end - b.end));
     return out;
@@ -9342,14 +9415,14 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (Array.isArray(raw)){
       cues = raw;
     } else if (typeof raw === 'object' && Array.isArray(raw.c)){
-      cues = raw.c.map(t => Array.isArray(t) ? { start:+t[0], end:+t[1], text:String(t[2]) } : null);
+      cues = raw.c.map(t => Array.isArray(t) ? { start:+t[0], end:+t[1], text:String(t[2]), tr:t[3] ? String(t[3]) : '' } : null);
       on = raw.on !== 0 && raw.on !== false;
       offset = isFinite(+raw.o) ? +raw.o : 0;
       name = typeof raw.n === 'string' ? raw.n : '';
     }
     if (!cues) return null;
     cues = finalizeSubtitleCues(cues);
-    return cues.length ? { cues, on, offset, name } : null;
+    return cues.length ? { cues, on, offset, name, trLang: (raw && typeof raw.tl === 'string') ? raw.tl : '' } : null;
   }
   function getSavedSubtitleEntry(dbId){
     return readSubtitleEntry(loadSubtitleStore()[dbId]);
@@ -9361,8 +9434,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     delete all[dbId];
     if (entry){
       all[dbId] = {
-        v: 2, n: entry.name || '', on: entry.on ? 1 : 0, o: +entry.offset || 0,
-        c: entry.cues.map(c => [+c.start.toFixed(3), +c.end.toFixed(3), c.text])
+        v: 2, n: entry.name || '', on: entry.on ? 1 : 0, o: +entry.offset || 0, tl: entry.trLang || '',
+        c: entry.cues.map(c => c.tr ? [+c.start.toFixed(3), +c.end.toFixed(3), c.text, c.tr] : [+c.start.toFixed(3), +c.end.toFixed(3), c.text])
       };
     }
     for (;;){
@@ -9390,6 +9463,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     subtitlesOn = subtitleCues.length > 0 && opts.on !== false;
     subtitleOffsetSec = +opts.offset || 0;
     subtitleFileName = opts.name || '';
+    subtitleTrLang = opts.trLang || '';
     subtitleLastText = null;
     updateSubtitleBtnState();
     renderSubtitleFrame();
@@ -9397,7 +9471,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   }
   function applySavedSubtitles(dbId){
     const e = getSavedSubtitleEntry(dbId);
-    if (e) setSubtitleCues(e.cues, { on:e.on, offset:e.offset, name:e.name });
+    if (e) setSubtitleCues(e.cues, { on:e.on, offset:e.offset, name:e.name, trLang:e.trLang });
     else setSubtitleCues([]);
   }
   // Saves on/off, offset and cues for the current track (debounced unless immediate).
@@ -9406,7 +9480,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const run = () => {
       const t = currentIndex !== -1 ? tracks[currentIndex] : null;
       if (!t || !subtitleCues.length) return;
-      writeSubtitleEntry(t.dbId, { cues:subtitleCues, on:subtitlesOn, offset:subtitleOffsetSec, name:subtitleFileName });
+      writeSubtitleEntry(t.dbId, { cues:subtitleCues, on:subtitlesOn, offset:subtitleOffsetSec, name:subtitleFileName, trLang:subtitleTrLang });
     };
     if (immediate) run(); else subtitleSaveTimer = setTimeout(run, 500);
   }
@@ -9422,11 +9496,22 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       : 'No subtitles loaded';
     subtitleOffsetVal.textContent = (subtitleOffsetSec > 0 ? '+' : '') + subtitleOffsetSec.toFixed(1) + 's';
     subtitleOffsetRow.querySelectorAll('button').forEach(b => { b.disabled = !has; });
+    { const txb = document.getElementById('sub-tx-btn'); if (txb) txb.disabled = !has; }
+    try { subTrUi(has); txRefresh(); } catch(e){ /* panels not built yet during early init */ }
   }
 
   // Every cue active at time t (overlapping cues stack instead of the first
   // one hiding the rest). Binary search + a bounded look-back, so it stays
   // cheap on feature-length files.
+  const subSdh = l => /^[-\u2013\s]*[\[\(][^\]\)]*[\]\)]\s*$/.test(l) || /^[\s-]*[\u266a\u266b\u266c]|[\u266a\u266b\u266c]\s*$/.test(l);
+  // What one cue shows: original, translation or both, with sound-tag lines optionally removed.
+  function subDisp(c){
+    let main = c.text, tr = c.tr || '';
+    if (subtitleStyle.sdh){ const f = x => x.split('\n').filter(l => !subSdh(l)).join('\n').trim(); main = f(main); if (tr) tr = f(tr); }
+    if (!main) return '';
+    if (!tr) return main;
+    return subtitleTrMode === 'tr' ? tr : subtitleTrMode === 'orig' ? main : main + '\n' + tr;
+  }
   function activeSubtitleText(t){
     const n = subtitleCues.length;
     window.__ppSubSt = null;
@@ -9440,7 +9525,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     for (let i = idx; i >= 0 && hits.length < 4; i--){
       const c = subtitleCues[i];
       if (c.start < t - subtitleMaxDur) break;
-      if (t < c.end && hits.indexOf(c.text) === -1){ if (window.__ppAssOn && c.fx){ (window.__ppSubFx = window.__ppSubFx || []).push(c); hits.push(null); continue; } if (!hits.length) window.__ppSubSt = c.style || null; hits.push(c.text); }
+      const dsp = t < c.end ? subDisp(c) : '';
+      if (dsp && hits.indexOf(dsp) === -1){ if (window.__ppAssOn && c.fx){ (window.__ppSubFx = window.__ppSubFx || []).push(c); hits.push(null); continue; } if (!hits.length) window.__ppSubSt = c.style || null; hits.push(dsp); }
     }
     return hits.reverse().filter(x => x !== null).join('\n');
   }
@@ -11647,6 +11733,147 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       renderSubtitleFrame();
     }).observe(subtitleDropdown, { attributes:true, attributeFilter:['class'] });
   })();
+
+  // ---------- Subtitle look: presets, sliders, outline/shadow/background ----------
+  const SUB_PRESETS = {
+    box:     { scale:100, outline:0, shadow:0,  bg:70, lh:140, bold:0 },
+    outline: { scale:100, outline:3, shadow:3,  bg:0,  lh:140, bold:1 },
+    cinema:  { scale:110, outline:2, shadow:6,  bg:0,  lh:135, bold:0 }
+  };
+  const SUB_SLIDERS = [
+    ['sub-scale', 'scale', v => v + '%'], ['sub-outline', 'outline', v => (v / 2) + 'px'], ['sub-shadow', 'shadow', v => v + 'px'],
+    ['sub-bg', 'bg', v => v + '%'], ['sub-lh', 'lh', v => (v / 100).toFixed(1)]
+  ];
+  function applySubtitleStyle(){
+    const st = subtitleStyle, o = st.outline / 2, sh = st.shadow, ts = [];
+    if (o > 0) [[1,0],[-1,0],[0,1],[0,-1],[.7,.7],[-.7,.7],[.7,-.7],[-.7,-.7]].forEach(d => ts.push((d[0] * o).toFixed(2) + 'px ' + (d[1] * o).toFixed(2) + 'px 0 #000'));
+    if (sh > 0) ts.push('0 ' + (sh / 3).toFixed(1) + 'px ' + sh + 'px rgba(0,0,0,.85)');
+    const css = subtitleOverlay.style;
+    css.setProperty('--sub-scale', st.scale / 100); css.setProperty('--sub-bg', st.bg / 100); css.setProperty('--sub-lh', st.lh / 100);
+    css.setProperty('--sub-weight', st.bold ? 700 : 400); css.setProperty('--sub-ts', ts.join(',') || 'none');
+    SUB_SLIDERS.forEach(([id, key, fmt]) => { const el = document.getElementById(id), lb = document.getElementById(id + '-val'); if (el) el.value = st[key]; if (lb) lb.textContent = fmt(st[key]); });
+    document.querySelectorAll('#subtitle-toggle-row button').forEach(b => b.classList.toggle('active', !!st[b.dataset.tg]));
+    document.querySelectorAll('#subtitle-preset-row button').forEach(b => { const pr = SUB_PRESETS[b.dataset.preset]; b.classList.toggle('active', Object.keys(pr).every(k => pr[k] === st[k])); });
+    document.querySelectorAll('#sub-tr-mode-row button').forEach(b => b.classList.toggle('active', b.dataset.m === subtitleTrMode));
+    subtitleLastText = null; renderSubtitleFrame();
+  }
+  SUB_SLIDERS.forEach(([id, key]) => {
+    const el = document.getElementById(id);
+    el.addEventListener('input', () => { subtitleStyle[key] = +el.value; applySubtitleStyle(); });
+    el.addEventListener('change', saveSettings);
+  });
+  document.querySelectorAll('#subtitle-preset-row button').forEach(b => b.addEventListener('click', () => { Object.assign(subtitleStyle, SUB_PRESETS[b.dataset.preset]); applySubtitleStyle(); saveSettings(); }));
+  document.querySelectorAll('#subtitle-toggle-row button').forEach(b => b.addEventListener('click', () => { subtitleStyle[b.dataset.tg] = subtitleStyle[b.dataset.tg] ? 0 : 1; applySubtitleStyle(); saveSettings(); }));
+
+  // ---------- Translate subtitles (device translator, Android app only) ----------
+  const subNT = () => window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PPTranslate;
+  const SUB_TR_LANGS = [['en','English'],['es','Spanish'],['fr','French'],['de','German'],['it','Italian'],['pt','Portuguese'],['nl','Dutch'],['tr','Turkish'],['id','Indonesian'],['sv','Swedish'],['pl','Polish'],['ru','Russian'],['uk','Ukrainian'],['ar','Arabic'],['hi','Hindi'],['ja','Japanese'],['ko','Korean'],['zh','Chinese'],['th','Thai'],['he','Hebrew'],['el','Greek']];
+  const subTrLang = document.getElementById('sub-tr-lang'), subTrGo = document.getElementById('sub-tr-go'), subTrBlock = document.getElementById('sub-tr-block');
+  subTrLang.innerHTML = SUB_TR_LANGS.map(l => '<option value="' + l[0] + '">' + l[1] + '</option>').join('');
+  subTrLang.value = 'en';
+  let subTrBusy = false;
+  function subTrUi(has){
+    subTrBlock.style.display = subNT() ? '' : 'none';
+    const any = subtitleCues.some(c => c.tr);
+    subTrGo.disabled = !has || subTrBusy;
+    document.querySelectorAll('#sub-tr-mode-row button').forEach(b => { b.disabled = !any; });
+  }
+  async function translateSubtitles(to){
+    const NT = subNT(); if (!NT || !subtitleCues.length || subTrBusy) return;
+    subTrBusy = true; subTrUi(true);
+    const cues = subtitleCues, texts = cues.map(c => c.text.replace(/\s*\n\s*/g, ' ').trim()), uniq = Array.from(new Set(texts.filter(Boolean))), map = new Map();
+    let from = '';
+    try {
+      for (let a = 0; a < uniq.length; a += 15){
+        subtitleStatus.textContent = 'Translating ' + a + ' of ' + uniq.length + ' lines' + (a ? '' : ' (first use downloads a language pack)') + '…';
+        const r = await NT.translate({ lines: uniq.slice(a, a + 15), from, to });
+        if (cues !== subtitleCues) throw new Error('The video changed.');
+        if (!from && r.from) from = r.from;
+        (r.lines || []).forEach((l, k) => map.set(uniq[a + k], String(l || '').trim()));
+      }
+      let n = 0; cues.forEach((c, i) => { const tr = map.get(texts[i]); c.tr = tr && tr !== texts[i] ? tr : ''; if (c.tr) n++; });
+      if (!n) showToast('These subtitles already look like ' + subTrLang.options[subTrLang.selectedIndex].text + '.', 'error');
+      else { subtitleTrLang = to; if (subtitleTrMode === 'orig') subtitleTrMode = 'both'; persistSubtitleState(true); saveSettings(); showToast('Translated ' + n + ' lines. Choose Original, Both or Translation under Show.'); }
+    } catch (e){ showToast('Could not translate: ' + String((e && e.message) || e).slice(0, 120), 'error'); }
+    subTrBusy = false; subtitleLastText = null; updateSubtitleBtnState(); applySubtitleStyle();
+  }
+  subTrGo.addEventListener('click', () => translateSubtitles(subTrLang.value));
+  document.querySelectorAll('#sub-tr-mode-row button').forEach(b => b.addEventListener('click', () => { subtitleTrMode = b.dataset.m; applySubtitleStyle(); saveSettings(); }));
+
+  // ---------- Transcript: tap a line to jump, search, and a two-mark sync/drift fix ----------
+  const subTx = document.getElementById('sub-tx'), subTxList = document.getElementById('sx-list'), subTxQ = document.getElementById('sx-q'), subTxInfo = document.getElementById('sx-info');
+  const subTxApply = document.getElementById('sx-apply'), subTxUndoBtn = document.getElementById('sx-undo');
+  let txOpen = false, txAnch = [], txUndo = null, txActive = -1, txEls = [];
+  const txFmt = x => { x = Math.max(0, x); const h = Math.floor(x / 3600), m = Math.floor(x % 3600 / 60), sc = Math.floor(x % 60); return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(sc).padStart(2, '0'); };
+  const txLat = () => Math.max(effLatencyMs(), 0) / 1000 + memcExtraSec;
+  function txBuild(){
+    subTxList.textContent = ''; txEls = []; txActive = -1;
+    const fr = document.createDocumentFragment();
+    subtitleCues.forEach((c, i) => {
+      const r = document.createElement('div'); r.className = 'sx-row'; r.dataset.i = i;
+      const t = document.createElement('span'); t.className = 'sx-t'; t.textContent = txFmt(c.start + subtitleOffsetSec);
+      const x = document.createElement('span'); x.className = 'sx-x'; x.textContent = c.text;
+      if (c.tr){ const y = document.createElement('span'); y.className = 'sx-tr'; y.textContent = c.tr; x.appendChild(y); }
+      const m = document.createElement('button'); m.className = 'sx-m'; m.textContent = 'Mark';
+      r.appendChild(t); r.appendChild(x); r.appendChild(m); fr.appendChild(r); txEls.push(r);
+    });
+    subTxList.appendChild(fr); txFilter(); txMarks();
+  }
+  function txFilter(){
+    const q = subTxQ.value.trim().toLowerCase();
+    txEls.forEach((r, i) => { const c = subtitleCues[i]; r.style.display = !q || (c.text + ' ' + (c.tr || '')).toLowerCase().indexOf(q) !== -1 ? '' : 'none'; });
+  }
+  function txMarks(){
+    txEls.forEach((r, i) => { const on = txAnch.some(a => a.i === i); r.classList.toggle('mk', on); r.querySelector('.sx-m').textContent = on ? 'Marked' : 'Mark'; });
+    subTxInfo.textContent = txAnch.length === 0 ? 'No marks' : txAnch.length === 1 ? '1 mark: shifts all lines. Add a second far away to fix drift.' : '2 marks: shifts and stretches to fit.';
+    subTxApply.disabled = txAnch.length === 0; subTxUndoBtn.disabled = !txUndo;
+  }
+  function txMark(i){
+    if (txAnch.some(a => a.i === i)){ txAnch = txAnch.filter(a => a.i !== i); }
+    else { if (txAnch.length >= 2) txAnch.shift(); txAnch.push({ i, s: subtitleCues[i].start + subtitleOffsetSec, p: videoEl.currentTime - txLat() }); }
+    txMarks();
+  }
+  function txApply(){
+    if (!txAnch.length) return;
+    const an = txAnch.slice().sort((a, b) => a.s - b.s); let a = 1, b = an[0].p - an[0].s;
+    if (an.length === 2){
+      if (Math.abs(an[1].s - an[0].s) < 60){ showToast('Pick two lines at least a minute apart.', 'error'); return; }
+      a = (an[1].p - an[0].p) / (an[1].s - an[0].s);
+      if (!(a > 0.8 && a < 1.25)){ showToast('Those marks do not line up (speed ' + a.toFixed(3) + 'x). Check which lines you marked.', 'error'); return; }
+      b = an[0].p - a * an[0].s;
+    }
+    txUndo = { cues: subtitleCues.map(c => Object.assign({}, c)), offset: subtitleOffsetSec };
+    const out = subtitleCues.map(c => Object.assign({}, c, { start: Math.max(0, a * (c.start + subtitleOffsetSec) + b), end: Math.max(0.1, a * (c.end + subtitleOffsetSec) + b) }));
+    setSubtitleCues(out, { on: subtitlesOn, offset: 0, name: subtitleFileName, trLang: subtitleTrLang });
+    persistSubtitleState(true); txAnch = []; txBuild();
+    showToast('Sync fixed' + (an.length === 2 ? ' (speed ' + a.toFixed(4) + 'x).' : '.'));
+  }
+  function txRefresh(){ if (txOpen){ txAnch = []; txBuild(); } }
+  function txTick(){
+    if (!txOpen || !subtitleCues.length) return;
+    const t = videoEl.currentTime - txLat() - subtitleOffsetSec; let lo = 0, hi = subtitleCues.length - 1, idx = -1;
+    while (lo <= hi){ const mid = (lo + hi) >> 1; if (subtitleCues[mid].start <= t){ idx = mid; lo = mid + 1; } else hi = mid - 1; }
+    if (idx === txActive) return;
+    if (txActive >= 0 && txEls[txActive]) txEls[txActive].classList.remove('on');
+    txActive = idx; const el = txEls[idx];
+    if (el){ el.classList.add('on'); if (!subTxQ.value.trim() && el.style.display !== 'none') el.scrollIntoView({ block: 'center' }); }
+  }
+  function txSet(on){ txOpen = on; subTx.classList.toggle('open', on); if (on){ txAnch = []; txBuild(); txTick(); } }
+  document.getElementById('sub-tx-btn').addEventListener('click', () => { subtitleDropdown.classList.remove('open'); if (subtitleCues.length) txSet(true); });
+  document.getElementById('sx-close').addEventListener('click', () => txSet(false));
+  document.getElementById('sx-clear').addEventListener('click', () => { txAnch = []; txMarks(); });
+  subTxApply.addEventListener('click', txApply);
+  subTxUndoBtn.addEventListener('click', () => {
+    if (!txUndo) return; const u = txUndo; txUndo = null;
+    setSubtitleCues(u.cues, { on: subtitlesOn, offset: u.offset, name: subtitleFileName, trLang: subtitleTrLang }); persistSubtitleState(true); txAnch = []; txBuild(); showToast('Sync change undone.');
+  });
+  subTxQ.addEventListener('input', txFilter);
+  subTxList.addEventListener('click', e => {
+    const r = e.target.closest('.sx-row'); if (!r) return; const i = +r.dataset.i;
+    if (e.target.classList.contains('sx-m')){ txMark(i); return; }
+    videoEl.currentTime = Math.max(0, subtitleCues[i].start + subtitleOffsetSec + txLat() - 0.05);
+  });
+  videoEl.addEventListener('timeupdate', txTick); videoEl.addEventListener('seeked', txTick);
 
   function applySubtitleColor(color){
     subtitleColor = color;
@@ -20114,6 +20341,12 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     } else {
       applySubtitleFont(subtitleFont);
     }
+    if (s.subtitleStyle && typeof s.subtitleStyle === 'object'){
+      const lim = { scale:[50,250], outline:[0,8], shadow:[0,10], bg:[0,100], lh:[100,200], bold:[0,1], sdh:[0,1] };
+      Object.keys(lim).forEach(k => { const v = +s.subtitleStyle[k]; if (isFinite(v)) subtitleStyle[k] = Math.max(lim[k][0], Math.min(lim[k][1], v)); });
+    }
+    if (s.subtitleTrMode === 'orig' || s.subtitleTrMode === 'both' || s.subtitleTrMode === 'tr') subtitleTrMode = s.subtitleTrMode;
+    applySubtitleStyle();
 
     const FILTER_IDS = new Set([...Object.keys(VIDEO_FILTERS), 'posterize', 'duotone']);
     if (typeof s.activeFilter === 'string' && FILTER_IDS.has(s.activeFilter)){
