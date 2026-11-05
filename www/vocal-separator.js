@@ -1413,7 +1413,7 @@
     tiny: ['Xenova/whisper-tiny', 'Any language: Tiny (~40 MB)'],
     base: ['Xenova/whisper-base', 'Any language: Base (~75 MB)'],
     small: ['Xenova/whisper-small', 'Any language: Small (~250 MB)'],
-    distil_med_en: ['Xenova/distil-medium.en', 'English Distil-Medium (~400 MB, very accurate, big phones)', { en: 1, big: 400, noGpu: 1 }],
+    distil_med_en: ['distil-whisper/distil-medium.en', 'English Distil-Medium (~400 MB, very accurate, big phones)', { en: 1, big: 400, noGpu: 1 }],
     medium_en: ['Xenova/whisper-medium.en', 'English Medium (~750 MB, most accurate, flagship phones, slow)', { en: 1, big: 750, noGpu: 1 }],
     turbo: ['onnx-community/whisper-large-v3-turbo', 'Any language: Large-v3 Turbo (~1 GB, experimental, flagship phones)', { big: 1000, mel: 128, noGpu: 1 }]
   };
@@ -3238,6 +3238,13 @@
     const CHAT_MODELS = {
       qwen05:  { id: 'onnx-community/Qwen2.5-0.5B-Instruct', label: 'Qwen2.5 0.5B (default, better, ~520 MB)', mb: 520, file: 'onnx/model_quantized.onnx', eos: ['<|im_end|>', '<|endoftext|>'], lid: 'llm_qwen05' },
       llama1b: { id: 'onnx-community/Llama-3.2-1B-Instruct', label: 'Llama 3.2 1B (most capable, ~1.3 GB, needs a strong phone)', mb: 1300, file: 'onnx/model_quantized.onnx', eos: ['<|eot_id|>', '<|end_of_text|>'], lid: 'llm_llama1b' },
+      // LiteRT-LM models (Android app only): one .litertlm file, the runtime does tokenizing, chat template and sampling.
+      // To add another, copy this line and use the exact file name from the model's "Files" page on Hugging Face.
+      gemma4:  { id: 'litert-community/gemma-4-E2B-it-litert-lm', label: 'Gemma 4 E2B (LiteRT-LM, app only, ~2.4 GB, strong phone)', mb: 2400, lm: true, lid: 'lm_gemma4_e2b', url: 'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm' },
+      gemma4e4b: { id: 'litert-community/gemma-4-E4B-it-litert-lm', label: 'Gemma 4 E4B (LiteRT-LM, app only, ~3.7 GB, flagship phones)', mb: 3650, lm: true, lid: 'lm_gemma4_e4b', url: 'https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm' },
+      qwen15lm:  { id: 'litert-community/Qwen2.5-1.5B-Instruct', label: 'Qwen2.5 1.5B (LiteRT-LM, app only, ~1.6 GB)', mb: 1600, lm: true, lid: 'lm_qwen15_q8', url: 'https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/main/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.litertlm' },
+      qwen15i4:  { id: 'leuconoe/litert-lm-unity-quantized', label: 'Qwen2.5 1.5B 4-bit (LiteRT-LM, app only, ~790 MB, community build)', mb: 790, lm: true, lid: 'lm_qwen15_i4', url: 'https://huggingface.co/leuconoe/litert-lm-unity-quantized/resolve/main/qwen2.5-1.5b-instruct/Qwen2.5-1.5B-Instruct_wi4b64_ekv4096.litertlm' },
+      qwen05i4:  { id: 'leuconoe/litert-lm-unity-quantized', label: 'Qwen2.5 0.5B 4-bit (LiteRT-LM, app only, ~265 MB, community build, short memory)', mb: 265, lm: true, lid: 'lm_qwen05_i4', url: 'https://huggingface.co/leuconoe/litert-lm-unity-quantized/resolve/main/qwen2.5-0.5b-instruct/Qwen2.5-0.5B-Instruct_wi4b64_ekv1280.litertlm' },
       smol135: { id: 'HuggingFaceTB/SmolLM2-135M-Instruct', label: 'SmolLM2 135M (tiny, ~150 MB, the old one)', mb: 150, file: 'onnx/model_quantized.onnx', eos: ['<|im_end|>'], lid: 'llm_smollm2' }
     };
     // Users who already downloaded the old SmolLM2 keep it; everyone else gets Qwen2.5 0.5B.
@@ -3248,7 +3255,8 @@
         return localStorage.getItem('ppvChatDl') === '1' ? 'smol135' : 'qwen05';
       } catch (e) { return 'qwen05'; }
     };
-    let CHAT_MODEL = CHAT_MODELS[chatKey()].id;
+    const webId = k => (CHAT_MODELS[k].lm ? CHAT_MODELS.qwen05 : CHAT_MODELS[k]).id;   // the browser cannot run .litertlm, so it uses Qwen instead
+    let CHAT_MODEL = webId(chatKey());
     let pendingJob = null, holdModel = false, idleT = 0, chatOn = lsGet('ppvChat') === '1', gen = null, genP = null, chatBusy = false, dlOk = false, hist = [];
     // How many past exchanges (your message + Bloop's reply) he remembers during a chat. 0 = none. More memory = slower and more RAM on a tiny model.
     const MEM_MAX = 8, memN = () => { const v = parseInt(lsGet('ppvMem'), 10); return isNaN(v) ? 4 : Math.max(0, Math.min(MEM_MAX, v)); };
@@ -3870,7 +3878,7 @@
         (t ? " Now playing: " + t.title + (c ? " (" + vibes(c).join(', ') + ")." : ".") : "");
     };
     // Android app: the chat model runs in Java (LlmNative: KV cache + sampling on the CPU). Tokenizing stays here, only token ids cross the bridge.
-    const llmId = () => CHAT_MODELS[chatKey()].lid, llmUrl = () => 'https://huggingface.co/' + CHAT_MODELS[chatKey()].id + '/resolve/main/' + CHAT_MODELS[chatKey()].file;
+    const llmId = () => CHAT_MODELS[chatKey()].lid, llmUrl = () => CHAT_MODELS[chatKey()].url || ('https://huggingface.co/' + CHAT_MODELS[chatKey()].id + '/resolve/main/' + CHAT_MODELS[chatKey()].file);
     let llmNativeFailed = false;                                     // set when the Java runtime rejects the model: use the web version for the rest of the session
     async function nativeBrain(say) {
       const pcb = p => { if (p && p.status === 'progress' && p.file) say('Downloading ' + p.file.split('/').pop() + ' ' + Math.round(p.progress || 0) + '%'); };
@@ -3899,12 +3907,35 @@
       g.dispose = async () => { try { await NP.llmUnload(); } catch (e) {} };
       return g;
     }
+    // Android app, LiteRT-LM: plain text goes in, text streams back. No tokenizer or token ids on this side.
+    async function nativeLm(say) {
+      const m = CHAT_MODELS[chatKey()];
+      if (!(await NP.exists({ id: m.lid })).ready) await nativeFetch(m.lid, m.url, say);
+      say('Starting the model\u2026');
+      await NP.lmLoad({ id: m.lid, gpu: lsGet('ppvChatGpu') === '1' });
+      const g = async (msgs, opts) => {
+        opts = opts || {};
+        const sys = msgs.length && msgs[0].role === 'system' ? String(msgs[0].content) : '';
+        const rest = msgs.filter(x => x.role !== 'system'), last = rest.pop();
+        const history = rest.map(x => ({ role: x.role === 'assistant' ? 'assistant' : 'user', text: String(x.content) }));
+        const cb = opts.streamer && opts.streamer.callback_function, greedy = opts.do_sample === false;
+        const h = await NP.addListener('lmText', e => { if (cb && e && e.text) cb(e.text); });
+        let out;
+        try { out = await NP.lmChat({ system: sys, history, user: last ? String(last.content) : '', maxNew: opts.max_new_tokens || 60, temp: greedy ? 0 : (opts.temperature == null ? 0.5 : opts.temperature), topK: greedy ? 1 : (opts.top_k || 40), topP: opts.top_p == null ? 0.9 : opts.top_p, rep: opts.repetition_penalty || 1.1 }); }
+        finally { h.remove(); }
+        const text = String((out && out.text) || '').trim();
+        return [{ generated_text: msgs.concat([{ role: 'assistant', content: text }]) }];
+      };
+      g.lm = true;
+      g.dispose = async () => { try { await NP.lmUnload(); } catch (e) {} };
+      return g;
+    }
     async function ensureModel(say) {
       if (gen) return gen; if (genP) return genP;
       genP = (async () => {
         say('Loading my brain\u2026'); if (!tfMod) tfMod = await import(TF_URL);
         if (NATIVE && !llmNativeFailed) {
-          try { gen = await nativeBrain(say); lsSet('ppvChatDl', '1'); return gen; }
+          try { gen = await (CHAT_MODELS[chatKey()].lm ? nativeLm(say) : nativeBrain(say)); lsSet('ppvChatDl', '1'); return gen; }
           catch (e) { console.warn('Native chat model failed, using the web version', e); llmNativeFailed = true; say('Native brain unavailable, using the web version…'); }
         }
         const gpuOn = lsGet('ppvChatGpu') === '1' && navigator.gpu;
@@ -4019,7 +4050,7 @@
     async function setChatModel(k) {
       if (!CHAT_MODELS[k]) return;
       try { localStorage.setItem('ppvChatModel', k); } catch (e) {}
-      CHAT_MODEL = CHAT_MODELS[k].id; llmNativeFailed = false; dlOk = false;
+      CHAT_MODEL = webId(k); llmNativeFailed = false; dlOk = false;
       await unloadModel();
       lsSet('ppvChatDl', '0');
     }
@@ -6538,7 +6569,9 @@
         const g = await ensureModel(s => { el.textContent = s; });
         const msgs = [{ role: 'system', content: chatSys(text) }].concat(memN() ? hist.slice(-2 * memN()) : [], [{ role: 'user', content: text }]);
         let acc = '', opts = { max_new_tokens: 80, do_sample: true, temperature: 0.75, top_p: 0.92, top_k: 50, repetition_penalty: 1.18 };
-        if (tfMod.TextStreamer) opts.streamer = new tfMod.TextStreamer(g.tokenizer, { skip_prompt: true, skip_special_tokens: true, callback_function: t => { acc += t; el.textContent = acc; scrollDown(); } });
+        const onPiece = t => { acc += t; el.textContent = acc; scrollDown(); };
+        if (g.lm) opts.streamer = { callback_function: onPiece };                       // LiteRT-LM streams text itself, no TextStreamer or tokenizer needed
+        else if (tfMod.TextStreamer) opts.streamer = new tfMod.TextStreamer(g.tokenizer, { skip_prompt: true, skip_special_tokens: true, callback_function: onPiece });
         const out = await g(msgs, opts);
         let r = out && out[0] && out[0].generated_text; r = Array.isArray(r) ? (r[r.length - 1] || {}).content : (r || acc);
         r = String(r || acc).trim().replace(/\s+\n/g, '\n') || "Hmm, I lost my words. Try again?";
@@ -6639,7 +6672,7 @@
       const cbr = p.querySelector('#ppv-brain-on'); cbr.checked = mas.chat.brainOn(); cbr.onchange = () => mas.chat.setBrain(cbr.checked);
       cbr.closest('label').insertAdjacentHTML('afterend', '<label class="ppv-c" style="display:block">Chat model: <select id="ppv-chat-model" style="width:100%;display:block"></select></label>');
       const cmod = p.querySelector('#ppv-chat-model');
-      cmod.innerHTML = Object.keys(mas.chat.models).map(k => '<option value="' + k + '">' + mas.chat.models[k].label + '</option>').join('');
+      cmod.innerHTML = Object.keys(mas.chat.models).filter(k => NATIVE || !mas.chat.models[k].lm).map(k => '<option value="' + k + '">' + mas.chat.models[k].label + '</option>').join('');
       cmod.value = mas.chat.key(); cmod.onchange = () => mas.chat.setModel(cmod.value);
       const ms = p.querySelector('#ppv-mem'), mv = p.querySelector('#ppv-mem-val'), memTxt = n => n === 0 ? 'none' : n + (n === 1 ? ' exchange' : ' exchanges');
       ms.value = mas.chat.memory.get(); mv.textContent = memTxt(+ms.value);
