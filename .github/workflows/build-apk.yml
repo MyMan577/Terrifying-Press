@@ -1,0 +1,284 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write   # needed to publish the APK as a GitHub Release
+
+# A newer push cancels the older build that is still running
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # Caches Gradle + dependencies between runs (the slowest part of the build)
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Check the web app is in www
+        run: |
+          for f in www/index.html www/native-bridge.js www/vocal-separator.js; do
+            if [ ! -f "$f" ]; then echo "::error::Missing $f. Put it inside the www folder."; exit 1; fi
+          done
+
+      - name: Use the updated native-bridge.js
+        run: |
+          # android-overrides/native-bridge.js is the newer one (adds N.mirror for the web-video media notification).
+          # It must replace www/native-bridge.js BEFORE `cap sync` copies www into the app.
+          if [ -f android-overrides/native-bridge.js ]; then
+            cp android-overrides/native-bridge.js www/native-bridge.js
+            echo "www/native-bridge.js replaced by android-overrides/native-bridge.js"
+          fi
+
+      - name: Create the Android project
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else echo "::notice::No package-lock.json, using npm install. Commit one so builds are reproducible."; npm install; fi
+          # Downloads/exports need these two Capacitor plugins (the page saves via Filesystem, then Share).
+          # Install any that package.json does not already list, at the same major version as Capacitor.
+          CAPV=$(node -p "require('./node_modules/@capacitor/core/package.json').version.split('.')[0]")
+          for pkg in filesystem share; do
+            grep -q "@capacitor/$pkg" package.json || npm install "@capacitor/$pkg@$CAPV"
+          done
+          npx cap add android
+          npx cap sync android
+          # App icons: generated from resources/icon.png (1024x1024) into every mipmap size, including the adaptive icon.
+          if [ -f resources/icon.png ]; then
+            npx @capacitor/assets@3 generate --androidProject android --iconBackgroundColor '#1b1c20' --iconBackgroundColorDark '#1b1c20' || { echo "::error::Icon generation failed"; exit 1; }
+          else
+            echo "::warning::resources/icon.png is missing, the APK will use the default Capacitor icon."
+          fi
+          echo "--- Capacitor plugins registered in the app:"
+          cat android/app/src/main/assets/capacitor.plugins.json || true
+
+      - name: Add the native ONNX plugin
+        run: |
+          for f in OnnxSeparatorPlugin Accel StemNative SpleeterNative KeepAliveService SpleeterSeparatorPlugin BackupPlugin EmbedPlugin StoragePlugin Throttle WhisperNative ParakeetNative LlmNative LiteRtLlm FastDownload; do
+            f="android-overrides/$f.java"
+            if [ ! -f "$f" ]; then echo "::error::Missing file in the repo: $f. Add it at that exact path (folder included) and run again."; exit 1; fi
+          done
+          PKG_DIR=android/app/src/main/java/com/pressplay/media
+          mkdir -p "$PKG_DIR"
+          cp android-overrides/*.java "$PKG_DIR"/
+          sed -i '/^dependencies {/a\    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.22.0"' android/app/build.gradle
+          # LiteRT-LM (chat models in .litertlm files). Pin this to an exact version after the first green build.
+          sed -i '/^dependencies {/a\    implementation "com.google.ai.edge.litertlm:litertlm-android:latest.release"' android/app/build.gradle
+          # both native stacks may ship the same C++ runtime library: keep the first one instead of failing the build
+          sed -i '/^android {/a\    packaging { jniLibs { pickFirsts += ["**/libc++_shared.so"] } }' android/app/build.gradle
+          sed -i 's/<application/<application android:largeHeap="true"/' android/app/src/main/AndroidManifest.xml
+          python3 - <<'PY'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p).read()
+          perms = ''.join('    <uses-permission android:name="android.permission.%s" />\n' % n for n in ['FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_DATA_SYNC', 'WAKE_LOCK', 'POST_NOTIFICATIONS'])
+          if 'KeepAliveService' not in s:
+              s = s.replace('<application', perms + '    <application', 1)
+              s = s.replace('</application>', '    <service android:name=".KeepAliveService" android:exported="false" android:foregroundServiceType="dataSync" />\n    </application>', 1)
+          if 'libOpenCL.so' not in s:
+              s = s.replace('</application>', '    <uses-native-library android:name="libOpenCL.so" android:required="false" />\n    <uses-native-library android:name="libvndksupport.so" android:required="false" />\n    </application>', 1)
+          open(p, 'w').write(s)
+          PY
+
+      - name: Add the native player layer (Media3 service, GPU filters, library)
+        run: |
+          for k in MainActivity WebMirrorPlayer LibraryPlugin JobsPlugin PlaybackService; do
+            if [ ! -f "android-overrides/$k.kt" ]; then echo "::error::android-overrides/$k.kt is missing."; exit 1; fi
+          done
+          for f in pp-manifest.xml res/xml/shortcuts.xml res/xml/automotive_app_desc.xml res/values/pp_strings.xml; do
+            if [ ! -f "android-overrides/$f" ]; then echo "::error::android-overrides/$f is missing."; exit 1; fi
+          done
+          APPSRC=android/app/src/main
+          PKG_DIR=$APPSRC/java/com/pressplay/media
+
+          # Kotlin sources. Our merged MainActivity (also registers the ONNX/Spleeter plugins) replaces
+          # Capacitor's default MainActivity.java.
+          rm -f "$PKG_DIR/MainActivity.java"
+          cp android-overrides/*.kt "$PKG_DIR"/
+          test "$(ls "$PKG_DIR"/*.kt | wc -l)" -eq 9 || { echo "::error::Expected 9 Kotlin files"; ls "$PKG_DIR"; exit 1; }
+
+          # Resources: shortcuts, Android Auto descriptor, strings
+          mkdir -p $APPSRC/res/xml $APPSRC/res/values
+          cp android-overrides/res/xml/*.xml $APPSRC/res/xml/
+          cp android-overrides/res/values/pp_strings.xml $APPSRC/res/values/
+
+          # Gradle: Kotlin plugin, minSdk 26, Media3 1.4.1, opt in to Media3's @UnstableApi
+          sed -i -E 's/minSdkVersion *= *[0-9]+/minSdkVersion = 26/' android/variables.gradle
+          grep -q "kotlin-gradle-plugin" android/build.gradle || \
+            sed -i "/classpath .com.android.tools.build:gradle/a\\        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24'" android/build.gradle
+          grep -q "kotlin-gradle-plugin" android/build.gradle || { echo "::error::Could not add the Kotlin plugin to android/build.gradle"; cat android/build.gradle; exit 1; }
+          grep -q "org.jetbrains.kotlin.android" android/app/build.gradle || \
+            sed -i "0,/apply plugin: 'com.android.application'/s//apply plugin: 'com.android.application'\napply plugin: 'org.jetbrains.kotlin.android'/" android/app/build.gradle
+          grep -q "org.jetbrains.kotlin.android" android/app/build.gradle || { echo "::error::Could not apply the Kotlin plugin in app/build.gradle"; cat android/app/build.gradle; exit 1; }
+          sed -i '/^android {/a\    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }\n    kotlinOptions { jvmTarget = "17"; freeCompilerArgs += ["-opt-in=androidx.media3.common.util.UnstableApi", "-Xskip-metadata-version-check"] }' android/app/build.gradle
+          sed -i '/^dependencies {/a\    implementation "androidx.media3:media3-exoplayer:1.4.1"\n    implementation "androidx.media3:media3-session:1.4.1"\n    implementation "androidx.media3:media3-ui:1.4.1"\n    implementation "androidx.media3:media3-effect:1.4.1"\n    implementation "androidx.media3:media3-common:1.4.1"\n    implementation "androidx.core:core-ktx:1.12.0"' android/app/build.gradle
+
+          # Manifest: merge the native layer's permissions, filters, services and receiver into the generated one
+          cat > /tmp/merge_manifest.py <<'PY3'
+          import sys, xml.etree.ElementTree as ET
+          A = 'http://schemas.android.com/apk/res/android'
+          ET.register_namespace('android', A)
+          ET.register_namespace('tools', 'http://schemas.android.com/tools')
+          def q(n): return '{%s}%s' % (A, n)
+
+          def sig(e):
+              return (e.tag, tuple(sorted(e.attrib.items())), tuple(sorted(sig(c) for c in e)))
+
+          dst_path, src_path = sys.argv[1], sys.argv[2]
+          dt, st = ET.parse(dst_path), ET.parse(src_path)
+          dm, sm = dt.getroot(), st.getroot()
+          dapp, sapp = dm.find('application'), sm.find('application')
+
+          # top-level permissions / features: add what is missing
+          have = {(c.tag, c.get(q('name'))) for c in dm if c.tag in ('uses-permission', 'uses-feature')}
+          for c in sm:
+              if c.tag in ('uses-permission', 'uses-feature') and (c.tag, c.get(q('name'))) not in have:
+                  dm.insert(list(dm).index(dapp), c)
+
+          # application attributes
+          for k, v in sapp.attrib.items():
+              dapp.set(k, v)
+
+          # MainActivity: copy attributes, union configChanges, add missing intent filters + meta-data
+          def find_named(parent, tag, name):
+              for c in parent.findall(tag):
+                  if c.get(q('name')) == name: return c
+          sact = find_named(sapp, 'activity', '.MainActivity')
+          dact = find_named(dapp, 'activity', '.MainActivity')
+          assert dact is not None and sact is not None, 'MainActivity not found in a manifest'
+          for k, v in sact.attrib.items():
+              if k == q('name'): continue
+              if k == q('configChanges'):
+                  v = '|'.join(sorted(set(v.split('|')) | set((dact.get(k) or '').split('|')) - {''}))
+              dact.set(k, v)
+          have_f = {sig(c) for c in dact.findall('intent-filter')}
+          for f in sact.findall('intent-filter'):
+              if sig(f) in have_f: continue
+              cats = {c.get(q('name')) for c in f.findall('category')}
+              if 'android.intent.category.LAUNCHER' in cats and 'android.intent.category.LAUNCHER' in {
+                      c.get(q('name')) for d in dact.findall('intent-filter') for c in d.findall('category')}:
+                  continue
+              dact.append(f)
+          for m in sact.findall('meta-data'):
+              if find_named(dact, 'meta-data', m.get(q('name'))) is None: dact.append(m)
+
+          # services / receivers / app-level meta-data
+          for tag in ('service', 'receiver', 'meta-data'):
+              for c in sapp.findall(tag):
+                  if find_named(dapp, tag, c.get(q('name'))) is None: dapp.append(c)
+
+          ET.indent(dt, space='    ')
+          dt.write(dst_path, encoding='utf-8', xml_declaration=True)
+          print('manifest merged')
+          PY3
+          python3 /tmp/merge_manifest.py $APPSRC/AndroidManifest.xml android-overrides/pp-manifest.xml
+          grep -q PlaybackService $APPSRC/AndroidManifest.xml
+
+      - name: Sign with one fixed key and raise the version number
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KS_KEYPASS: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          # Without this, every CI run makes a brand-new random debug key, so Android refuses to install the new APK over the old one
+          # ("App not installed as package conflicts with an existing package"). Same key every build = clean in-place update.
+          KS="$PWD/android/app/pp-signing.keystore"
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$KS"
+            PASS="$KS_PASS"; ALIAS="${KS_ALIAS:-pressplay}"; KPASS="${KS_KEYPASS:-$KS_PASS}"
+            echo "Signing with the key from the repo secrets."
+          elif [ -f android-overrides/pp.keystore ]; then
+            cp android-overrides/pp.keystore "$KS"
+            PASS="pressplay-keystore"; ALIAS="pressplay"; KPASS="pressplay-keystore"
+            echo "::warning::Signing with the key committed in android-overrides/pp.keystore. Add KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD secrets to use a private key instead."
+          else
+            echo "::error::No signing key. Add android-overrides/pp.keystore to the repo, or set the KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD secrets."; exit 1
+          fi
+          printf '\nPP_KS_FILE=%s\nPP_KS_PASS=%s\nPP_KS_ALIAS=%s\nPP_KS_KEYPASS=%s\n' "$KS" "$PASS" "$ALIAS" "$KPASS" >> android/gradle.properties
+          cat >> android/app/build.gradle <<'GRADLE'
+
+          android {
+              signingConfigs {
+                  pp {
+                      storeFile file(PP_KS_FILE)
+                      storePassword PP_KS_PASS
+                      keyAlias PP_KS_ALIAS
+                      keyPassword PP_KS_KEYPASS
+                  }
+              }
+              buildTypes {
+                  debug { signingConfig signingConfigs.pp }
+                  release { signingConfig signingConfigs.pp }
+              }
+          }
+          GRADLE
+          # Android only installs an update when versionCode goes up, so use the workflow run number
+          sed -i -E "s/versionCode +[0-9]+/versionCode ${GITHUB_RUN_NUMBER}/; s/versionName +\"[^\"]*\"/versionName \"1.0.${GITHUB_RUN_NUMBER}\"/" android/app/build.gradle
+          grep -nE "versionCode|versionName" android/app/build.gradle
+
+      - name: Build the debug APK
+        shell: bash
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/gradle-build.log"
+
+      - name: Show which key signed the APK
+        continue-on-error: true   # informational only: never fail the build because of this check
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          APKSIGNER=$(find "$SDK" /usr/local/lib/android -name apksigner -type f 2>/dev/null | sort | tail -1 || true)
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs "$APK" | grep -E "Signer #1 certificate SHA-256|Verifies" || true
+          else
+            echo "apksigner not found, using keytool instead"
+            keytool -printcert -jarfile "$APK" | grep -E "SHA256|Owner" || true
+          fi
+
+      - name: Name the APK
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk "press-play-1.0.${GITHUB_RUN_NUMBER}.apk"
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: press-play-debug-apk
+          path: press-play-1.0.${{ github.run_number }}.apk
+
+      # Direct download link on the repo's Releases page, easy to grab from the phone
+      - name: Publish a GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "build-${GITHUB_RUN_NUMBER}" "press-play-1.0.${GITHUB_RUN_NUMBER}.apk" \
+            --title "Press Play 1.0.${GITHUB_RUN_NUMBER}" \
+            --notes "Automatic build of commit ${GITHUB_SHA::7}" \
+            --target "$GITHUB_SHA"
+
+      - name: Upload the build log if the build failed
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-log
+          path: gradle-build.log
+          if-no-files-found: ignore
