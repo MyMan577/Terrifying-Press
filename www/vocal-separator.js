@@ -362,6 +362,106 @@
     };
   }
 
+  // ---------- Subtitle mask: use the lyrics/subtitles to know where singing is ----------
+  // Solos, breaks and other non-vocal sound that leaks into the Vocals stem get faded out of it, and the removed sound is ADDED to
+  // Instrumental (and Other) so nothing is lost. Cue starts are trusted; cue ends are not, because online LRC lyrics end a line
+  // exactly when the next one starts (so a solo between two lines would look like singing). The end is estimated from the text instead.
+  const MASKS = [null, { pre: 0.35, post: 0.6, fade: 0.12, floor: 0.15 }, { pre: 0.25, post: 0.4, fade: 0.08, floor: 0.03 }, { pre: 0.15, post: 0.25, fade: 0.05, floor: 0 }];   // Gentle, Normal, Strong
+  const NOVOCAL = /^[\s\[\]()\u266a\u266b*\-\u2013\u2014]*(instrumental|solo|guitar solo|music|interlude|intro|outro|break)?[\s\[\]()\u266a\u266b*\-\u2013\u2014]*$/i;
+  function sungSecs(text) {                                          // rough time a line takes to sing, with room for held notes
+    const t = String(text || '').trim(), cjk = (t.match(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/g) || []).length;
+    return 0.8 + 0.4 * Math.max(t.split(/\s+/).filter(Boolean).length, cjk / 2, t.length / 7);
+  }
+  // Returns { spans: [[startSec, endSec], ...] } or { skip: 'why' } when the lyrics can't be trusted to cover the whole song.
+  function subtitleSpans(dbId, level, dur, tag, ov) {
+    const m = MASKS[level]; if (!m) return { skip: '' };
+    let e; try { e = (JSON.parse(localStorage.getItem('playerSubtitles')) || {})[dbId]; } catch (x) {}
+    const raw = ov && ov.length ? ov.map(q => [q.start, q.end, q.text, q.m]) : e && (Array.isArray(e) ? e.map(q => [q.start, q.end, q.text]) : e.c);
+    if (!raw || raw.length < 3) return { skip: ' Subtitle mute skipped: this track has no synced lyrics or subtitles.' };
+    const off = !ov && e && !Array.isArray(e) && isFinite(+e.o) ? +e.o : 0;     // positive offset = lines appear later (re-timed cues are already in media time)
+    const trusted = !!(e && !Array.isArray(e) && /^whisper/i.test(e.n || ''));   // Whisper ends are measured, online ones are just "next line starts"
+    const sp = [];
+    for (const c of raw) {
+      const s0 = +c[0], e0 = +c[1], txt = String(c[2] || '');
+      if (!isFinite(s0) || !txt.trim() || NOVOCAL.test(txt)) continue;
+      const len = sungSecs(txt), cap = trusted || c[3] ? len * 2 + 1.5 : len * 1.5 + 1;   // c[3]: line was re-timed from Whisper's own timestamps
+      const end = e0 > s0 ? Math.min(e0, s0 + cap) : s0 + cap;
+      sp.push([Math.max(0, s0 + off - m.pre), end + off + m.post]);
+    }
+    sp.sort((a, b) => a[0] - b[0]);
+    const out = [];
+    for (const q of sp) { const l = out[out.length - 1]; if (l && q[0] <= l[1] + 0.2) l[1] = Math.max(l[1], q[1]); else out.push([q[0], q[1]]); }
+    if (!out.length) return { skip: ' Subtitle mute skipped: no sung lines found.' };
+    const covered = out.reduce((n, q) => n + q[1] - q[0], 0), lastEnd = out[out.length - 1][1], firstStart = out[0][0];
+    // Safety: if the lyrics stop early or start late, muting outside them would cut real singing. Use the tagger's first/last vocal time when known.
+    if (tag && tag.lv != null && tag.lv > lastEnd + 3) return { skip: ' Subtitle mute skipped: the lyrics end before the singing does.' };
+    if (tag && tag.fv != null && tag.fv < firstStart - 3) return { skip: ' Subtitle mute skipped: the singing starts before the lyrics do.' };
+    if (dur && (covered < dur * 0.15 || (!(tag && tag.lv != null) && lastEnd < dur * 0.6))) return { skip: ' Subtitle mute skipped: the lyrics look incomplete.' };
+    return { spans: out };
+  }
+  // Gain follows the spans with short fades. process(L, R, extra): scales the vocal chunk in place and adds what it removed to every [L, R] in extra.
+  function makeMask(spans, level) {
+    const m = MASKS[level]; if (!m || !spans || !spans.length) return null;
+    const A = spans.map(q => Math.round(q[0] * SR)), B = spans.map(q => Math.round(q[1] * SR)), step = (1 - m.floor) / Math.max(1, Math.round(m.fade * SR));
+    let pos = 0, si = 0, gain = m.floor;
+    return {
+      process(Lc, Rc, extra) {
+        const n = Math.min(Lc.length, Rc.length), ex = (extra || []).filter(q => q && q[0] && q[0].length >= n && q[1].length >= n);
+        for (let i = 0; i < n; i++, pos++) {
+          while (si < A.length && pos >= B[si]) si++;
+          const target = si < A.length && pos >= A[si] ? 1 : m.floor;
+          gain += target > gain ? Math.min(step, target - gain) : -Math.min(step, gain - target);
+          if (gain < 1) {
+            const l = Lc[i], r = Rc[i], k = 1 - gain; Lc[i] = l * gain; Rc[i] = r * gain;
+            for (const q of ex) { q[0][i] += l * k; q[1][i] += r * k; }
+          }
+        }
+      }
+    };
+  }
+  function maskChunks(mask, names, chunks) {                          // multi-stem models: chunks line up with names
+    if (!mask) return; const vi = names.indexOf('Vocals'); if (vi < 0 || !chunks[vi]) return;
+    mask.process(chunks[vi][0], chunks[vi][1], ['Instrumental', 'Other'].map(n => names.indexOf(n)).filter(i => i >= 0).map(i => chunks[i]));
+  }
+  // Re-time lyric lines (e.g. online LRC) against measured cues (e.g. Whisper): each line takes the start/end of the best-matching measured cue within 20 s.
+  function alignLines(cues, ref) {
+    const nz = t => String(t || '').toLowerCase().replace(/[^\p{L}\p{N}\s]+/gu, ' ').split(/\s+/).filter(Boolean);
+    const rw = ref.map(r => ({ r, w: new Set(nz(r.text)) }));
+    return cues.map(c => {
+      const w = nz(c.text); if (!w.length) return c; let best = null, bs = 0;
+      for (const q of rw) {
+        if (Math.abs(q.r.start - c.start) > 20 || !q.w.size) continue;
+        let hit = 0; for (const x of w) if (q.w.has(x)) hit++;
+        const sc = hit / (w.length + q.w.size - hit); if (sc > bs) { bs = sc; best = q.r; }
+      }
+      return best && bs >= 0.35 ? { start: best.start, end: best.end > best.start ? best.end : c.end, text: c.text, m: true } : c;
+    });
+  }
+
+  // Whisper first: lyrics that were not made by Whisper (online LRC, loaded files) have unreliable timing, so Whisper listens to the song
+  // (vocals only) and each lyric line takes the start/end of the Whisper line it matches. Nothing is saved over the user's lyrics.
+  // Returns { cues, matched, total } in media time, or null when there is nothing to re-time (no lyrics, or Whisper already made them).
+  async function alignedCues(t, o, status) {
+    let e; try { e = (JSON.parse(localStorage.getItem('playerSubtitles')) || {})[t.dbId]; } catch (x) {}
+    if (!e || (!Array.isArray(e) && /^whisper/i.test(e.n || ''))) return null;
+    const off = Array.isArray(e) || !isFinite(+e.o) ? 0 : +e.o;
+    const raw = (Array.isArray(e) ? e.map(q => [q.start, q.end, q.text]) : e.c || []).map(q => ({ start: +q[0] + off, end: +q[1] + off, text: String(q[2] || '') })).filter(q => isFinite(q.start) && q.text.trim());
+    if (raw.length < 3) return null;
+    const sig = (Array.isArray(e) ? '' : e.n || '') + '|' + raw.length + '|' + raw[0].start.toFixed(2) + '|' + raw[raw.length - 1].start.toFixed(2);
+    let cache = {}; try { cache = JSON.parse(localStorage.getItem('ppvAlign')) || {}; } catch (x) {}
+    const hit = cache[t.dbId];
+    if (hit && hit.sig === sig) { const cues = hit.c.map(q => ({ start: q[0], end: q[1], text: q[2], m: !!q[3] })); return { cues, matched: cues.filter(q => q.m).length, total: cues.length, cached: true }; }
+    const sz0 = ls0('ppvWSize'), m0 = sz0 && WH[sz0] && WH[sz0][2], size = whOk(sz0) && m0 && !m0.big ? sz0 : 'base_en';   // never pops a big-download prompt mid-split
+    const lg = ls0('ppvWLang');
+    let ref;
+    try { status('Whisper is checking where the lines really are…'); ref = await transcribeRun(t, { size, lang: whEn(size) ? '' : (lg === null ? 'english' : lg), task: 'transcribe', clean: true, acc: 0, strength: o.strength, lv: o.lv }, status); }
+    finally { if (asr) { try { await asr.dispose(); } catch (x) {} asr = null; asrId = ''; } }   // give the memory back before the real split
+    const cues = alignLines(raw, (ref || []).map(q => ({ start: q.start, end: q.end, text: q.text })));
+    const out = { cues, matched: cues.filter(q => q.m).length, total: cues.length };
+    try { cache[t.dbId] = { sig, c: cues.map(q => [+q.start.toFixed(2), +q.end.toFixed(2), q.text, q.m ? 1 : 0]) }; localStorage.setItem('ppvAlign', JSON.stringify(cache)); } catch (x) {}
+    return out;
+  }
+
   function makeEncoder(gate) {
     const mp3 = !!window.lamejs, enc = mp3 ? new lamejs.Mp3Encoder(2, SR, 192) : null, out = [];
     let cl = new Int16Array(0), cr = new Int16Array(0), n = 0;
@@ -768,17 +868,21 @@
   async function run(id, pcm, wanted, opts, status, onProgress) {
     const m = MODELS[id]; await loadOrt();
     const mkGate = n => n === 'Vocals' ? makeGate(opts.gate) : null;
+    const mask = opts.mask || null;                                   // subtitle mask (JS engines only)
+    const hid = !!mask && !wanted.includes('Vocals') && (wanted.includes('Instrumental') || wanted.includes('Other'));   // vocals are needed internally to put the removed sound back
+    const W = hid ? wanted.concat('Vocals') : wanted;
+    const mkEnc = n => n === 'Vocals' && hid ? { push() {}, finish() { return null; } } : makeEncoder(mkGate(n));
     if (m.kind === 'spleeter' && NATIVE && !pcm) return nativeSpleeter(opts.track, wanted, opts, status, onProgress);
     if ((m.kind === 'sp4' || m.kind === 'mdx' || m.kind === 'demucs') && NATIVE && !pcm) return nativeStems(m, id, opts.track, wanted, opts, status, onProgress);
     if (m.kind === 'spleeter') {
       status('Loading models…');
       const sess = { vocals: await makeSession('sp_vocals', false, opts.lv), accomp: await makeSession('sp_accomp', false, opts.lv) };
       try {
-        const enc = {}; wanted.forEach(n => enc[n] = makeEncoder(mkGate(n)));      // encode while separating, no full-length stems in RAM
-        const sink = (v, a) => { if (enc.Vocals) enc.Vocals.push(v[0], v[1]); if (enc.Instrumental) enc.Instrumental.push(a[0], a[1]); };
+        const enc = {}; W.forEach(n => enc[n] = mkEnc(n));      // encode while separating, no full-length stems in RAM
+        const sink = (v, a) => { if (mask && v && a) mask.process(v[0], v[1], [a]); if (enc.Vocals) enc.Vocals.push(v[0], v[1]); if (enc.Instrumental) enc.Instrumental.push(a[0], a[1]); };
         const lv = opts.lv;
         const q = opts.quality || 0;
-        await separate(pcm, sess, onProgress, opts.strength, sink, { pause: lv ? lv.pause[0] : 0, need: lv && lv.skip ? { v: !!enc.Vocals, a: !!enc.Instrumental } : null, ye: lv ? lv.ye : 0, ctx: q >= 1 ? CTX : 0, shift: q >= 2 ? 512 : 0 });
+        await separate(pcm, sess, onProgress, opts.strength, sink, { pause: lv ? lv.pause[0] : 0, need: lv && lv.skip && !mask ? { v: !!enc.Vocals, a: !!enc.Instrumental } : null, ye: lv ? lv.ye : 0, ctx: q >= 1 ? CTX : 0, shift: q >= 2 ? 512 : 0 });
         const out = {}; wanted.forEach(n => out[n] = enc[n].finish()); return out;   // already {blob, ext}
       } finally { sess.vocals.release && sess.vocals.release(); sess.accomp.release && sess.accomp.release(); }
     }
@@ -795,17 +899,17 @@
           status('Loading models…'); await load('sp4f_');
         }
         const idx = { Vocals: [0], Drums: [1], Bass: [2], Other: [3], Instrumental: [1, 2, 3] };
-        const outs = wanted.map(n => ({ name: n, idx: idx[n] })), enc = outs.map(o => makeEncoder(mkGate(o.name))), lv = opts.lv;
-        await separate4(pcm, sess, outs, onProgress, chunks => chunks.forEach((c, k) => enc[k].push(c[0], c[1])), lv ? lv.pause[0] : 0, lv ? lv.ye : 0);
-        return Object.fromEntries(outs.map((o, k) => [o.name, enc[k].finish()]));   // already {blob, ext}
+        const outs = W.map(n => ({ name: n, idx: idx[n] })), enc = outs.map(o => mkEnc(o.name)), lv = opts.lv, nm = outs.map(o => o.name);
+        await separate4(pcm, sess, outs, onProgress, chunks => { maskChunks(mask, nm, chunks); chunks.forEach((c, k) => enc[k].push(c[0], c[1])); }, lv ? lv.pause[0] : 0, lv ? lv.ye : 0);
+        return Object.fromEntries(outs.map((o, k) => [o.name, enc[k].finish()]).filter(q => q[1]));   // already {blob, ext}
       } finally { sess.forEach(x => x.release && x.release()); }
     }
     if (m.kind === 'mdx') {
       status('Loading model…');
       const sess = await makeSession(id, opts.gpu, opts.lv);
       try {
-        const enc = {}; wanted.forEach(n => enc[n] = makeEncoder(mkGate(n)));
-        const sink = (v, a) => { if (enc.Vocals) enc.Vocals.push(v[0], v[1]); if (enc.Instrumental) enc.Instrumental.push(a[0], a[1]); };
+        const enc = {}; W.forEach(n => enc[n] = mkEnc(n));
+        const sink = (v, a) => { if (mask && v && a) mask.process(v[0], v[1], [a]); if (enc.Vocals) enc.Vocals.push(v[0], v[1]); if (enc.Instrumental) enc.Instrumental.push(a[0], a[1]); };
         await separateMdx(pcm, sess, m, onProgress, sink, opts.lv ? opts.lv.pause[1] : 0, opts.lv ? opts.lv.ye : 0);
         const out = {}; wanted.forEach(n => out[n] = enc[n].finish()); return out;   // already {blob, ext}
       } finally { sess.release && sess.release(); }
@@ -813,10 +917,10 @@
     status('Loading model… (can take a moment)');
     const sess = await makeSession(id, opts.gpu, opts.lv);
     try {
-      const outs = wanted.map(n => ({ name: n, rows: n === 'Instrumental' ? m.sources.map((s, i) => s === 'vocals' ? -1 : i).filter(i => i >= 0) : [m.sources.indexOf(n.toLowerCase())] }));
-      const enc = outs.map(o => makeEncoder(mkGate(o.name)));             // encode while separating, no full-length stems in RAM
-      await separateDemucs(pcm, sess, outs, onProgress, chunks => chunks.forEach((c, k) => enc[k].push(c[0], c[1])), opts.lv ? opts.lv.pause[1] : 0);
-      return Object.fromEntries(outs.map((o, k) => [o.name, enc[k].finish()]));   // already {blob, ext}
+      const outs = W.map(n => ({ name: n, rows: n === 'Instrumental' ? m.sources.map((s, i) => s === 'vocals' ? -1 : i).filter(i => i >= 0) : [m.sources.indexOf(n.toLowerCase())] }));
+      const enc = outs.map(o => mkEnc(o.name)), nm = outs.map(o => o.name);             // encode while separating, no full-length stems in RAM
+      await separateDemucs(pcm, sess, outs, onProgress, chunks => { maskChunks(mask, nm, chunks); chunks.forEach((c, k) => enc[k].push(c[0], c[1])); }, opts.lv ? opts.lv.pause[1] : 0);
+      return Object.fromEntries(outs.map((o, k) => [o.name, enc[k].finish()]).filter(q => q[1]));   // already {blob, ext}
     } finally { sess.release && sess.release(); }                       // free RAM right away
   }
   const stemNames = id => MODELS[id].kind === 'spleeter' ? ['Vocals', 'Instrumental'] : ['Vocals', 'Instrumental'].concat(MODELS[id].sources.filter(s => s !== 'vocals').map(cap));
@@ -7010,6 +7114,7 @@
       '<label id="ppv-c-spinl" class="ppv-c" style="display:none;margin-top:6px"><input type="checkbox" id="ppv-c-spin"> Keep threads busy between steps (faster, hotter, uses more battery)</label></div>' +
       '<div id="ppv-stems"></div>' +
       '<div style="margin-top:8px">Mute vocal gaps</div><select id="ppv-gate"><option value="0">Off</option><option value="1">Gentle</option><option value="2">Normal</option><option value="3">Strong</option></select><div style="opacity:.6;font-size:11px;margin-top:4px">Silences leftover noise between sung lines. Vocals stem only.</div>' +
+      '<div style="margin-top:8px">Mute non-vocal parts (uses lyrics/subtitles)</div><select id="ppv-mask"><option value="0">Off</option><option value="1">Gentle</option><option value="2">Normal</option><option value="3">Strong</option></select><div style="opacity:.6;font-size:11px;margin-top:4px">Removes solos and instrumental breaks from the Vocals stem and puts that sound back into Instrumental / Other. Needs synced lyrics or subtitles. If they did not come from Whisper, Whisper listens first to fix the line timing (slower; reused next time). Skipped if they look incomplete. Not used by the Android native engine.</div>' +
       '<div id="ppv-spl" style="margin-top:8px">Strength: <span id="ppv-sv">1</span><input id="ppv-sl" type="range" min="1" max="4" step="0.5" value="1" style="width:100%"><div style="opacity:.6;font-size:11px">Higher = less bleed, more watery artifacts</div><div style="margin-top:8px">Quality</div><select id="ppv-q"><option value="0">Standard</option><option value="1">Better (smooth seams, ~1.3x time)</option><option value="2">Best (+ averaged 2nd pass, ~2.7x time)</option></select></div>' +
       '<label id="ppv-gpu" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-gpuc"> Use GPU (faster, experimental)</label>' +
       '<label id="ppv-nn" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-nnc"> Phone GPU/NPU (experimental). Demucs always uses the CPU</label>' +
@@ -7099,7 +7204,7 @@
     };
     if (!place()) { let n = 0; const iv = setInterval(() => { if (place() || ++n > 40) clearInterval(iv); }, 250); }
     setInterval(place, 2000);
-    const $ = s => p.querySelector(s), st = $('#ppv-st'), bar = $('#ppv-bar i'), go = $('#ppv-go'), sel = $('#ppv-model'), sl = $('#ppv-sl'), sv = $('#ppv-sv'), gpu = $('#ppv-gpuc'), lsel = $('#ppv-lvl'), lvi = $('#ppv-lvi'), qsel = $('#ppv-q'), gsel = $('#ppv-gate');
+    const $ = s => p.querySelector(s), st = $('#ppv-st'), bar = $('#ppv-bar i'), go = $('#ppv-go'), sel = $('#ppv-model'), sl = $('#ppv-sl'), sv = $('#ppv-sv'), gpu = $('#ppv-gpuc'), lsel = $('#ppv-lvl'), lvi = $('#ppv-lvi'), qsel = $('#ppv-q'), gsel = $('#ppv-gate'), msel = $('#ppv-mask');
     const LV = () => +lsel.value === 4 ? customLevel() : LEVELS[+lsel.value] || null, showLv = () => { const l = LV(); lvi.textContent = !l ? 'No limits. Fastest, but can crash weak phones.' : l.custom ? 'Custom: ' + (l.threads ? l.threads + ' thread' + (l.threads > 1 ? 's' : '') : 'auto threads') + ', ' + Math.round(l.duty * 100) + '% rest.' : l.info; };
     let holdUntil = 0;                                                // keep "Done"/"Error" visible instead of being wiped by "Ready" a split second later
     const status = t => { st.textContent = t; document.querySelectorAll('.ppv-stx').forEach(e => { e.textContent = t; }); if (/^(Done|Error)/.test(t)) holdUntil = Date.now() + 5000; mas.react(t); }, ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} };
@@ -7130,6 +7235,7 @@
     sect.onchange = () => { ls('ppvSect', sect.checked ? '1' : '0'); const A = window.__ppApi; A && A.setStemSections && A.setStemSections(sect.checked); };
     { const A = window.__ppApi; A && A.setStemSections && A.setStemSections(sect.checked); }
     gsel.value = ls('ppvGate') || '0'; gsel.onchange = () => ls('ppvGate', gsel.value);
+    msel.value = ls('ppvMask') || '0'; msel.onchange = () => ls('ppvMask', msel.value);
     qsel.value = ls('ppvQuality') || '1'; qsel.onchange = () => ls('ppvQuality', qsel.value);
     lsel.onchange = () => { ls('ppvLevel', lsel.value); syncCust(); showLv(); refresh(); };
     // ---- Custom level controls (stored as JSON under ppvCustom) ----
@@ -7167,9 +7273,19 @@
         if (!t) throw new Error('Play or select a track first.');
         if (!want.length) throw new Error('Tick at least one stem.');
         await downloadModel(id, status, !!(LV() && LV().blob));
+        let ov = null, maskNote = '';
+        if (+msel.value && !(NATIVE && ['spleeter2', 'spleeter4', 'mdx_voc', 'demucs4', 'demucs6'].includes(id))) {
+          try { const al = await alignedCues(t, { strength: +sl.value, lv: LV() }, status); if (al) { ov = al.cues; maskNote = ' Whisper re-timed ' + al.matched + ' of ' + al.total + ' lyric lines' + (al.cached ? ' (saved from before).' : '.'); } }
+          catch (e) { console.warn('Whisper timing failed', e); maskNote = ' Whisper timing failed (' + errText(e) + '), so line lengths were estimated.'; }
+        }
         status('Decoding audio…');
         let pcm = NATIVE && ['spleeter2', 'spleeter4', 'mdx_voc', 'demucs4', 'demucs6'].includes(id) ? null : await decode(t.url);
-        const res = await run(id, pcm, want, { strength: +sl.value, gpu: gpu.checked && !LV(), lv: LV(), quality: +qsel.value, gate: +gsel.value, track: t, nnapi: NATIVE ? nnc.checked : false }, status, f => { bar.style.width = (f * 100) + '%'; status('Separating… ' + Math.round(f * 100) + '%'); });
+        let mask = null;
+        if (+msel.value) {
+          if (!pcm) maskNote = ' Subtitle mute is not available in the Android native engine.';
+          else { const r = subtitleSpans(t.dbId, +msel.value, pcm[0].length / SR, loadTags()[t.dbId], ov); if (r.spans) mask = makeMask(r.spans, +msel.value); else maskNote = r.skip; }
+        }
+        const res = await run(id, pcm, want, { strength: +sl.value, gpu: gpu.checked && !LV(), lv: LV(), quality: +qsel.value, gate: +gsel.value, mask, track: t, nnapi: NATIVE ? nnc.checked : false }, status, f => { bar.style.width = (f * 100) + '%'; status('Separating… ' + Math.round(f * 100) + '%'); });
         pcm = null;
         const files = []; let vidFail = 0;
         for (const n of want) {                                          // encode one at a time, free each stem after
@@ -7184,7 +7300,7 @@
         }
         videoBlobCache = null; videoBlobFor = null;
         addSplit(files, { srcId: t.dbId, srcTitle: t.title, makePlaylist: mkpl.checked, showInTab: mkpl.checked && pltab.checked });
-        status('Done. Added ' + files.length + ' split track' + (files.length > 1 ? 's' : '') + ' to Split tracks' + (mkpl.checked ? ' + a playlist.' : '.') + (window.__ppLastSep || '') + (vidFail ? ' ' + vidFail + ' stem' + (vidFail > 1 ? 's' : '') + ' saved as audio only (video failed).' : ''));
+        status('Done. Added ' + files.length + ' split track' + (files.length > 1 ? 's' : '') + ' to Split tracks' + (mkpl.checked ? ' + a playlist.' : '.') + (window.__ppLastSep || '') + maskNote + (vidFail ? ' ' + vidFail + ' stem' + (vidFail > 1 ? 's' : '') + ' saved as audio only (video failed).' : ''));
       } catch (e) { console.error(e); status('Error: ' + errText(e)); }
       if (NATIVE) NP.keepAlive({ on: false }).catch(() => {});
       wl && wl.release().catch(() => {});
@@ -7195,7 +7311,7 @@
     try { smartUI(p, { mas, status, LV, sel, sl, prog: f => { document.querySelectorAll('.ppv-bar-tag i').forEach(e => { e.style.width = (f * 100) + '%'; }); } }); } catch (e) { console.error(e); }
     refresh();
   }
-  window.PPVocals = { separate, separateDemucs, fft, _N: N, tagTrack, transcribe, similarTo, loadTags, vibes };
+  window.PPVocals = { subtitleSpans, makeMask, alignLines, separate, separateDemucs, fft, _N: N, tagTrack, transcribe, similarTo, loadTags, vibes };
   const boot = () => { try { ui(); } catch (e) { console.error(e); } };
   if (typeof document !== 'undefined' && document.body) boot();
   else if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', boot);

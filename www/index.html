@@ -1169,7 +1169,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
     border:1px solid var(--line);
     border-radius:14px;
     width:min(480px, 92vw);
-    max-height:84vh;
+    max-height:min(84vh, calc(var(--vv-h, 100vh) - 20px));   /* --vv-h = the part of the screen the keyboard leaves free */
     display:flex; flex-direction:column;
     overflow:hidden;
   }
@@ -2392,7 +2392,8 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
   #subtitle-overlay span.on{ display:inline-block; }
   #subtitle-overlay span{ white-space:pre-line; max-width:100%; overflow-wrap:anywhere; }
   #subtitle-overlay{ transition:bottom .2s, top .2s; }
-  /* Free placement: (--sub-x, --sub-y) is the centre of the text as a fraction of the video area. */
+  /* Free placement: (--sub-x, --sub-y) is the centre of the text as a fraction of the video area (the whole box, black bars included).
+     JS derives it from the position saved relative to the picture itself, so it follows the picture across rotations and resizes. */
   #subtitle-overlay.pos-custom{
     left:calc(var(--sub-x, .5) * 100%); top:calc(var(--sub-y, .85) * 100%);
     right:auto; bottom:auto; transform:translate(-50%,-50%);
@@ -4256,6 +4257,8 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
                 <span id="view-zoom-label">1x</span>
               </button>
             </div>
+            <p class="menu-section-hint" style="margin:8px 0 4px 0;">Aspect ratio: stretches the picture to that shape, shown as large as fits.</p>
+            <div id="view-ratio-row" style="display:flex;gap:5px;flex-wrap:wrap;"></div>
           </div>
         </div>
 
@@ -4772,7 +4775,15 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
              what was producing a green tint along the letterbox edges. -->
         <filter id="sharpen-filter" x="-2%" y="-2%" width="104%" height="104%" color-interpolation-filters="sRGB">
           <feConvolveMatrix id="sharpen-matrix" order="3" edgeMode="duplicate"
-            kernelMatrix="0 0 0 0 1 0 0 0 0"/>
+            kernelMatrix="0 0 0 0 1 0 0 0 0" result="sharpened"/>
+          <!-- Clip the result back to where the source actually has picture.
+               edgeMode="duplicate" smears the outermost video pixels into any
+               transparent area around them (the letterbox bars, and the filter
+               region's padding), which is what turned the black bars into the
+               video's edge colors on some render paths. Masking by the
+               original alpha keeps those areas transparent, so the black
+               #video-wrap background shows through as normal. -->
+          <feComposite in="sharpened" in2="SourceAlpha" operator="in"/>
         </filter>
         <!-- Local contrast ("clarity"): classic unsharp-mask - blur a copy,
              subtract it from the original to isolate mid-frequency detail,
@@ -8131,7 +8142,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   let subtitlesOn = false;
   let subtitleSize = 'm';
   let subtitlePos = 'bottom';   // 'bottom' | 'top' | 'custom'
-  let subtitleX = 0.5, subtitleY = 0.85; // custom placement: centre of the text, fraction of the video area
+  let subtitleX = 0.5, subtitleY = 0.85; // custom placement: centre of the text, as a fraction of the PICTURE (can go past 0..1 into the black bars)
   let subtitlePreview = false;  // show a sample line while the subtitle menu is open so it can be dragged
   let subtitleColor = '#ffffff';
   let subtitleFont = 'default';
@@ -11710,11 +11721,34 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     });
   });
 
+  // Where the picture sits inside the video box (which also holds the black bars), as fractions of that box.
+  function subtitlePicRect(){
+    const vs = window.__ppViewScale;                                      // a forced aspect ratio: the picture is that shape, centred in the box
+    if (vs) return { x:(1 - vs.sx) / 2, y:(1 - vs.sy) / 2, w:vs.sx, h:vs.sy };
+    const area = subtitleOverlay.parentElement, W = area.clientWidth, H = area.clientHeight, vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+    if (!W || !H || !vw || !vh) return { x:0, y:0, w:1, h:1 };           // audio or not loaded yet: the whole box
+    const cover = getComputedStyle(videoEl).objectFit === 'cover';
+    const sc = cover ? Math.max(W / vw, H / vh) : Math.min(W / vw, H / vh);
+    const w = vw * sc / W, h = vh * sc / H;
+    return { x:(1 - w) / 2, y:(1 - h) / 2, w, h };
+  }
+  // The saved spot (relative to the picture) turned into a spot in the box right now, kept inside the box.
+  function subtitleBoxPos(){
+    const r = subtitlePicRect(), area = subtitleOverlay.parentElement, W = area.clientWidth, H = area.clientHeight;
+    let x = r.x + subtitleX * r.w, y = r.y + subtitleY * r.h;
+    if (W && H){
+      const hw = Math.min(0.5, subtitleText.offsetWidth / 2 / W), hh = Math.min(0.5, subtitleText.offsetHeight / 2 / H);
+      x = Math.max(hw, Math.min(1 - hw, x)); y = Math.max(hh, Math.min(1 - hh, y));
+    }
+    return { x, y };
+  }
+
   function applySubtitlePos(){
     subtitleOverlay.classList.toggle('pos-top', subtitlePos === 'top');
     subtitleOverlay.classList.toggle('pos-custom', subtitlePos === 'custom');
-    subtitleOverlay.style.setProperty('--sub-x', subtitleX);
-    subtitleOverlay.style.setProperty('--sub-y', subtitleY);
+    const bp = subtitleBoxPos();
+    subtitleOverlay.style.setProperty('--sub-x', bp.x);
+    subtitleOverlay.style.setProperty('--sub-y', bp.y);
     subtitlePosRow.querySelectorAll('button').forEach(b => {
       b.classList.toggle('active', b.dataset.pos === subtitlePos);
     });
@@ -11731,14 +11765,15 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       const area = subtitleOverlay.parentElement.getBoundingClientRect();
       const r = subtitleText.getBoundingClientRect();
       if (!area.width || !area.height) return;
+      const pr = subtitlePicRect();
       drag = {
-        id: e.pointerId, area,
+        id: e.pointerId, area, pr,
         dx: (e.clientX - (r.left + r.width / 2)) / area.width,
         dy: (e.clientY - (r.top + r.height / 2)) / area.height,
         moved: false
       };
-      subtitleX = (r.left + r.width / 2 - area.left) / area.width;
-      subtitleY = (r.top + r.height / 2 - area.top) / area.height;
+      subtitleX = ((r.left + r.width / 2 - area.left) / area.width - pr.x) / pr.w;   // stored relative to the picture
+      subtitleY = ((r.top + r.height / 2 - area.top) / area.height - pr.y) / pr.h;
       subtitlePos = 'custom';
       applySubtitlePos();
       subtitleOverlay.classList.add('dragging');
@@ -11751,11 +11786,12 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       const hh = Math.min(0.5, subtitleText.offsetHeight / 2 / area.height);
       const x = (e.clientX - area.left) / area.width - drag.dx;
       const y = (e.clientY - area.top) / area.height - drag.dy;
-      subtitleX = Math.max(hw, Math.min(1 - hw, x));
-      subtitleY = Math.max(hh, Math.min(1 - hh, y));
+      const bx = Math.max(hw, Math.min(1 - hw, x)), by = Math.max(hh, Math.min(1 - hh, y));
+      subtitleX = (bx - drag.pr.x) / drag.pr.w;
+      subtitleY = (by - drag.pr.y) / drag.pr.h;
       drag.moved = true;
-      subtitleOverlay.style.setProperty('--sub-x', subtitleX);
-      subtitleOverlay.style.setProperty('--sub-y', subtitleY);
+      subtitleOverlay.style.setProperty('--sub-x', bx);
+      subtitleOverlay.style.setProperty('--sub-y', by);
     });
     const end = e => {
       if (!drag || e.pointerId !== drag.id) return;
@@ -11767,6 +11803,14 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     };
     subtitleText.addEventListener('pointerup', end);
     subtitleText.addEventListener('pointercancel', end);
+
+    // Rotation, fullscreen, window resize, or a new video all change the box and the picture inside it: put the line back on the same spot of the picture.
+    const refit = () => { if (subtitlePos === 'custom' && !drag) applySubtitlePos(); };
+    try { new ResizeObserver(refit).observe(subtitleOverlay.parentElement); } catch(err){}
+    videoEl.addEventListener('loadedmetadata', refit);
+    videoEl.addEventListener('resize', refit);
+    window.addEventListener('pp-viewscale', refit);
+    window.addEventListener('orientationchange', () => setTimeout(refit, 120));
 
     // Sample line while the menu is open, so there is something to grab even between cues.
     new MutationObserver(() => {
@@ -11959,33 +12003,59 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   });
   document.addEventListener('fullscreenchange', () => {
     fullscreenBtn.classList.toggle('toggled', !!document.fullscreenElement);
-    if (!document.fullscreenElement) releaseRotation();
+    if (!document.fullscreenElement){ releaseRotation(); return; }
+    // Entering fullscreen on a video turns the screen to match it (landscape video -> landscape), like any video app.
+    // The Rotate button's own choice wins if it is already in charge.
+    if (!rotationLocked && document.fullscreenElement === videoWrap && currentIndex !== -1 && tracks[currentIndex] && tracks[currentIndex].kind === 'video'){
+      lockOrientation(videoOrientation()).then(() => { orientAuto = true; }).catch(() => {});
+    }
   });
 
   // ---------- Force rotate ----------
   // Flips the phone between landscape and portrait. Browsers only allow an orientation
   // lock while fullscreen, so this enters fullscreen first. Not available on iOS Safari.
   const rotateBtn = document.getElementById('rotate-btn');
-  let rotationLocked = false;
+  let rotationLocked = false;   // the Rotate button forced an orientation
+  let orientAuto = false;       // fullscreen matched the screen to the video
+  // Tries, in order: the Capacitor Screen Orientation plugin (the Android app's WebView has no web lock),
+  // then the browser's screen.orientation.lock (which needs fullscreen).
+  const capOrient = () => { try { return (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.ScreenOrientation) || null; } catch(e){ return null; } };
+  async function lockOrientation(target){
+    const cap = capOrient();
+    if (cap && typeof cap.lock === 'function'){ await cap.lock({ orientation: target }); return; }
+    const so = screen.orientation;
+    if (!so || typeof so.lock !== 'function') throw new Error('unsupported');
+    try { await so.lock(target); }
+    catch(e){ await new Promise(r => setTimeout(r, 200)); await so.lock(target); }   // right after entering fullscreen the first try can be refused
+  }
+  function unlockOrientation(){
+    try { const cap = capOrient(); if (cap && typeof cap.unlock === 'function') cap.unlock(); else screen.orientation.unlock(); } catch(e){}
+  }
+  function videoOrientation(){
+    return videoEl.videoWidth && videoEl.videoHeight && videoEl.videoHeight > videoEl.videoWidth ? 'portrait' : 'landscape';
+  }
   function releaseRotation(){
-    if (!rotationLocked) return;
-    rotationLocked = false;
+    if (!rotationLocked && !orientAuto) return;
+    rotationLocked = false; orientAuto = false;
     rotateBtn.classList.remove('toggled');
-    try { screen.orientation.unlock(); } catch(e){}
+    unlockOrientation();
   }
   rotateBtn.addEventListener('click', async () => {
-    if (!screen.orientation || typeof screen.orientation.lock !== 'function'){
-      showToast('Rotating isn\u2019t supported on this browser.', 'error');
-      return;
-    }
-    const target = /^landscape/.test(screen.orientation.type) ? 'portrait' : 'landscape';
+    const cur = (screen.orientation && screen.orientation.type) || (window.innerWidth > window.innerHeight ? 'landscape' : 'portrait');
+    const target = /^landscape/.test(cur) ? 'portrait' : 'landscape';
+    const hadLock = rotationLocked, hadAuto = orientAuto;
+    rotationLocked = true;   // so the fullscreen auto-lock does not fight this choice
     try {
-      if (!document.fullscreenElement) await videoWrap.requestFullscreen();
-      await screen.orientation.lock(target);
-      rotationLocked = true;
+      try { if (!document.fullscreenElement) await videoWrap.requestFullscreen(); }
+      catch(e){ if (!capOrient()) throw e; }   // the plugin does not need fullscreen
+      await lockOrientation(target);
+      orientAuto = false;
       rotateBtn.classList.add('toggled');
     } catch(e){
-      showToast('Couldn\u2019t rotate the screen here.', 'error');
+      rotationLocked = hadLock; orientAuto = hadAuto;
+      showToast(e && e.message === 'unsupported'
+        ? 'This browser can\u2019t lock the screen. Turn on auto-rotate and turn your phone.'
+        : 'Couldn\u2019t rotate the screen here.', 'error');
     }
   });
 
@@ -17585,7 +17655,11 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const fd = (m === videoEl) ? frameDur : 1/30;
     m.currentTime = Math.min(m.duration, Math.max(0, m.currentTime + dir * fd));
   }
-  const VIEW_FITS = [['contain','Fit'],['cover','Fill (crop)'],['fill','Stretch']];
+  // The first three are the classic fit modes (the Fit button and the A key cycle only these). Entries with a third value force an aspect ratio.
+  const VIEW_FITS = [['contain','Fit'],['cover','Fill (crop)'],['fill','Stretch'],
+    ['ratio','16:9',16/9],['ratio','4:3',4/3],['ratio','3:2',3/2],['ratio','16:10',16/10],['ratio','5:4',5/4],['ratio','1:1',1],
+    ['ratio','21:9',21/9],['ratio','2.39:1',2.39],['ratio','4:5',4/5],['ratio','9:16',9/16]];
+  const VIEW_BASIC = 3;
   const VIEW_ZOOMS = [1, 1.25, 1.5, 2, 3];
   let viewFitIdx = 0, viewZoomIdx = 0;
   try {
@@ -17608,12 +17682,25 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     viewPanX = Math.max(-mx, Math.min(mx, viewPanX));
     viewPanY = Math.max(-my, Math.min(my, viewPanY));
   }
+  // A forced aspect ratio is the element drawn stretched over its whole box (object-fit: fill), then scaled down on one axis so the
+  // picture has that shape and sits centred in the box. Returns null when no ratio is forced.
+  function viewRatioScale(){
+    const A = VIEW_FITS[viewFitIdx][2];
+    if (!A) return null;
+    if (!viewW || !viewH) refreshViewSize();
+    if (!viewW || !viewH) return null;
+    return viewW / viewH > A ? { sx: viewH * A / viewW, sy: 1 } : { sx: 1, sy: viewW / A / viewH };
+  }
   function writeViewTransform(){
     viewRaf = 0;
-    const t = viewIsZoomed()
-      ? 'translate3d(' + viewPanX + 'px,' + viewPanY + 'px,0) scale(' + VIEW_ZOOMS[viewZoomIdx] + ')'
+    const rs = viewRatioScale(), z = VIEW_ZOOMS[viewZoomIdx];
+    const prev = window.__ppViewScale;
+    window.__ppViewScale = rs;   // lets the subtitle placement know where the picture really is
+    const t = (viewIsZoomed() || rs)
+      ? 'translate3d(' + viewPanX + 'px,' + viewPanY + 'px,0) scale(' + (z * (rs ? rs.sx : 1)) + ',' + (z * (rs ? rs.sy : 1)) + ')'
       : '';
     viewTargets.forEach(el => { if (el) el.style.transform = t; });
+    if ((prev && prev.sx) !== (rs && rs.sx) || (prev && prev.sy) !== (rs && rs.sy)) window.dispatchEvent(new Event('pp-viewscale'));
   }
   function panViewBy(dx, dy){
     if (!viewIsZoomed()) return false;
@@ -17622,8 +17709,15 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (!viewRaf) viewRaf = requestAnimationFrame(writeViewTransform);
     return true;
   }
-  window.addEventListener('resize', () => { refreshViewSize(); if (viewIsZoomed()) panViewBy(0, 0); });
-  document.addEventListener('fullscreenchange', () => { refreshViewSize(); if (viewIsZoomed()) panViewBy(0, 0); });
+  // The box changes shape on rotation, fullscreen, resize, or when a video of another shape loads: redo the ratio scaling too.
+  function refreshViewTransform(){
+    refreshViewSize();
+    if (viewIsZoomed()) clampViewPan();
+    if (viewIsZoomed() || VIEW_FITS[viewFitIdx][2]) writeViewTransform();
+  }
+  window.addEventListener('resize', refreshViewTransform);
+  document.addEventListener('fullscreenchange', refreshViewTransform);
+  try { new ResizeObserver(refreshViewTransform).observe(videoWrap); } catch(e){}
   function applyViewMode(){
     refreshViewSize();
     if (!viewIsZoomed()){ viewPanX = 0; viewPanY = 0; }
@@ -17632,17 +17726,33 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (viewIsZoomed()) videoWrap.setAttribute('data-vzoomed',''); else videoWrap.removeAttribute('data-vzoomed');
     const isDefault = viewFitIdx === 0 && viewZoomIdx === 0;
     if (isDefault) videoWrap.removeAttribute('data-vfit'); else videoWrap.setAttribute('data-vfit', VIEW_FITS[viewFitIdx][0]);
-    videoWrap.style.setProperty('--vfit', VIEW_FITS[viewFitIdx][0]);
+    videoWrap.style.setProperty('--vfit', VIEW_FITS[viewFitIdx][2] ? 'fill' : VIEW_FITS[viewFitIdx][0]);   // a forced ratio draws stretched, then scales (see viewRatioScale)
     videoWrap.style.setProperty('--vzoom', VIEW_ZOOMS[viewZoomIdx]);
     const fl = document.getElementById('view-fit-label'), zl = document.getElementById('view-zoom-label');
-    if (fl) fl.textContent = VIEW_FITS[viewFitIdx][1];
+    if (fl) fl.textContent = VIEW_FITS[viewFitIdx][2] ? 'Ratio ' + VIEW_FITS[viewFitIdx][1] : VIEW_FITS[viewFitIdx][1];
+    document.querySelectorAll('#view-ratio-row button').forEach(b => b.classList.toggle('toggled', +b.dataset.i === (VIEW_FITS[viewFitIdx][2] ? viewFitIdx : -1)));
     if (zl) zl.textContent = VIEW_ZOOMS[viewZoomIdx] + 'x';
     try { localStorage.setItem('playerViewFit', viewFitIdx); localStorage.setItem('playerViewZoom', viewZoomIdx); } catch(e){}
   }
   function cycleViewFit(){
-    viewFitIdx = (viewFitIdx + 1) % VIEW_FITS.length; applyViewMode();
+    viewFitIdx = viewFitIdx >= VIEW_BASIC - 1 ? 0 : viewFitIdx + 1; applyViewMode();   // from a forced ratio it goes back to Fit
     if (typeof showToast === 'function') showToast('Video: ' + VIEW_FITS[viewFitIdx][1]);
   }
+  // Aspect ratio chips: tap one to force that shape, tap it again (or Original) to go back to Fit.
+  (function(){
+    const row = document.getElementById('view-ratio-row');
+    if (!row) return;
+    const mk = (label, i) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'pill-btn'; b.dataset.i = i; b.textContent = label; row.appendChild(b); return b; };
+    mk('Original', -1).dataset.i = -1;
+    VIEW_FITS.forEach((f, i) => { if (f[2]) mk(f[1], i); });
+    row.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      const i = +b.dataset.i;
+      viewFitIdx = (i < 0 || i === viewFitIdx) ? 0 : i;
+      applyViewMode();
+      if (typeof showToast === 'function') showToast(viewFitIdx === 0 ? 'Video: Original shape' : 'Aspect ratio: ' + VIEW_FITS[viewFitIdx][1]);
+    });
+  })();
   function stepViewZoom(dir){
     const next = Math.max(0, Math.min(VIEW_ZOOMS.length - 1, viewZoomIdx + dir));
     const quiet = !!window.__ppQuietZoom;
@@ -18323,6 +18433,32 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   function closeRenameModal(){
     renameModalOverlay.classList.remove('open');
   }
+
+  // On phones the on-screen keyboard covers the bottom of the page without resizing it, so this fixed, centred dialog ended up
+  // behind the keyboard. Size the overlay to the visible area (visualViewport) while it is open, so the dialog sits above the keyboard
+  // and the focused field is scrolled into view.
+  (function(){
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const fit = () => {
+      if (!renameModalOverlay.classList.contains('open')) return;
+      renameModalOverlay.style.top = vv.offsetTop + 'px';
+      renameModalOverlay.style.bottom = 'auto';
+      renameModalOverlay.style.height = vv.height + 'px';
+      renameModalOverlay.style.setProperty('--vv-h', vv.height + 'px');
+      const a = document.activeElement;
+      if (a && renameModalOverlay.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) a.scrollIntoView({ block:'nearest' });
+    };
+    const clear = () => {
+      renameModalOverlay.style.top = ''; renameModalOverlay.style.bottom = ''; renameModalOverlay.style.height = '';
+      renameModalOverlay.style.removeProperty('--vv-h');
+    };
+    vv.addEventListener('resize', fit);
+    vv.addEventListener('scroll', fit);
+    renameModalOverlay.addEventListener('focusin', () => { setTimeout(fit, 120); setTimeout(fit, 350); });   // again after the keyboard finishes sliding up
+    new MutationObserver(() => { renameModalOverlay.classList.contains('open') ? fit() : clear(); })
+      .observe(renameModalOverlay, { attributes:true, attributeFilter:['class'] });
+  })();
 
   renameArtistsBtn.addEventListener('click', openRenameModal);
   renameCancelBtn.addEventListener('click', closeRenameModal);
@@ -20372,8 +20508,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (s.subtitlePos === 'top' || s.subtitlePos === 'bottom' || s.subtitlePos === 'custom'){
       subtitlePos = s.subtitlePos;
       if (isFinite(+s.subtitleX) && isFinite(+s.subtitleY)){
-        subtitleX = Math.max(0, Math.min(1, +s.subtitleX));
-        subtitleY = Math.max(0, Math.min(1, +s.subtitleY));
+        subtitleX = Math.max(-1, Math.min(2, +s.subtitleX));
+        subtitleY = Math.max(-1, Math.min(2, +s.subtitleY));
       } else if (subtitlePos === 'custom') subtitlePos = 'bottom';
       applySubtitlePos();
     }
