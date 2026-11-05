@@ -46,6 +46,7 @@ class MainActivity : BridgeActivity() {
         registerPlugin(BackupPlugin::class.java)   // streams big exports (library backup) straight into Download/Press Play
         registerPlugin(EmbedPlugin::class.java)     // native MiniLM sentence embeddings
         registerPlugin(StoragePlugin::class.java)   // real device free/used space for the Storage bar
+        registerPlugin(TranslatePlugin::class.java) // on-device lyrics translation (ML Kit)
         // native player layer
         registerPlugin(NativePlayerPlugin::class.java)
         registerPlugin(LibraryPlugin::class.java)
