@@ -73,7 +73,7 @@ jobs:
 
       - name: Add the native ONNX plugin
         run: |
-          for f in OnnxSeparatorPlugin Accel StemNative SpleeterNative KeepAliveService SpleeterSeparatorPlugin BackupPlugin EmbedPlugin StoragePlugin TranslatePlugin Throttle WhisperNative ParakeetNative LlmNative FastDownload; do
+          for f in OnnxSeparatorPlugin Accel StemNative SpleeterNative KeepAliveService SpleeterSeparatorPlugin BackupPlugin EmbedPlugin MiniTokenizer StoragePlugin TranslatePlugin Throttle WhisperNative ParakeetNative LlmNative FastDownload; do
             f="android-overrides/$f.java"
             if [ ! -f "$f" ]; then echo "::error::Missing file in the repo: $f. Add it at that exact path (folder included) and run again."; exit 1; fi
           done
