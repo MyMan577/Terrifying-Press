@@ -2440,6 +2440,7 @@
       '<div class="ppv-note">Combines the track\u2019s tags (tempo, key, genre, mood, instruments) with its lyrics or subtitles, so it knows both how it sounds and what it is about. Tags are made first if missing. The written part uses the Bloop AI brain (one-time download). Without lyrics or subtitles you get the sound summary only.</div>' +
       '<div id="ppv-sumout" class="ppv-out"></div>' +
       '<button id="ppv-sumtalk" class="ppv-sec" style="display:none;margin-top:8px">\ud83d\udcac Talk about this song in chat</button>' +
+      '<button id="ppv-lyfix" class="ppv-sec" style="margin-top:8px">\u270e Fix this song\u2019s lyrics with AI (in chat)</button>' +
       '<button id="ppv-edopen" class="ppv-sec" style="margin-top:12px;padding:10px;font-size:13px">✎ Open full-screen editor (lyrics &amp; timestamps)</button>';
     // AI tools no longer live in the one panel: tagging + smart playlists go to the Library tab, Whisper goes to captions (video) or Lyrics (songs)
     d1.querySelector('summary').textContent = 'AI tagging & smart playlists';
@@ -2814,6 +2815,7 @@
     };
     // ---------- AI summary ----------
     { const sl = $('#ppv-sumlen'); sl.value = sumLenKey(); sl.onchange = () => { try { localStorage.setItem('ppvSumLen', sl.value); } catch (e) {} }; }
+    $('#ppv-lyfix').onclick = () => { const a = window.__ppApi, i = a ? a.currentIndex() : -1; if (i < 0) { h.status('Play or select a track first.'); return; } if (h.mas && h.mas.lyricFix) h.mas.lyricFix(i); };
     $('#ppv-sumtalk').onclick = () => { const a = window.__ppApi, i = a ? a.currentIndex() : -1; if (i < 0) { h.status('Play or select a track first.'); return; } if (h.mas && h.mas.songTalk) h.mas.songTalk(i); };
     $('#ppv-sumgo').onclick = async () => {
       const sumout = $('#ppv-sumout'); busy(true); sumout.textContent = '';
@@ -4773,7 +4775,8 @@
         (tr.words < 12 ? ' (I have no lyrics for it yet, so I can only go on what I know about it and its sound. Transcribing it first gives much better answers.)' : '')));
       actions([['Literal story', (b, d) => { d.remove(); send('What literally happens in this song, verse by verse?'); }],
                ['Metaphors', (b, d) => { d.remove(); send('What are the main metaphors and symbols, and what do they stand for?'); }],
-               ['How it\'s built', (b, d) => { d.remove(); send('How is the song built musically, and how does that support the meaning?'); }]]);
+               ['How it\'s built', (b, d) => { d.remove(); send('How is the song built musically, and how does that support the meaning?'); }],
+               ['\u270e Fix lyrics', (b, d) => { d.remove(); startLyFix(i); }]]);
     }
     async function songTalkReply(text) {
       const st = songTalk; if (!st) return;
@@ -4799,6 +4802,184 @@
         if (songTalk === st) { st.hist.push(uMsg, { role: 'assistant', content: r }); st.hist = st.hist.slice(-12); }
       } catch (e) { console.error(e); el.textContent = 'Oops, my brain would not load: ' + errText(e); }
       finally { chatBusy = false; holdModel = false; cm('greet'); setTimeout(() => cm('idle'), 1300); idleUnload(); }
+    }
+    // ---------- Lyric Fix: the AI proofreads automatic lyrics, you approve each change ----------
+    // 1) consistency pass, no AI: a chorus transcribed slightly differently each time gets its most common wording.
+    // 2) AI pass: sections of lines with context around them; the model lists only lines it would change ("12| new line").
+    //    Suggestions that rewrite too much are dropped. Nothing is saved until you tap Accept. Timestamps never change.
+    // 3) chat: "line 12 should be ...", "replace X with Y", "show the lyrics", "undo", "check again", or ask anything.
+    let lyFix = null, lfBar = null;
+    const LF_TAG = /^(\s*(?:\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]\s*)*)(.*)$/;
+    function lfLoad(t) {
+      let e = null, lyr = '';
+      try { e = (JSON.parse(localStorage.getItem('playerSubtitles')) || {})[t.dbId] || null; } catch (x) {}
+      try { lyr = (JSON.parse(localStorage.getItem('playerLyricsV1')) || {})[t.dbId] || ''; } catch (x) {}
+      const raw = e ? (Array.isArray(e) ? e.map(q => [q.start, q.end, q.text]) : (e.c || [])) : [];
+      if (raw.length) {
+        const off = e && !Array.isArray(e) && isFinite(+e.o) ? +e.o : 0;                   // fold the offset into the times so nothing shifts
+        const cues = raw.map(q => ({ start: +q[0] + off, end: +q[1] + off, text: String(q[2] || '') }));
+        return { kind: 'subs', name: (e && !Array.isArray(e) && e.n) || 'Whisper', cues, texts: cues.map(c => c.text), lyr, rawSubs: JSON.stringify(e) };
+      }
+      if (!lyr) return null;
+      const lines = String(lyr).split(/\r?\n/), map = [], texts = [];
+      lines.forEach((ln, k) => { const m = ln.match(LF_TAG), tx = (m ? m[2] : ln).trim(); if (tx && !/^\[[^\]]*\]$/.test(tx)) { map.push(k); texts.push(tx); } });
+      return texts.length ? { kind: 'lyrics', lines, map, texts, lyr } : null;
+    }
+    function lfSave() {                                                   // write the current texts back, keeping every timestamp
+      const F = lyFix; if (!F) return false;
+      const A = window.__ppApi, L = window.__ppLyrics, D = F.data;
+      if (D.kind === 'subs') {
+        const ok = A.setSubtitles(F.t.dbId, D.cues.map((c, k) => ({ start: c.start, end: c.end, text: F.texts[k] })), D.name);
+        if (D.lyr && L) {                                                 // the same lines in the saved (LRC) lyrics follow
+          const swap = new Map(); D.texts.forEach((o, k) => { if (F.texts[k] !== o && !swap.has(o.trim())) swap.set(o.trim(), F.texts[k]); });
+          if (swap.size) { const nl = String(D.lyr).split(/\r?\n/).map(ln => { const m = ln.match(LF_TAG); return m && swap.has(m[2].trim()) ? m[1] + swap.get(m[2].trim()) : ln; }).join('\n'); if (nl !== D.lyr) L.set(F.t.dbId, nl); }
+        }
+        return ok !== false;
+      }
+      const lines = D.lines.slice(); D.map.forEach((k, j) => { const m = lines[k].match(LF_TAG); lines[k] = (m ? m[1] : '') + F.texts[j]; });
+      if (L) L.set(F.t.dbId, lines.join('\n')); return true;
+    }
+    function lfUndoAll() {
+      const F = lyFix; if (!F) return;
+      F.texts = F.data.texts.slice(); F.stack = [];
+      const A = window.__ppApi, L = window.__ppLyrics, D = F.data;
+      if (D.kind === 'subs') A.setSubtitles(F.t.dbId, D.cues, D.name);
+      if (L && D.lyr) L.set(F.t.dbId, D.lyr);
+      add('bot', blTone('\u21ba All changes undone. The lyrics are back to how they were.'));
+    }
+    function lfApply(n, txt, why) {                                       // one change (n = 1-based line), saved right away
+      const F = lyFix; if (!F || n < 1 || n > F.texts.length) return false;
+      const old = F.texts[n - 1]; if (old === txt) return false;
+      F.stack.push([n, old]); F.texts[n - 1] = txt; F.changed++;
+      return lfSave();
+    }
+    const lfSim = (a, b) => { a = mNorm(a); b = mNorm(b); if (!a || !b) return 0; const mx = Math.max(a.length, b.length), d = mLev(a, b, Math.ceil(mx * 0.6)); return 1 - d / mx; };
+    function lfSuggest(list, intro) {                                     // [[n, newText, why]] -> buttons per change + accept all
+      const F = lyFix; if (!F) return;
+      const todo = list.filter(([n, tx]) => n >= 1 && n <= F.texts.length && tx && tx !== F.texts[n - 1]);
+      if (!todo.length) return false;
+      if (intro) add('bot', blTone(intro));
+      todo.forEach(([n, tx, why]) => {
+        add('bot', 'Line ' + n + (why ? ' (' + why + ')' : '') + ':\n\u2013 ' + F.texts[n - 1] + '\n+ ' + tx);
+        actions([['\u2713 Accept', (b, d) => { d.remove(); if (lfApply(n, tx)) add('bot', '\u2713 Line ' + n + ' fixed.'); }], ['Skip', (b, d) => d.remove()]]);
+      });
+      if (todo.length > 1) actions([['\u2713 Accept all ' + todo.length, (b, d) => { d.remove(); let k = 0; todo.forEach(([n, tx]) => { if (F.texts[n - 1] !== tx && lfApply(n, tx)) k++; }); add('bot', blTone('\u2713 ' + k + ' line' + (k === 1 ? '' : 's') + ' fixed. Say \u201cundo\u201d to take back the last one.')); }]]);
+      return true;
+    }
+    function lfConsistency() {                                            // choruses: most common wording wins, no AI
+      const F = lyFix, T = F.texts, n = T.length, used = new Array(n).fill(false), out = [];
+      for (let i = 0; i < n; i++) {
+        if (used[i] || mNorm(T[i]).length < 10) continue;
+        const grp = [i];
+        for (let j = i + 1; j < n; j++) if (!used[j] && lfSim(T[i], T[j]) >= 0.8) grp.push(j);
+        if (grp.length < 3) continue;
+        grp.forEach(j => used[j] = true);
+        const cnt = new Map(); grp.forEach(j => cnt.set(T[j], (cnt.get(T[j]) || 0) + 1));
+        const best = [...cnt.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0];
+        if (best[1] < 2) continue;
+        grp.forEach(j => { if (T[j] !== best[0]) out.push([j + 1, best[0], 'matches the other ' + best[1] + ' times this line is sung']); });
+      }
+      return out;
+    }
+    const LF_SYS = 'You correct automatic lyric transcriptions. Fix only clear transcription mistakes: misheard words, words that make no sense in context, broken grammar a singer would not sing, and names or places that were heard as ordinary words. ' +
+      'Keep the singer\'s own style, slang, contractions and repetition. Do not rewrite, improve, censor or translate, and never add or remove lines. ' +
+      'Reply with ONLY the lines you change, one per line, exactly as: number| corrected line. If nothing needs fixing, reply: NONE';
+    const lfParse = (r, lo, hi) => String(r || '').split(/\n/).map(ln => ln.match(/^\s*(?:line\s*)?(\d{1,4})\s*[|:.)\]-]\s*(.+?)\s*$/i)).filter(Boolean).map(m => [+m[1], m[2].replace(/^["\u201c]+|["\u201d]+$/g, '').trim()]).filter(([n]) => n >= lo && n <= hi);
+    async function lfAiPass() {
+      const F = lyFix; if (!F || F.busy) return; F.busy = true;
+      chatBusy = true; holdModel = true; cm('work');
+      const status = add('bot', '\u2026'), who = F.t.title + (F.artist ? ' by ' + F.artist : '');
+      let found = 0;
+      try {
+        const g = await ensureModel(x => { status.textContent = x; });
+        const T = F.texts, N = T.length, CH = 14;
+        for (let s0 = 0; s0 < N && lyFix === F; s0 += CH) {
+          const s1 = Math.min(N, s0 + CH);
+          status.textContent = 'Reading lines ' + (s0 + 1) + '\u2013' + s1 + ' of ' + N + '\u2026'; scrollDown();
+          const ctxB = T.slice(Math.max(0, s0 - 3), s0).join(' / '), ctxA = T.slice(s1, Math.min(N, s1 + 3)).join(' / ');
+          const user = 'Song: ' + who + '\n' + (ctxB ? 'Lines just before (context only): ' + ctxB + '\n' : '') + 'Lines to check:\n' +
+            T.slice(s0, s1).map((q, k) => (s0 + k + 1) + '| ' + q).join('\n') + (ctxA ? '\nLines just after (context only): ' + ctxA : '');
+          let r = '';
+          try { const o = await g([{ role: 'system', content: LF_SYS }, { role: 'user', content: user }], { max_new_tokens: 420, do_sample: false, temperature: 0, top_k: 1, repetition_penalty: 1.05 }); r = o && o[0] && o[0].generated_text; r = Array.isArray(r) ? (r[r.length - 1] || {}).content : r; }
+          catch (e) { console.warn('lyric fix chunk failed', e); continue; }
+          if (/^\s*none\s*$/i.test(String(r))) continue;
+          // Guard against rewrites: a fix must still look like the line it replaces.
+          const sug = lfParse(r, s0 + 1, s1).filter(([n, tx]) => { const o = T[n - 1]; if (!tx || tx === o) return false; const lr = tx.length / Math.max(1, o.length); return lr >= 0.5 && lr <= 1.8 && lfSim(o, tx) >= 0.45; }).map(([n, tx]) => [n, tx, '']);
+          if (sug.length) { found += sug.length; lfSuggest(sug); }
+        }
+        status.textContent = found ? 'Done reading: ' + found + ' suggestion' + (found === 1 ? '' : 's') + ' above.' : 'Done reading. I did not find anything I am sure is wrong.';
+        add('bot', blTone('You can also tell me: \u201cline 12 should be \u2026\u201d, \u201creplace Carly with Charlie\u201d, \u201cshow the lyrics\u201d, or ask about any line. Say \u201cdone\u201d when you are finished.'));
+      } catch (e) { console.error(e); status.textContent = 'Oops, my brain would not load: ' + errText(e); }
+      finally { F.busy = false; chatBusy = false; holdModel = false; cm('idle'); idleUnload(); scrollDown(); }
+    }
+    function endLyFix(msg) {
+      if (!lyFix) return; const F = lyFix; lyFix = null;
+      if (lfBar) { lfBar.remove(); lfBar = null; }
+      cin.placeholder = musicMode ? 'Talk about your music' : 'Say something to Bloop';
+      if (msg !== false) add('bot', blTone(F.changed ? 'Saved. ' + F.changed + ' change' + (F.changed === 1 ? '' : 's') + ' to the lyrics of ' + F.t.title + '.' : 'Done. Nothing was changed.'));
+    }
+    function startLyFix(i) {
+      const A = window.__ppApi, t = A.tracks()[i]; if (!t) return;
+      if (typeof songTalk !== 'undefined' && songTalk) endSongTalk(false);
+      if (lyFix) endLyFix(false);
+      cbox.style.display = 'flex'; try { blAnchor(); } catch (e) {}
+      const data = lfLoad(t);
+      if (!data) { add('bot', blTone('There are no lyrics or subtitles saved for ' + t.title + ' yet. Transcribe it first (Lyrics & subtitles), or let auto-lyrics find them, then ask me again.')); return; }
+      const artist = t.artist && !/^(unknown artist|video|stream)$/i.test(t.artist) ? t.artist : '';
+      lyFix = { t, idx: i, artist, data, texts: data.texts.slice(), stack: [], changed: 0, hist: [], busy: false };
+      lfBar = document.createElement('div');
+      lfBar.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #2e2f36;font-size:12px;background:#22232a';
+      const lab = document.createElement('span'); lab.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      lab.textContent = '\u270e Fixing lyrics: ' + t.title;
+      const u = document.createElement('button'); u.textContent = '\u21ba Undo all'; u.className = 'ch-c'; u.onclick = () => lfUndoAll();
+      const x = document.createElement('button'); x.textContent = '\u2715 Done'; x.className = 'ch-c'; x.onclick = () => endLyFix();
+      lfBar.append(lab, u, x); cbox.insertBefore(lfBar, clist);
+      cin.placeholder = 'e.g. line 12 should be \u2026';
+      add('bot', blTone('Let\'s fix the lyrics of ' + t.title + (artist ? ' by ' + artist : '') + ' (' + lyFix.texts.length + ' lines' + (data.kind === 'subs' ? ', timing stays as it is' : '') + '). Nothing changes until you accept it.'));
+      const cons = lfConsistency();
+      if (!lfSuggest(cons, 'First, lines that repeat (like the chorus) but were heard a little differently:')) add('bot', 'The repeated lines already match. \u2713');
+      if (brainOn() && (gen || lsGet('ppvChatDl') === '1')) actions([['\ud83d\udd0d Check every line with AI', (b, d) => { d.remove(); lfAiPass(); }], ['Show the lyrics', (b, d) => { d.remove(); lfShow(); }]]);
+      else add('bot', 'Turn on my AI brain in the assistant settings for the line-by-line check. You can still edit lines here: \u201cline 12 should be \u2026\u201d.');
+    }
+    function lfShow(from) {
+      const F = lyFix; if (!F) return; const a = Math.max(0, (from || 1) - 1), b = Math.min(F.texts.length, a + 40);
+      add('bot', F.texts.slice(a, b).map((q, k) => (a + k + 1) + '. ' + q).join('\n') + (b < F.texts.length ? '\n\u2026 say \u201cshow from line ' + (b + 1) + '\u201d for more' : ''));
+    }
+    async function lfChat(text) {                                          // everything typed while Lyric Fix is open
+      const F = lyFix; let m;
+      if ((m = text.match(/^line\s*(\d{1,4})\s*(?:should be|is|=|:|->|to|says?)\s*["\u201c']?(.+?)["\u201d']?$/i))) {
+        const n = +m[1]; if (n < 1 || n > F.texts.length) { add('bot', 'There are ' + F.texts.length + ' lines.'); return; }
+        const old = F.texts[n - 1]; if (lfApply(n, m[2].trim())) add('bot', '\u2713 Line ' + n + ':\n\u2013 ' + old + '\n+ ' + m[2].trim()); else add('bot', 'Line ' + n + ' already says that.'); return;
+      }
+      if ((m = text.match(/^(?:replace|change|swap)\s+["\u201c']?(.+?)["\u201d']?\s+(?:with|to|for|->)\s+["\u201c']?(.+?)["\u201d']?(?:\s+everywhere)?$/i))) {
+        const from = m[1].trim(), to = m[2].trim(), re = new RegExp('(^|[^\\p{L}\\p{N}])' + from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=$|[^\\p{L}\\p{N}])', 'giu');
+        let k = 0; F.texts.forEach((q, j) => { const nq = q.replace(re, (all, pre) => pre + to); if (nq !== q && lfApply(j + 1, nq)) k++; });
+        add('bot', k ? '\u2713 Replaced \u201c' + from + '\u201d with \u201c' + to + '\u201d in ' + k + ' line' + (k === 1 ? '' : 's') + '.' : 'I could not find \u201c' + from + '\u201d in the lyrics.'); return;
+      }
+      if ((m = text.match(/^(?:show|list|read)(?: me)?(?: the)? (?:lyrics|lines)(?: from(?: line)? (\d+))?$|^show from line (\d+)$/i))) { lfShow(+(m[1] || m[2] || 1)); return; }
+      if (/^undo(?: last| that)?$/i.test(text)) { const u = F.stack.pop(); if (!u) { add('bot', 'Nothing to undo.'); return; } F.texts[u[0] - 1] = u[1]; F.changed = Math.max(0, F.changed - 1); lfSave(); add('bot', '\u21ba Line ' + u[0] + ' is back to: ' + u[1]); return; }
+      if (/^undo (?:all|everything)$/i.test(text)) { lfUndoAll(); return; }
+      if (/^(?:check|review|go over|proofread)(?: it| them| the lyrics)?(?: again)?$|^check again$/i.test(text)) { await lfAiPass(); return; }
+      // Anything else: ask the AI with the numbered lyrics; fixes it proposes come back as Accept buttons.
+      if (!brainOn() || (!gen && lsGet('ppvChatDl') !== '1')) { add('bot', 'That needs my AI brain. Edits work without it: \u201cline 12 should be \u2026\u201d, \u201creplace X with Y\u201d.'); return; }
+      chatBusy = true; holdModel = true; cm('work'); const el = add('bot', '\u2026');
+      try {
+        const g = await ensureModel(x => { el.textContent = x; });
+        const ctx = ctxOf(), mx = Math.max(160, Math.min(380, Math.floor(ctx * 0.16)));
+        let lines = F.texts.map((q, k) => (k + 1) + '| ' + q); while (lines.length > 10 && Math.ceil(lines.join('\n').length / 3) > Math.floor(ctx * 0.85) - mx - 500) lines.pop();
+        const sys = 'You help the user correct the automatic lyrics of "' + F.t.title + '"' + (F.artist ? ' by ' + F.artist : '') + '. Answer their question in one or two short sentences. ' +
+          'If you suggest corrections, put each on its own line at the end as: number| corrected line. Only suggest fixes for clear transcription mistakes; never rewrite the song.\nLYRICS (numbered):\n' + lines.join('\n');
+        const fit = fitMsgs([{ role: 'system', content: sys }].concat(F.hist.slice(-4), [{ role: 'user', content: text }]), mx);
+        let acc = ''; const opts = { max_new_tokens: mx, do_sample: false, temperature: 0, top_k: 1, repetition_penalty: 1.08 };
+        if (g.lm) opts.streamer = { callback_function: x => { acc += x; el.textContent = acc; scrollDown(); } };
+        const out = await g(fit.msgs, opts); let r = out && out[0] && out[0].generated_text; r = String(Array.isArray(r) ? (r[r.length - 1] || {}).content : (r || acc)).trim();
+        const sug = lfParse(r, 1, F.texts.length).filter(([n, tx]) => tx !== F.texts[n - 1] && lfSim(F.texts[n - 1], tx) >= 0.35);
+        const talk = r.split(/\n/).filter(ln => !/^\s*(?:line\s*)?\d{1,4}\s*[|:.)\]-]/i.test(ln)).join('\n').trim();
+        el.textContent = talk || (sug.length ? 'Here is what I would change:' : 'I am not sure. Tell me what you hear and I will fix it.');
+        if (sug.length) lfSuggest(sug.map(([n, tx]) => [n, tx, '']));
+        F.hist.push({ role: 'user', content: text }, { role: 'assistant', content: r }); F.hist = F.hist.slice(-8);
+      } catch (e) { console.error(e); el.textContent = 'Oops, my brain would not load: ' + errText(e); }
+      finally { chatBusy = false; holdModel = false; cm('idle'); idleUnload(); scrollDown(); }
     }
     function agent(raw, skip) { holdModel = false; const hit = agentCore(raw, skip); if (hit && !chatBusy && !holdModel && !bigRam()) unloadModel(); return hit; }   // big-RAM phones keep it warm (idleUnload frees it later)
     // Loose phrasing -> canonical command, by plain rules (no model needed). Returns {cmd, q} or null. q = ask before acting.
@@ -5026,6 +5207,17 @@
         const key = (m[1] || m[2] || m[3] || m[4] || 'flat').toLowerCase().trim().replace(/\s+the$/, ''), name = EQN[key];
         if (!name) return say('I know these EQ presets: bass, treble, vocal, v-shape, acoustic, pop, rock, jazz, classical, electronic, hip hop, loudness, podcast, late night, or flat.');
         return A.setTrackEqPreset(c.dbId, name) ? done('EQ set to ' + name + ' for this track.' + (name === 'flat' ? '' : ' Say \u201ceq off\u201d to undo.')) : say('That preset did not work.');
+      }
+      // ---- Lyric Fix ("fix the lyrics", "correct the lyrics of Hello", "proofread the lyrics") ----
+      {
+        const mf = t.match(/^(?:fix|correct|clean up|proofread|check|repair)(?: the| my)? (?:lyrics|subtitles|captions|transcript(?:ion)?)(?: (?:of|for|in|on) (.+))?$/i);
+        if (mf) {
+          const q = String(mf[1] || '').trim().replace(/^["\u201c']+|["\u201d'.!?]+$/g, '');
+          let idx = -1;
+          if (!q || /^(?:this|that|it|the|current|this one)(?: song| track| video| one)?$/i.test(q)) { idx = A.currentIndex(); if (idx < 0) return say('Play or pick a song first, or name one: \u201cfix the lyrics of Hello\u201d.'); }
+          else { const hit = resolveMusic(q.replace(/^(?:the )?(?:song|track) /i, '')); if (hit && hit.kind === 'song') idx = hit.idx; else return say(hit && hit.kind === 'artist' ? 'Which song by ' + hit.a.name + '?' : 'I cannot find a song called \u201c' + q + '\u201d.'); }
+          startLyFix(idx); return true;
+        }
       }
       // ---- Song Talk ("let's talk about this song", "discuss Hello", "deep dive into Charlie's Inferno") ----
       {
@@ -7508,6 +7700,11 @@
       if (!noEcho) add('me', text);
       if (!direct) { try { blEquip(blPropFor(text)); } catch (e) { console.error(e); } }
       if (CRISIS.test(text)) { clearTimeout(blTr && blTr.timer); blTr = null; add('bot', CRISIS_MSG); return; }
+      if (lyFix) {
+        if (/^(?:done|end|exit|quit|finish(?:ed)?|that'?s all|that is all|save|save it|stop)[.!]*$/i.test(text)) { endLyFix(); return; }
+        if (agentOn() && text.split(/\s+/).length <= 5 && /^(?:pause|play|resume|next|skip|previous|prev|louder|quieter|volume|mute|unmute|rewind|forward|go back|repeat|faster|slower)\b/i.test(text)) { let hit = false; try { hit = smart(text); } catch (e) { console.error(e); } if (hit) return; }
+        await lfChat(text); return;
+      }
       if (songTalk) {
         if (/^(?:done|end|exit|quit|stop talking|end (?:the )?(?:chat|talk)|that'?s all|that is all|bye|thanks,? that'?s all)[.!]*$/i.test(text)) { endSongTalk(); return; }
         // short player commands still run ("pause", "next", "louder", "rewind 10 seconds"); everything else is about the song
@@ -7564,6 +7761,7 @@
       react,
       voice: ppVoiceApi,
       songTalk: i => startSongTalk(i),
+      lyricFix: i => startLyFix(i),
       chat: { ctx: ctxOf, ready: () => !!gen || lsGet('ppvChatDl') === '1', mb: () => CHAT_MODELS[chatKey()].mb, ask: async (msgs, opts, say) => { if (chatBusy) throw new Error('Bloop is busy chatting. Try again in a moment.'); clearTimeout(idleT); const g = await ensureModel(say || (() => {})); try { opts = Object.assign({}, opts || {}); if (opts.onText) { if (g.lm) opts.streamer = { callback_function: opts.onText }; delete opts.onText; } const o = await g(msgs, opts); const gt = o[0].generated_text; return String(Array.isArray(gt) ? gt[gt.length - 1].content : gt).trim(); } finally { idleUnload(); } }, isOn: () => chatOn, setOn: setChatOn, free: freeChat, setModel: setChatModel, models: CHAT_MODELS, key: chatKey, brainOn, setBrain, memory: { get: memN, set: setMem, max: MEM_MAX } },
       start() { key = ''; set('start', blLine('start', L.start), 900); },
       opened() {
