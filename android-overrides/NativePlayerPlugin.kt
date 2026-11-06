@@ -428,6 +428,33 @@ class NativePlayerPlugin : Plugin() {
         call.resolve()
     }
 
+    /**
+     * Motion smoothing and the Bluetooth picture delay for native video, as the page's menu sets them.
+     * The renderer reports back through the "memc" event (input fps, bypass, failure, extra delay).
+     */
+    @PluginMethod
+    fun setMemc(call: PluginCall) {
+        val c = NativeVideoView.MemcConfig(
+            mode = call.getString("mode") ?: "off",
+            delayMs = (call.getDouble("delayMs") ?: 0.0).toFloat(),
+            maxIn = call.getInt("maxIn") ?: 50,
+            outFps = call.getInt("outFps") ?: 120,
+            strength = (call.getDouble("strength") ?: 0.5).toFloat(),
+            quality = call.getInt("quality") ?: 1,
+            upscale = call.getInt("upscale") ?: 0)
+        main.post {
+            MainActivity.playerView?.let { pv ->
+                pv.onStatus = { m ->
+                    val o = JSObject()
+                    for ((k, v) in m) o.put(k, v)
+                    notifyListeners("memc", o)
+                }
+                pv.setMemc(c)
+            }
+            call.resolve()
+        }
+    }
+
     /** 32x18 luma grid of the current native frame, for the page's auto-levels (it can't read native frames). */
     @PluginMethod
     fun sampleLuma(call: PluginCall) {
