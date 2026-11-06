@@ -2826,7 +2826,8 @@
         let ai = '', note = '';
         if (tr.words >= 12 || (t.kind !== 'video' && t.artist && !/^(unknown artist|video|stream)$/i.test(t.artist))) {
           if (!ch.ready() && !confirm('The written summary uses the AI brain: a one-time download of about ' + ch.mb() + ' MB. Continue? (Cancel keeps just the sound summary.)')) note = 'No AI brain download, so this is the sound summary only.';
-          else { try { ai = await aiSummary(t, c, tr, ch.ask, say, $('#ppv-sumlen').value, ch.ctx && ch.ctx()); } catch (e) { console.warn(e); note = 'The AI brain could not run: ' + errText(e); } if (!ai && !note) note = tr.words >= 12 ? 'The AI summary came out unusable, so only the sound summary is shown.' : 'No lyrics are saved and the AI brain does not know this song, so only the sound summary is shown. Tap "Transcribe current track" above for a fuller summary.'; }
+          else { try { const askLive = (msgs, opts, sy) => { let acc = ''; return ch.ask(msgs, Object.assign({}, opts, { onText: x => { acc += x; sumout.textContent = acc; } }), sy); };
+            ai = await aiSummary(t, c, tr, askLive, say, $('#ppv-sumlen').value, ch.ctx && ch.ctx()); } catch (e) { console.warn(e); note = 'The AI brain could not run: ' + errText(e); } if (!ai && !note) note = tr.words >= 12 ? 'The AI summary came out unusable, so only the sound summary is shown.' : 'No lyrics are saved and the AI brain does not know this song, so only the sound summary is shown. Tap "Transcribe current track" above for a fuller summary.'; }
         } else note = 'No lyrics or subtitles saved for this track, so this is based on the sound only. Tap "Transcribe current track" above for a fuller summary.';
         const text = [ai, prof.line ? 'Sound: ' + prof.line : ''].filter(Boolean).join('\n\n');
         if (!text) throw new Error('Nothing to summarize yet. Tag the track first.');
@@ -4392,7 +4393,7 @@
       const m = CHAT_MODELS[chatKey()];
       if (!(await NP.exists({ id: m.lid })).ready) await nativeFetch(m.lid, m.url, say);
       say('Starting the model\u2026');
-      await NP.lmLoad({ id: m.lid, gpu: lsGet('ppvChatGpu') === '1' });
+      await NP.lmLoad({ id: m.lid, gpu: lsGet('ppvLmGpu') !== '0' });   // phone GPU by default: several times faster; the app falls back to the CPU if it can't
       const g = async (msgs, opts) => {
         opts = opts || {};
         const sys = msgs.length && msgs[0].role === 'system' ? String(msgs[0].content) : '';
@@ -4413,9 +4414,13 @@
     async function ensureModel(say) {
       if (gen) return gen; if (genP) return genP;
       genP = (async () => {
-        say('Loading my brain\u2026'); if (!tfMod) tfMod = await import(TF_URL);
-        if (NATIVE && !llmNativeFailed) {
-          try { gen = await (CHAT_MODELS[chatKey()].lm ? nativeLm(say) : nativeBrain(say)); lsSet('ppvChatDl', '1'); return gen; }
+        say('Loading my brain\u2026');
+        if (NATIVE && !llmNativeFailed) {                                // native models don't need the web AI library at all
+          if (CHAT_MODELS[chatKey()].lm) { try { gen = await nativeLm(say); lsSet('ppvChatDl', '1'); return gen; } catch (e) { console.warn('Native chat model failed, using the web version', e); llmNativeFailed = true; say('Native brain unavailable, using the web version\u2026'); } }
+        }
+        if (!tfMod) tfMod = await import(TF_URL);
+        if (NATIVE && !llmNativeFailed && !CHAT_MODELS[chatKey()].lm) {
+          try { gen = await nativeBrain(say); lsSet('ppvChatDl', '1'); return gen; }
           catch (e) { console.warn('Native chat model failed, using the web version', e); llmNativeFailed = true; say('Native brain unavailable, using the web version…'); }
         }
         const gpuOn = lsGet('ppvChatGpu') === '1' && navigator.gpu;
@@ -4431,6 +4436,11 @@
     }
     // Take the language model out of RAM (it stays on disk and reloads later without asking).
     async function unloadModel() { clearTimeout(idleT); if (gen) { const g = gen; gen = null; try { await g.dispose(); } catch (e) {} } }
+    // How long the model may sit idle in RAM. Reloading a big model takes seconds, so phones with plenty of RAM keep it
+    // around for 5 minutes; heavy jobs (split, lyrics, tagging) still free it first.
+    const bigRam = () => { try { return (navigator.deviceMemory || 0) >= 8; } catch (e) { return false; } };
+    const keepMs = () => bigRam() ? 300000 : 60000;
+    const idleUnload = () => { clearTimeout(idleT); idleT = setTimeout(() => { if (gen && !chatBusy && !holdModel) unloadModel(); }, keepMs()); };
     const heavyBusy = () => ['ppv-go', 'ppv-wgo', 'ppv-tag'].some(id => { const b = document.getElementById(id); return b && b.disabled; });
     // The chat brain (tiny language model) is optional. Everything Bloop DOES (moods, playlists, tagging, player control) runs without it.
     const brainOn = () => { const v = lsGet('ppvBrain'); return v == null ? lsGet('ppvChatDl') === '1' : v === '1'; };   // unset: on only if it was already downloaded
@@ -4671,23 +4681,30 @@
       }
       if (sumBusy || chatBusy) { add('bot', blTone('I am already writing something. Ask me again in a moment.')); return; }
       sumBusy = true; holdModel = true;
-      add('bot', blTone('Writing a summary of ' + label + '. This takes a little while on the phone\u2026'));
+      const live = add('bot', '\ud83d\udcdd ' + label + '\n\n\u2026');
       try {
         const tr = getTranscript(t.dbId), c = loadTags()[t.dbId];
-        const ask2 = async (msgs, opts, say) => { const g = await ensureModel(say || (() => {})); const o = await g(msgs, opts || {}); const gt = o[0].generated_text; return String(Array.isArray(gt) ? gt[gt.length - 1].content : gt).trim(); };
-        const ai = await aiSummary(t, c, tr, ask2, () => {}, sumLenKey(), ctxOf());
+        // The words appear as they are written (native models stream), so there is something to read straight away.
+        const ask2 = async (msgs, opts, say) => {
+          const g = await ensureModel(say || (x => { live.textContent = '\ud83d\udcdd ' + label + '\n\n' + x; }));
+          let acc = ''; opts = Object.assign({}, opts || {});
+          if (g.lm) opts.streamer = { callback_function: x => { acc += x; live.textContent = '\ud83d\udcdd ' + label + '\n\n' + acc; scrollDown(); } };
+          const o = await g(msgs, opts); const gt = o[0].generated_text; return String(Array.isArray(gt) ? gt[gt.length - 1].content : gt).trim();
+        };
+        const ai = await aiSummary(t, c, tr, ask2, x => { live.textContent = '\ud83d\udcdd ' + label + '\n\n' + x; }, sumLenKey(), ctxOf());
         if (!ai) {
+          live.remove();
           add('bot', blTone(tr.words >= 12 ? 'The summary came out unusable. Try again, or pick a bigger AI brain in the assistant settings.'
             : 'I have no lyrics for ' + label + ' and I do not know it well enough to explain it without guessing. Transcribe it first (Lyrics & subtitles) and ask me again.'));
           return;
         }
         const prof = soundProfile(c, t.kind), text = [ai, prof.line ? 'Sound: ' + prof.line : ''].filter(Boolean).join('\n\n');
         sumSave(t.dbId, { t: text, ts: Date.now() });
-        add('bot', '\ud83d\udcdd ' + label + '\n\n' + text);
-      } catch (e) { console.warn(e); add('bot', blTone('I could not write it: ' + errText(e))); }
-      finally { sumBusy = false; holdModel = false; clearTimeout(idleT); idleT = setTimeout(() => { if (!chatBusy) unloadModel(); }, 30000); }
+        live.textContent = '\ud83d\udcdd ' + label + '\n\n' + text; scrollDown();
+      } catch (e) { console.warn(e); try { live.remove(); } catch (x) {} add('bot', blTone('I could not write it: ' + errText(e))); }
+      finally { sumBusy = false; holdModel = false; idleUnload(); }
     }
-    function agent(raw, skip) { holdModel = false; const hit = agentCore(raw, skip); if (hit && !chatBusy && !holdModel) unloadModel(); return hit; }
+    function agent(raw, skip) { holdModel = false; const hit = agentCore(raw, skip); if (hit && !chatBusy && !holdModel && !bigRam()) unloadModel(); return hit; }   // big-RAM phones keep it warm (idleUnload frees it later)
     // Loose phrasing -> canonical command, by plain rules (no model needed). Returns {cmd, q} or null. q = ask before acting.
     function interpret(t) {
       const s = t.toLowerCase(); let m;
@@ -7346,9 +7363,22 @@
       '0 = no lookup needed (small talk, general chat)\n1 = the user asks you to find something and names what: keywords like lyrics, playlist, most played, how many songs, a mood, a title (the app scans the message for them)\n2: <title or artist> = search the library\n3: <title> = details of a song: mood, genre, tempo, key (current song if no title)\n4: <title> = the lyrics of a song (current song if no title)\n5: <mood, genre, instrument or tempo> = songs that match\n6: <song or artist> = what the user plays most\n7 = library size, tagged count\n8: <playlist name> = what is in a playlist, or list all playlists if no name\n9: <title> = which playlists a song is in (current song if no title)\n10: <what to play> = PLAY a song, artist, playlist or mood now\n11: <pause, resume, next, previous, shuffle on, shuffle off, volume up, volume down> = control playback\n12: <description> = MAKE a new playlist, such as sad songs or songs like Hello\n13 = TAG (analyse) the current song\n14 = UNDO what was just done (undo, undo all, or undo 3)\n' +
       'Examples:\nfind the lyrics for me -> 1\nI love this song -> 0\ndo I have anything by Drake -> 2: Drake\nwhat is this song about -> 4\nany sad songs? -> 5: sad\nwhat do I listen to most -> 6: song\nhow many songs do I have -> 7\nwhat is in my gym playlist -> 8: gym\nwhat playlists do I have -> 8\nis this song in a playlist -> 9\nplay Hello by Adele -> 10: Hello by Adele\nplay something chill -> 10: something chill\npause the music -> 11: pause\nturn it up -> 11: volume up\nmake me a playlist of sad songs -> 12: sad songs\ntag this song -> 13\nundo that -> 14: undo\nundo everything -> 14: undo all\nhow are you -> 0';
     const lkParse = r => { const m = String(r || '').match(/(\d{1,2})\s*(?:[:\-\u2013]\s*)?([^\n]*)/); if (!m) return null; return { id: +m[1], arg: m[2].replace(/->.*$/, '').replace(/^["'\u201c\u2018]+|["'\u201d\u2019.!?]+$/g, '').trim().slice(0, 60) }; };
+    // Library / player words: only messages with one of these can need a lookup. Small talk skips the planner entirely.
+    const LK_TOPIC = /\b(songs?|tracks?|music|playlists?|albums?|artists?|bands?|singers?|lyrics?|library|collection|listen\w*|play\w*|tagged|tags?|genre|mood|tempo|bpm|key|favou?rite|most|top|recent\w*|have i|do i have|got any|find|search|this one|it about)\b/i;
     async function lookup(g, text, status) {
       const done = [], seen = new Set();
-      for (let round = 0; round < 2; round++) {                          // at most two lookups per message
+      // 1) Plain keyword rules: no AI call, nothing to wait for.
+      let kw = []; try { kw = lkKeywords(text) || []; } catch (e) { console.warn('keyword lookup failed', e); }
+      for (const p of kw.slice(0, 2)) {
+        const tool = LK[p.id]; if (!tool) continue;
+        const key = p.id + '|' + String(p.arg || '').toLowerCase(); if (seen.has(key)) continue; seen.add(key);
+        status('Looking up ' + tool.what + '\u2026');
+        let out = ''; try { out = String(tool.run(p.arg, text) || ''); } catch (e) { console.warn('lookup tool failed', e); out = 'the lookup failed'; }
+        done.push({ tool: tool.name + (p.arg ? '(' + p.arg + ')' : ''), out: out.slice(0, 600) });
+      }
+      if (done.length || !LK_TOPIC.test(text)) return done.map(d => d.tool + ': ' + d.out).join('\n');
+      // 2) A library question the rules didn't catch: one short AI planning pass (it used to run on every message, up to twice).
+      for (let round = 0; round < 1; round++) {
         let plan = null;
         try {
           const ask = text + (done.length ? '\n[Already looked up: ' + done.map(d => d.tool + ' -> ' + d.out).join(' | ').slice(0, 300) + '. Reply 0 unless something else is still needed.]' : '');
@@ -7413,12 +7443,12 @@
         if (!direct) moodChip(text);
       } catch (e) { console.error(e); dlOk = false; el.textContent = "Oops, my brain would not load: " + e.message; }
       chatBusy = false; scrollDown(); cm('greet'); setTimeout(() => cm('idle'), 1300);
-      clearTimeout(idleT); idleT = setTimeout(async () => { if (gen && !chatBusy) { try { await gen.dispose(); } catch (e) {} gen = null; } }, 60000);   // hand the RAM back when idle
+      idleUnload();   // hand the RAM back when idle (later on big-RAM phones, so the next message doesn't wait for a reload)
     }
     return {
       react,
       voice: ppVoiceApi,
-      chat: { ctx: ctxOf, ready: () => !!gen || lsGet('ppvChatDl') === '1', mb: () => CHAT_MODELS[chatKey()].mb, ask: async (msgs, opts, say) => { if (chatBusy) throw new Error('Bloop is busy chatting. Try again in a moment.'); clearTimeout(idleT); const g = await ensureModel(say || (() => {})); try { const o = await g(msgs, opts || {}); const gt = o[0].generated_text; return String(Array.isArray(gt) ? gt[gt.length - 1].content : gt).trim(); } finally { clearTimeout(idleT); idleT = setTimeout(() => { if (!chatBusy) unloadModel(); }, 30000); } }, isOn: () => chatOn, setOn: setChatOn, free: freeChat, setModel: setChatModel, models: CHAT_MODELS, key: chatKey, brainOn, setBrain, memory: { get: memN, set: setMem, max: MEM_MAX } },
+      chat: { ctx: ctxOf, ready: () => !!gen || lsGet('ppvChatDl') === '1', mb: () => CHAT_MODELS[chatKey()].mb, ask: async (msgs, opts, say) => { if (chatBusy) throw new Error('Bloop is busy chatting. Try again in a moment.'); clearTimeout(idleT); const g = await ensureModel(say || (() => {})); try { opts = Object.assign({}, opts || {}); if (opts.onText) { if (g.lm) opts.streamer = { callback_function: opts.onText }; delete opts.onText; } const o = await g(msgs, opts); const gt = o[0].generated_text; return String(Array.isArray(gt) ? gt[gt.length - 1].content : gt).trim(); } finally { idleUnload(); } }, isOn: () => chatOn, setOn: setChatOn, free: freeChat, setModel: setChatModel, models: CHAT_MODELS, key: chatKey, brainOn, setBrain, memory: { get: memN, set: setMem, max: MEM_MAX } },
       start() { key = ''; set('start', blLine('start', L.start), 900); },
       opened() {
         if (greeted || !on) return; greeted = true;
@@ -7496,6 +7526,7 @@
       '<div class="ppv-note">How many recent messages and replies are remembered while chatting. 0 forgets each message right away. Higher keeps more context but is slower. Tasks and commands never need memory.</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-agent-on"> Allow Bloop to run commands (play, playlists, tagging, volume\u2026)</label>' +
       '<label id="ppv-chatgpul" class="ppv-c" style="display:none"><input type="checkbox" id="ppv-chatgpu"> Use GPU (experimental, ~270 MB download)</label>' +
+      '<label id="ppv-lmgpul" class="ppv-c" style="display:none"><input type="checkbox" id="ppv-lmgpu"> Run the app-only (LiteRT-LM) models on the phone GPU: much faster. Falls back to the CPU by itself. Applies the next time the model loads.</label>' +
       '<button id="ppv-chatfree" class="ppv-sec" type="button">Free up chat download</button>');
     { const co = p.querySelector('#ppv-chat-on'), cg = p.querySelector('#ppv-chatgpu'), cl = p.querySelector('#ppv-chatgpul');
       co.checked = mas.chat.isOn(); co.onchange = () => mas.chat.setOn(co.checked);
@@ -7510,6 +7541,9 @@
       const ag = p.querySelector('#ppv-agent-on'); try { ag.checked = localStorage.getItem('ppvAgent') !== '0'; } catch (e) { ag.checked = true; }
       ag.onchange = () => { try { localStorage.setItem('ppvAgent', ag.checked ? '1' : '0'); } catch (e) {} };
       if (navigator.gpu) cl.style.display = 'block'; try { cg.checked = localStorage.getItem('ppvChatGpu') === '1'; } catch (e) {}
+      { const lg = p.querySelector('#ppv-lmgpu'), ll = p.querySelector('#ppv-lmgpul');
+        if (NATIVE && lg && ll) { ll.style.display = 'block'; try { lg.checked = localStorage.getItem('ppvLmGpu') !== '0'; } catch (e) { lg.checked = true; }
+          lg.onchange = () => { try { localStorage.setItem('ppvLmGpu', lg.checked ? '1' : '0'); } catch (e) {} }; } }
       cg.onchange = () => { try { localStorage.setItem('ppvChatGpu', cg.checked ? '1' : '0'); } catch (e) {} };
       p.querySelector('#ppv-chatfree').onclick = async () => { try { await mas.chat.free(); status('Chat download removed.'); } catch (e) { status('Error: ' + errText(e)); } }; }
     p.insertAdjacentHTML('beforeend', '<div style="margin-top:10px"><b>Bloop voice and listening</b></div>' +
