@@ -1058,6 +1058,19 @@
     }
     throw last || new Error('all routes failed');
   }
+  // App: the mood models used to come only from essentia.upf.edu, so when that server was down every one failed.
+  // Now your own Hugging Face repo (HF_BASE) is tried first, under Essentia's file name or the short one
+  // (mood_happy-discogs-effnet-1.onnx or mood_happy.onnx), then Essentia itself.
+  async function nativeHeadFetch(b) {
+    const short = b.base.replace(/-discogs-effnet-1$/, '');
+    const tries = [b.base + '.onnx', short + '.onnx', b.file];
+    let last = null;
+    for (const f of tries) {
+      try { await nativeFetch('tgh_' + b.id, f, () => {}); return; }
+      catch (e) { last = e; }
+    }
+    throw new Error('not found in your Hugging Face repo or on essentia.upf.edu (' + errText(last) + ')');
+  }
   let headsLog = [];                                                 // why each mood model failed, shown in the tag result
   async function builtinHeads(status, low, prog) {
     if (headsFailed) return [];
@@ -1067,7 +1080,7 @@
         let h = null; try { const c = await idbGet('tghm_' + b.id); if (c) h = JSON.parse(c); } catch (e) {}
         if (!h || !(NATIVE ? (await NP.exists({ id: 'tgh_' + b.id })).ready : await idbGet('tgh_' + b.id))) {
           h = { id: b.id, label: b.label, kind: 'binary', group: 'mood', pos: b.pos, classes: null };
-          const buf = NATIVE ? (await nativeFetch('tgh_' + b.id, b.file, () => {}), null) : await fetchHeadFile(b, 'onnx', 8000);
+          const buf = NATIVE ? (await nativeHeadFetch(b), null) : await fetchHeadFile(b, 'onnx', 8000);
           try { const j = JSON.parse(new TextDecoder().decode(await fetchHeadFile(b, 'json', 4000))); if (j.classes && j.classes.length === 2) { h.classes = j.classes; const p = j.classes.findIndex(c => !/^(non|not)[_ -]/i.test(c)); if (p >= 0) h.pos = p; } } catch (e) {}
           if (buf) await idbPut('tgh_' + b.id, buf);
           await idbPut('tghm_' + b.id, JSON.stringify(h));
