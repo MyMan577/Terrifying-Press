@@ -219,7 +219,7 @@
   }
   // The few 5 s windows the AudioSet tagger looks at (same positions as before), cut from an already decoded 32 kHz track.
   function audiosetWindows(x) {
-    const W = 160000, nW = Math.max(1, Math.min(6, Math.floor(x.length / W))), out = [];
+    const W = 320000, nW = Math.max(1, Math.min(6, Math.floor(x.length / W))), out = [];   // 10 s at 32 kHz: the clip length the model was trained on
     for (let w = 0; w < nW; w++) {
       const wav = new Float32Array(W), st = x.length > W ? Math.floor((x.length - W) * (w + 0.5) / nW) : 0;
       wav.set(x.subarray(st, st + W)); out.push(wav);
@@ -1234,6 +1234,11 @@
       try { const t = tempoFromMel(mel, nF); if (t) { r.bpm = t.bpm; r.bpmConf = t.conf; } } catch (e) { r.errors.push('Tempo: ' + e.message); }
       const nP = nF >= 128 ? Math.floor((nF - 128) / 62) + 1 : 1, take = Math.min(nP, opt.deep ? 400 : 128);
       const idx = Array.from({ length: take }, (_, i) => Math.floor(i * nP / take));
+      // Loudness of each patch (mean log-mel). Near-silent patches (intros, fades, gaps) say nothing about genre or mood,
+      // and averaging them in pulled every score towards "unsure". They still count for the vocal timeline.
+      const pLoud = idx.map(p => { const s0 = p * 62 * 96, e0 = Math.min(mel.length, s0 + 128 * 96); let a = 0; for (let q = s0; q < e0; q++) a += mel[q]; return e0 > s0 ? a / (e0 - s0) : 0; });
+      const loudRef = pLoud.slice().sort((a, b) => b - a)[Math.floor(pLoud.length * 0.2)] || 0;
+      const useP = pLoud.map(v => pLoud.length < 4 || v >= loudRef * 0.45);
       const eff = await S('tg_effnet'), hI = await S('tg_hinst'), hV = await S('tg_hvoice');
       const hG = hasGenre ? await S('tg_hgenre') : null;
       const sNet = hasStyleNet ? await S('tg_effstyle') : null;
@@ -1269,7 +1274,7 @@
         return { n, at: (i, c) => { const v = per ? o.data[i * n + c] : o.data[c]; return Number.isFinite(v) ? v : 0; } };
       };
       const inst = new Float32Array(40), g400 = new Float32Array(400), embSum = new Float64Array(1280), hacc = heads.map(() => null), pv = [];
-      let voice = 0, rows = 0, gotG = false;
+      let voice = 0, rows = 0, used = 0, gotG = false;
       for (let b = 0; b < take; b += 64) {
         const tb0 = performance.now(), cnt = Math.min(64, take - b), X = new Float32Array(64 * 128 * 96);      // the graph wants exactly 64 patches
         for (let i = 0; i < cnt; i++) { const s0 = idx[b + i] * 62 * 96; X.set(mel.subarray(s0, Math.min(mel.length, s0 + 128 * 96)), i * 128 * 96); }
@@ -1290,30 +1295,33 @@
           let y; try { y = await runHead(hs[j], E, cnt, 'mood head ' + heads[j].id); } catch (e) { console.warn('mood head failed', heads[j].id, e); hs[j] = null; continue; }
           const n = y.n;
           if (!hacc[j]) hacc[j] = new Float64Array(n);
-          for (let i = 0; i < cnt; i++) for (let c = 0; c < n; c++) hacc[j][c] += y.at(i, c);
+          for (let i = 0; i < cnt; i++) if (useP[b + i]) for (let c = 0; c < n; c++) hacc[j][c] += y.at(i, c);
         }
         for (let i = 0; i < cnt; i++) {
           for (let c = 0; c < 40; c++) inst[c] = Math.max(inst[c], yi.at(i, c));
           { const vv = yv.at(i, 1); voice += vv; pv.push(vv); }                // classes: instrumental, voice
+          if (!useP[b + i]) continue;
           for (let c = 0; c < 1280; c++) embSum[c] += emb[i * 1280 + c];
           if (yg) { gotG = true; for (let c = 0; c < 400; c++) g400[c] += yg[i * 400 + c]; }
+          used++;
         }
         rows += cnt; await tick();
         await ease(performance.now() - tb0, opt.rest, 'eff', cnt);
       }
       r.voice = voice / rows;
       r.inst = INST40.map((n, i) => [n, inst[i]]);
-      let nrm = 0; const em = new Float32Array(1280); for (let c = 0; c < 1280; c++) { em[c] = embSum[c] / rows; nrm += em[c] * em[c]; }
+      const ur = Math.max(1, used);                                    // averages over the patches that had sound in them
+      let nrm = 0; const em = new Float32Array(1280); for (let c = 0; c < 1280; c++) { em[c] = embSum[c] / ur; nrm += em[c] * em[c]; }
       nrm = Math.sqrt(nrm) || 1; for (let c = 0; c < 1280; c++) em[c] /= nrm; r.emb = em;
       if (gotG) {
-        let lo = Infinity, hi = -Infinity; for (let c = 0; c < 400; c++) { g400[c] /= rows; lo = Math.min(lo, g400[c]); hi = Math.max(hi, g400[c]); }
+        let lo = Infinity, hi = -Infinity; for (let c = 0; c < 400; c++) { g400[c] /= ur; lo = Math.min(lo, g400[c]); hi = Math.max(hi, g400[c]); }
         if (lo < 0 || hi > 1) for (let c = 0; c < 400; c++) g400[c] = 1 / (1 + Math.exp(-g400[c]));       // raw scores -> probabilities
         r.style = DISCOGS.map((n, i) => [n, g400[i]]);
       } else r.errors.push('Styles skipped: the styles model could not be downloaded or has no 400-style output.');
       r.heads = {};
       heads.forEach((h, j) => {
         if (!hacc[j]) return;
-        const p = Array.from(hacc[j], v => v / rows); let lo = Infinity, hi = -Infinity; p.forEach(v => { lo = Math.min(lo, v); hi = Math.max(hi, v); });
+        const p = Array.from(hacc[j], v => v / ur); let lo = Infinity, hi = -Infinity; p.forEach(v => { lo = Math.min(lo, v); hi = Math.max(hi, v); });
         if (lo < 0 || hi > 1) for (let c = 0; c < p.length; c++) p[c] = 1 / (1 + Math.exp(-p[c]));
         r.heads[h.id] = { label: h.label, kind: h.kind, group: h.group, classes: h.classes, pos: h.pos, p };
       });
@@ -1332,19 +1340,27 @@
     try {
       status('Listening (2 of 2)…');
       const wins = tagWins || audiosetWindows(await decodeMono(url, 32000)); tagWins = null;   // normally already cut out during the first pass
-      const W = 160000, nW = wins.length, probs = new Float32Array(527);
+      const W = wins.length ? wins[0].length : 320000, nW = wins.length, probs = new Float32Array(527), per = [];
       const sess = await S('tg_mn10');
       try {
         for (let w = 0; w < nW; w++) {
           const tw0 = performance.now(), wav = wins[w];
-          const y = (await sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', wav, [1, W]) }))[sess.outputNames[0]].data;
-          for (let c = 0; c < 527; c++) probs[c] += y[c] / nW;
+          const res = await sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', wav, [1, W]) });
+          // The model can export more than one output (scores + an embedding): take the one with the 527 AudioSet classes.
+          let out = null; for (const n of sess.outputNames) { const o = res[n]; if (o && o.data && o.data.length === 527) { out = o; break; } }
+          if (!out) throw new Error('no 527-class output (' + sess.outputNames.map(n => n + ':' + (res[n] && res[n].data ? res[n].data.length : '?')).join(', ') + ')');
+          const y = Float32Array.from(out.data);
+          let lo = Infinity, hi = -Infinity; for (let c = 0; c < 527; c++) { lo = Math.min(lo, y[c]); hi = Math.max(hi, y[c]); }
+          if (lo < 0 || hi > 1) for (let c = 0; c < 527; c++) y[c] = 1 / (1 + Math.exp(-y[c]));   // raw scores -> probabilities, per window
+          per.push(y);
           status('Listening (2 of 2)… ' + (w + 1) + ' of ' + nW); P(0.85 + 0.15 * (w + 1) / nW); await tick();
           await ease(performance.now() - tw0, opt.rest, 'mn', 1);
         }
       } finally { own.forEach(s => s.release && s.release()); own.length = 0; }
-      { let lo = Infinity, hi = -Infinity; for (let c = 0; c < 527; c++) { lo = Math.min(lo, probs[c]); hi = Math.max(hi, probs[c]); }
-        if (lo < 0 || hi > 1) for (let c = 0; c < 527; c++) probs[c] = 1 / (1 + Math.exp(-probs[c])); }   // raw scores -> probabilities
+      // A plain average over windows waters a tag down: a genre heard clearly in half the song came out at half its strength,
+      // and quiet intros/outros dragged everything towards zero. Each class takes the mean of its strongest half of the windows.
+      const k = Math.max(1, Math.ceil(per.length / 2));
+      for (let c = 0; c < 527; c++) { const v = per.map(y => y[c]).sort((a, b) => b - a); let sm = 0; for (let i = 0; i < k; i++) sm += v[i]; probs[c] = sm / k; }
       const pick = (lo, hi) => { const o = []; for (let i = lo; i <= hi; i++) o.push([AUDIOSET[i], probs[i]]); return o; };
       r.genre = pick(AS_GENRE[0], AS_GENRE[1]); r.mood = pick(AS_MOOD[0], AS_MOOD[1]); r.music = probs[137];
       r.inst2 = []; for (let i = 140; i <= 213; i++) if (asInst(i)) r.inst2.push([AUDIOSET[i], probs[i]]);
@@ -1362,11 +1378,20 @@
     if (r.music != null && r.music < 0.3) L.push('Mostly not music (' + pct(r.music) + ')');
     if (r.bpm || r.key) L.push([r.bpm ? 'Tempo: ' + r.bpm + ' BPM' : '', r.key ? 'Key: ' + r.key + ' (' + r.camelot + ')' : ''].filter(Boolean).join(' · '));
     if (r.voice != null) L.push((r.voice >= 0.5 ? 'Vocals: yes (' + pct(r.voice) + ')' : 'Instrumental (' + pct(1 - r.voice) + ')') + (r.firstVocal != null ? ' · first vocals at ' + mmss(r.firstVocal) : ''));
+    // Genre and mood come from the music models (Discogs-EffNet and its mood heads), the same ones the saved tags use.
+    // AudioSet is a general sound model: its genre guesses are only an extra hint, and its mood classes are near noise.
+    const parents = {}; (r.style || []).forEach(([n, p]) => { const m = n.match(/\(([^)]*)\)$/), g = m ? m[1] : n; parents[g] = Math.max(parents[g] || 0, p); });
+    const gp = Object.entries(parents);
+    if (gp.length) L.push('Genre: ' + top(gp, 3, 0.05));
+    else if (r.genre) { const g = top(r.genre, 3, 0.1); L.push(g === 'none' ? 'Genre (unclear): ' + top(r.genre, 2, 0) : 'Genre: ' + g); }
     if (r.style) L.push('Style: ' + top(r.style, 4, 0.05));
-    if (r.genre) { const g = top(r.genre, 3, 0.08); L.push(g === 'none' ? 'Genre (weak): ' + top(r.genre, 2, 0) : 'Genre: ' + g); }
-    if (r.mood) { const m = top(r.mood, 2, 0.08); L.push(m === 'none' ? 'Mood (weak): ' + top(r.mood, 2, 0) : 'Mood: ' + m); }
-    const hd = Object.values(r.heads || {}), bin = hd.filter(h => h.kind === 'binary').map(h => [h.label, h.p[h.pos]]);
-    if (bin.length) { const f5 = top(bin, 5, 0.5); L.push(f5 === 'none' ? 'Feels (weak): ' + top(bin, 3, 0) : 'Feels: ' + f5); }
+    if (gp.length && r.genre) { const g = top(r.genre, 2, 0.15); if (g !== 'none') L.push('Also sounds like: ' + g); }
+    const hd = Object.values(r.heads || {}), MOODS = ['happy', 'sad', 'relaxed', 'aggressive', 'party'];
+    const moods = Object.entries(r.heads || {}).filter(([id, h]) => MOODS.includes(id) && h.kind === 'binary').map(([id, h]) => [h.label, h.p[h.pos]]);
+    if (moods.length >= 3) { const m = top(moods, 3, 0.5); L.push(m === 'none' ? 'Mood (leaning): ' + top(moods, 2, 0) : 'Mood: ' + m); }
+    else if (r.mood) { const m = top(r.mood, 2, 0.1); L.push(m === 'none' ? 'Mood (unclear): ' + top(r.mood, 2, 0) : 'Mood: ' + m); }
+    const bin = Object.entries(r.heads || {}).filter(([id, h]) => h.kind === 'binary' && !(moods.length >= 3 && MOODS.includes(id))).map(([id, h]) => [h.label, h.p[h.pos]]);
+    if (bin.length) { const f5 = top(bin, 5, 0.5); L.push(f5 === 'none' ? 'Feels (leaning): ' + top(bin, 3, 0) : 'Feels: ' + f5); }
     hd.filter(h => h.kind !== 'binary' && h.group !== 'gender').forEach(h => L.push(h.label + ': ' + top(h.p.map((p, i) => [h.classes[i], p]), 4, 0.1)));
     const g = hd.find(h => h.group === 'gender'); if (g && r.voice >= 0.5) L.push('Voice: ' + top(g.p.map((p, i) => [g.classes[i], p]), 1, 0.5));
     if (r.inst) L.push('Instruments: ' + top(r.inst, 6, 0.4));
@@ -2421,7 +2446,7 @@
       if (c.gn && c.gn.length) L.push('Also sounds like: ' + lst(c.gn));
       if (c.md && c.md.length) L.push('Mood: ' + lst(c.md));
       const feels = Object.entries(c.hd || {}).filter(e => e[1] >= 50).sort((u, v) => v[1] - u[1]).map(e => [e[0].replace(/^mood_/, '').replace(/_/g, ' '), e[1]]);
-      if (feels.length) L.push('Feels: ' + lst(feels.slice(0, 6))); else { const w = Object.entries(c.hd || {}).sort((u, v) => v[1] - u[1]).slice(0, 3).map(e => [e[0].replace(/^mood_/, '').replace(/_/g, ' '), e[1]]); if (w.length) L.push('Feels (weak): ' + lst(w)); }
+      if (feels.length) L.push('Feels: ' + lst(feels.slice(0, 6))); else { const w = Object.entries(c.hd || {}).sort((u, v) => v[1] - u[1]).slice(0, 3).map(e => [e[0].replace(/^mood_/, '').replace(/_/g, ' '), e[1]]); if (w.length) L.push('Feels (leaning): ' + lst(w)); }
       if (c.in && c.in.length) L.push('Instruments: ' + lst(c.in));
       Object.entries(c.hm || {}).forEach(([id, a]) => { if (a && a.length) L.push(id.replace(/_/g, ' ') + ': ' + lst(a)); });
       if (c.d) L.push('Length: ' + mmss(c.d) + (c.w ? ' (whole track scanned)' : ''));
