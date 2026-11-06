@@ -2111,6 +2111,25 @@
     if (parts.length < 2 || !parts[0].trim() || !parts.slice(1).join(' ').trim()) return t;
     return Object.assign({}, t, { artist: parts[0].trim(), title: parts.slice(1).join(' - ').trim() });
   }
+  // Second try after a miss: strip what video uploads add to titles (1080p, 4K, 16:9, 60fps, HDR, "Official Music Video",
+  // "Remastered 2011", "Lyrics"...) and channel names ("AdeleVEVO", "Adele - Topic"). Not used on the first try,
+  // so a song that really is called "Audio" or "Lyrics" is still found under its own name.
+  const LY_JUNK = [
+    /\b\d{3,4}\s?[pi]\b/gi,                                            // 720p, 1080p, 2160p, 1080i
+    /\b\d{3,4}\s?[x\u00d7]\s?\d{3,4}\b/gi,                               // 1920x1080
+    /(?<![\d.])(16\s?:\s?9|9\s?:\s?16|4\s?:\s?3|3\s?:\s?4|21\s?:\s?9|32\s?:\s?9|1\s?:\s?1|2\.35\s?:\s?1|2\.39\s?:\s?1|1\.85\s?:\s?1)(?![\d.])/g,   // aspect ratios
+    /\b(8k|4k|2k|uhd|fhd|qhd|full\s?hd|hd|hq|sd|hdr10\+?|hdr|sdr|dolby\s?(vision|atmos)|\d{2,3}\s?fps|imax)\b/gi,
+    /\b(\d{4}\s+)?(digitally\s+)?remaster(ed)?(\s+(version|\d{4}))?\b/gi,
+    /\b(official\s+)?((music|lyrics?|hd|4k|audio)\s+)?(video|visuali[sz]er|audio|mv|clip)\b/gi,
+    /\b(with\s+)?lyrics?\b|\b(explicit|clean)(\s+version)?\b/gi
+  ];
+  function lyStrip(t) {
+    let ti = String(t.title || '').replace(/\.(mp3|m4a|wav|flac|ogg|mp4|mkv|webm)$/i, '').replace(/[\(\[\{][^\)\]\}]*[\)\]\}]/g, ' ');
+    for (const re of LY_JUNK) ti = ti.replace(re, ' ');
+    ti = ti.replace(/(\s*[-\u2013\u2014|:~]\s*)+$/, '').replace(/^(\s*[-\u2013\u2014|:~]\s*)+/, '').replace(/(\s+[-\u2013\u2014|:~])(\s+[-\u2013\u2014|:~])+/g, '$1').replace(/\s+/g, ' ').trim();
+    const ar = String(t.artist || '').replace(/\s*-\s*topic$/i, '').replace(/(?<=\S)\s*vevo$/i, '').replace(/\s+official$/i, '').trim();
+    return Object.assign({}, t, { title: ti, artist: ar || t.artist });
+  }
   const lyQuery = t0 => { const t = lySong(t0), p = lyArtistPart(t); return ((lyArtistOk(t.artist) && (!p || p.br) ? t.artist + ' ' : '') + lyNorm(t.title)).trim(); };
   // Every source returns [{src, trackName, artistName, duration, syncedLyrics?, plainLyrics?, load?}]. load() fills plainLyrics for sources that need a second request.
   const LY_SRC = {
@@ -2188,13 +2207,20 @@
         const q = lySong(t), vid = t.kind === 'video';
         const dur = tags[t.dbId] && tags[t.dbId].d || t.duration || 0, art = lyArtistOk(q.artist);
         if (!art && (vid || !dur)) { lyTried[t.dbId] = lyKey(t); continue; }   // title alone is too vague to trust
-        const { items, failed } = await lySearch(lyQuery(q), keys); if (failed.length === keys.length) break;   // offline or blocked: try again next time
-        const tt = lyNorm(q.title), ta = lyNorm(q.artist), tt2 = lyArtistInTitle(q) ? lyTitleNoArtist(q) : '';
         const durOk = it => !dur || !it.duration || Math.abs(it.duration - dur) <= 4;
-        const ok = items.filter(it => (lyNorm(it.trackName) === tt || (tt2 && lyNorm(it.trackName) === tt2)) && (!art || (() => { const a = lyNorm(it.artistName); return a === ta || a.includes(ta) || ta.includes(a); })()) && (durOk(it) || (vid && art)));
+        const qs = [q], qc = lyStrip(q);                                // a miss is tried again with the junk taken out of the title
+        if (lyNorm(qc.title) && (lyNorm(qc.title) !== lyNorm(q.title) || lyNorm(qc.artist) !== lyNorm(q.artist))) qs.push(qc);
+        let got = null, offline = false;
+        for (const q of qs) {
+        const { items, failed } = await lySearch(lyQuery(q), keys); if (failed.length === keys.length) { offline = true; break; }   // offline or blocked: try again next time
+        const tt = lyNorm(q.title), ta = lyNorm(q.artist), tt2 = lyArtistInTitle(q) ? lyTitleNoArtist(q) : '';
+        const ok = items.filter(it => (lyNorm(it.trackName) === tt || (tt2 && lyNorm(it.trackName) === tt2)) && (!art || (() => { const a = lyNorm(it.artistName).replace(/ /g, ''), b = ta.replace(/ /g, ''); return !!a && (a === b || a.includes(b) || b.includes(a)); })()) && (durOk(it) || (vid && art)));
         const rank = it => (it.syncedLyrics && durOk(it) ? 2 : 0) + (durOk(it) ? 1 : 0);
         ok.sort((a, b) => rank(b) - rank(a));
-        let got = null; for (const it of ok) { try { await lyEnsure(it); } catch (e) { continue; } if (lyLines(it.syncedLyrics || it.plainLyrics || '').length >= 4) { got = it; break; } }
+        for (const it of ok) { try { await lyEnsure(it); } catch (e) { continue; } if (lyLines(it.syncedLyrics || it.plainLyrics || '').length >= 4) { got = it; break; } }
+        if (got) break;
+        }
+        if (offline) break;
         lyTried[t.dbId] = lyKey(t);
         if (got) { try { if (got.syncedLyrics && durOk(got)) { const cues = lyParseLrc(got.syncedLyrics); lyr.set(t.dbId, got.syncedLyrics); if (cues.length) { try { A.setSubtitles(t.dbId, cues, 'Online.lrc'); } catch (e) {} } } else lyr.set(t.dbId, got.plainLyrics || lyLines(got.syncedLyrics || '').join('\n')); const m = lyAutoGet(); m[t.dbId] = lyKey(t); lyAutoPut(m); } catch (e) { console.warn('lyrics save failed', e); } }
         await lyWait(1500);
