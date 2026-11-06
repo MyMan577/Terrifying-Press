@@ -110,7 +110,7 @@ jobs:
 
       - name: Add the native player layer (Media3 service, GPU filters, library)
         run: |
-          for k in MainActivity WebMirrorPlayer LibraryPlugin JobsPlugin PlaybackService LiteRtLlm; do
+          for k in MainActivity WebMirrorPlayer LibraryPlugin JobsPlugin PlaybackService LiteRtLlm NativeVideoView; do
             if [ ! -f "android-overrides/$k.kt" ]; then echo "::error::android-overrides/$k.kt is missing."; exit 1; fi
           done
           for f in pp-manifest.xml res/xml/shortcuts.xml res/xml/automotive_app_desc.xml res/values/pp_strings.xml; do
@@ -123,7 +123,7 @@ jobs:
           # Capacitor's default MainActivity.java.
           rm -f "$PKG_DIR/MainActivity.java"
           cp android-overrides/*.kt "$PKG_DIR"/
-          test "$(ls "$PKG_DIR"/*.kt | wc -l)" -eq 10 || { echo "::error::Expected 10 Kotlin files"; ls "$PKG_DIR"; exit 1; }
+          test "$(ls "$PKG_DIR"/*.kt | wc -l)" -eq 11 || { echo "::error::Expected 11 Kotlin files"; ls "$PKG_DIR"; exit 1; }
 
           # Resources: shortcuts, Android Auto descriptor, strings
           mkdir -p $APPSRC/res/xml $APPSRC/res/values

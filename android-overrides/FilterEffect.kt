@@ -53,7 +53,7 @@ private class FilterProgram(private val p: FilterParams, useHdr: Boolean) : Base
     init {
         try {
             val vs = compile(GLES20.GL_VERTEX_SHADER, VERTEX)
-            val fs = compile(GLES20.GL_FRAGMENT_SHADER, FRAGMENT)
+            val fs = compile(GLES20.GL_FRAGMENT_SHADER, FILTER_FRAGMENT)
             program = GLES20.glCreateProgram()
             GLES20.glAttachShader(program, vs); GLES20.glAttachShader(program, fs)
             GLES20.glLinkProgram(program)
@@ -113,8 +113,15 @@ private class FilterProgram(private val p: FilterParams, useHdr: Boolean) : Base
             }
         """
 
-        // GLSL ES 1.00. Mirrors the CSS filter functions and the page's SVG filters, applied in list order.
-        private const val FRAGMENT = """
+    }
+}
+
+/**
+ * GLSL ES 1.00. Mirrors the CSS filter functions and the page's SVG filters, applied in list order.
+ * Shared by the Media3 effect above and by [NativeVideoView], which samples the decoder's external texture
+ * instead (it swaps the sampler type, see NativeVideoView.FRAGMENT).
+ */
+internal const val FILTER_FRAGMENT = """
             precision highp float;
             uniform sampler2D uTexSampler;
             uniform vec2 uTexel;
@@ -188,5 +195,3 @@ private class FilterProgram(private val p: FilterParams, useHdr: Boolean) : Base
               gl_FragColor = vec4(c, 1.0);
             }
         """
-    }
-}

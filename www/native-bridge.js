@@ -24,6 +24,8 @@
     N.setSrc = function (el, t) { el.src = t.url; return Promise.resolve(); };
     N.raw = function (el) { return el; };
     N.active = N.videoActive = function () { return false; };
+    N.videoFps = function () { return 0; };
+    N.sampleLuma = function () { return Promise.reject(new Error('not native')); };
     N.mirror = N.decorateAnalyser = N.queueNext = N.nowPlaying = N.updateMeta = N.setFxProvider = N.setVideoFilterCss = N.screenOn = N.scheduleRect = N.resync = N.enterPip = function () {};
     N.boot = function () { return Promise.resolve(); };
     N.pushCatalog = N.migrateAll = function () {};
@@ -200,6 +202,10 @@
   };
   N.active = function () { return !!(cur && cur.active); };
   N.videoActive = function () { return !!(cur && cur.active && cur.kind === 'video'); };
+  /** The native video's frame rate (0 if unknown), for exact frame stepping. */
+  N.videoFps = function () { return N.videoActive() && cur.fps > 0 ? cur.fps : 0; };
+  /** {w, h, luma[]} of the current native frame, for auto-levels. Rejects when there is no frame. */
+  N.sampleLuma = function () { return Player.sampleLuma(); };
 
   function deactivate(S) {
     if (!S || !S.active) return;
@@ -371,6 +377,7 @@
     S.durMs = s.durMs >= 0 ? s.durMs : NaN;
     if (s.rate) S.rate = s.rate;
     if (s.vw) { S.vw = s.vw; S.vh = s.vh; }
+    if (s.fps) S.fps = s.fps;
     if ((s.state === 'ready' || adopted) && !S.ready) {
       S.ready = true;
       ['durationchange', 'loadedmetadata', 'loadeddata', 'canplay', 'canplaythrough'].forEach(function (e) { emit(S, e); });
@@ -552,16 +559,21 @@
     }
     var r = { x: 0, y: 0, w: 0, h: 0, visible: false };
     if (show) {
-      var b = S.raw.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+      // The box is the video's container: <video> itself carries the zoom/pan/ratio transform, so its own rect moves
+      // and grows when you zoom. The native renderer applies that transform inside the box instead.
+      var wrapBox = S.raw.parentElement || S.raw, b = wrapBox.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
       // The box is measured on its container: <video> itself is hidden on purpose in native mode, and a closed player
       // keeps its size but is visibility:hidden (or faded out), so size alone is not enough.
       var box = S.raw.parentElement || S.raw, bs = getComputedStyle(box);
       var shown = box.checkVisibility ? box.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
         : (bs.visibility !== 'hidden' && +bs.opacity > 0 && bs.display !== 'none');
       var vis = b.width > 2 && b.height > 2 && getComputedStyle(S.raw).display !== 'none' && shown && !document.hidden;
-      var wrapEl = S.raw.parentElement, vf = wrapEl && wrapEl.getAttribute('data-vfit');
+      var cs = getComputedStyle(S.raw), vf = (getComputedStyle(wrapBox).getPropertyValue('--vfit') || cs.objectFit || '').trim();
+      var m = /matrix\(([^)]+)\)/.exec(cs.transform || ''), mv = m ? m[1].split(',').map(parseFloat) : [1, 0, 0, 1, 0, 0];
       r = { x: Math.round(b.left * dpr), y: Math.round(b.top * dpr), w: Math.round(b.width * dpr), h: Math.round(b.height * dpr), visible: vis,
-        fit: vf === 'cover' || vf === 'fill' ? vf : 'contain' };
+        fit: vf === 'cover' || vf === 'fill' ? vf : 'contain',
+        sx: +mv[0].toFixed(4) || 1, sy: +mv[3].toFixed(4) || 1, tx: Math.round(mv[4] * dpr), ty: Math.round(mv[5] * dpr) };
+      watchView(S.raw);
     }
     // The page is only made see-through while the video box is actually on screen. With the player closed (a video
     // still loaded), the home screen, the custom background and everything else look exactly as normal.
@@ -576,6 +588,17 @@
     if (!show && rectTimer) { clearInterval(rectTimer); rectTimer = 0; }
   }
   function scheduleRect() { if (!rectRaf) rectRaf = requestAnimationFrame(sendRect); }
+  // Zoom and pan change the video's inline transform (and the fit mode the container's style) many times a second
+  // while dragging: follow them right away instead of waiting for the 300 ms poll.
+  var viewObs = null, viewObsEl = null;
+  function watchView(el) {
+    if (viewObsEl === el || !window.MutationObserver) return;
+    if (viewObs) viewObs.disconnect();
+    viewObsEl = el;
+    viewObs = new MutationObserver(scheduleRect);
+    viewObs.observe(el, { attributes: true, attributeFilter: ['style'] });
+    if (el.parentElement) viewObs.observe(el.parentElement, { attributes: true, attributeFilter: ['style', 'data-vfit', 'data-vzoomed'] });
+  }
   window.addEventListener('resize', scheduleRect);
   window.addEventListener('orientationchange', scheduleRect);
   document.addEventListener('transitionend', scheduleRect, true);

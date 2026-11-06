@@ -16,8 +16,6 @@ import android.view.WindowManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
 import com.getcapacitor.BridgeActivity
 
 /**
@@ -30,7 +28,8 @@ class MainActivity : BridgeActivity() {
 
     companion object {
         @Volatile var instance: MainActivity? = null
-        @Volatile var playerView: PlayerView? = null
+        /** The native video picture (our own GL renderer), when the native video setting is on. */
+        @Volatile var playerView: NativeVideoView? = null
         /**
          * Native SurfaceView video under the WebView: the "Native video player (beta)" setting (default off).
          * The page asks for it through PPPlayer.setNativeVideo, which also saves it here for the next start.
@@ -70,11 +69,7 @@ class MainActivity : BridgeActivity() {
         if (!nativeVideo || playerView != null) return      // off: video plays in the normal web <video>
         val web = bridge.webView
         val parent = web.parent as ViewGroup
-        val pv = PlayerView(this).apply {
-            useController = false
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-            setShutterBackgroundColor(Color.BLACK)
-            setKeepContentOnPlayerReset(true)
+        val pv = NativeVideoView(this).apply {
             visibility = View.GONE
             layoutParams = ViewGroup.MarginLayoutParams(0, 0)
         }
@@ -89,7 +84,7 @@ class MainActivity : BridgeActivity() {
         nativeVideo = on
         if (on) { installVideoLayer(); return }
         val pv = playerView ?: return
-        pv.player = null
+        pv.release()
         (pv.parent as? ViewGroup)?.removeView(pv)
         playerView = null
         setSeeThrough(false)
@@ -111,15 +106,8 @@ class MainActivity : BridgeActivity() {
         if (!seeThrough) bridge?.webView?.setBackgroundColor(c)
     }
 
-    /** "contain" (Fit), "cover" (Fill, crop) or "fill" (Stretch), as the page's view menu sets it. */
-    fun setVideoFit(fit: String?) {
-        val pv = playerView ?: return
-        pv.resizeMode = when (fit) {
-            "cover" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-            "fill" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-        }
-    }
+    /** Fit mode, zoom, pan and forced ratio, as the page's view menu and gestures set them. */
+    fun setVideoView(p: NativeVideoView.ViewParams) { playerView?.setView(p) }
 
     // ---------- called from NativePlayerPlugin (main thread) ----------
     fun showVideoLayer(show: Boolean) {
@@ -254,7 +242,7 @@ class MainActivity : BridgeActivity() {
         ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
     override fun onDestroy() {
-        if (instance === this) { instance = null; playerView = null }
+        if (instance === this) { instance = null; playerView?.release(); playerView = null }
         super.onDestroy()
     }
 }

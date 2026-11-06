@@ -127,6 +127,8 @@ class NativePlayerPlugin : Plugin() {
         o.put("uri", origOf(p.currentMediaItem))
         val vs = p.videoSize
         o.put("vw", vs.width); o.put("vh", vs.height)
+        val fps = p.videoFormat?.frameRate ?: -1f
+        if (fps > 0f) o.put("fps", fps.toDouble())
         return o
     }
 
@@ -418,9 +420,26 @@ class NativePlayerPlugin : Plugin() {
         val x = call.getInt("x") ?: 0; val y = call.getInt("y") ?: 0
         val w = call.getInt("w") ?: 0; val h = call.getInt("h") ?: 0
         val vis = call.getBoolean("visible", true) ?: true
-        val fit = call.getString("fit")
-        main.post { MainActivity.instance?.let { it.setVideoFit(fit); it.placeVideo(x, y, w, h, vis) } }
+        val vp = NativeVideoView.ViewParams(
+            fit = call.getString("fit") ?: "contain",
+            sx = (call.getDouble("sx") ?: 1.0).toFloat(), sy = (call.getDouble("sy") ?: 1.0).toFloat(),
+            tx = (call.getDouble("tx") ?: 0.0).toFloat(), ty = (call.getDouble("ty") ?: 0.0).toFloat())
+        main.post { MainActivity.instance?.let { it.setVideoView(vp); it.placeVideo(x, y, w, h, vis) } }
         call.resolve()
+    }
+
+    /** 32x18 luma grid of the current native frame, for the page's auto-levels (it can't read native frames). */
+    @PluginMethod
+    fun sampleLuma(call: PluginCall) {
+        main.post {
+            val pv = MainActivity.playerView ?: run { call.reject("no native video"); return@post }
+            pv.sampleLuma { arr ->
+                if (arr == null) { call.reject("no frame yet"); return@sampleLuma }
+                val ja = org.json.JSONArray()
+                for (v in arr) ja.put(v.toDouble())
+                call.resolve(JSObject().put("w", 32).put("h", 18).put("luma", ja))
+            }
+        }
     }
 
     /** The "Native video player (beta)" setting: installs or removes the native video layer and remembers it. */
@@ -449,6 +468,15 @@ class NativePlayerPlugin : Plugin() {
         val flat = FloatArray(n * 8) { k -> arr!!.optDouble(k, 0.0).toFloat() }
         filterParams.set(flat, n)
         val want = n > 0
+        MainActivity.playerView?.let { pv ->
+            // Our own renderer draws the filters itself, in the same pass as the picture: keep Media3's pipeline out of it.
+            pv.filter = if (want) filterParams else null
+            withSvc(call) { svc ->
+                if (filterOn) { filterOn = false; svc.player.setVideoEffects(emptyList<Effect>()) }
+                call.resolve()
+            }
+            return
+        }
         withSvc(call) { svc ->
             if (want != filterOn) {          // only rebuild the GL pipeline when switching on/off, not per slider tick
                 filterOn = want
@@ -462,7 +490,7 @@ class NativePlayerPlugin : Plugin() {
     @PluginMethod
     fun snapshot(call: PluginCall) {
         main.post {
-            val sv = MainActivity.playerView?.videoSurfaceView as? SurfaceView
+            val sv: SurfaceView? = MainActivity.playerView
             if (Build.VERSION.SDK_INT < 24 || sv == null || sv.width <= 0 || sv.height <= 0) { call.reject("no video on screen"); return@post }
             val bmp = Bitmap.createBitmap(sv.width, sv.height, Bitmap.Config.ARGB_8888)
             PixelCopy.request(sv, bmp, { result ->
