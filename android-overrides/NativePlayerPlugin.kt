@@ -418,8 +418,20 @@ class NativePlayerPlugin : Plugin() {
         val x = call.getInt("x") ?: 0; val y = call.getInt("y") ?: 0
         val w = call.getInt("w") ?: 0; val h = call.getInt("h") ?: 0
         val vis = call.getBoolean("visible", true) ?: true
-        main.post { MainActivity.instance?.placeVideo(x, y, w, h, vis) }
+        val fit = call.getString("fit")
+        main.post { MainActivity.instance?.let { it.setVideoFit(fit); it.placeVideo(x, y, w, h, vis) } }
         call.resolve()
+    }
+
+    /** The "Native video player (beta)" setting: installs or removes the native video layer and remembers it. */
+    @PluginMethod
+    fun setNativeVideo(call: PluginCall) {
+        val on = call.getBoolean("on", false) ?: false
+        main.post {
+            MainActivity.instance?.setNativeVideo(on)
+            MainActivity.playerView?.let { pv -> svc?.let { pv.player = it.player } }
+            call.resolve(JSObject().put("on", MainActivity.nativeVideo))
+        }
     }
 
     private val filterParams = FilterParams()
@@ -479,7 +491,7 @@ class NativePlayerPlugin : Plugin() {
         val c = call.getString("color")
         if (c != null) try {
             val col = Color.parseColor(c)
-            main.post { MainActivity.instance?.window?.setBackgroundDrawable(ColorDrawable(col)) }
+            main.post { MainActivity.instance?.setBackdropColor(col) }
         } catch (_: Exception) {}
         call.resolve()
     }
