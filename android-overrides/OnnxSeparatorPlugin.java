@@ -590,6 +590,127 @@ public class OnnxSeparatorPlugin extends Plugin {
         }).start();
     }
 
+    /**
+     * Subtitle mute for the native engines (same maths as makeMask in vocal-separator.js), run on the finished WAV files.
+     * Outside the sung spans the Vocals stem fades down to "floor", and the sound taken out of it is ADDED to every extra
+     * stem (Instrumental / Other) so nothing is lost. Streams the files in blocks and rewrites them in place.
+     * vocals: path, extras: [paths], spans: [[startSec, endSec], ...], floor: 0..1, fade: seconds.
+     */
+    @PluginMethod
+    public void maskStems(PluginCall call) {
+        final String vocals = call.getString("vocals");
+        final JSONArray extrasJ = call.getArray("extras");
+        final JSONArray spansJ = call.getArray("spans");
+        final double floor = call.getDouble("floor", 0.0), fade = call.getDouble("fade", 0.08);
+        if (vocals == null || spansJ == null || spansJ.length() == 0) { call.reject("vocals and spans are required"); return; }
+        new Thread(() -> {
+            try {
+                List<String> extras = new ArrayList<>();
+                if (extrasJ != null) for (int i = 0; i < extrasJ.length(); i++) extras.add(extrasJ.getString(i));
+                double[][] spans = new double[spansJ.length()][2];
+                for (int i = 0; i < spans.length; i++) { JSONArray q = spansJ.getJSONArray(i); spans[i][0] = q.getDouble(0); spans[i][1] = q.getDouble(1); }
+                long frames = applyMask(new File(vocals), extras, spans, (float) floor, fade);
+                JSObject r = new JSObject();
+                r.put("frames", frames);
+                call.resolve(r);
+            } catch (Throwable e) {
+                call.reject(e.getMessage() != null ? e.getMessage() : e.toString());
+            }
+        }).start();
+    }
+
+    /** Finds the PCM data of a 16-bit stereo WAV: returns {dataOffset, frames, sampleRate}. */
+    static long[] wavData(java.io.RandomAccessFile f) throws IOException {
+        byte[] h = new byte[12];
+        f.seek(0); f.readFully(h);
+        if (!"RIFF".equals(new String(h, 0, 4, "US-ASCII")) || !"WAVE".equals(new String(h, 8, 4, "US-ASCII"))) throw new IOException("Not a WAV file");
+        long pos = 12, rate = 0; int ch = 0, bits = 0;
+        byte[] c = new byte[8];
+        while (pos + 8 <= f.length()) {
+            f.seek(pos); f.readFully(c);
+            ByteBuffer b = ByteBuffer.wrap(c).order(ByteOrder.LITTLE_ENDIAN);
+            String id = new String(c, 0, 4, "US-ASCII");
+            long size = b.getInt(4) & 0xffffffffL;
+            if ("fmt ".equals(id)) {
+                byte[] fm = new byte[16]; f.readFully(fm);
+                ByteBuffer fb = ByteBuffer.wrap(fm).order(ByteOrder.LITTLE_ENDIAN);
+                ch = fb.getShort(2); rate = fb.getInt(4) & 0xffffffffL; bits = fb.getShort(14);
+            } else if ("data".equals(id)) {
+                if (ch != 2 || bits != 16) throw new IOException("Expected 16-bit stereo WAV");
+                long avail = Math.min(size, f.length() - pos - 8);
+                return new long[] {pos + 8, avail / 4, rate};
+            }
+            pos += 8 + size + (size & 1);
+        }
+        throw new IOException("WAV has no data");
+    }
+
+    static long applyMask(File vocals, List<String> extraPaths, double[][] spans, float floor, double fade) throws IOException {
+        final int BLOCK = 16384;   // frames per pass
+        java.io.RandomAccessFile v = new java.io.RandomAccessFile(vocals, "rw");
+        List<java.io.RandomAccessFile> ex = new ArrayList<>();
+        try {
+            long[] vd = wavData(v);
+            long frames = vd[1], sr = vd[2] > 0 ? vd[2] : SpleeterNative.SR;
+            List<long[]> exd = new ArrayList<>();
+            for (String p : extraPaths) {
+                java.io.RandomAccessFile f = new java.io.RandomAccessFile(new File(p), "rw");
+                ex.add(f);
+                long[] d = wavData(f);
+                exd.add(d);
+                frames = Math.min(frames, d[1]);
+            }
+            int n = spans.length;
+            long[] A = new long[n], B = new long[n];
+            for (int i = 0; i < n; i++) { A[i] = Math.round(spans[i][0] * sr); B[i] = Math.round(spans[i][1] * sr); }
+            float step = (1f - floor) / Math.max(1, Math.round(fade * sr));
+            float gain = floor;
+            int si = 0;
+            byte[] vb = new byte[BLOCK * 4];
+            byte[][] eb = new byte[ex.size()][BLOCK * 4];
+            for (long start = 0; start < frames; start += BLOCK) {
+                int cnt = (int) Math.min(BLOCK, frames - start), bytes = cnt * 4;
+                long off = start * 4;
+                v.seek(vd[0] + off); v.readFully(vb, 0, bytes);
+                for (int k = 0; k < ex.size(); k++) { ex.get(k).seek(exd.get(k)[0] + off); ex.get(k).readFully(eb[k], 0, bytes); }
+                ByteBuffer V = ByteBuffer.wrap(vb, 0, bytes).order(ByteOrder.LITTLE_ENDIAN);
+                ByteBuffer[] E = new ByteBuffer[ex.size()];
+                for (int k = 0; k < E.length; k++) E[k] = ByteBuffer.wrap(eb[k], 0, bytes).order(ByteOrder.LITTLE_ENDIAN);
+                boolean touched = false;
+                for (int i = 0; i < cnt; i++) {
+                    long pos = start + i;
+                    while (si < n && pos >= B[si]) si++;
+                    float target = si < n && pos >= A[si] ? 1f : floor;
+                    gain += target > gain ? Math.min(step, target - gain) : -Math.min(step, gain - target);
+                    if (gain < 1f) {
+                        touched = true;
+                        int bi = i * 4;
+                        float l = V.getShort(bi), r = V.getShort(bi + 2), k1 = 1f - gain;
+                        V.putShort(bi, clip16(l * gain));
+                        V.putShort(bi + 2, clip16(r * gain));
+                        for (ByteBuffer e : E) {
+                            e.putShort(bi, clip16(e.getShort(bi) + l * k1));
+                            e.putShort(bi + 2, clip16(e.getShort(bi + 2) + r * k1));
+                        }
+                    }
+                }
+                if (touched) {   // blocks inside sung lines are left exactly as they were
+                    v.seek(vd[0] + off); v.write(vb, 0, bytes);
+                    for (int k = 0; k < ex.size(); k++) { ex.get(k).seek(exd.get(k)[0] + off); ex.get(k).write(eb[k], 0, bytes); }
+                }
+            }
+            return frames;
+        } finally {
+            try { v.close(); } catch (IOException ignored) { }
+            for (java.io.RandomAccessFile f : ex) try { f.close(); } catch (IOException ignored) { }
+        }
+    }
+
+    private static short clip16(float x) {
+        int s = Math.round(x);
+        return (short) (s > 32767 ? 32767 : s < -32768 ? -32768 : s);
+    }
+
     /** Keeps the process alive and the CPU awake while a split runs (screen off, app in background). */
     private static boolean keepSplit = false, keepPlay = false;
 
