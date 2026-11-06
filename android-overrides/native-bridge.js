@@ -26,6 +26,8 @@
     N.active = N.videoActive = function () { return false; };
     N.videoFps = function () { return 0; };
     N.sampleLuma = function () { return Promise.reject(new Error('not native')); };
+    N.setMemc = function () {};
+    N.memcStatus = null;
     N.mirror = N.decorateAnalyser = N.queueNext = N.nowPlaying = N.updateMeta = N.setFxProvider = N.setVideoFilterCss = N.screenOn = N.scheduleRect = N.resync = N.enterPip = function () {};
     N.boot = function () { return Promise.resolve(); };
     N.pushCatalog = N.migrateAll = function () {};
@@ -204,6 +206,15 @@
   N.videoActive = function () { return !!(cur && cur.active && cur.kind === 'video'); };
   /** The native video's frame rate (0 if unknown), for exact frame stepping. */
   N.videoFps = function () { return N.videoActive() && cur.fps > 0 ? cur.fps : 0; };
+  /** Motion smoothing / picture delay settings for the native renderer. Only sent when they change. */
+  var lastMemc = '';
+  N.setMemc = function (cfg) {
+    var j = JSON.stringify(cfg);
+    if (j === lastMemc) return;
+    lastMemc = j;
+    call(function () { return Player.setMemc(cfg); });
+  };
+  N.memcStatus = null;                                                  // latest status from the native engine
   /** {w, h, luma[]} of the current native frame, for auto-levels. Rejects when there is no frame. */
   N.sampleLuma = function () { return Player.sampleLuma(); };
 
@@ -436,6 +447,7 @@
     Player.addListener('fft', function (e) {
       fftF = dec(e.f); fftT = dec(e.t);
     });
+    Player.addListener('memc', function (m) { N.memcStatus = m; if (N.hooks.memcStatus) N.hooks.memcStatus(m); });
     Player.addListener('pip', function (e) {
       document.documentElement.classList.toggle('pp-pip', !!e.on);
       if (!e.on) scheduleRect();

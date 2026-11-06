@@ -4544,7 +4544,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <div class="settings-row" id="native-video-row" style="display:none;margin-bottom:12px;">
           <div class="settings-row-text">
             <div class="settings-row-title">Native video player (beta)</div>
-            <div class="settings-row-sub">Plays video with Android's own player for smoother playback and less battery. Filters and fit modes work; motion smoothing, upscaling and zoom do not yet. The app reloads to switch.</div>
+            <div class="settings-row-sub">Plays video with Android's own player for smoother playback and less battery. Filters, zoom, motion smoothing, upscaling and the Bluetooth delay all run natively on the GPU. The app reloads to switch.</div>
           </div>
           <label class="settings-switch">
             <input type="checkbox" id="native-video-toggle">
@@ -10269,13 +10269,20 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (!memcStatusEl) return;
     let txt = '', tip = '';
     if (memcMode !== 'off'){
-      if (window.PPNative && PPNative.videoActive && PPNative.videoActive()){ txt = 'Off (native video)'; tip = 'Motion smoothing does not work with the native video player yet. Turn it off in Settings, Video decoding to use smoothing.'; }
+      const nst = (window.PPNative && PPNative.videoActive && PPNative.videoActive()) ? (PPNative.memcStatus || {}) : null;
+      if (nst){
+        if (nst.failed){ txt = 'Unsupported'; tip = nst.why || ''; }
+        else if (nst.bypass){ txt = 'Skipped (fps)'; tip = 'This video is faster than the "Smooth up to" limit (or too slow to interpolate).'; }
+        else if (nst.inFps > 0){ txt = Math.round(nst.inFps) + ' fps \u2192 up to ' + (nst.outFps || memcOutFps); tip = 'Native engine' + (nst.ring ? ', processing at ' + nst.ring : '') + (nst.qualityDrop ? ' (quality lowered: out of GPU memory)' : ''); }
+        else txt = 'Starting\u2026';
+      }
       else if (memcFailed){ txt = 'Unsupported'; tip = memcFailWhy; }
       else if (memcBypass){ txt = 'Skipped (fps)'; tip = 'This video is faster than the "Smooth up to" limit (or too slow to interpolate).'; }
       else if (memcActive){ txt = Math.round(memcEffRate()) + ' fps \u2192 up to ' + memcOutFps; }
       else txt = 'Video only';
     }
     if (memcMode === 'off' && memcActive){ txt = 'Delay via GPU'; tip = 'Smoothing is off; the picture delay is rendered on the GPU.'; }
+    if (memcMode === 'off' && window.PPNative && PPNative.videoActive && PPNative.videoActive() && subtitleLatencyMs > 0){ txt = 'Delay (native)'; tip = 'The native renderer holds the picture back to match Bluetooth audio.'; }
     memcStatusEl.textContent = txt;
     memcStatusEl.title = tip;
   }
@@ -11161,8 +11168,27 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     }
   }
 
+  // Native video (beta): the same settings drive the native renderer's port of this engine (NativeVideoView.kt).
+  // The picture delay there is just the Bluetooth latency: the native player keeps sound and picture in sync itself,
+  // so the web decoder's +300 ms compensation doesn't apply.
+  function nativeMemcPush(){
+    if (!(window.PPNative && PPNative.videoActive && PPNative.videoActive() && PPNative.setMemc)) return;
+    let strength = 0.5; try { strength = memcStrength; } catch (e){}   // declared further down the file
+    PPNative.setMemc({
+      mode: (memcMode !== 'off' && !perfLightActive()) ? memcMode : 'off',
+      delayMs: Math.max(0, subtitleLatencyMs || 0),
+      maxIn: memcMaxIn, outFps: memcOutFps, strength, quality: memcQuality, upscale: memcUpscale
+    });
+  }
+  setInterval(nativeMemcPush, 700);   // sliders change these without calling memcSync; the bridge only sends changes
+  if (window.PPNative) PPNative.hooks.memcStatus = (st) => {
+    memcExtraSec = Math.max(0, (st && st.extraMs) || 0) / 1000;    // subtitles follow the extra picture lag, as on the web
+    memcUpdateStatus();
+  };
+
   // Idempotent, no recursion: refreshVideoDelayState() calls this first.
   function memcSync(){
+    nativeMemcPush();
     const want = !(window.PPNative && PPNative.videoActive()) && memcWanted() && memcInitGL();
     memcActive = want;
     document.body.classList.toggle('memc-active', want);
