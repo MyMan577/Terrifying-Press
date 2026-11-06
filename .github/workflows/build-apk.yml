@@ -201,6 +201,7 @@ jobs:
           KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
           KS_ALIAS: ${{ secrets.KEY_ALIAS }}
           KS_KEYPASS: ${{ secrets.KEY_PASSWORD }}
+          KS_FILE_PASS: ${{ secrets.KEYSTORE_FILE_PASSWORD }}
         run: |
           # Without this, every CI run makes a brand-new random debug key, so Android refuses to install the new APK over the old one
           # ("App not installed as package conflicts with an existing package"). Same key every build = clean in-place update.
@@ -209,12 +210,17 @@ jobs:
             echo "$KS_B64" | base64 -d > "$KS"
             PASS="$KS_PASS"; ALIAS="${KS_ALIAS:-pressplay}"; KPASS="${KS_KEYPASS:-$KS_PASS}"
             echo "Signing with the key from the repo secrets."
-          elif [ -f android-overrides/pp.keystore ]; then
-            cp android-overrides/pp.keystore "$KS"
+          elif [ -f android-overrides/pp.keystore.enc ]; then
+            # The key is stored encrypted in the repo. Only the KEYSTORE_FILE_PASSWORD secret can unlock it.
+            if [ -z "$KS_FILE_PASS" ]; then
+              echo "::error::Missing the KEYSTORE_FILE_PASSWORD secret. Add it in the repo under Settings > Secrets and variables > Actions."; exit 1
+            fi
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in android-overrides/pp.keystore.enc -out "$KS" -pass env:KS_FILE_PASS \
+              || { echo "::error::Could not unlock android-overrides/pp.keystore.enc. Check that the KEYSTORE_FILE_PASSWORD secret is exactly right."; exit 1; }
             PASS="pressplay-keystore"; ALIAS="pressplay"; KPASS="pressplay-keystore"
-            echo "::warning::Signing with the key committed in android-overrides/pp.keystore. Add KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD secrets to use a private key instead."
+            echo "Signing with the encrypted key from the repo."
           else
-            echo "::error::No signing key. Add android-overrides/pp.keystore to the repo, or set the KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD secrets."; exit 1
+            echo "::error::No signing key. Add android-overrides/pp.keystore.enc and the KEYSTORE_FILE_PASSWORD secret, or set the KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD secrets."; exit 1
           fi
           printf '\nPP_KS_FILE=%s\nPP_KS_PASS=%s\nPP_KS_ALIAS=%s\nPP_KS_KEYPASS=%s\n' "$KS" "$PASS" "$ALIAS" "$KPASS" >> android/gradle.properties
           cat >> android/app/build.gradle <<'GRADLE'
