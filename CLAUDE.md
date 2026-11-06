@@ -9,6 +9,12 @@ After merging, check that the build went green and fix it if it did not.
 
 Only merge Claude's own pull requests, and only after running the checks below on what changed.
 
+## Target
+
+Press Play is an Android app only. Don't spend effort on plain-browser support or browser-only checks.
+Test web-side changes against the Android app's behaviour (a faked Capacitor bridge in Playwright is fine for that).
+The owner tests on a Galaxy S24 Ultra (120 Hz, strong GPU).
+
 ## Project layout
 
 - `www/index.html` is almost the whole app (one large file). `www/vocal-separator.js` holds stems, tagging and Whisper.
