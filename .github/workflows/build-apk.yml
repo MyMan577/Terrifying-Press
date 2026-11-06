@@ -43,6 +43,12 @@ jobs:
             if [ ! -f "$f" ]; then echo "::error::Missing $f. Put it inside the www folder."; exit 1; fi
           done
 
+      # Stops the build in seconds if any of the app's JavaScript has a syntax error, so a broken change is never released.
+      - name: Check the app's code for errors
+        run: |
+          cp -f android-overrides/native-bridge.js www/native-bridge.js 2>/dev/null || true   # check the copy that will ship
+          node .github/scripts/check-web.js
+
       - name: Use the updated native-bridge.js
         run: |
           # android-overrides/native-bridge.js is the newer one (adds N.mirror for the web-video media notification).

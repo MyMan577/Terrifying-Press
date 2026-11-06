@@ -2104,7 +2104,14 @@
   const lyArtistInTitle = t => !!lyArtistPart(t);
   const lyTitleNoArtist = t => { const p = lyArtistPart(t); return p ? p.rest : ''; };
   // Bracketed parts are dropped from the search text, so an artist found only in brackets is still added in front.
-  const lyQuery = t => { const p = lyArtistPart(t); return ((lyArtistOk(t.artist) && (!p || p.br) ? t.artist + ' ' : '') + lyNorm(t.title)).trim(); };
+  // Videos (and files) often have no real artist but a title like "Adele - Hello (Official Video)": take the artist from the title.
+  function lySong(t) {
+    if (lyArtistOk(t.artist) || !t.title) return t;
+    const parts = String(t.title).split(/\s+[-\u2013\u2014|]\s+/);
+    if (parts.length < 2 || !parts[0].trim() || !parts.slice(1).join(' ').trim()) return t;
+    return Object.assign({}, t, { artist: parts[0].trim(), title: parts.slice(1).join(' - ').trim() });
+  }
+  const lyQuery = t0 => { const t = lySong(t0), p = lyArtistPart(t); return ((lyArtistOk(t.artist) && (!p || p.br) ? t.artist + ' ' : '') + lyNorm(t.title)).trim(); };
   // Every source returns [{src, trackName, artistName, duration, syncedLyrics?, plainLyrics?, load?}]. load() fills plainLyrics for sources that need a second request.
   const LY_SRC = {
     lrclib: { name: 'LRCLIB', auto: 1, async find(q) {
@@ -2154,12 +2161,13 @@
   // Background fetch: while online, quietly saves lyrics for songs that have none, so they are there offline. Only a near-exact title (and artist or length) match is accepted.
   const lyParseLrc = txt => { const out = [], re = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g; String(txt).split(/\r?\n/).forEach(raw => { const st = []; let m, last = 0; re.lastIndex = 0; while ((m = re.exec(raw))) { st.push(+m[1] * 60 + +m[2] + (m[3] ? +m[3].padEnd(3, '0').slice(0, 3) / 1000 : 0)); last = re.lastIndex; } const tx = raw.slice(last).trim(); if (st.length && tx) st.forEach(s => out.push({ start: s, text: tx })); }); out.sort((a, b) => a.start - b.start); return out.map((c, i) => ({ start: c.start, end: out[i + 1] ? out[i + 1].start : c.start + 4, text: c.text })); };
   // lyTried: dbId -> the title that was looked up this session (a miss is retried once the title changes, or after the app reloads).
-  // ppvLyAuto (saved): dbId -> the title that lyrics were downloaded for. When the title changes, those lyrics are looked up again
+  // ppvLyAutoTitles (saved): dbId -> the title that lyrics were downloaded for. When the title changes, those lyrics are looked up again
   // and replaced if the new title finds a match. Lyrics from Whisper, files or the user's own search are never touched.
   let lyRunning = false, lyAgain = false; const lyTried = {};
   const lyKey = t => lyNorm(t.title);
-  const lyAutoGet = () => { try { return JSON.parse(localStorage.getItem('ppvLyAuto')) || {}; } catch (e) { return {}; } };
-  const lyAutoPut = m => { try { localStorage.setItem('ppvLyAuto', JSON.stringify(m)); } catch (e) {} };
+  // Not 'ppvLyAuto': that key is the on/off switch for this feature.
+  const lyAutoGet = () => { try { const m = JSON.parse(localStorage.getItem('ppvLyAutoTitles')); return m && typeof m === 'object' ? m : {}; } catch (e) { return {}; } };
+  const lyAutoPut = m => { try { localStorage.setItem('ppvLyAutoTitles', JSON.stringify(m)); } catch (e) {} };
   async function lyPrefetch(enabled) {
     if (lyRunning) { lyAgain = true; return; }
     if (!enabled() || !navigator.onLine) return; const A = window.__ppApi, lyr = window.__ppLyrics; if (!A || !lyr || !A.tracks) return;
@@ -2168,20 +2176,27 @@
       let subs = {}; try { subs = JSON.parse(localStorage.getItem('playerSubtitles') || '{}') || {}; } catch (e) {}
       const tags = loadTags(), keys = Object.keys(LY_SRC).filter(k => LY_SRC[k].auto), auto = lyAutoGet();
       const todo = A.tracks().filter(t => {
-        if (t.stem || t.kind === 'video' || t.dbId == null || !t.title || lyTried[t.dbId] === lyKey(t)) return false;
+        if (t.stem || t.dbId == null || !t.title || lyTried[t.dbId] === lyKey(t)) return false;
         if (!lyr.has(t.dbId) && !subs[t.dbId]) return true;                                    // no lyrics yet
         return auto[t.dbId] != null && auto[t.dbId] !== lyKey(t);                                // downloaded for an older title
       });
       for (const t of todo) {
         if (!enabled() || !navigator.onLine) break;
-        const dur = tags[t.dbId] && tags[t.dbId].d || 0, art = lyArtistOk(t.artist); if (!art && !dur) { lyTried[t.dbId] = lyKey(t); continue; }   // title alone is too vague to trust
-        const { items, failed } = await lySearch(lyQuery(t), keys); if (failed.length === keys.length) break;   // offline or blocked: try again next time
-        const tt = lyNorm(t.title), ta = lyNorm(t.artist), tt2 = lyArtistInTitle(t) ? lyTitleNoArtist(t) : '';
-        const ok = items.filter(it => (lyNorm(it.trackName) === tt || (tt2 && lyNorm(it.trackName) === tt2)) && (!art || (() => { const a = lyNorm(it.artistName); return a === ta || a.includes(ta) || ta.includes(a); })()) && (!dur || !it.duration || Math.abs(it.duration - dur) <= 4));
-        ok.sort((a, b) => (b.syncedLyrics ? 1 : 0) - (a.syncedLyrics ? 1 : 0));
+        // Videos: only with an artist (own or from the title), so a random clip never gets song lyrics. A music video is often longer
+        // than the song (intro, outro), so a length mismatch is allowed for videos, but then only plain lyrics are saved:
+        // synced lines would be shifted against the video.
+        const q = lySong(t), vid = t.kind === 'video';
+        const dur = tags[t.dbId] && tags[t.dbId].d || t.duration || 0, art = lyArtistOk(q.artist);
+        if (!art && (vid || !dur)) { lyTried[t.dbId] = lyKey(t); continue; }   // title alone is too vague to trust
+        const { items, failed } = await lySearch(lyQuery(q), keys); if (failed.length === keys.length) break;   // offline or blocked: try again next time
+        const tt = lyNorm(q.title), ta = lyNorm(q.artist), tt2 = lyArtistInTitle(q) ? lyTitleNoArtist(q) : '';
+        const durOk = it => !dur || !it.duration || Math.abs(it.duration - dur) <= 4;
+        const ok = items.filter(it => (lyNorm(it.trackName) === tt || (tt2 && lyNorm(it.trackName) === tt2)) && (!art || (() => { const a = lyNorm(it.artistName); return a === ta || a.includes(ta) || ta.includes(a); })()) && (durOk(it) || (vid && art)));
+        const rank = it => (it.syncedLyrics && durOk(it) ? 2 : 0) + (durOk(it) ? 1 : 0);
+        ok.sort((a, b) => rank(b) - rank(a));
         let got = null; for (const it of ok) { try { await lyEnsure(it); } catch (e) { continue; } if (lyLines(it.syncedLyrics || it.plainLyrics || '').length >= 4) { got = it; break; } }
         lyTried[t.dbId] = lyKey(t);
-        if (got) { try { if (got.syncedLyrics) { const cues = lyParseLrc(got.syncedLyrics); lyr.set(t.dbId, got.syncedLyrics); if (cues.length) { try { A.setSubtitles(t.dbId, cues, 'Online.lrc'); } catch (e) {} } } else lyr.set(t.dbId, got.plainLyrics); const m = lyAutoGet(); m[t.dbId] = lyKey(t); lyAutoPut(m); } catch (e) { console.warn('lyrics save failed', e); } }
+        if (got) { try { if (got.syncedLyrics && durOk(got)) { const cues = lyParseLrc(got.syncedLyrics); lyr.set(t.dbId, got.syncedLyrics); if (cues.length) { try { A.setSubtitles(t.dbId, cues, 'Online.lrc'); } catch (e) {} } } else lyr.set(t.dbId, got.plainLyrics || lyLines(got.syncedLyrics || '').join('\n')); const m = lyAutoGet(); m[t.dbId] = lyKey(t); lyAutoPut(m); } catch (e) { console.warn('lyrics save failed', e); } }
         await lyWait(1500);
       }
     } catch (e) { console.warn('lyrics background fetch', e); }
@@ -3142,7 +3157,7 @@
         { id: 'mixes', label: 'Auto mixes: For You, Ones You May Like, Your Pattern', key: 'ppvLiveMix', def: 1, box: 'ppv-lmix' },
         { id: 'surp', label: 'Surprise playlists', key: 'ppvSurp', def: 0, box: 'ppv-surp' },
         { id: 'bg', label: 'Background tagging while I am away', key: 'ppvBg', def: 0, box: 'ppv-bg' },
-        { id: 'lyfetch', label: 'Fetch lyrics for my songs in the background, for offline use (sends song titles to lrclib.net and lyrics.ovh)', key: 'ppvLyAuto', def: 0 },
+        { id: 'lyfetch', label: 'Fetch lyrics for my songs and music videos in the background, for offline use (sends song titles to lrclib.net and lyrics.ovh)', key: 'ppvLyAuto', def: 0 },
         { id: 'aeq', label: 'Auto-EQ when tagging', key: 'ppvAutoEq', def: 0, box: 'ppv-aeq' },
         { id: 'askip', label: 'Skip long intros', key: 'ppvAutoSkip', def: 0, box: 'ppv-askip' },
         { g: 'Bloop', id: 'mascot', label: 'Bloop, the mascot', box: 'ppv-mas', def: 1, get: () => h.mas.isOn() },
