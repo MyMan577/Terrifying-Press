@@ -2071,7 +2071,40 @@
   const lyLrcLine = (sec, text) => '[' + String(Math.floor(sec / 60)).padStart(2, '0') + ':' + (sec % 60).toFixed(2).padStart(5, '0') + ']' + text;
   const lyNorm = s => String(s || '').toLowerCase().replace(/\.(mp3|m4a|wav|flac|ogg|mp4|mkv|webm)$/i, '').replace(/\s*[\(\[][^\)\]]*[\)\]]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
   const lyArtistOk = a => !!a && !/^(Unknown artist|Video|Stream)$/i.test(a);
-  const lyQuery = t => ((lyArtistOk(t.artist) ? t.artist + ' ' : '') + lyNorm(t.title)).trim();
+  // Is the artist already a separate part of the title, e.g. "Adele - Hello", "Hello by Adele", "Blinding Lights (The Weeknd)",
+  // or a near spelling ("Beyonce" for "Beyoncé", "ACDC" for "AC/DC")? A title that only happens to share a word ("Queen of Hearts"
+  // by Queen, "Blurred Lines" by Blur) does not count. Returns null, or { br: true if the artist was in brackets, rest: title without it }.
+  const lyWords = s => String(s || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ').filter(Boolean);
+  function lyEdits(a, b, max) {                                       // Levenshtein distance, stops early once it is over max
+    if (Math.abs(a.length - b.length) > max) return max + 1;
+    let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) {
+      const cur = [i]; let best = i;
+      for (let j = 1; j <= b.length; j++) { cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); best = Math.min(best, cur[j]); }
+      if (best > max) return max + 1; prev = cur;
+    }
+    return prev[b.length];
+  }
+  const lyClose = (x, y) => { if (x === y) return true; if (Math.min(x.length, y.length) < 4) return false; const m = x.length >= 8 ? 2 : 1; return lyEdits(x, y, m) <= m; };
+  function lyArtistPart(t) {
+    if (!lyArtistOk(t.artist) || !t.title) return null;
+    const aw = lyWords(t.artist).filter(w => w !== 'the'); if (!aw.length) return null;
+    const isArtist = seg => {                                         // the segment is the artist, maybe with a little extra ("feat. X", "official")
+      const sw = lyWords(seg).filter(w => w !== 'the'); if (!sw.length || sw.length > aw.length + 3) return false;
+      if (sw.join('') === aw.join('') || sw.slice(0, aw.length + 1).join('').startsWith(aw.join(''))) return true;
+      return aw.filter(w => sw.some(v => lyClose(w, v))).length / aw.length >= 0.75;
+    };
+    const raw = String(t.title).replace(/\.(mp3|m4a|wav|flac|ogg|mp4|mkv|webm)$/i, '');
+    const br = [...raw.matchAll(/[\(\[\{]([^\)\]\}]*)[\)\]\}]/g)].map(m => m[1]);
+    const main = raw.replace(/[\(\[\{][^\)\]\}]*[\)\]\}]/g, ' ').split(/\s+[-\u2013\u2014~|:]\s+|\s*[\u2013\u2014|]\s*|\s+by\s+/i).map(x => x.trim()).filter(Boolean);
+    if (main.length >= 2) { const i = main.findIndex(isArtist); if (i >= 0) return { br: false, rest: lyNorm(main.filter((_, k) => k !== i).join(' ')) }; }
+    if (br.some(isArtist)) return { br: true, rest: lyNorm(raw) };
+    return null;
+  }
+  const lyArtistInTitle = t => !!lyArtistPart(t);
+  const lyTitleNoArtist = t => { const p = lyArtistPart(t); return p ? p.rest : ''; };
+  // Bracketed parts are dropped from the search text, so an artist found only in brackets is still added in front.
+  const lyQuery = t => { const p = lyArtistPart(t); return ((lyArtistOk(t.artist) && (!p || p.br) ? t.artist + ' ' : '') + lyNorm(t.title)).trim(); };
   // Every source returns [{src, trackName, artistName, duration, syncedLyrics?, plainLyrics?, load?}]. load() fills plainLyrics for sources that need a second request.
   const LY_SRC = {
     lrclib: { name: 'LRCLIB', auto: 1, async find(q) {
@@ -2120,31 +2153,60 @@
   }
   // Background fetch: while online, quietly saves lyrics for songs that have none, so they are there offline. Only a near-exact title (and artist or length) match is accepted.
   const lyParseLrc = txt => { const out = [], re = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g; String(txt).split(/\r?\n/).forEach(raw => { const st = []; let m, last = 0; re.lastIndex = 0; while ((m = re.exec(raw))) { st.push(+m[1] * 60 + +m[2] + (m[3] ? +m[3].padEnd(3, '0').slice(0, 3) / 1000 : 0)); last = re.lastIndex; } const tx = raw.slice(last).trim(); if (st.length && tx) st.forEach(s => out.push({ start: s, text: tx })); }); out.sort((a, b) => a.start - b.start); return out.map((c, i) => ({ start: c.start, end: out[i + 1] ? out[i + 1].start : c.start + 4, text: c.text })); };
-  let lyRunning = false; const lyTried = {};   // misses are only remembered until the app reloads
+  // lyTried: dbId -> the title that was looked up this session (a miss is retried once the title changes, or after the app reloads).
+  // ppvLyAuto (saved): dbId -> the title that lyrics were downloaded for. When the title changes, those lyrics are looked up again
+  // and replaced if the new title finds a match. Lyrics from Whisper, files or the user's own search are never touched.
+  let lyRunning = false, lyAgain = false; const lyTried = {};
+  const lyKey = t => lyNorm(t.title);
+  const lyAutoGet = () => { try { return JSON.parse(localStorage.getItem('ppvLyAuto')) || {}; } catch (e) { return {}; } };
+  const lyAutoPut = m => { try { localStorage.setItem('ppvLyAuto', JSON.stringify(m)); } catch (e) {} };
   async function lyPrefetch(enabled) {
-    if (lyRunning || !enabled() || !navigator.onLine) return; const A = window.__ppApi, lyr = window.__ppLyrics; if (!A || !lyr || !A.tracks) return;
-    lyRunning = true;
+    if (lyRunning) { lyAgain = true; return; }
+    if (!enabled() || !navigator.onLine) return; const A = window.__ppApi, lyr = window.__ppLyrics; if (!A || !lyr || !A.tracks) return;
+    lyRunning = true; lyAgain = false;
     try {
       let subs = {}; try { subs = JSON.parse(localStorage.getItem('playerSubtitles') || '{}') || {}; } catch (e) {}
-      const tags = loadTags(), keys = Object.keys(LY_SRC).filter(k => LY_SRC[k].auto);
-      const todo = A.tracks().filter(t => !t.stem && t.kind !== 'video' && t.dbId != null && t.title && !lyr.has(t.dbId) && !subs[t.dbId] && !lyTried[t.dbId]);
+      const tags = loadTags(), keys = Object.keys(LY_SRC).filter(k => LY_SRC[k].auto), auto = lyAutoGet();
+      const todo = A.tracks().filter(t => {
+        if (t.stem || t.kind === 'video' || t.dbId == null || !t.title || lyTried[t.dbId] === lyKey(t)) return false;
+        if (!lyr.has(t.dbId) && !subs[t.dbId]) return true;                                    // no lyrics yet
+        return auto[t.dbId] != null && auto[t.dbId] !== lyKey(t);                                // downloaded for an older title
+      });
       for (const t of todo) {
         if (!enabled() || !navigator.onLine) break;
-        const dur = tags[t.dbId] && tags[t.dbId].d || 0, art = lyArtistOk(t.artist); if (!art && !dur) { lyTried[t.dbId] = 1; continue; }   // title alone is too vague to trust
+        const dur = tags[t.dbId] && tags[t.dbId].d || 0, art = lyArtistOk(t.artist); if (!art && !dur) { lyTried[t.dbId] = lyKey(t); continue; }   // title alone is too vague to trust
         const { items, failed } = await lySearch(lyQuery(t), keys); if (failed.length === keys.length) break;   // offline or blocked: try again next time
-        const tt = lyNorm(t.title), ta = lyNorm(t.artist);
-        const ok = items.filter(it => lyNorm(it.trackName) === tt && (!art || (() => { const a = lyNorm(it.artistName); return a === ta || a.includes(ta) || ta.includes(a); })()) && (!dur || !it.duration || Math.abs(it.duration - dur) <= 4));
+        const tt = lyNorm(t.title), ta = lyNorm(t.artist), tt2 = lyArtistInTitle(t) ? lyTitleNoArtist(t) : '';
+        const ok = items.filter(it => (lyNorm(it.trackName) === tt || (tt2 && lyNorm(it.trackName) === tt2)) && (!art || (() => { const a = lyNorm(it.artistName); return a === ta || a.includes(ta) || ta.includes(a); })()) && (!dur || !it.duration || Math.abs(it.duration - dur) <= 4));
         ok.sort((a, b) => (b.syncedLyrics ? 1 : 0) - (a.syncedLyrics ? 1 : 0));
         let got = null; for (const it of ok) { try { await lyEnsure(it); } catch (e) { continue; } if (lyLines(it.syncedLyrics || it.plainLyrics || '').length >= 4) { got = it; break; } }
-        lyTried[t.dbId] = 1;
-        if (got) { try { if (got.syncedLyrics) { const cues = lyParseLrc(got.syncedLyrics); lyr.set(t.dbId, got.syncedLyrics); if (cues.length) { try { A.setSubtitles(t.dbId, cues, 'Online.lrc'); } catch (e) {} } } else lyr.set(t.dbId, got.plainLyrics); } catch (e) { console.warn('lyrics save failed', e); } }
+        lyTried[t.dbId] = lyKey(t);
+        if (got) { try { if (got.syncedLyrics) { const cues = lyParseLrc(got.syncedLyrics); lyr.set(t.dbId, got.syncedLyrics); if (cues.length) { try { A.setSubtitles(t.dbId, cues, 'Online.lrc'); } catch (e) {} } } else lyr.set(t.dbId, got.plainLyrics); const m = lyAutoGet(); m[t.dbId] = lyKey(t); lyAutoPut(m); } catch (e) { console.warn('lyrics save failed', e); } }
         await lyWait(1500);
       }
     } catch (e) { console.warn('lyrics background fetch', e); }
     lyRunning = false;
+    if (lyAgain) setTimeout(() => lyPrefetch(enabled), 1000);             // a title changed while this run was busy
+  }
+  // Every library save: if a title changed, remember what the old lyrics were downloaded for, then look the track up again.
+  let lySeen = null;
+  function lyTitlesChanged(enabled) {
+    const A = window.__ppApi; if (!A || !A.tracks) return;
+    const now = {}; A.tracks().forEach(t => { if (t.dbId != null) now[t.dbId] = lyKey(t); });
+    if (!lySeen) { lySeen = now; return; }
+    const changed = Object.keys(now).filter(id => lySeen[id] != null && lySeen[id] !== now[id]); lySeen = now;
+    if (!changed.length) return;
+    let subs = {}; try { subs = JSON.parse(localStorage.getItem('playerSubtitles') || '{}') || {}; } catch (e) {}
+    const auto = lyAutoGet(); let upd = false;
+    for (const id of changed) {                                         // lyrics downloaded before this was tracked are known by their 'Online.lrc' name
+      const e = subs[id]; if (auto[id] == null && e && !Array.isArray(e) && e.n === 'Online.lrc') { auto[id] = '\u0000old'; upd = true; }
+    }
+    if (upd) lyAutoPut(auto);
+    clearTimeout(lyTitlesChanged.tm); lyTitlesChanged.tm = setTimeout(() => lyPrefetch(enabled), 2500);   // wait for a batch rename to finish
   }
   let lyStarted = false;
-  function lyStart(enabled) { if (lyStarted) return; lyStarted = true; setTimeout(() => lyPrefetch(enabled), 20000); window.addEventListener('online', () => setTimeout(() => lyPrefetch(enabled), 4000)); }
+  function lyStart(enabled) { if (lyStarted) return; lyStarted = true;
+    lyTitlesChanged(enabled); window.addEventListener('pp-library-saved', () => lyTitlesChanged(enabled)); setTimeout(() => lyPrefetch(enabled), 20000); window.addEventListener('online', () => setTimeout(() => lyPrefetch(enabled), 4000)); }
 
   // ---------- Panel: library tools + lyrics ----------
   // ---------- AI summary: the tags say what it SOUNDS like, the lyrics/subtitles say what it is ABOUT ----------

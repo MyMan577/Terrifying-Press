@@ -25,6 +25,7 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 20
+          cache: npm   # reuses downloaded packages between builds (needs package-lock.json)
 
       - name: Set up Java
         uses: actions/setup-java@v6
@@ -256,7 +257,8 @@ jobs:
         run: |
           APK=android/app/build/outputs/apk/debug/app-debug.apk
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-          APKSIGNER=$(find "$SDK" /usr/local/lib/android -name apksigner -type f 2>/dev/null | sort | tail -1 || true)
+          # apksigner lives in build-tools/<version>/. Looking there directly is instant; searching the whole SDK took about a minute.
+          APKSIGNER=$(ls -d "$SDK"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)
           if [ -n "$APKSIGNER" ]; then
             "$APKSIGNER" verify --print-certs "$APK" | grep -E "Signer #1 certificate SHA-256|Verifies" || true
           else
