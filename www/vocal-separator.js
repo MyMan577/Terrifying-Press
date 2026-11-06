@@ -2323,26 +2323,55 @@
   // Long videos are read in pieces (each piece summarized, then the pieces combined). At most 5 pieces, spread over the whole thing, so it stays quick.
   // Summary length choices: how much to ask for (words), how many tokens the reply may use (tok), and for long videos how long each piece summary may be (part).
   const SUM_LENS = {
-    short:    { label: 'Short (2 to 3 sentences)', words: '2 or 3 plain sentences', adj: 'short', tok: 120, part: 70 },
-    medium:   { label: 'Medium (4 to 5 sentences)', words: '4 or 5 plain sentences', adj: 'medium-length', tok: 230, part: 100 },
-    long:     { label: 'Long (6 to 8 sentences)', words: '6 to 8 plain sentences covering the main points, themes and feel', adj: 'detailed', tok: 360, part: 140 },
-    detailed: { label: 'Very detailed (two paragraphs)', words: 'two short paragraphs of plain sentences: first what it is about and the main points, then how it sounds and feels', adj: 'thorough', tok: 500, part: 170 }
+    short:    { label: 'Short (2 to 3 sentences)', words: '2 or 3 sentences', adj: 'short', tok: 160, part: 80 },
+    medium:   { label: 'Medium (one paragraph)', words: 'one paragraph of 4 to 6 sentences', adj: 'medium-length', tok: 300, part: 110 },
+    detailed: { label: 'Two paragraphs (default)', words: 'exactly two paragraphs separated by a blank line. Paragraph one: what the song is about, the story or situation and who is speaking. Paragraph two: its message, themes and significance, and why it hits people the way it does', adj: 'two-paragraph', tok: 720, part: 160, paras: 2 },
+    long:     { label: 'Long (three paragraphs)', words: 'three paragraphs separated by blank lines: what it is about, its message and themes, then its significance and context', adj: 'detailed', tok: 900, part: 180, paras: 3 }
   };
-  const sumLenKey = () => { try { const k = localStorage.getItem('ppvSumLen'); return SUM_LENS[k] ? k : 'short'; } catch (e) { return 'short'; } };
+  const sumLenKey = () => { try { const k = localStorage.getItem('ppvSumLen'); return SUM_LENS[k] ? k : 'detailed'; } catch (e) { return 'detailed'; } };
   // A summary that hit the token cap ends mid-sentence: cut back to the last full sentence.
   const sumTrim = r => {
-    r = String(r).trim(); if (!r || /[.!?\u2026)"'\u201d\u2019]$/.test(r)) return r;
-    let end = -1, m; const re = /[.!?\u2026](?=["'\u201d\u2019)]*(?:\s|$))/g; while ((m = re.exec(r))) end = m.index + 1;
-    return end >= 20 && end >= r.length * 0.4 ? r.slice(0, end) : r.replace(/[\s,;:\-]+$/, '') + '\u2026';
+    r = String(r).trim(); if (!r || /[.!?…)"'”’]$/.test(r)) return r;
+    let end = -1, m; const re = /[.!?…](?=["'”’)]*(?:\s|$))/g; while ((m = re.exec(r))) end = m.index + 1;
+    return end >= 20 && end >= r.length * 0.4 ? r.slice(0, end) : r.replace(/[\s,;:\-]+$/, '') + '…';
   };
+  // Small models often ignore "two paragraphs": split at the sentence boundaries nearest the even cut points.
+  const sumParas = (r, n) => {
+    r = String(r).replace(/^\s*(?:paragraph \d[:.]?|\*\*[^*]+\*\*)\s*/gim, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    if (!n || n < 2 || r.split(/\n\s*\n/).length >= n) return r;
+    const flat = r.replace(/\s*\n\s*/g, ' '), ends = []; let m; const re = /[.!?…]["'”’)]*\s+(?=[A-Z“"'])/g;
+    while ((m = re.exec(flat))) ends.push(m.index + m[0].length);
+    if (ends.length < n - 1) return r;
+    const cuts = []; for (let k = 1; k < n; k++) { const want = flat.length * k / n; cuts.push(ends.reduce((a, e) => Math.abs(e - want) < Math.abs(a - want) ? e : a, ends[0])); }
+    const uniq = [...new Set(cuts)].sort((x, y) => x - y), out = []; let st = 0;
+    uniq.forEach(c => { out.push(flat.slice(st, c).trim()); st = c; }); out.push(flat.slice(st).trim());
+    return out.filter(Boolean).join('\n\n');
+  };
+  // Writes what a song (or video) MEANS: story, message, themes, significance. The sound is deliberately left out: the tags
+  // line under it covers that, and feeding tempo/instruments to a small model made it describe the sound instead.
+  // With no lyrics it may still answer from what it reliably knows about a well-known song; if it doesn't know it, it says UNKNOWN.
   async function aiSummary(t, c, tr, ask, say, lenKey, ctx) {
-    const kind = t.kind === 'video' ? 'video' : 'song', prof = soundProfile(c, t.kind), LN = SUM_LENS[lenKey] || SUM_LENS.short;
-    const sys = 'You write summaries for a music and video player. Use ONLY the transcript and the audio facts you are given. Never invent names, places, events or lyrics. Do not quote lyrics, describe them instead. If the text is too unclear, say so in a few words. Reply in English with ' + LN.words + ', no lists.';
-    const opt = { max_new_tokens: LN.tok, do_sample: true, temperature: 0.3, top_p: 0.9, repetition_penalty: 1.1 };
-    const facts = (prof.hint ? '\nAudio analysis: ' + prof.hint : '');
+    const kind = t.kind === 'video' ? 'video' : 'song', LN = SUM_LENS[lenKey] || SUM_LENS.detailed;
+    const who = t.artist && !/^(unknown artist|video|stream)$/i.test(t.artist) ? t.artist : '';
+    const sys = kind === 'song'
+      ? 'You explain songs for a music app. Write about what the song MEANS: the story or situation, who is speaking and to whom, the feelings, the message and themes, and why it matters to people. ' +
+        'Do NOT describe how it sounds: no tempo, genre, instruments, production or vocal style. ' +
+        'Base it on the lyrics you are given. You may add what you reliably know about this specific song and artist (what it is widely understood to be about, the story behind it), but never invent facts; when unsure, stay with the lyrics. ' +
+        'Describe the lyrics in your own words instead of quoting them. Plain English, no lists, no headings. Write ' + LN.words + '.'
+      : 'You summarize videos for a media app. Write about what the video is about: its subject, main points or story, and why it matters. Do not describe the audio. ' +
+        'Use only the transcript you are given; never invent names or events. Plain English, no lists, no headings. Write ' + LN.words + '.';
+    const opt = { max_new_tokens: LN.tok, do_sample: true, temperature: 0.4, top_p: 0.9, repetition_penalty: 1.08 };
+    const head = 'Title: ' + t.title + (who ? '\nArtist: ' + who : '') + '\nType: ' + kind;
     let user;
-    if (tr.words <= 450) user = 'Title: ' + t.title + '\nType: ' + kind + facts + '\nTranscript (automatic, may contain mistakes):\n' + tr.lines.join('\n') + '\n\nSummarize what this ' + kind + ' is about and how it feels.';
-    else {
+    if (tr.words < 12) {
+      if (kind !== 'song' || !who) return '';
+      user = head + '\nNo lyrics are saved for this song.\n\nIf you genuinely know this exact song, explain what it is about and what it means in ' + LN.words + '. If you do not know it, reply with only the word UNKNOWN.';
+    } else if (tr.words <= 600) {
+      // Fit the lyrics to the model's context instead of shrinking the answer: keep the reply budget, drop lyric lines from the end.
+      let lines = tr.lines.slice();
+      if (ctx) { const room = Math.floor(ctx * 0.92) - LN.tok - Math.ceil((sys.length + head.length + 120) / 3); while (lines.length > 6 && Math.ceil(lines.join('\n').length / 3) > room) lines.pop(); }
+      user = head + '\nLyrics (automatic transcript, may contain mistakes' + (lines.length < tr.lines.length ? ', shortened' : '') + '):\n' + lines.join('\n') + '\n\nExplain what this ' + kind + ' is about and what it means.';
+    } else {
       let chunks = [], cur = [], n = 0;
       for (const q of tr.lines) { cur.push(q); n += q.split(/\s+/).length; if (n >= 320) { chunks.push(cur.join('\n')); cur = []; n = 0; } }
       if (cur.length) chunks.push(cur.join('\n'));
@@ -2350,18 +2379,17 @@
       const parts = [];
       for (let i = 0; i < chunks.length; i++) {
         say('Reading part ' + (i + 1) + ' of ' + chunks.length + '…');
-        const r = await ask([{ role: 'system', content: sys }, { role: 'user', content: 'Part ' + (i + 1) + ' of ' + chunks.length + ' of a ' + kind + ' transcript (automatic, may contain mistakes):\n' + chunks[i] + '\n\nSummarize this part in one or two sentences.' }], Object.assign({}, opt, { max_new_tokens: LN.part }), say);
+        const r = await ask([{ role: 'system', content: sys }, { role: 'user', content: 'Part ' + (i + 1) + ' of ' + chunks.length + ' of a ' + kind + ' transcript (automatic, may contain mistakes):\n' + chunks[i] + '\n\nIn one or two sentences, what happens or is said in this part?' }], Object.assign({}, opt, { max_new_tokens: LN.part }), say);
         if (sumOk(r)) parts.push(r.replace(/\s+/g, ' '));
       }
       if (!parts.length) return '';
       say('Putting it together…');
-      user = 'Title: ' + t.title + '\nType: ' + kind + facts + '\nSummaries of ' + (sampled ? 'some parts of it' : 'each part') + ', in order:\n- ' + parts.join('\n- ') + '\n\nWrite a ' + LN.adj + ' summary of the whole ' + kind + '.';
+      user = head + '\nWhat each ' + (sampled ? 'sampled ' : '') + 'part says, in order:\n- ' + parts.join('\n- ') + '\n\nExplain what the whole ' + kind + ' is about and what it means.';
     }
     say('Writing the summary…');
-    // Keep the reply inside the model's context: a small model cannot take a long transcript and a long reply together.
-    if (ctx) opt.max_new_tokens = Math.max(100, Math.min(LN.tok, Math.floor(ctx * 0.9) - Math.ceil((sys.length + user.length) / 3) - 30));
-    const out = await ask([{ role: 'system', content: sys }, { role: 'user', content: user }], opt, say);
-    return sumOk(out) ? sumTrim(out) : '';
+    const out = String(await ask([{ role: 'system', content: sys }, { role: 'user', content: user }], opt, say) || '').trim();
+    if (/^\W*unknown\W*$/i.test(out) || /^(?:i(?:'m| am) not (?:familiar|sure)|i don'?t know)/i.test(out)) return '';
+    return sumOk(out) ? sumParas(sumTrim(out), LN.paras || 0) : '';
   }
   function smartUI(p, h) {
     const css = document.createElement('style');
@@ -2796,9 +2824,9 @@
         if (!c) { say('Tagging first, so the summary knows what it hears…'); const r = await tagTrack(t.url, say, h.LV(), {}); await persistTags(t.dbId, r, false); c = loadTags()[t.dbId]; }
         const tr = getTranscript(t.dbId), prof = soundProfile(c, t.kind), ch = h.mas.chat;
         let ai = '', note = '';
-        if (tr.words >= 12) {
+        if (tr.words >= 12 || (t.kind !== 'video' && t.artist && !/^(unknown artist|video|stream)$/i.test(t.artist))) {
           if (!ch.ready() && !confirm('The written summary uses the AI brain: a one-time download of about ' + ch.mb() + ' MB. Continue? (Cancel keeps just the sound summary.)')) note = 'No AI brain download, so this is the sound summary only.';
-          else { try { ai = await aiSummary(t, c, tr, ch.ask, say, $('#ppv-sumlen').value, ch.ctx && ch.ctx()); } catch (e) { console.warn(e); note = 'The AI brain could not run: ' + errText(e); } if (!ai && !note) note = 'The AI summary came out unusable, so only the sound summary is shown.'; }
+          else { try { ai = await aiSummary(t, c, tr, ch.ask, say, $('#ppv-sumlen').value, ch.ctx && ch.ctx()); } catch (e) { console.warn(e); note = 'The AI brain could not run: ' + errText(e); } if (!ai && !note) note = tr.words >= 12 ? 'The AI summary came out unusable, so only the sound summary is shown.' : 'No lyrics are saved and the AI brain does not know this song, so only the sound summary is shown. Tap "Transcribe current track" above for a fuller summary.'; }
         } else note = 'No lyrics or subtitles saved for this track, so this is based on the sound only. Tap "Transcribe current track" above for a fuller summary.';
         const text = [ai, prof.line ? 'Sound: ' + prof.line : ''].filter(Boolean).join('\n\n');
         if (!text) throw new Error('Nothing to summarize yet. Tag the track first.');
@@ -4630,6 +4658,35 @@
     }
     const HELP = 'I can do things when you ask:\n\u2022 play / pause / next / previous / shuffle on\n\u2022 \u201cplay something chill\u201d, \u201cplay <song name>\u201d, \u201csurprise me\u201d\n\u2022 \u201cvolume 40\u201d, \u201clouder\u201d, \u201cmute\u201d\n\u2022 \u201csleep timer 30 minutes\u201d\n\u2022 \u201cmake a playlist of slow piano\u201d, \u201cadd this to <playlist>\u201d\n\u2022 \u201ctag this song\u201d, \u201csplit this song\u201d, \u201cget the lyrics\u201d, \u201cmore like this\u201d\n\u2022 \u201cturn on background tagging\u201d\n\u2022 \u201cmake a chill playlist\u201d, \u201cplaylist for studying\u201d, \u201cmake a playlist for when I\u2019m stressed\u201d, \u201cmake smart playlists\u201d, \u201cwhat mood is this\u201d, \u201cauto EQ\u201d (no chat AI needed)\n\u2022 \u201cskip 30 seconds\u201d, \u201crewind 10\u201d, \u201cgo to 1:30\u201d, \u201crestart\u201d, \u201chow long is left\u201d\n\u2022 \u201crepeat this song\u201d, \u201cspeed 1.5x\u201d, \u201cfullscreen\u201d, \u201ceq rock\u201d, \u201cloop start\u201d / \u201cloop end\u201d\n\u2022 \u201cmy playlists\u201d, \u201cplay my gym playlist\u201d, \u201cremove this from <playlist>\u201d, \u201crename playlist X to Y\u201d, \u201cdelete playlist X\u201d\n\u2022 \u201clibrary stats\u201d, \u201cwhat\u2019s the BPM\u201d, \u201cplay the fastest song\u201d, \u201cplay songs around 120 bpm\u201d, \u201cplay slow songs\u201d\n\u2022 \u201copen my portfolio\u201d, \u201cmy top artist\u201d, \u201cmost played song\u201d, \u201ctop 5 songs\u201d, \u201chow much have I listened\u201d, \u201cwhen do I listen most\u201d, \u201cmy streak\u201d\n\u2022 \u201cwhat songs do I have\u201d, \u201csongs by <artist>\u201d, \u201cdo I have <song>\u201d, \u201cfind <song>\u201d, \u201cmy artists\u201d, \u201cmy videos\u201d, \u201crecently added\u201d, \u201cuntagged songs\u201d, \u201cwhich songs are chill\u201d\n\u2022 Ask me about me: \u201cwhat\u2019s your favorite song?\u201d, \u201cfavorite artist?\u201d, \u201cdo you like this song?\u201d, \u201cpick a song for me\u201d\n\u2022 From your tags: \u201cany moody songs?\u201d, \u201cwhat genre is this?\u201d, \u201cwhat instruments are in this?\u201d, \u201cis this song sad?\u201d, \u201ctell me about this song\u201d\n\u2022 \u201csearch for jazz\u201d, \u201copen settings\u201d, \u201cplay the first song\u201d, \u201czoom in\u201d, \u201cnext filter\u201d\nYou can say it your own way too: \u201ctoo quiet\u201d, \u201cI don\u2019t like this one\u201d, \u201cstop in half an hour\u201d, \u201cwho sings this\u201d.\nOr just chat with me.';
     // Whenever the agent handles a message (a command, or a loose phrasing it understood), the model is dropped from RAM.
+    // ---------- Song summaries in the chat: show the saved one, or write one with the chat model ----------
+    let sumBusy = false;
+    async function chatSummary(i, fresh) {
+      const A = window.__ppApi, t = A.tracks()[i]; if (!t) return;
+      const label = t.title + (t.artist && !/^(unknown artist|video|stream)$/i.test(t.artist) ? ' by ' + t.artist : '');
+      const old = sumLoad()[t.dbId];
+      if (old && !fresh) {
+        add('bot', '\ud83d\udcdd ' + label + '\n\n' + old.t);
+        actions([['\u270e Write a new one', (b, d) => { d.remove(); chatSummary(i, true); }]]);
+        return;
+      }
+      if (sumBusy || chatBusy) { add('bot', blTone('I am already writing something. Ask me again in a moment.')); return; }
+      sumBusy = true; holdModel = true;
+      add('bot', blTone('Writing a summary of ' + label + '. This takes a little while on the phone\u2026'));
+      try {
+        const tr = getTranscript(t.dbId), c = loadTags()[t.dbId];
+        const ask2 = async (msgs, opts, say) => { const g = await ensureModel(say || (() => {})); const o = await g(msgs, opts || {}); const gt = o[0].generated_text; return String(Array.isArray(gt) ? gt[gt.length - 1].content : gt).trim(); };
+        const ai = await aiSummary(t, c, tr, ask2, () => {}, sumLenKey(), ctxOf());
+        if (!ai) {
+          add('bot', blTone(tr.words >= 12 ? 'The summary came out unusable. Try again, or pick a bigger AI brain in the assistant settings.'
+            : 'I have no lyrics for ' + label + ' and I do not know it well enough to explain it without guessing. Transcribe it first (Lyrics & subtitles) and ask me again.'));
+          return;
+        }
+        const prof = soundProfile(c, t.kind), text = [ai, prof.line ? 'Sound: ' + prof.line : ''].filter(Boolean).join('\n\n');
+        sumSave(t.dbId, { t: text, ts: Date.now() });
+        add('bot', '\ud83d\udcdd ' + label + '\n\n' + text);
+      } catch (e) { console.warn(e); add('bot', blTone('I could not write it: ' + errText(e))); }
+      finally { sumBusy = false; holdModel = false; clearTimeout(idleT); idleT = setTimeout(() => { if (!chatBusy) unloadModel(); }, 30000); }
+    }
     function agent(raw, skip) { holdModel = false; const hit = agentCore(raw, skip); if (hit && !chatBusy && !holdModel) unloadModel(); return hit; }
     // Loose phrasing -> canonical command, by plain rules (no model needed). Returns {cmd, q} or null. q = ask before acting.
     function interpret(t) {
@@ -4856,6 +4913,33 @@
         const key = (m[1] || m[2] || m[3] || m[4] || 'flat').toLowerCase().trim().replace(/\s+the$/, ''), name = EQN[key];
         if (!name) return say('I know these EQ presets: bass, treble, vocal, v-shape, acoustic, pop, rock, jazz, classical, electronic, hip hop, loudness, podcast, late night, or flat.');
         return A.setTrackEqPreset(c.dbId, name) ? done('EQ set to ' + name + ' for this track.' + (name === 'flat' ? '' : ' Say \u201ceq off\u201d to undo.')) : say('That preset did not work.');
+      }
+      // ---- song summaries ("summarize this", "what is Hello about", "show the summary of X", "write a new summary") ----
+      {
+        let sm = null, fresh = false, showOnly = false;
+        if ((sm = t.match(/^(?:summari[sz]e|sum up|explain|break down)(?: (?:this|the|that|it|current))?(?: song| track| video)?(?: for me)?$/i))) sm = [sm[0], ''];
+        else if ((sm = t.match(/^(?:write|make|generate|create|give me|get me)(?: me)?(?: a)?( new)? summary(?: (?:of|for|about) (.+))?$/i))) { fresh = !!sm[1]; sm = [sm[0], sm[2] || '']; }
+        else if ((sm = t.match(/^(?:show|read|view|open|see|display)(?: me)?(?: the| my)?(?: saved)? summary(?: (?:of|for) (.+))?$/i))) { showOnly = true; sm = [sm[0], sm[1] || '']; }
+        else if ((sm = t.match(/^(?:summari[sz]e|sum up|explain|break down) (.+)$/i))) sm = [sm[0], sm[1]];
+        else if ((sm = t.match(/^what(?:'s| is| was) (.+?) (?:really )?about$/i)) || (sm = t.match(/^(?:what does|what do) (.+?) mean$/i)) || (sm = t.match(/^(?:what(?:'s| is) )?the (?:meaning|message|story) (?:of|behind) (.+)$/i))) sm = [sm[0], sm[1]];
+        else sm = null;
+        if (sm) {
+          let q = String(sm[1] || '').trim().replace(/^["\u201c']+|["\u201d'.!?]+$/g, '');
+          const isCur = !q || /^(?:this|that|it|the|current|this one)(?: song| track| video| one)?$/i.test(q);
+          let idx = -1;
+          if (isCur) { idx = A.currentIndex(); if (idx < 0) return say('Play or pick a song first, or name one: \u201cwhat is Hello about\u201d.'); }
+          else {
+            const hit = resolveMusic(q.replace(/^(?:the )?(?:song|track) /i, ''));
+            if (hit && hit.kind === 'song') idx = hit.idx;
+            else if (hit && hit.kind === 'artist') return say('Which song by ' + hit.a.name + '? Say \u201cwhat is <song> about\u201d.');
+            else if (/\bsummar|\bsum up\b/i.test(t)) return say('I cannot find a song called \u201c' + q + '\u201d in your library.');
+            else return false;                                         // "explain shuffle", "what is love about": not a song here, let the chat answer
+          }
+          const saved = sumLoad()[A.tracks()[idx].dbId];
+          if (showOnly && !saved) { const tt = A.tracks()[idx]; return ask('There is no saved summary for ' + tt.title + ' yet. Write one now?', () => chatSummary(idx, true), true); }
+          chatSummary(idx, fresh);
+          return true;
+        }
       }
       // library search and tabs/menus
       if ((m = t.match(/^(?:search(?: my library| the library| my music| tracks)?(?: for)?|look up|filter(?: by| for)?)\s+(.+)$/i))) {
