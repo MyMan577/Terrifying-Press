@@ -4252,7 +4252,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
           </div>
           <div class="menu-item-slot" data-slot="viewmode">
             <div style="display:flex;gap:5px;flex-wrap:wrap;" data-item-wrapper="viewmode">
-              <button class="pill-btn" id="view-fit-btn" title="Cycle video fit (A)" aria-label="Cycle video fit">
+              <button class="pill-btn" id="view-fit-btn" title="Cycle video fit and aspect ratio (A)" aria-label="Cycle video fit and aspect ratio">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
                 <span id="view-fit-label">Fit</span>
               </button>
@@ -4261,8 +4261,6 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
                 <span id="view-zoom-label">1x</span>
               </button>
             </div>
-            <p class="menu-section-hint" style="margin:8px 0 4px 0;">Aspect ratio: stretches the picture to that shape, shown as large as fits.</p>
-            <div id="view-ratio-row" style="display:flex;gap:5px;flex-wrap:wrap;"></div>
           </div>
         </div>
 
@@ -17720,11 +17718,10 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const fd = (m === videoEl) ? (nfps > 0 ? 1 / nfps : frameDur) : 1/30;
     m.currentTime = Math.min(m.duration, Math.max(0, m.currentTime + dir * fd));
   }
-  // The first three are the classic fit modes (the Fit button and the A key cycle only these). Entries with a third value force an aspect ratio.
+  // The first three are the classic fit modes; entries with a third value force an aspect ratio. The Fit pill and the A key cycle through all of them.
   const VIEW_FITS = [['contain','Fit'],['cover','Fill (crop)'],['fill','Stretch'],
     ['ratio','16:9',16/9],['ratio','4:3',4/3],['ratio','3:2',3/2],['ratio','16:10',16/10],['ratio','5:4',5/4],['ratio','1:1',1],
     ['ratio','21:9',21/9],['ratio','2.39:1',2.39],['ratio','4:5',4/5],['ratio','9:16',9/16]];
-  const VIEW_BASIC = 3;
   const VIEW_ZOOMS = [1, 1.25, 1.5, 2, 3];
   let viewFitIdx = 0, viewZoomIdx = 0;
   try {
@@ -17795,29 +17792,13 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     videoWrap.style.setProperty('--vzoom', VIEW_ZOOMS[viewZoomIdx]);
     const fl = document.getElementById('view-fit-label'), zl = document.getElementById('view-zoom-label');
     if (fl) fl.textContent = VIEW_FITS[viewFitIdx][2] ? 'Ratio ' + VIEW_FITS[viewFitIdx][1] : VIEW_FITS[viewFitIdx][1];
-    document.querySelectorAll('#view-ratio-row button').forEach(b => b.classList.toggle('toggled', +b.dataset.i === (VIEW_FITS[viewFitIdx][2] ? viewFitIdx : -1)));
     if (zl) zl.textContent = VIEW_ZOOMS[viewZoomIdx] + 'x';
     try { localStorage.setItem('playerViewFit', viewFitIdx); localStorage.setItem('playerViewZoom', viewZoomIdx); } catch(e){}
   }
   function cycleViewFit(){
-    viewFitIdx = viewFitIdx >= VIEW_BASIC - 1 ? 0 : viewFitIdx + 1; applyViewMode();   // from a forced ratio it goes back to Fit
-    if (typeof showToast === 'function') showToast('Video: ' + VIEW_FITS[viewFitIdx][1]);
+    viewFitIdx = (viewFitIdx + 1) % VIEW_FITS.length; applyViewMode();   // Fit, Fill, Stretch, then each aspect ratio, then back to Fit
+    if (typeof showToast === 'function') showToast(VIEW_FITS[viewFitIdx][2] ? 'Aspect ratio: ' + VIEW_FITS[viewFitIdx][1] : 'Video: ' + VIEW_FITS[viewFitIdx][1]);
   }
-  // Aspect ratio chips: tap one to force that shape, tap it again (or Original) to go back to Fit.
-  (function(){
-    const row = document.getElementById('view-ratio-row');
-    if (!row) return;
-    const mk = (label, i) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'pill-btn'; b.dataset.i = i; b.textContent = label; row.appendChild(b); return b; };
-    mk('Original', -1).dataset.i = -1;
-    VIEW_FITS.forEach((f, i) => { if (f[2]) mk(f[1], i); });
-    row.addEventListener('click', e => {
-      const b = e.target.closest('button'); if (!b) return;
-      const i = +b.dataset.i;
-      viewFitIdx = (i < 0 || i === viewFitIdx) ? 0 : i;
-      applyViewMode();
-      if (typeof showToast === 'function') showToast(viewFitIdx === 0 ? 'Video: Original shape' : 'Aspect ratio: ' + VIEW_FITS[viewFitIdx][1]);
-    });
-  })();
   function stepViewZoom(dir){
     const next = Math.max(0, Math.min(VIEW_ZOOMS.length - 1, viewZoomIdx + dir));
     const quiet = !!window.__ppQuietZoom;
