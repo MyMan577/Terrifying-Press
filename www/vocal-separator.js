@@ -4557,6 +4557,77 @@
       });
       return out.sort((a, b) => b[1] - a[1]).map(o => o[0]);
     }
+    // ---------- Library matcher for "play ..." / "open ..." (fast, no model) ----------
+    // Understands artists ("play Drake", "something by Drake", "Drake's songs"), "<title> by <artist>", small typos
+    // and featured-artist credits. Returns null when nothing is close; then the caller can offer "did you mean".
+    const mNorm = x => String(x || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    const mFlat = x => mNorm(x).replace(/ /g, '');
+    function mLev(a, b, max) {                                          // edit distance, gives up past max
+      if (Math.abs(a.length - b.length) > max) return max + 1;
+      let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+      for (let i = 1; i <= a.length; i++) {
+        const cur = [i]; let best = i;
+        for (let j = 1; j <= b.length; j++) { cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); best = Math.min(best, cur[j]); }
+        if (best > max) return max + 1; prev = cur;
+      }
+      return prev[b.length];
+    }
+    // How well a name matches what was said: 1 exact .. 0 nothing. Tolerates typos, missing spaces and a trailing "s".
+    function mScore(name, q) {
+      const a = mFlat(name).replace(/^the(?=.{3})/, ''), b = mFlat(q).replace(/^the(?=.{3})/, ''); if (!a || !b) return 0;   // 'The Weeknd' = 'weeknd'
+      if (a === b || a === b.replace(/s$/, '') || a.replace(/s$/, '') === b) return 1;
+      if (b.length >= 3 && a.startsWith(b)) return 0.86 + 0.1 * b.length / a.length;
+      if (b.length >= 4 && a.includes(b)) return 0.8 + 0.1 * b.length / a.length;
+      if (a.length >= 4 && b.includes(a)) return 0.78;
+      const max = b.length >= 9 ? 2 : b.length >= 4 ? 1 : 0, d = max ? mLev(a, b, max) : 99;
+      if (d <= max) return 0.8 - 0.05 * d;
+      const wa = mNorm(name).split(' '), wb = mNorm(q).split(' ').filter(w => w.length > 1);
+      if (!wb.length) return 0;
+      const hit = wb.filter(w => wa.some(x => x === w || (w.length >= 5 && mLev(x, w, 1) <= 1))).length;
+      return hit === wb.length ? 0.7 : hit / wb.length >= 0.6 ? 0.5 : 0;
+    }
+    const mArtists = () => {                                            // artist name -> track indexes, credits split ("A feat. B", "A & B")
+      const tr = window.__ppApi.tracks(), by = new Map();
+      tr.forEach((t, i) => {
+        if (t.stem || !t.artist || /^(unknown artist|video|stream)$/i.test(t.artist)) return;
+        const parts = new Set([t.artist, ...String(t.artist).split(/\s*(?:,|&|\bfeat\.?|\bft\.?|\bfeaturing\b|\bx\b|\bwith\b|\band\b)\s*/i)].map(x => x.trim()).filter(x => x.length > 1));
+        parts.forEach(n => { const k = mNorm(n); if (!k) return; if (!by.has(k)) by.set(k, { name: n, idxs: [] }); by.get(k).idxs.push(i); });
+      });
+      return [...by.values()];
+    };
+    function mBestArtist(q, min) {
+      let best = null, bs = 0;
+      mArtists().forEach(a => { const sc = mScore(a.name, q) + Math.min(0.02, a.idxs.length / 1000); if (sc > bs) { bs = sc; best = a; } });
+      return best && bs >= (min || 0.75) ? Object.assign({ score: bs }, best) : null;
+    }
+    function mBestSongs(q, pool) {                                      // indexes ranked by title match
+      const tr = window.__ppApi.tracks(), ids = pool || tr.map((x, i) => i).filter(i => !tr[i].stem);
+      return ids.map(i => [i, mScore(tr[i].title, q)]).filter(x => x[1] >= 0.7).sort((x, y) => y[1] - x[1]);
+    }
+    // "play X": {kind:'artist', a} | {kind:'song', idx, queue} | null
+    function resolveMusic(raw) {
+      let q = String(raw).trim().replace(/[.!?]+$/, '');
+      q = q.replace(/^(?:(?:some|any|a|an|the|my|me|more|all)\s+)+/i, '');
+      let m;
+      if ((m = q.match(/^(?:(?:songs?|music|tracks?|stuff|something|anything|hits?|albums?)\s+)?(?:by|from)\s+(.+)$/i))) { const a = mBestArtist(m[1], 0.7); return a ? { kind: 'artist', a } : null; }
+      if ((m = q.match(/^(.+?)(?:'s|\u2019s|s')\s+(?:songs?|music|tracks?|stuff|hits?|albums?)$/i)) || (m = q.match(/^(.+?)\s+(?:songs?|music|tracks?|hits?)$/i))) { const a = mBestArtist(m[1], 0.7); if (a) return { kind: 'artist', a }; q = m[1]; }
+      if ((m = q.match(/^(.+?)\s+by\s+(.+)$/i))) {                     // "<title> by <artist>"
+        const a = mBestArtist(m[2], 0.7);
+        if (a) { const s = mBestSongs(m[1], a.idxs); if (s.length) return { kind: 'song', idx: s[0][0], queue: [s[0][0], ...a.idxs.filter(i => i !== s[0][0])] }; }
+      }
+      const songs = mBestSongs(q), art = mBestArtist(q, 0.75);
+      // An exact artist beats a loose title; an exact title beats a loose artist.
+      if (art && (!songs.length || art.score >= songs[0][1] || art.score >= 0.99)) return { kind: 'artist', a: art };
+      if (songs.length) return { kind: 'song', idx: songs[0][0], queue: songs.map(x => x[0]).slice(0, 30) };
+      return null;
+    }
+    // Closest names for "did you mean": a few artists and titles that are near but not good enough to act on.
+    function nearMisses(q) {
+      const tr = window.__ppApi.tracks(), out = [];
+      mArtists().forEach(a => { const sc = mScore(a.name, q); if (sc >= 0.45) out.push([sc, 'play ' + a.name, a.name]); });
+      tr.forEach((t, i) => { if (t.stem) return; const sc = mScore(t.title, q); if (sc >= 0.45) out.push([sc, 'play ' + t.title + (t.artist ? ' by ' + t.artist : ''), t.title]); });
+      const seen = new Set(); return out.sort((x, y) => y[0] - x[0]).filter(x => !seen.has(x[2]) && seen.add(x[2])).slice(0, 3);
+    }
     const HELP = 'I can do things when you ask:\n\u2022 play / pause / next / previous / shuffle on\n\u2022 \u201cplay something chill\u201d, \u201cplay <song name>\u201d, \u201csurprise me\u201d\n\u2022 \u201cvolume 40\u201d, \u201clouder\u201d, \u201cmute\u201d\n\u2022 \u201csleep timer 30 minutes\u201d\n\u2022 \u201cmake a playlist of slow piano\u201d, \u201cadd this to <playlist>\u201d\n\u2022 \u201ctag this song\u201d, \u201csplit this song\u201d, \u201cget the lyrics\u201d, \u201cmore like this\u201d\n\u2022 \u201cturn on background tagging\u201d\n\u2022 \u201cmake a chill playlist\u201d, \u201cplaylist for studying\u201d, \u201cmake a playlist for when I\u2019m stressed\u201d, \u201cmake smart playlists\u201d, \u201cwhat mood is this\u201d, \u201cauto EQ\u201d (no chat AI needed)\n\u2022 \u201cskip 30 seconds\u201d, \u201crewind 10\u201d, \u201cgo to 1:30\u201d, \u201crestart\u201d, \u201chow long is left\u201d\n\u2022 \u201crepeat this song\u201d, \u201cspeed 1.5x\u201d, \u201cfullscreen\u201d, \u201ceq rock\u201d, \u201cloop start\u201d / \u201cloop end\u201d\n\u2022 \u201cmy playlists\u201d, \u201cplay my gym playlist\u201d, \u201cremove this from <playlist>\u201d, \u201crename playlist X to Y\u201d, \u201cdelete playlist X\u201d\n\u2022 \u201clibrary stats\u201d, \u201cwhat\u2019s the BPM\u201d, \u201cplay the fastest song\u201d, \u201cplay songs around 120 bpm\u201d, \u201cplay slow songs\u201d\n\u2022 \u201copen my portfolio\u201d, \u201cmy top artist\u201d, \u201cmost played song\u201d, \u201ctop 5 songs\u201d, \u201chow much have I listened\u201d, \u201cwhen do I listen most\u201d, \u201cmy streak\u201d\n\u2022 \u201cwhat songs do I have\u201d, \u201csongs by <artist>\u201d, \u201cdo I have <song>\u201d, \u201cfind <song>\u201d, \u201cmy artists\u201d, \u201cmy videos\u201d, \u201crecently added\u201d, \u201cuntagged songs\u201d, \u201cwhich songs are chill\u201d\n\u2022 Ask me about me: \u201cwhat\u2019s your favorite song?\u201d, \u201cfavorite artist?\u201d, \u201cdo you like this song?\u201d, \u201cpick a song for me\u201d\n\u2022 From your tags: \u201cany moody songs?\u201d, \u201cwhat genre is this?\u201d, \u201cwhat instruments are in this?\u201d, \u201cis this song sad?\u201d, \u201ctell me about this song\u201d\n\u2022 \u201csearch for jazz\u201d, \u201copen settings\u201d, \u201cplay the first song\u201d, \u201czoom in\u201d, \u201cnext filter\u201d\nYou can say it your own way too: \u201ctoo quiet\u201d, \u201cI don\u2019t like this one\u201d, \u201cstop in half an hour\u201d, \u201cwho sings this\u201d.\nOr just chat with me.';
     // Whenever the agent handles a message (a command, or a loose phrasing it understood), the model is dropped from RAM.
     function agent(raw, skip) { holdModel = false; const hit = agentCore(raw, skip); if (hit && !chatBusy && !holdModel) unloadModel(); return hit; }
@@ -4808,8 +4879,24 @@
       if (/^(?:where am i|how far in(?: am i)?|what time is it in the (?:song|track)|what'?s the (?:time|position))$/i.test(t)) { if (!dur()) return say('Nothing is playing.'); return say('You are at ' + clock(pos()) + ' of ' + clock(dur()) + '.'); }
       // ---- library & playlist management ----
       const nrm = x => String(x).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
-      const findPl = name => { const w = nrm(name), pls = A.playlists(); return w ? (pls.find(p => nrm(p.name) === w) || pls.find(p => nrm(p.name).includes(w))) : null; };
+      const findPl = name => {
+        const w = nrm(name), pls = A.playlists().filter(p => !p.stemOf); if (!w) return null;
+        return pls.find(p => nrm(p.name) === w) || pls.find(p => nrm(p.name).includes(w)) || pls.map(p => [p, mScore(p.name, name)]).filter(x => x[1] >= 0.7).sort((x, y) => y[1] - x[1]).map(x => x[0])[0] || null;
+      };
       const plIdx = pl => { const tr = A.tracks(); return tr.map((x, i) => i).filter(i => !tr[i].stem && (tr[i].playlistIds || []).includes(pl.id)); };
+      // "open / show / view / pull up my Chill playlist": that playlist's own page, plus a play button
+      if ((m = t.match(/^(?:open|show|view|see|display|pull up|bring up|go to|take me to|navigate to|load)(?: me| up)?(?: the| my)?(?: playlist)? (.+?)(?: playlist)?$/i))
+          && !/^(?:settings|library|queue|tracks|track list|playlists?|eq|equali[sz]er|sleep(?: timer)?|speed|playback speed|effects|fx|subtitles?|captions?|(?:main )?menu|lyrics|player|home|what'?s in .+)$/i.test(m[1].trim())) {
+        const pl = findPl(m[1]);
+        if (pl) {
+          const q = plIdx(pl), opened = !!(window.__ppOpenPlaylist && window.__ppOpenPlaylist(pl.id));
+          if (!opened) { const tab = document.querySelector('[data-sidebar-tab="playlist"]'); tab && tab.click(); }
+          add('bot', blTone('\u2713 ' + (opened ? 'Opened ' : 'Here is ') + pl.name + ' (' + q.length + ' track' + (q.length === 1 ? '' : 's') + ')' + (opened ? '.' : (q.length ? ': ' + q.slice(0, 6).map(i => A.tracks()[i].title).join(', ') + (q.length > 6 ? ', \u2026' : '') : '.'))));
+          if (q.length) actions([['\u25b6 Play it', (b, d) => { d.remove(); A.play(q[0], q); }], ['\u21c4 Shuffle it', (b, d) => { d.remove(); const s2 = shuffleIn(q.slice()); A.play(s2[0], s2); }]]);
+          return true;
+        }
+        if (/\bplaylist\b/i.test(t)) { const pls = A.playlists().filter(p => !p.libOnly && !p.stemOf); return say('I cannot find a playlist called \u201c' + m[1] + '\u201d.' + (pls.length ? ' You have: ' + pls.slice(0, 8).map(p => p.name).join(', ') + '.' : '')); }
+      }
       if (/^(?:(?:what|which|list|show)(?: me)?(?: are)?(?: all)?(?: of)?(?: my)? playlists(?: do i have)?|my playlists|how many playlists(?: do i have)?)$/i.test(t)) {
         const pls = A.playlists().filter(p => !p.libOnly);
         return say(pls.length ? 'You have ' + pls.length + ' playlist' + (pls.length === 1 ? '' : 's') + ': ' + pls.slice(0, 12).map(p => p.name + ' (' + plIdx(p).length + ')').join(', ') + (pls.length > 12 ? ', and more' : '') + '.' : 'You have no playlists yet. Say \u201cmake a playlist called Favorites\u201d.');
@@ -4973,7 +5060,16 @@
         if (!ws.length || ws.every(w => ['random', 'anything', 'everything', 'all', 'shuffle', 'shuffled'].includes(w))) {
           const q = shuffleIn(tr.map((x, i) => i).filter(i => !tr[i].stem)); if (!q.length) return say('Your library is empty.'); A.play(q[0], q); return done('Playing a shuffled mix.');
         }
+        if (!ws.every(w => VIBEW.has(w))) {                             // names, not moods: artist / title / playlist, typo-tolerant
+          const hit = resolveMusic(m[1]);
+          if (hit && hit.kind === 'artist') { const q = shuffleIn(hit.a.idxs.filter(i => !tr[i].stem)); A.play(q[0], q); return done('Playing ' + q.length + ' song' + (q.length === 1 ? '' : 's') + ' by ' + hit.a.name + (q.length > 1 ? ', shuffled' : '') + ': ' + tr[q[0]].title + '.'); }
+          if (hit && hit.kind === 'song') { const q = hit.queue; A.play(q[0], q); return done('Playing ' + tr[q[0]].title + (tr[q[0]].artist ? ' by ' + tr[q[0]].artist : '') + '.'); }
+          const pl0 = (() => { const w = mFlat(m[1]); return A.playlists().filter(p => !p.libOnly && !p.stemOf).find(p => mFlat(p.name) === w); })();
+          if (pl0) { const q = tr.map((x, i) => i).filter(i => !tr[i].stem && (tr[i].playlistIds || []).includes(pl0.id)); if (q.length) { A.play(q[0], q); return done('Playing your ' + pl0.name + ' playlist (' + q.length + ' tracks).'); } }
+        }
         const r = findTracks(ws); if (!r.length) {
+          const near = ws.every(w => VIBEW.has(w)) ? [] : nearMisses(m[1]);
+          if (near.length) { add('bot', blTone('I could not find \u201c' + m[1] + '\u201d. Did you mean:')); actions(near.map(n => ['\u25b6 ' + n[2], (b, d) => { d.remove(); agent(n[1], true); }])); return true; }
           if (ws.length && ws.every(w => VIBEW.has(w)) && tagStats().left > 0) return (askYN('I pick music by mood from your tags, and some tracks are not tagged yet. Tag your library first? I will start the music when it is done.', () => tagAll(() => agent(t, true))), true);
           return say('I could not find anything for \u201c' + m[1] + '\u201d. Tagging more tracks helps me find moods and styles.');
         }
