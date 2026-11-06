@@ -31,9 +31,16 @@ class MainActivity : BridgeActivity() {
     companion object {
         @Volatile var instance: MainActivity? = null
         @Volatile var playerView: PlayerView? = null
-        /** Native SurfaceView video under a transparent WebView. Off: it blanked the picture and slowed the UI. */
-        const val NATIVE_VIDEO = false
+        /**
+         * Native SurfaceView video under the WebView: the "Native video player (beta)" setting (default off).
+         * The page asks for it through PPPlayer.setNativeVideo, which also saves it here for the next start.
+         */
+        @Volatile var nativeVideo = false
+        private const val PREFS = "pp_video"
+        private const val PAGE_BG = 0xFF0C0D10.toInt()   // until the page reports its own colour
     }
+    private var backdrop = PAGE_BG
+    private var seeThrough = false
 
     private var inPip = false
     private var rect = intArrayOf(0, 0, 0, 0)
@@ -53,15 +60,15 @@ class MainActivity : BridgeActivity() {
         registerPlugin(JobsPlugin::class.java)
         super.onCreate(savedInstanceState)
         instance = this
+        nativeVideo = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("native", false)
         installVideoLayer()
         handleIntent(intent)
         askPermissions()
     }
 
     private fun installVideoLayer() {
-        if (!NATIVE_VIDEO) return      // video plays in the normal web <video>; keeps the WebView opaque and fast
+        if (!nativeVideo || playerView != null) return      // off: video plays in the normal web <video>
         val web = bridge.webView
-        web.setBackgroundColor(Color.TRANSPARENT)
         val parent = web.parent as ViewGroup
         val pv = PlayerView(this).apply {
             useController = false
@@ -76,11 +83,49 @@ class MainActivity : BridgeActivity() {
         PlaybackService.instance?.let { pv.player = it.player }
     }
 
+    /** Switches the native video layer on or off right away and remembers it. Main thread. */
+    fun setNativeVideo(on: Boolean) {
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("native", on).apply()
+        nativeVideo = on
+        if (on) { installVideoLayer(); return }
+        val pv = playerView ?: return
+        pv.player = null
+        (pv.parent as? ViewGroup)?.removeView(pv)
+        playerView = null
+        setSeeThrough(false)
+    }
+
+    /**
+     * The WebView is only see-through while a native video is actually on screen. A transparent WebView
+     * makes every page frame blend over the window, so keeping it opaque the rest of the time keeps the UI fast.
+     */
+    private fun setSeeThrough(on: Boolean) {
+        if (on == seeThrough) return
+        seeThrough = on
+        bridge?.webView?.setBackgroundColor(if (on) Color.TRANSPARENT else backdrop)
+    }
+
+    fun setBackdropColor(c: Int) {
+        backdrop = c
+        window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(c))
+        if (!seeThrough) bridge?.webView?.setBackgroundColor(c)
+    }
+
+    /** "contain" (Fit), "cover" (Fill, crop) or "fill" (Stretch), as the page's view menu sets it. */
+    fun setVideoFit(fit: String?) {
+        val pv = playerView ?: return
+        pv.resizeMode = when (fit) {
+            "cover" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            "fill" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+            else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+        }
+    }
+
     // ---------- called from NativePlayerPlugin (main thread) ----------
     fun showVideoLayer(show: Boolean) {
         val pv = playerView ?: return
-        if (!show) { pv.visibility = View.GONE; return }
-        if (rectVisible || inPip) pv.visibility = View.VISIBLE
+        if (!show) { pv.visibility = View.GONE; setSeeThrough(false); return }
+        if (rectVisible || inPip) { pv.visibility = View.VISIBLE; setSeeThrough(true) }
     }
 
     /** x/y/w/h are device pixels relative to the WebView's top-left. */
@@ -92,7 +137,9 @@ class MainActivity : BridgeActivity() {
         lp.width = w; lp.height = h
         pv.layoutParams = lp
         pv.translationX = x.toFloat(); pv.translationY = y.toFloat()
-        pv.visibility = if (rectVisible && NativePlayerPlugin.instance != null) View.VISIBLE else View.GONE
+        val show = rectVisible && NativePlayerPlugin.instance != null
+        pv.visibility = if (show) View.VISIBLE else View.GONE
+        setSeeThrough(show)
     }
 
     fun keepScreenOn(on: Boolean) {

@@ -162,8 +162,20 @@
   }
 
   var origGetById = document.getElementById.bind(document);
-  // Video uses the normal web <video> (MEMC, CSS filters, no transparent WebView) unless localStorage.ppNativeVideo = 'on'.
+  // Video uses the normal web <video> (MEMC, CSS filters, no transparent WebView) unless the
+  // "Native video player (beta)" setting is on (localStorage.ppNativeVideo = 'on'). The native layer is told the
+  // same thing at every start, so the two sides can never disagree (that mismatch used to give a black picture).
   var nativeVideo = false; try { nativeVideo = localStorage.getItem('ppNativeVideo') === 'on'; } catch (e) {}
+  if (enabled && Player && Player.setNativeVideo) call(function () { return Player.setNativeVideo({ on: nativeVideo }); });
+  N.nativeVideoSetting = function () { return nativeVideo; };
+  // Switching players needs a fresh page (every <video> wrapper is set up at load), so the setting reloads the app.
+  N.setNativeVideo = function (on) {
+    try { localStorage.setItem('ppNativeVideo', on ? 'on' : 'off'); } catch (e) {}
+    var done = function () { location.reload(); };
+    if (!enabled || !Player || !Player.setNativeVideo) return done();
+    var p = call(function () { return Player.setNativeVideo({ on: !!on }); });
+    (p && p.then ? p : Promise.resolve()).then(done, done);
+  };
   N.wrapMedia = function (el, kind) {
     if (!enabled || !el) return el;
     if (kind === 'video' && !nativeVideo) return el;
@@ -490,11 +502,36 @@
   };
 
   // ---------- video surface placement ----------
-  var rectRaf = 0, lastRect = '', rectTimer = 0, holeNodes = [], lastBackdrop = '';
+  var rectRaf = 0, lastRect = '', rectTimer = 0, holeNodes = [], hiddenNodes = [], lastBackdrop = '', lastShow = false;
   // The page must be see-through above the video box: clear the backgrounds of everything that contains it,
   // and give the window itself the page colour so the rest of the screen looks unchanged.
+  // Anything painted UNDER the video box (e.g. the home screen behind the full-screen player) would show through the
+  // cleared backgrounds and cover the native picture, so it is hidden while the native video is on screen.
+  function hideBeneath(el) {
+    hiddenNodes.forEach(function (n) { n.classList.remove('pp-hole-hide'); }); hiddenNodes = [];
+    if (!el) return;
+    var wrap = el.parentElement || el, r = wrap.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4) return;
+    var chain = new Set(); for (var n = el; n; n = n.parentElement) chain.add(n);
+    var probe = document.createElement('style');                        // hit-test layers that ignore taps too
+    probe.textContent = '*{pointer-events:auto !important}'; document.head.appendChild(probe);
+    var pts = [[0.5, 0.5], [0.08, 0.08], [0.92, 0.08], [0.08, 0.92], [0.92, 0.92]], found = new Set();
+    try {
+      pts.forEach(function (q) {
+        var list = document.elementsFromPoint(r.left + r.width * q[0], r.top + r.height * q[1]), below = false;
+        for (var i = 0; i < list.length; i++) {
+          var e = list[i];
+          if (e === wrap || e === el) { below = true; continue; }
+          if (!below || chain.has(e)) continue;
+          var top = e; while (top.parentElement && !chain.has(top.parentElement)) top = top.parentElement;   // the whole branch
+          if (!chain.has(top)) found.add(top);
+        }
+      });
+    } finally { probe.remove(); }
+    found.forEach(function (n) { n.classList.add('pp-hole-hide'); hiddenNodes.push(n); });
+  }
   function markHole(el) {
-    if (!el) { holeNodes.forEach(function (n) { n.classList.remove('pp-hole-anc'); }); holeNodes = []; return; }
+    if (!el) { holeNodes.forEach(function (n) { n.classList.remove('pp-hole-anc'); }); holeNodes = []; hideBeneath(null); return; }
     if (holeNodes.length) return;
     var bg = getComputedStyle(document.body).backgroundColor, m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(bg);
     for (var n = el.parentElement; n; n = n.parentElement) { n.classList.add('pp-hole-anc'); holeNodes.push(n); }
@@ -509,15 +546,32 @@
     var S = wrappers.video && wrappers.video.__pp;
     var show = !!(S && S.active && S.track && S.track.kind === 'video');
     document.documentElement.classList.toggle('pp-native-video', show);
-    markHole(show ? S.raw : null);
+    if (show !== lastShow) {                                           // let the page stop its own video effects (MEMC canvas)
+      lastShow = show;
+      try { window.dispatchEvent(new CustomEvent('pp-native-video', { detail: { on: show } })); } catch (e) {}
+    }
     var r = { x: 0, y: 0, w: 0, h: 0, visible: false };
     if (show) {
       var b = S.raw.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
-      var vis = b.width > 2 && b.height > 2 && getComputedStyle(S.raw).display !== 'none' && !document.hidden;
-      r = { x: Math.round(b.left * dpr), y: Math.round(b.top * dpr), w: Math.round(b.width * dpr), h: Math.round(b.height * dpr), visible: vis };
+      // The box is measured on its container: <video> itself is hidden on purpose in native mode, and a closed player
+      // keeps its size but is visibility:hidden (or faded out), so size alone is not enough.
+      var box = S.raw.parentElement || S.raw, bs = getComputedStyle(box);
+      var shown = box.checkVisibility ? box.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
+        : (bs.visibility !== 'hidden' && +bs.opacity > 0 && bs.display !== 'none');
+      var vis = b.width > 2 && b.height > 2 && getComputedStyle(S.raw).display !== 'none' && shown && !document.hidden;
+      var wrapEl = S.raw.parentElement, vf = wrapEl && wrapEl.getAttribute('data-vfit');
+      r = { x: Math.round(b.left * dpr), y: Math.round(b.top * dpr), w: Math.round(b.width * dpr), h: Math.round(b.height * dpr), visible: vis,
+        fit: vf === 'cover' || vf === 'fill' ? vf : 'contain' };
     }
+    // The page is only made see-through while the video box is actually on screen. With the player closed (a video
+    // still loaded), the home screen, the custom background and everything else look exactly as normal.
+    markHole(show && r.visible ? S.raw : null);
     var j = JSON.stringify(r);
-    if (j !== lastRect) { lastRect = j; call(function () { return Player.setVideoRect(r); }); }
+    if (j !== lastRect) {
+      lastRect = j;
+      if (show && r.visible) hideBeneath(S.raw);                       // the layout moved (player opened, rotated...): look again
+      call(function () { return Player.setVideoRect(r); });
+    }
     if (show && !rectTimer) rectTimer = setInterval(scheduleRect, 300);
     if (!show && rectTimer) { clearInterval(rectTimer); rectTimer = 0; }
   }

@@ -3889,6 +3889,10 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
   /* ---- native video surface: the page is see-through above the video box ---- */
   html.pp-native-video #video-wrap{ background:transparent !important; border-radius:0 !important; border-color:transparent !important; }
   html.pp-native-video #video-el{ visibility:hidden; }
+  /* Native video (beta): the page's own video canvases would cover the native picture, and layers painted under the
+     video box (the home screen behind the full-screen player) would show through the see-through backgrounds. */
+  html.pp-native-video #memc-canvas, html.pp-native-video #video-delay-canvas{ display:none !important; }
+  .pp-hole-hide{ visibility:hidden !important; }
   .pp-hole-anc{ background:transparent !important; background-image:none !important; -webkit-backdrop-filter:none !important; backdrop-filter:none !important; }
 </style>
 </head>
@@ -4537,6 +4541,16 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
       </div>
       <div class="settings-section" id="decoding-section">
         <div class="settings-section-label">Video decoding</div>
+        <div class="settings-row" id="native-video-row" style="display:none;margin-bottom:12px;">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Native video player (beta)</div>
+            <div class="settings-row-sub">Plays video with Android's own player for smoother playback and less battery. Filters and fit modes work; motion smoothing, upscaling and zoom do not yet. The app reloads to switch.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="native-video-toggle">
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
         <div class="settings-row">
           <div class="settings-row-text">
             <div class="settings-row-title">Frame-drop protection</div>
@@ -10255,7 +10269,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (!memcStatusEl) return;
     let txt = '', tip = '';
     if (memcMode !== 'off'){
-      if (memcFailed){ txt = 'Unsupported'; tip = memcFailWhy; }
+      if (window.PPNative && PPNative.videoActive && PPNative.videoActive()){ txt = 'Off (native video)'; tip = 'Motion smoothing does not work with the native video player yet. Turn it off in Settings, Video decoding to use smoothing.'; }
+      else if (memcFailed){ txt = 'Unsupported'; tip = memcFailWhy; }
       else if (memcBypass){ txt = 'Skipped (fps)'; tip = 'This video is faster than the "Smooth up to" limit (or too slow to interpolate).'; }
       else if (memcActive){ txt = Math.round(memcEffRate()) + ' fps \u2192 up to ' + memcOutFps; }
       else txt = 'Video only';
@@ -11155,6 +11170,9 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     memcUpdateStatus();
   }
 
+  // Native video (beta) draws outside the page, so the web MEMC has no frames to work with: stop it when native video starts.
+  window.addEventListener('pp-native-video', () => refreshVideoDelayState());
+
   function setMemcMode(m){
     if (m !== 'off' && m !== 'blend' && m !== 'motion' && m !== 'ultra') m = 'off';
     memcMode = m;
@@ -11283,6 +11301,12 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       });
     }
     applyVideoUi();
+    const nvTog = document.getElementById('native-video-toggle'), nvRow = document.getElementById('native-video-row');
+    if (nvTog && nvRow && window.PPNative && PPNative.setNativeVideo && window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()){
+      nvRow.style.display = '';
+      nvTog.checked = PPNative.nativeVideoSetting();
+      nvTog.addEventListener('change', () => PPNative.setNativeVideo(nvTog.checked));
+    }
     const alTog = document.getElementById('audio-lead-toggle');
     if (alTog){
       alTog.checked = audioLeadOn;
