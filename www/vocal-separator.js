@@ -2439,6 +2439,7 @@
       '<button id="ppv-sumgo" class="ppv-sec" style="margin-top:10px">Summarize current track (AI)</button>' +
       '<div class="ppv-note">Combines the track\u2019s tags (tempo, key, genre, mood, instruments) with its lyrics or subtitles, so it knows both how it sounds and what it is about. Tags are made first if missing. The written part uses the Bloop AI brain (one-time download). Without lyrics or subtitles you get the sound summary only.</div>' +
       '<div id="ppv-sumout" class="ppv-out"></div>' +
+      '<button id="ppv-sumtalk" class="ppv-sec" style="display:none;margin-top:8px">\ud83d\udcac Talk about this song in chat</button>' +
       '<button id="ppv-edopen" class="ppv-sec" style="margin-top:12px;padding:10px;font-size:13px">✎ Open full-screen editor (lyrics &amp; timestamps)</button>';
     // AI tools no longer live in the one panel: tagging + smart playlists go to the Library tab, Whisper goes to captions (video) or Lyrics (songs)
     d1.querySelector('summary').textContent = 'AI tagging & smart playlists';
@@ -2813,12 +2814,13 @@
     };
     // ---------- AI summary ----------
     { const sl = $('#ppv-sumlen'); sl.value = sumLenKey(); sl.onchange = () => { try { localStorage.setItem('ppvSumLen', sl.value); } catch (e) {} }; }
+    $('#ppv-sumtalk').onclick = () => { const a = window.__ppApi, i = a ? a.currentIndex() : -1; if (i < 0) { h.status('Play or select a track first.'); return; } if (h.mas && h.mas.songTalk) h.mas.songTalk(i); };
     $('#ppv-sumgo').onclick = async () => {
       const sumout = $('#ppv-sumout'); busy(true); sumout.textContent = '';
       try {
         const t = cur(); if (!t) throw new Error('Play or select a track first.');
         const old = sumLoad()[t.dbId];
-        if (old && !confirm('This track already has a saved summary. Make a new one?')) { sumout.textContent = old.t; busy(false); return; }
+        if (old && !confirm('This track already has a saved summary. Make a new one?')) { sumout.textContent = old.t; $('#ppv-sumtalk').style.display = 'block'; busy(false); return; }
         const say = x => h.status(x);
         let c = loadTags()[t.dbId];
         if (!c) { say('Tagging first, so the summary knows what it hears…'); const r = await tagTrack(t.url, say, h.LV(), {}); await persistTags(t.dbId, r, false); c = loadTags()[t.dbId]; }
@@ -2833,6 +2835,7 @@
         if (!text) throw new Error('Nothing to summarize yet. Tag the track first.');
         sumSave(t.dbId, { t: text, ts: Date.now() });
         sumout.textContent = text + (note ? '\n\n' + note : '');
+        $('#ppv-sumtalk').style.display = 'block';
         h.status('Done.');
       } catch (e) { console.error(e); h.status('Error: ' + errText(e)); }
       busy(false);
@@ -4676,7 +4679,7 @@
       const old = sumLoad()[t.dbId];
       if (old && !fresh) {
         add('bot', '\ud83d\udcdd ' + label + '\n\n' + old.t);
-        actions([['\u270e Write a new one', (b, d) => { d.remove(); chatSummary(i, true); }]]);
+        actions([['\ud83d\udcac Talk about it', (b, d) => { d.remove(); startSongTalk(i); }], ['\u270e Write a new one', (b, d) => { d.remove(); chatSummary(i, true); }]]);
         return;
       }
       if (sumBusy || chatBusy) { add('bot', blTone('I am already writing something. Ask me again in a moment.')); return; }
@@ -4701,8 +4704,101 @@
         const prof = soundProfile(c, t.kind), text = [ai, prof.line ? 'Sound: ' + prof.line : ''].filter(Boolean).join('\n\n');
         sumSave(t.dbId, { t: text, ts: Date.now() });
         live.textContent = '\ud83d\udcdd ' + label + '\n\n' + text; scrollDown();
+        actions([['\ud83d\udcac Talk about it', (b, d) => { d.remove(); startSongTalk(i); }]]);
       } catch (e) { console.warn(e); try { live.remove(); } catch (x) {} add('bot', blTone('I could not write it: ' + errText(e))); }
       finally { sumBusy = false; holdModel = false; idleUnload(); }
+    }
+    // ---------- Song Talk: an in-depth conversation about one song (literal meaning, metaphors, composition) ----------
+    // The song's lyrics, saved summary and composition facts go into the system prompt; the conversation keeps its own memory
+    // until "done" / End. Player commands ("pause", "next") still work in the middle of it.
+    let songTalk = null, stBar = null;
+    const mmssT = x => Math.floor(x / 60) + ':' + String(Math.floor(x % 60)).padStart(2, '0');
+    function songTalkFacts(t) {
+      const c = loadTags()[t.dbId] || {}, L = [], lst = a => (a || []).map(v => v[0] + (v[1] != null ? ' ' + v[1] + '%' : '')).join(', ');
+      if (c.bpm) L.push('Tempo: about ' + c.bpm + ' BPM');
+      if (c.key) L.push('Key: ' + c.key + (c.ck ? ' (' + c.ck + ')' : ''));
+      if (c.gp && c.gp.length) L.push('Genre: ' + lst(c.gp)); if (c.st && c.st.length) L.push('Style: ' + lst(c.st));
+      const feel = Object.entries(c.hd || {}).filter(e => e[1] >= 50).map(e => e[0] + ' ' + e[1] + '%'); if (feel.length) L.push('Mood/feel (audio models): ' + feel.join(', '));
+      const IN2 = { acousticguitar: 'acoustic guitar', electricguitar: 'electric guitar', classicalguitar: 'classical guitar', acousticbassguitar: 'acoustic bass', electricpiano: 'electric piano', drummachine: 'drum machine', pipeorgan: 'pipe organ', doublebass: 'double bass' };
+      if (c.in && c.in.length) L.push('Instruments heard: ' + lst(c.in.map(v => [IN2[v[0]] || v[0], v[1]])));
+      if (c.v != null) L.push(c.v >= 50 ? 'Has vocals' : 'Mostly instrumental');
+      if (c.fv != null) L.push('Vocals from ' + mmssT(c.fv) + ' to ' + mmssT(c.lv));
+      if (c.d) L.push('Length: ' + mmssT(c.d));
+      // Structure from the timed lyrics: lines that come back are the chorus / hook.
+      let cues = []; try { const e = (JSON.parse(localStorage.getItem('playerSubtitles')) || {})[t.dbId]; if (e && e.c) cues = e.c.map(q => [+q[0], String(q[2] || '').trim()]).filter(q => q[1]); } catch (x) {}
+      if (cues.length >= 6) {
+        const nz = q => q.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim(), cnt = new Map();
+        cues.forEach(([at, q]) => { const k = nz(q); if (k.length < 6) return; const o = cnt.get(k) || { q, n: 0, at: [] }; o.n++; o.at.push(at); cnt.set(k, o); });
+        const hooks = [...cnt.values()].filter(o => o.n >= 2).sort((a, b) => b.n - a.n).slice(0, 3);
+        if (hooks.length) L.push('Repeated lines (chorus/hook): ' + hooks.map(o => '"' + o.q.slice(0, 60) + '" x' + o.n + ' (first at ' + mmssT(o.at[0]) + ')').join('; '));
+        L.push('Lyric timeline: ' + cues.length + ' lines from ' + mmssT(cues[0][0]) + ' to ' + mmssT(cues[cues.length - 1][0]));
+      }
+      return { lines: L, cues };
+    }
+    function songTalkSys(st, lyricTok) {
+      const t = st.t, f = songTalkFacts(t), sum = (sumLoad()[t.dbId] || {}).t || '';
+      let lyr = f.cues.length ? f.cues.map(([at, q]) => '[' + mmssT(at) + '] ' + q) : getTranscript(t.dbId).lines;
+      // collapse straight repeats so the budget goes to new lines
+      lyr = lyr.filter((q, i) => i === 0 || q.replace(/^\[[^\]]*\] /, '') !== lyr[i - 1].replace(/^\[[^\]]*\] /, ''));
+      let cut = false; while (lyr.length > 8 && Math.ceil(lyr.join('\n').length / 3) > lyricTok) { lyr.pop(); cut = true; }
+      return 'You are Bloop, talking in depth with the user about ONE song: "' + t.title + '"' + (st.artist ? ' by ' + st.artist : '') + '. ' +
+        'Cover what they ask about: the LITERAL meaning (what the words actually say happens), the METAPHORICAL meaning (images, symbols, double meanings and what they stand for), and the COMPOSITION (structure, how the music, tempo, key, instruments and vocals support the words). ' +
+        'Use the lyrics and facts below. You may add what you reliably know about this song and artist; never invent facts, and say clearly when something is interpretation rather than fact. ' +
+        'Quote at most a short line at a time. Answer the question directly in one to three short paragraphs, then you may suggest one thing to explore next.\n' +
+        (sum ? '\nSAVED SUMMARY:\n' + sum.replace(/\n*Sound:[^\n]*$/, '') + '\n' : '') +
+        (f.lines.length ? '\nCOMPOSITION FACTS (from the app\'s audio analysis):\n- ' + f.lines.join('\n- ') + '\n' : '') +
+        (lyr.length ? '\nLYRICS (automatic transcript, may contain mistakes' + (cut ? ', shortened' : '') + '):\n' + lyr.join('\n') : '\nNo lyrics are saved for this song.');
+    }
+    function endSongTalk(msg) {
+      if (!songTalk) return; const lbl = songTalk.title; songTalk = null;
+      if (stBar) { stBar.remove(); stBar = null; }
+      cin.placeholder = musicMode ? 'Talk about your music' : 'Say something to Bloop';
+      if (msg !== false) add('bot', blTone('Done talking about ' + lbl + '. Back to normal chat.'));
+    }
+    function startSongTalk(i) {
+      const A = window.__ppApi, t = A.tracks()[i]; if (!t) return;
+      if (songTalk) endSongTalk(false);
+      const artist = t.artist && !/^(unknown artist|video|stream)$/i.test(t.artist) ? t.artist : '';
+      songTalk = { t, idx: i, title: t.title, artist, hist: [] };
+      cbox.style.display = 'flex'; try { blAnchor(); } catch (e) {}
+      stBar = document.createElement('div');
+      stBar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid #2e2f36;font-size:12px;background:#22232a';
+      const lab = document.createElement('span'); lab.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      lab.textContent = '\ud83d\udcac Talking about ' + t.title + (artist ? ' \u2013 ' + artist : '');
+      const x = document.createElement('button'); x.textContent = '\u2715 End'; x.className = 'ch-c'; x.onclick = () => endSongTalk();
+      stBar.append(lab, x); cbox.insertBefore(stBar, clist);
+      cin.placeholder = 'Ask about ' + t.title + '\u2026';
+      const tr = getTranscript(t.dbId);
+      add('bot', blTone('Let\'s talk about ' + t.title + (artist ? ' by ' + artist : '') + '. Ask me anything: what it literally says, what the images stand for, or how the music is built.' +
+        (tr.words < 12 ? ' (I have no lyrics for it yet, so I can only go on what I know about it and its sound. Transcribing it first gives much better answers.)' : '')));
+      actions([['Literal story', (b, d) => { d.remove(); send('What literally happens in this song, verse by verse?'); }],
+               ['Metaphors', (b, d) => { d.remove(); send('What are the main metaphors and symbols, and what do they stand for?'); }],
+               ['How it\'s built', (b, d) => { d.remove(); send('How is the song built musically, and how does that support the meaning?'); }]]);
+    }
+    async function songTalkReply(text) {
+      const st = songTalk; if (!st) return;
+      if (heavyBusy()) { add('bot', "I'm busy with a heavy job (split, lyrics or tagging). Ask me again when it's done."); return; }
+      chatBusy = true; holdModel = true; cm('work');
+      const el = add('bot', '\u2026');
+      try {
+        const g = await ensureModel(x => { el.textContent = x; });
+        const ctx = ctxOf(), mx = Math.max(160, Math.min(420, Math.floor(ctx * 0.18)));
+        const lyricTok = Math.max(250, Math.floor(ctx * 0.85) - mx - 700 - Math.min(3, st.hist.length / 2) * 160);
+        const uMsg = { role: 'user', content: text };
+        let fit = fitMsgs([{ role: 'system', content: songTalkSys(st, lyricTok) }].concat(st.hist.slice(-8), [uMsg]), mx);
+        if (fit.over) fit = fitMsgs([{ role: 'system', content: songTalkSys(st, Math.floor(lyricTok / 2)) }].concat(st.hist.slice(-4), [uMsg]), mx);
+        let acc = ''; const opts = { max_new_tokens: mx, do_sample: true, temperature: 0.6, top_p: 0.92, top_k: 40, repetition_penalty: 1.12 };
+        const onPiece = x => { acc += x; el.textContent = acc; scrollDown(); };
+        if (g.lm) opts.streamer = { callback_function: onPiece };
+        else if (tfMod && tfMod.TextStreamer) opts.streamer = new tfMod.TextStreamer(g.tokenizer, { skip_prompt: true, skip_special_tokens: true, callback_function: onPiece });
+        const out = await g(fit.msgs, opts);
+        let r = out && out[0] && out[0].generated_text; r = Array.isArray(r) ? (r[r.length - 1] || {}).content : (r || acc);
+        r = finishSentence(String(r || acc).trim());
+        if (!looksOk(r)) { el.textContent = 'Sorry, that came out garbled. Ask me again?'; return; }
+        el.textContent = r; scrollDown(); try { vSpeak(r); } catch (e) {}
+        if (songTalk === st) { st.hist.push(uMsg, { role: 'assistant', content: r }); st.hist = st.hist.slice(-12); }
+      } catch (e) { console.error(e); el.textContent = 'Oops, my brain would not load: ' + errText(e); }
+      finally { chatBusy = false; holdModel = false; cm('greet'); setTimeout(() => cm('idle'), 1300); idleUnload(); }
     }
     function agent(raw, skip) { holdModel = false; const hit = agentCore(raw, skip); if (hit && !chatBusy && !holdModel && !bigRam()) unloadModel(); return hit; }   // big-RAM phones keep it warm (idleUnload frees it later)
     // Loose phrasing -> canonical command, by plain rules (no model needed). Returns {cmd, q} or null. q = ask before acting.
@@ -4930,6 +5026,18 @@
         const key = (m[1] || m[2] || m[3] || m[4] || 'flat').toLowerCase().trim().replace(/\s+the$/, ''), name = EQN[key];
         if (!name) return say('I know these EQ presets: bass, treble, vocal, v-shape, acoustic, pop, rock, jazz, classical, electronic, hip hop, loudness, podcast, late night, or flat.');
         return A.setTrackEqPreset(c.dbId, name) ? done('EQ set to ' + name + ' for this track.' + (name === 'flat' ? '' : ' Say \u201ceq off\u201d to undo.')) : say('That preset did not work.');
+      }
+      // ---- Song Talk ("let's talk about this song", "discuss Hello", "deep dive into Charlie's Inferno") ----
+      {
+        const mt = t.match(/^(?:let'?s |can we |i want to )?(?:talk|chat) (?:about|through) (.+)$|^(?:discuss|analy[sz]e|deep dive(?: into)?|break down the meaning of) (.+)$/i);
+        if (mt) {
+          const q = String(mt[1] || mt[2] || '').trim().replace(/^["\u201c']+|["\u201d'.!?]+$/g, '');
+          if (/^(?:this|that|it|the|current|this one)(?: song| track| one)?$/i.test(q)) { if (A.currentIndex() < 0) return say('Play or pick a song first, or name one: \u201clet\u2019s talk about Hello\u201d.'); startSongTalk(A.currentIndex()); return true; }
+          const hit = resolveMusic(q.replace(/^(?:the )?(?:song|track) /i, ''));
+          if (hit && hit.kind === 'song') { startSongTalk(hit.idx); return true; }
+          if (hit && hit.kind === 'artist') return say('Which song by ' + hit.a.name + '? Say \u201clet\u2019s talk about <song>\u201d.');
+          // not a song in the library: let normal chat take "let's talk about life"
+        }
       }
       // ---- song summaries ("summarize this", "what is Hello about", "show the summary of X", "write a new summary") ----
       {
@@ -7400,6 +7508,13 @@
       if (!noEcho) add('me', text);
       if (!direct) { try { blEquip(blPropFor(text)); } catch (e) { console.error(e); } }
       if (CRISIS.test(text)) { clearTimeout(blTr && blTr.timer); blTr = null; add('bot', CRISIS_MSG); return; }
+      if (songTalk) {
+        if (/^(?:done|end|exit|quit|stop talking|end (?:the )?(?:chat|talk)|that'?s all|that is all|bye|thanks,? that'?s all)[.!]*$/i.test(text)) { endSongTalk(); return; }
+        // short player commands still run ("pause", "next", "louder", "rewind 10 seconds"); everything else is about the song
+        if (agentOn() && text.split(/\s+/).length <= 5 && /^(?:pause|play|resume|stop|next|skip|previous|prev|louder|quieter|volume|mute|unmute|rewind|forward|go back|repeat|shuffle|faster|slower)\b/i.test(text)) { let hit = false; try { hit = smart(text); } catch (e) { console.error(e); } if (hit) return; }
+        if (!brainOn() || (!gen && lsGet('ppvChatDl') !== '1')) { add('bot', 'Song Talk needs my AI brain. Turn it on in the assistant settings and download it first.'); return; }
+        await songTalkReply(text); return;
+      }
       if (!noEcho && blTr) { try { if (blTreeText(text)) return; } catch (e) { console.error(e); blTr = null; } }
       if (!blTr && !direct) { try { if (blTreeEntry(text)) return; } catch (e) { console.error(e); blTr = null; } }
       if (!direct) try { if (roleplay(text)) return; } catch (e) { console.error(e); }
@@ -7448,6 +7563,7 @@
     return {
       react,
       voice: ppVoiceApi,
+      songTalk: i => startSongTalk(i),
       chat: { ctx: ctxOf, ready: () => !!gen || lsGet('ppvChatDl') === '1', mb: () => CHAT_MODELS[chatKey()].mb, ask: async (msgs, opts, say) => { if (chatBusy) throw new Error('Bloop is busy chatting. Try again in a moment.'); clearTimeout(idleT); const g = await ensureModel(say || (() => {})); try { opts = Object.assign({}, opts || {}); if (opts.onText) { if (g.lm) opts.streamer = { callback_function: opts.onText }; delete opts.onText; } const o = await g(msgs, opts); const gt = o[0].generated_text; return String(Array.isArray(gt) ? gt[gt.length - 1].content : gt).trim(); } finally { idleUnload(); } }, isOn: () => chatOn, setOn: setChatOn, free: freeChat, setModel: setChatModel, models: CHAT_MODELS, key: chatKey, brainOn, setBrain, memory: { get: memN, set: setMem, max: MEM_MAX } },
       start() { key = ''; set('start', blLine('start', L.start), 900); },
       opened() {
