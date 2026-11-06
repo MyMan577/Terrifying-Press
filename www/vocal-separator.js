@@ -5286,28 +5286,43 @@
       accB = bar.children[0]; upd();
       return true;
     }
-    function lfConsistency() {                                            // choruses: most common wording wins, no AI
+    // Choruses often change on purpose between passes ("I'm falling" -> "I'm flying", a twist in the last chorus), so a
+    // repeat is only flagged when the difference looks like a mishearing: spacing/punctuation only, or ONE word that is
+    // one letter off with the same first letter ("dawn"/"down", "save"/"saves"). A different word, several changed words, or a line sung only
+    // twice is left alone. Each flag is still just a suggestion with Accept / Skip.
+    function lfMisheard(a, b) {
+      if (mFlat(a) === mFlat(b)) return true;                            // "gonna" vs "gon na", commas, capitals
+      const wa = mNorm(a).split(' '), wb = mNorm(b).split(' ');
+      if (wa.length !== wb.length) return false;
+      const diff = []; for (let k = 0; k < wa.length; k++) if (wa[k] !== wb[k]) diff.push(k);
+      if (diff.length !== 1) return false;
+      const x = wa[diff[0]], y = wb[diff[0]];
+      return x[0] === y[0] && mLev(x, y, 1) <= 1;                         // one letter, same start: "dawn"/"down" yes, "falling"/"flying" or "night"/"light" no
+    }
+    function lfConsistency() {
       const F = lyFix, T = F.texts, n = T.length, used = new Array(n).fill(false), out = [];
       for (let i = 0; i < n; i++) {
         if (used[i] || mNorm(T[i]).length < 10) continue;
         const grp = [i];
         for (let j = i + 1; j < n; j++) if (!used[j] && lfSim(T[i], T[j]) >= 0.8) grp.push(j);
-        if (grp.length < 3) continue;
+        if (grp.length < 3) continue;                                     // needs at least three passes to know which one is odd
         grp.forEach(j => used[j] = true);
         const cnt = new Map(); grp.forEach(j => cnt.set(T[j], (cnt.get(T[j]) || 0) + 1));
         const best = [...cnt.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0];
-        if (best[1] < 2) continue;
-        grp.forEach(j => { if (T[j] !== best[0]) out.push([j + 1, best[0], 'matches the other ' + best[1] + ' times this line is sung']); });
+        if (best[1] < 2 || best[1] < grp.length / 2) continue;           // no clear majority: the variations are probably the song
+        grp.forEach(j => { if (T[j] !== best[0] && cnt.get(T[j]) === 1 && lfMisheard(T[j], best[0])) out.push([j + 1, best[0], 'possibly misheard: the other ' + best[1] + ' times it is sung this way']); });
       }
       return out;
     }
     const LF_SYS = 'You correct automatic lyric transcriptions. The speech recognizer often hears a phrase that SOUNDS like what was sung but means something else, so a line can read fluently and still be wrong. ' +
       'Check each line against the song\'s subject (given below), the lines around it, and normal grammar. Fix: misheard words, words that make no sense in context, lines that are fluent but do not fit what the song is talking about when a similar-sounding phrase would fit, and names or places heard as ordinary words. ' +
+      'Repeated lines such as a chorus can change on purpose between repeats: do not make them match unless one is clearly misheard. ' +
       'A fix must sound almost the same when spoken aloud and keep about the same length. Keep the singer\'s own style, slang, contractions and repetition. Do not rewrite, improve, censor or translate, and never add or remove lines. ' +
       'Reply with ONLY the lines you change, one per line, exactly as: number| corrected line. If nothing needs fixing, reply: NONE';
     const LF_SYS2 = 'You are a careful proofreader of automatic lyric transcriptions. The speech recognizer often writes a phrase that SOUNDS like what was sung but is the wrong words. Such a line is usually grammatical, so being grammatical does not make it right. ' +
       'Go through every line and ask: does this fit the song\'s subject and the lines before and after it? Does each word make sense here? Is there a similar-sounding word or phrase that fits better (for example a name, a place, a common expression, or a repeated phrase from nearby lines)? ' +
       'If a line is odd, out of place, or unrelated to its surroundings, give the line the singer most likely sang. It must sound almost the same when spoken aloud and have about the same number of syllables. ' +
+      'Repeated lines such as a chorus can change on purpose between repeats: do not make them match unless one is clearly misheard. ' +
       'Do not change lines that already fit. Do not polish, censor, translate, add or remove lines. Reply with ONLY the lines you change, one per line, exactly as: number| corrected line. If nothing needs fixing, reply: NONE';
     const lfPho = a => String(a || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\bkn/g, 'n').replace(/\bwr/g, 'r').replace(/ph/g, 'f').replace(/ck/g, 'k').replace(/c(?=[eiy])/g, 's').replace(/c/g, 'k').replace(/q/g, 'k').replace(/x/g, 'ks').replace(/z/g, 's').replace(/gh/g, '').replace(/([a-z])\1+/g, '$1').replace(/(?<=[a-z])[aeiouy]+/g, '').replace(/\s+/g, ' ').trim();   // rough sound skeleton, so sound-alike fixes pass the guard even when the spelling differs
     const lfGuard = (o, tx, deep) => { if (!tx || tx === o) return false; const lr = tx.length / Math.max(1, o.length); if (lr < (deep ? 0.4 : 0.5) || lr > (deep ? 2.2 : 1.8)) return false; return lfSim(o, tx) >= (deep ? 0.3 : 0.4) || lfSim(lfPho(o), lfPho(tx)) >= 0.6; };
@@ -5318,6 +5333,7 @@
       'For example, "Kingston my heart" was really "king\'s in my heart", and "hold me Carolina" was really "hold me, carry on". ' +
       'Look at each line. If a word (especially a name or a rare word) does not fit the song\'s subject or the lines around it, say it out loud syllable by syllable and work out which ordinary word or words sound the same and make sense there. The fix can be one word, two or three words, or a different word. ' +
       'Change only the odd word or words. Keep every other word exactly as written. Do not polish, translate, add or remove lines. If the odd word really could be a real name that belongs, leave it. ' +
+      'Repeated lines such as a chorus can change on purpose between repeats: do not make them match unless one is clearly misheard. ' +
       'Reply with ONLY the lines you change, one per line, exactly as: number| corrected line. If nothing needs fixing, reply: NONE';
     function lfSuspects() {                                                // mid-line capitalised words (names) that are not in the title or artist and are not sung over and over
       const F = lyFix, T = F.texts, cnt = new Map(), out = new Map(), skip = new Set(lfTok((F.t.title || '') + ' ' + (F.artist || '')).map(lfW).filter(Boolean));
@@ -5402,7 +5418,7 @@
       cin.placeholder = 'e.g. line 12 should be \u2026';
       add('bot', blTone('Let\'s fix the lyrics of ' + t.title + (artist ? ' by ' + artist : '') + ' (' + lyFix.texts.length + ' lines' + (data.kind === 'subs' ? ', timing stays as it is' : '') + '). Nothing changes until you accept it.'));
       const cons = lfConsistency();
-      if (!lfSuggest(cons, 'First, lines that repeat (like the chorus) but were heard a little differently:')) add('bot', 'The repeated lines already match. \u2713');
+      if (!lfSuggest(cons, 'First, repeated lines (like the chorus) where one pass looks misheard. Skip any that the song really changes:')) add('bot', 'No repeated lines look misheard. \u2713');
       if (brainOn() && (gen || lsGet('ppvChatDl') === '1')) actions([['\ud83d\udd0d Check every line with AI', (b, d) => { d.remove(); lfAiPass(); }], ['\ud83e\udde9 Decode odd words and names', (b, d) => { d.remove(); lfAiPass('decode'); }], ['Show the lyrics', (b, d) => { d.remove(); lfShow(); }]]);
       else add('bot', 'Turn on my AI brain in the assistant settings for the line-by-line check. You can still edit lines here: \u201cline 12 should be \u2026\u201d.');
     }
