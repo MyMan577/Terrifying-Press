@@ -804,6 +804,23 @@
   // Native 4-stem, MDX and Demucs path (Android app): decode, STFT, model and WAV output all run in Java.
   const nativeGrab = async p => new Blob([await (await fetch(window.Capacitor.convertFileSrc(p))).arrayBuffer()], { type: 'audio/wav' });
   const ls0 = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  // Subtitle mute for the native engines: the Java side rewrites the finished WAVs in place (OnnxSeparator.maskStems).
+  // nm = { spans, floor, fade }. Never fails the split: on an error the stems are kept as they came out, with a note.
+  async function nativeMask(nm, vocals, extras, status) {
+    if (!nm || !vocals) return '';
+    try { status('Muting non-vocal parts…'); await NP.maskStems({ vocals, extras: extras.filter(Boolean), spans: nm.spans, floor: nm.floor, fade: nm.fade }); return ''; }
+    catch (e) { console.warn('native subtitle mute failed', e); return ' Subtitle mute failed (' + errText(e) + '), so the stems were left as they came out.'; }
+  }
+  // Length of a track in seconds without decoding it (0 if the WebView can't tell).
+  function mediaDur(url) {
+    return new Promise(res => {
+      const a = document.createElement('audio'); let done = false;
+      const end = d => { if (done) return; done = true; clearTimeout(tm); a.removeAttribute('src'); try { a.load(); } catch (e) {} res(isFinite(d) && d > 0 ? d : 0); };
+      const tm = setTimeout(() => end(0), 8000);
+      a.preload = 'metadata'; a.onloadedmetadata = () => end(a.duration); a.onerror = () => end(0); a.src = url;
+    });
+  }
+
   async function nativeStems(m, id, track, wanted, opts, status, onProgress) {
     const SS = window.Capacitor.Plugins.SpleeterSeparator;
     status('Preparing audio…');
@@ -812,9 +829,11 @@
     const saved = await SS.writeInput({ name: 'track-' + Date.now() + '.audio', data: b64 });
     window.__ppLastSep = '';
     const h = await NP.addListener('progress', e => { onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
+    const nm = opts.nmask || null, hid = !!nm && !wanted.includes('Vocals') && (wanted.includes('Instrumental') || wanted.includes('Other'));
+    const W = hid ? wanted.concat('Vocals') : wanted;                 // vocals are needed to put the removed sound back
     const accKey = 'ppvAccel_' + id, remembered = ls0(accKey);
     const useNn = opts.nnapi !== false && !/^demucs/.test(id) && !cpuOnly.has(id) && remembered !== 'cpu';   // Demucs is always CPU; a model that already lost or gave NaN stays on CPU
-    const base = { tune: false, input: saved.path, stems: wanted, nnapi: useNn, duty: opts.lv ? (opts.lv.custom ? opts.lv.duty : ({ Light: 0, Medium: 0.2, Max: 0.5 }[opts.lv.name] || 0)) : 0,
+    const base = { tune: false, input: saved.path, stems: W, nnapi: useNn, duty: opts.lv ? (opts.lv.custom ? opts.lv.duty : ({ Light: 0, Medium: 0.2, Max: 0.5 }[opts.lv.name] || 0)) : 0,
       threads: opts.lv && opts.lv.custom ? opts.lv.threads : 0, spin: !!(opts.lv && opts.lv.custom && opts.lv.spin), lean: !!(opts.lv && opts.lv.custom && opts.lv.lean) };
     let out;
     try {
@@ -832,6 +851,10 @@
     } finally { h.remove(); }
     window.__ppLastSep = ' (' + Math.round(out.seconds) + ' s on ' + out.accel + ')';
     try { localStorage.setItem(accKey, /nnapi|npu|gpu/i.test(String(out.accel)) ? 'nnapi' : 'cpu'); } catch (e) {}
+    if (nm) {
+      window.__ppLastSep += await nativeMask(nm, out.files.Vocals, ['Instrumental', 'Other'].map(n => out.files[n]), status);
+      if (hid) { NP.deleteFiles({ paths: [out.files.Vocals] }).catch(() => {}); delete out.files.Vocals; }
+    }
     const res = {};
     if (opts.pathOnly) { for (const n of wanted) res[n] = { path: out.files[n], ext: 'wav' }; return res; }   // caller reads and deletes the file itself
     for (const n of wanted) res[n] = { blob: await nativeGrab(out.files[n]), ext: 'wav' };
@@ -857,6 +880,7 @@
     try { out = await SS.separate({ input: saved.path, sharp: opts.strength, nnapi: opts.nnapi !== false && ls0('ppvAccel_spleeter2') !== 'cpu' && !cpuOnly.has('spleeter2'), tune: false }); try { localStorage.setItem('ppvAccel_spleeter2', /nnapi|npu|gpu/i.test(String(out.accel)) ? 'nnapi' : 'cpu'); } catch (e) {} }
     finally { h.remove(); }
     window.__ppLastSep = ' (' + Math.round(out.seconds) + ' s on ' + out.accel + ')';
+    if (opts.nmask) window.__ppLastSep += await nativeMask(opts.nmask, out.vocals, [out.instrumental], status);
     const grab = async p => new Blob([await (await fetch(window.Capacitor.convertFileSrc(p))).arrayBuffer()], { type: 'audio/wav' });
     const res = {};
     if (wanted.includes('Vocals')) res.Vocals = opts.pathOnly ? { path: out.vocals, ext: 'wav' } : { blob: await grab(out.vocals), ext: 'wav' };
@@ -7114,7 +7138,7 @@
       '<label id="ppv-c-spinl" class="ppv-c" style="display:none;margin-top:6px"><input type="checkbox" id="ppv-c-spin"> Keep threads busy between steps (faster, hotter, uses more battery)</label></div>' +
       '<div id="ppv-stems"></div>' +
       '<div style="margin-top:8px">Mute vocal gaps</div><select id="ppv-gate"><option value="0">Off</option><option value="1">Gentle</option><option value="2">Normal</option><option value="3">Strong</option></select><div style="opacity:.6;font-size:11px;margin-top:4px">Silences leftover noise between sung lines. Vocals stem only.</div>' +
-      '<div style="margin-top:8px">Mute non-vocal parts (uses lyrics/subtitles)</div><select id="ppv-mask"><option value="0">Off</option><option value="1">Gentle</option><option value="2">Normal</option><option value="3">Strong</option></select><div style="opacity:.6;font-size:11px;margin-top:4px">Removes solos and instrumental breaks from the Vocals stem and puts that sound back into Instrumental / Other. Needs synced lyrics or subtitles. If they did not come from Whisper, Whisper listens first to fix the line timing (slower; reused next time). Skipped if they look incomplete. Not used by the Android native engine.</div>' +
+      '<div style="margin-top:8px">Mute non-vocal parts (uses lyrics/subtitles)</div><select id="ppv-mask"><option value="0">Off</option><option value="1">Gentle</option><option value="2">Normal</option><option value="3">Strong</option></select><div style="opacity:.6;font-size:11px;margin-top:4px">Removes solos and instrumental breaks from the Vocals stem and puts that sound back into Instrumental / Other. Needs synced lyrics or subtitles. If they did not come from Whisper, Whisper listens first to fix the line timing (slower; reused next time). Skipped if they look incomplete.</div>' +
       '<div id="ppv-spl" style="margin-top:8px">Strength: <span id="ppv-sv">1</span><input id="ppv-sl" type="range" min="1" max="4" step="0.5" value="1" style="width:100%"><div style="opacity:.6;font-size:11px">Higher = less bleed, more watery artifacts</div><div style="margin-top:8px">Quality</div><select id="ppv-q"><option value="0">Standard</option><option value="1">Better (smooth seams, ~1.3x time)</option><option value="2">Best (+ averaged 2nd pass, ~2.7x time)</option></select></div>' +
       '<label id="ppv-gpu" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-gpuc"> Use GPU (faster, experimental)</label>' +
       '<label id="ppv-nn" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-nnc"> Phone GPU/NPU (experimental). Demucs always uses the CPU</label>' +
@@ -7274,18 +7298,21 @@
         if (!want.length) throw new Error('Tick at least one stem.');
         await downloadModel(id, status, !!(LV() && LV().blob));
         let ov = null, maskNote = '';
-        if (+msel.value && !(NATIVE && ['spleeter2', 'spleeter4', 'mdx_voc', 'demucs4', 'demucs6'].includes(id))) {
+        if (+msel.value) {
           try { const al = await alignedCues(t, { strength: +sl.value, lv: LV() }, status); if (al) { ov = al.cues; maskNote = ' Whisper re-timed ' + al.matched + ' of ' + al.total + ' lyric lines' + (al.cached ? ' (saved from before).' : '.'); } }
           catch (e) { console.warn('Whisper timing failed', e); maskNote = ' Whisper timing failed (' + errText(e) + '), so line lengths were estimated.'; }
         }
         status('Decoding audio…');
         let pcm = NATIVE && ['spleeter2', 'spleeter4', 'mdx_voc', 'demucs4', 'demucs6'].includes(id) ? null : await decode(t.url);
-        let mask = null;
+        let mask = null, nmask = null;
         if (+msel.value) {
-          if (!pcm) maskNote = ' Subtitle mute is not available in the Android native engine.';
-          else { const r = subtitleSpans(t.dbId, +msel.value, pcm[0].length / SR, loadTags()[t.dbId], ov); if (r.spans) mask = makeMask(r.spans, +msel.value); else maskNote = r.skip; }
+          const dur = pcm ? pcm[0].length / SR : await mediaDur(t.url);   // native engines decode in Java, so ask the media element for the length
+          const r = subtitleSpans(t.dbId, +msel.value, dur, loadTags()[t.dbId], ov), lvl = MASKS[+msel.value];
+          if (!r.spans) maskNote += r.skip;
+          else if (pcm) mask = makeMask(r.spans, +msel.value);
+          else nmask = { spans: r.spans, floor: lvl.floor, fade: lvl.fade };   // applied in Java to the finished stems
         }
-        const res = await run(id, pcm, want, { strength: +sl.value, gpu: gpu.checked && !LV(), lv: LV(), quality: +qsel.value, gate: +gsel.value, mask, track: t, nnapi: NATIVE ? nnc.checked : false }, status, f => { bar.style.width = (f * 100) + '%'; status('Separating… ' + Math.round(f * 100) + '%'); });
+        const res = await run(id, pcm, want, { strength: +sl.value, gpu: gpu.checked && !LV(), lv: LV(), quality: +qsel.value, gate: +gsel.value, mask, nmask, track: t, nnapi: NATIVE ? nnc.checked : false }, status, f => { bar.style.width = (f * 100) + '%'; status('Separating… ' + Math.round(f * 100) + '%'); });
         pcm = null;
         const files = []; let vidFail = 0;
         for (const n of want) {                                          // encode one at a time, free each stem after
