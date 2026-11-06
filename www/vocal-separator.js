@@ -219,7 +219,7 @@
   }
   // The few 5 s windows the AudioSet tagger looks at (same positions as before), cut from an already decoded 32 kHz track.
   function audiosetWindows(x) {
-    const W = 320000, nW = Math.max(1, Math.min(6, Math.floor(x.length / W))), out = [];   // 10 s at 32 kHz: the clip length the model was trained on
+    const W = 160000, nW = Math.max(1, Math.min(6, Math.floor(x.length / W))), out = [];   // 5 s at 32 kHz: the fixed input length of mn10_as.onnx (160000 samples)
     for (let w = 0; w < nW; w++) {
       const wav = new Float32Array(W), st = x.length > W ? Math.floor((x.length - W) * (w + 0.5) / nW) : 0;
       wav.set(x.subarray(st, st + W)); out.push(wav);
@@ -1353,7 +1353,7 @@
     try {
       status('Listening (2 of 2)…');
       const wins = tagWins || audiosetWindows(await decodeMono(url, 32000)); tagWins = null;   // normally already cut out during the first pass
-      const W = wins.length ? wins[0].length : 320000, nW = wins.length, probs = new Float32Array(527), per = [];
+      const W = wins.length ? wins[0].length : 160000, nW = wins.length, probs = new Float32Array(527), per = [];
       const sess = await S('tg_mn10');
       try {
         for (let w = 0; w < nW; w++) {
@@ -2290,8 +2290,48 @@
   // ---------- Panel: library tools + lyrics ----------
   // ---------- AI summary: the tags say what it SOUNDS like, the lyrics/subtitles say what it is ABOUT ----------
   const SUM_KEY = 'ppSummaryV1';
-  const sumLoad = () => { try { return JSON.parse(localStorage.getItem(SUM_KEY)) || {}; } catch (e) { return {}; } };
-  const sumSave = (id, v) => { try { const o = sumLoad(); o[id] = v; localStorage.setItem(SUM_KEY, JSON.stringify(o)); } catch (e) {} };
+  // Summaries live in their own IndexedDB (one record per track), not in localStorage: localStorage is one small shared budget
+  // (about 5 MB for lyrics, subtitles, tags and settings too) and a full one used to make a save fail without a word.
+  // sumLoad() stays instant: it returns an in-memory copy that is filled from the database at start-up.
+  // The old localStorage blob is read once, copied into the database, and only then removed.
+  let sumCache = (() => { try { return JSON.parse(localStorage.getItem(SUM_KEY)) || {}; } catch (e) { return {}; } })(), sumDbP = null;
+  const sumDb = () => sumDbP || (sumDbP = new Promise((res, rej) => {
+    try { const r = indexedDB.open('ppSummariesDB', 1); r.onupgradeneeded = () => r.result.createObjectStore('sums', { keyPath: 'id' }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); }
+  }).catch(e => { sumDbP = null; throw e; }));
+  const sumTx = async (mode, fn) => {
+    const db = await sumDb();
+    return new Promise((res, rej) => { const tx = db.transaction('sums', mode); let out; fn(tx.objectStore('sums'), v => { out = v; }); tx.oncomplete = () => res(out); tx.onerror = tx.onabort = () => rej(tx.error); });
+  };
+  const sumLoad = () => sumCache;
+  const sumPing = () => { try { document.dispatchEvent(new Event('ppv-sums')); } catch (e) {} };
+  async function sumInit() {
+    try {
+      const rows = await sumTx('readonly', (st, set) => { const q = st.getAll(); q.onsuccess = () => set(q.result || []); });
+      const have = new Set(rows.map(r => String(r.id)));
+      rows.forEach(r => { if (r && r.id != null && r.v && (!sumCache[r.id] || (r.v.ts || 0) >= (sumCache[r.id].ts || 0))) sumCache[r.id] = r.v; });
+      let legacy = null; try { legacy = JSON.parse(localStorage.getItem(SUM_KEY) || 'null'); } catch (e) {}
+      if (legacy && typeof legacy === 'object') {
+        const mv = Object.entries(legacy).filter(([id, v]) => v && v.t && !have.has(String(id)));
+        if (mv.length) await sumTx('readwrite', st => { mv.forEach(([id, v]) => st.put({ id: String(id), v })); });
+        try { localStorage.removeItem(SUM_KEY); } catch (e) {}                 // only after every record is safely in the database
+      }
+    } catch (e) { console.warn('summary store unavailable, using localStorage', e); }
+    sumPing();
+  }
+  async function sumSave(id, v) {                                      // resolves true when the summary is safely stored on the device
+    sumCache[id] = v; let ok = false;
+    try { await sumTx('readwrite', st => { st.put({ id: String(id), v }); }); ok = true; } catch (e) { console.warn('summary save failed', e); }
+    if (!ok) { try { localStorage.setItem(SUM_KEY, JSON.stringify(sumCache)); ok = true; } catch (e) {} }   // database unavailable: fall back to the old place
+    try { if (ok && navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}   // ask the browser not to clear it when space is low
+    sumPing(); return ok;
+  }
+  async function sumDelete(id) {
+    delete sumCache[id];
+    try { await sumTx('readwrite', st => { st.delete(String(id)); }); } catch (e) {}
+    try { const o = JSON.parse(localStorage.getItem(SUM_KEY) || 'null'); if (o && id in o) { delete o[id]; localStorage.setItem(SUM_KEY, JSON.stringify(o)); } } catch (e) {}
+    sumPing();
+  }
+  sumInit();
   const andJoin = a => a.length < 2 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
   function getTranscript(dbId) {                                       // subtitle cues first, else the saved lyrics; repeated lines (choruses, "yeah") counted once
     let lines = [];
@@ -2329,6 +2369,40 @@
     long:     { label: 'Long (three paragraphs)', words: 'three paragraphs separated by blank lines: what it is about, its message and themes, then its significance and context', adj: 'detailed', tok: 900, part: 180, paras: 3 }
   };
   const sumLenKey = () => { try { const k = localStorage.getItem('ppvSumLen'); return SUM_LENS[k] ? k : 'detailed'; } catch (e) { return 'detailed'; } };
+  // ---------- Reply length + reply style menus ----------
+  // Chat menus (ppvChatLen / ppvChatStyle) shape regular chat and Song Talk. Summary menus (ppvSumLen / ppvSumStyle) shape the AI summaries.
+  // Each menu exists in the Assistant settings, and the summary ones also under Lyrics & subtitles: a change in one is copied to the others.
+  const ppvLs = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const CHAT_LENS = {
+    short:  { label: 'Short (one sentence)', say: 'in one short plain sentence', bul: 'in two short bullet points', talk: 'in one short paragraph of two or three sentences', mul: 0.5 },
+    normal: { label: 'Normal (one or two sentences, default)', say: 'in one or two short plain sentences', bul: 'in three short bullet points', talk: 'in one to three short paragraphs', mul: 1 },
+    medium: { label: 'Medium (a short paragraph)', say: 'in one short paragraph of three to five sentences', bul: 'in four or five bullet points', talk: 'in two or three paragraphs', mul: 1.4 },
+    long:   { label: 'Long (two paragraphs)', say: 'in two short paragraphs separated by a blank line', bul: 'in six to eight bullet points', talk: 'in three or four paragraphs with detail', mul: 1.9 }
+  };
+  const CHAT_STYLES = {
+    bloop:   { label: 'Bloop (playful, default)', persona: true, intro: ' You are friendly, playful and a little silly.', fmt: 'No lists, no markdown, no emoji.', talk: '' },
+    plain:   { label: 'Plain and factual', intro: ' You are calm, clear and to the point.', fmt: 'No jokes, no puns, no exclamation marks, no lists, no markdown, no emoji.', talk: 'Keep a calm, factual tone with no jokes.' },
+    simple:  { label: 'Simple (easy words)', intro: ' You explain things simply, as if to a curious ten-year-old.', fmt: 'Use short, easy words and short sentences, no jargon, no lists, no markdown, no emoji.', talk: 'Use short, easy words and explain any technical term.' },
+    deep:    { label: 'Thoughtful (gives the reason)', intro: ' You are thoughtful and like to explain why.', fmt: 'Give the answer first, then briefly say why. No lists, no markdown, no emoji.', talk: 'After each answer, briefly say why.' },
+    bullets: { label: 'Bullet points', bul: true, intro: ' You are organized and to the point.', fmt: 'Write the reply as a list with one point per line, each line starting with "- ". No other markdown, no emoji.', talk: 'Write the answer as short bullet points, each line starting with "- ".' }
+  };
+  const SUM_STYLES = {
+    plain:    { label: 'Plain (default)', say: 'Plain English, no lists, no headings.' },
+    simple:   { label: 'Simple (easy words)', say: 'Use short, easy words and short sentences, as if explaining to a curious ten-year-old. No lists, no headings.' },
+    casual:   { label: 'Casual (like telling a friend)', say: 'Write in a relaxed, conversational voice, like telling a friend about it. No lists, no headings.' },
+    analytic: { label: 'Analytical (themes and imagery)', say: 'Write like a thoughtful critic: name the themes, the imagery and symbols, and how the wording supports the message. No lists, no headings.' },
+    bullets:  { label: 'Bullet points', say: 'Write only bullet points, one per line, each starting with "- " and holding one short sentence. No headings and no other formatting.',
+                bul: { short: 'three bullet points', medium: 'five bullet points', detailed: 'six to eight bullet points', long: 'eight to ten bullet points' } }
+  };
+  const chatLenKey = () => { const k = ppvLs('ppvChatLen'); return CHAT_LENS[k] ? k : 'normal'; };
+  const chatStyleKey = () => { const k = ppvLs('ppvChatStyle'); return CHAT_STYLES[k] ? k : 'bloop'; };
+  const sumStyleKey = () => { const k = ppvLs('ppvSumStyle'); return SUM_STYLES[k] ? k : 'plain'; };
+  const menuOpts = o => Object.keys(o).map(k => '<option value="' + k + '">' + o[k].label + '</option>').join('');
+  document.addEventListener('change', e => {                          // keep copies of the same menu in step, and save the choice
+    const sel = e.target; if (!sel || !sel.dataset || !sel.dataset.sync) return;
+    try { localStorage.setItem(sel.dataset.sync, sel.value); } catch (x) {}
+    document.querySelectorAll('select[data-sync="' + sel.dataset.sync + '"]').forEach(o => { if (o !== sel) o.value = sel.value; });
+  });
   // A summary that hit the token cap ends mid-sentence: cut back to the last full sentence.
   const sumTrim = r => {
     r = String(r).trim(); if (!r || /[.!?…)"'”’]$/.test(r)) return r;
@@ -2351,21 +2425,22 @@
   // line under it covers that, and feeding tempo/instruments to a small model made it describe the sound instead.
   // With no lyrics it may still answer from what it reliably knows about a well-known song; if it doesn't know it, it says UNKNOWN.
   async function aiSummary(t, c, tr, ask, say, lenKey, ctx) {
-    const kind = t.kind === 'video' ? 'video' : 'song', LN = SUM_LENS[lenKey] || SUM_LENS.detailed;
+    const kind = t.kind === 'video' ? 'video' : 'song', LN = SUM_LENS[lenKey] || SUM_LENS.detailed, ST = SUM_STYLES[sumStyleKey()] || SUM_STYLES.plain;
+    const wd = ST.bul ? ST.bul[SUM_LENS[lenKey] ? lenKey : 'detailed'] : LN.words;            // how much to write: the length menu, worded for the chosen style
     const who = t.artist && !/^(unknown artist|video|stream)$/i.test(t.artist) ? t.artist : '';
     const sys = kind === 'song'
       ? 'You explain songs for a music app. Write about what the song MEANS: the story or situation, who is speaking and to whom, the feelings, the message and themes, and why it matters to people. ' +
         'Do NOT describe how it sounds: no tempo, genre, instruments, production or vocal style. ' +
         'Base it on the lyrics you are given. You may add what you reliably know about this specific song and artist (what it is widely understood to be about, the story behind it), but never invent facts; when unsure, stay with the lyrics. ' +
-        'Describe the lyrics in your own words instead of quoting them. Plain English, no lists, no headings. Write ' + LN.words + '.'
+        'Describe the lyrics in your own words instead of quoting them. ' + ST.say + ' Write ' + wd + '.'
       : 'You summarize videos for a media app. Write about what the video is about: its subject, main points or story, and why it matters. Do not describe the audio. ' +
-        'Use only the transcript you are given; never invent names or events. Plain English, no lists, no headings. Write ' + LN.words + '.';
+        'Use only the transcript you are given; never invent names or events. ' + ST.say + ' Write ' + wd + '.';
     const opt = { max_new_tokens: LN.tok, do_sample: true, temperature: 0.4, top_p: 0.9, repetition_penalty: 1.08 };
     const head = 'Title: ' + t.title + (who ? '\nArtist: ' + who : '') + '\nType: ' + kind;
     let user;
     if (tr.words < 12) {
       if (kind !== 'song' || !who) return '';
-      user = head + '\nNo lyrics are saved for this song.\n\nIf you genuinely know this exact song, explain what it is about and what it means in ' + LN.words + '. If you do not know it, reply with only the word UNKNOWN.';
+      user = head + '\nNo lyrics are saved for this song.\n\nIf you genuinely know this exact song, explain what it is about and what it means in ' + wd + '. If you do not know it, reply with only the word UNKNOWN.';
     } else if (tr.words <= 600) {
       // Fit the lyrics to the model's context instead of shrinking the answer: keep the reply budget, drop lyric lines from the end.
       let lines = tr.lines.slice();
@@ -2389,7 +2464,7 @@
     say('Writing the summary…');
     const out = String(await ask([{ role: 'system', content: sys }, { role: 'user', content: user }], opt, say) || '').trim();
     if (/^\W*unknown\W*$/i.test(out) || /^(?:i(?:'m| am) not (?:familiar|sure)|i don'?t know)/i.test(out)) return '';
-    return sumOk(out) ? sumParas(sumTrim(out), LN.paras || 0) : '';
+    return sumOk(out) ? sumParas(sumTrim(out), ST.bul ? 0 : LN.paras || 0) : '';
   }
   function smartUI(p, h) {
     const css = document.createElement('style');
@@ -2435,11 +2510,13 @@
       '<div class="ppv-note">Songs get synced lyrics (Lyrics tab), videos get subtitles. Both can be exported as .srt or .lrc from the editor below. The music-removal step always uses Spleeter. If the song was already split, its saved vocals are reused and nothing is split again.</div>' +
       '<button id="ppv-wgo">Transcribe current track</button><button id="ppv-wsrt" class="ppv-sec" style="display:none">Download .srt</button><button id="ppv-wfree" class="ppv-sec">Free up Whisper download</button>' +
       '<div id="ppv-wout" class="ppv-out"></div>' +
-      '<label class="ppv-c" style="display:block;margin-top:10px">Summary length: <select id="ppv-sumlen" style="width:100%;display:block">' + Object.keys(SUM_LENS).map(k => '<option value="' + k + '">' + SUM_LENS[k].label + '</option>').join('') + '</select></label>' +
+      '<label class="ppv-c" style="display:block;margin-top:10px">Summary length: <select id="ppv-sumlen" data-sync="ppvSumLen" style="width:100%;display:block">' + Object.keys(SUM_LENS).map(k => '<option value="' + k + '">' + SUM_LENS[k].label + '</option>').join('') + '</select></label>' +
+      '<label class="ppv-c" style="display:block;margin-top:10px">Summary style: <select id="ppv-sumstyle" data-sync="ppvSumStyle" style="width:100%;display:block">' + menuOpts(SUM_STYLES) + '</select></label>' +
       '<button id="ppv-sumgo" class="ppv-sec" style="margin-top:10px">Summarize current track (AI)</button>' +
       '<div class="ppv-note">Combines the track\u2019s tags (tempo, key, genre, mood, instruments) with its lyrics or subtitles, so it knows both how it sounds and what it is about. Tags are made first if missing. The written part uses the Bloop AI brain (one-time download). Without lyrics or subtitles you get the sound summary only.</div>' +
       '<div id="ppv-sumout" class="ppv-out"></div>' +
       '<button id="ppv-sumtalk" class="ppv-sec" style="display:none;margin-top:8px">\ud83d\udcac Talk about this song in chat</button>' +
+      '<details id="ppv-sumlist"><summary id="ppv-sumlist-h">Saved summaries</summary><div id="ppv-sumlist-b"></div></details>' +
       '<button id="ppv-lyfix" class="ppv-sec" style="margin-top:8px">\u270e Fix this song\u2019s lyrics with AI (in chat)</button>' +
       '<button id="ppv-edopen" class="ppv-sec" style="margin-top:12px;padding:10px;font-size:13px">✎ Open full-screen editor (lyrics &amp; timestamps)</button>';
     // AI tools no longer live in the one panel: tagging + smart playlists go to the Library tab, Whisper goes to captions (video) or Lyrics (songs)
@@ -2814,6 +2891,7 @@
       try { if (NATIVE) { const ids = PK_FILES.map(f => f[0]).concat(Object.values(WHN).flatMap(k => [k + '_enc', k + '_dec', k + '_encf'])); for (const id of ids) { try { await NP.remove({ id }); } catch (e) {} } } if (asr) { await asr.dispose(); asr = null; asrId = ''; } const ks = await caches.keys(); for (const k of ks) if (/transformers/i.test(k)) await caches.delete(k); h.status('Whisper download removed.'); } catch (e) { h.status('Error: ' + errText(e)); }
     };
     // ---------- AI summary ----------
+    { const ss = $('#ppv-sumstyle'); if (ss) ss.value = sumStyleKey(); }
     { const sl = $('#ppv-sumlen'); sl.value = sumLenKey(); sl.onchange = () => { try { localStorage.setItem('ppvSumLen', sl.value); } catch (e) {} }; }
     $('#ppv-lyfix').onclick = () => { const a = window.__ppApi, i = a ? a.currentIndex() : -1; if (i < 0) { h.status('Play or select a track first.'); return; } if (h.mas && h.mas.lyricFix) h.mas.lyricFix(i); };
     $('#ppv-sumtalk').onclick = () => { const a = window.__ppApi, i = a ? a.currentIndex() : -1; if (i < 0) { h.status('Play or select a track first.'); return; } if (h.mas && h.mas.songTalk) h.mas.songTalk(i); };
@@ -2835,13 +2913,45 @@
         } else note = 'No lyrics or subtitles saved for this track, so this is based on the sound only. Tap "Transcribe current track" above for a fuller summary.';
         const text = [ai, prof.line ? 'Sound: ' + prof.line : ''].filter(Boolean).join('\n\n');
         if (!text) throw new Error('Nothing to summarize yet. Tag the track first.');
-        sumSave(t.dbId, { t: text, ts: Date.now() });
+        const kept = await sumSave(t.dbId, { t: text, ts: Date.now(), len: $('#ppv-sumlen').value, sty: sumStyleKey() });
+        if (!kept) note = (note ? note + ' ' : '') + 'It could not be saved on this device (storage is full or blocked), so copy it now if you want to keep it.';
         sumout.textContent = text + (note ? '\n\n' + note : '');
         $('#ppv-sumtalk').style.display = 'block';
         h.status('Done.');
       } catch (e) { console.error(e); h.status('Error: ' + errText(e)); }
       busy(false);
     };
+    // ---------- Saved summaries: every summary on this device, any length, to read, copy, download or delete ----------
+    {
+      const det = $('#ppv-sumlist'), hd = $('#ppv-sumlist-h'), bd = $('#ppv-sumlist-b');
+      const nameOf = id => { const a = A(), t = a && a.tracks().find(x => String(x.dbId) === String(id)); return t ? t.title + (t.artist && !/^(unknown artist|video|stream)$/i.test(t.artist) ? ' \u2013 ' + t.artist : '') : 'Removed track'; };
+      const safe = x => String(x).replace(/[\\/:*?"<>|]+/g, '').trim().slice(0, 80) || 'summary';
+      const save = (name, text) => { const u = URL.createObjectURL(new Blob([text], { type: 'text/plain' })), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); };
+      const mk = (label, fn) => { const b = document.createElement('button'); b.className = 'ppv-sec'; b.style.cssText = 'width:auto;padding:4px 10px'; b.textContent = label; b.onclick = fn; return b; };
+      const render = () => {
+        const all = Object.entries(sumLoad()).filter(([, v]) => v && v.t).sort((x, y) => (y[1].ts || 0) - (x[1].ts || 0));
+        hd.textContent = 'Saved summaries (' + all.length + ')';
+        if (!det.open) return;
+        bd.textContent = '';
+        if (!all.length) { const n = document.createElement('div'); n.className = 'ppv-note'; n.textContent = 'Nothing saved yet. Each summary you make is kept here on this device, in its own storage, so long ones are safe too.'; bd.appendChild(n); return; }
+        const top = document.createElement('div'); top.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin:6px 0';
+        top.appendChild(mk('Download all (.txt)', () => save('summaries.txt', all.map(([id, v]) => nameOf(id) + '\n' + '='.repeat(Math.min(40, nameOf(id).length)) + '\n' + v.t).join('\n\n\n'))));
+        bd.appendChild(top);
+        all.forEach(([id, v]) => {
+          const d = document.createElement('details'), sm = document.createElement('summary'), meta = document.createElement('div'), body = document.createElement('div'), row = document.createElement('div');
+          const words = v.t.split(/\s+/).filter(Boolean).length;
+          sm.textContent = nameOf(id); meta.className = 'ppv-note'; meta.textContent = (v.ts ? new Date(v.ts).toLocaleString() + ' \u00b7 ' : '') + words + ' words' + (v.len && SUM_LENS[v.len] ? ' \u00b7 ' + SUM_LENS[v.len].label.replace(/ \(.*/, '') : '') + (v.sty && SUM_STYLES[v.sty] ? ' \u00b7 ' + SUM_STYLES[v.sty].label.replace(/ \(.*/, '') : '');
+          body.style.cssText = 'white-space:pre-wrap;max-height:260px;overflow:auto;margin:6px 0;font-size:13px;line-height:1.45;user-select:text'; body.textContent = v.t;
+          row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
+          row.append(
+            mk('Copy', async () => { try { await navigator.clipboard.writeText(v.t); h.status('Copied.'); } catch (e) { h.status('Could not copy. Press and hold the text to select it.'); } }),
+            mk('Download .txt', () => save(safe(nameOf(id)) + ' summary.txt', nameOf(id) + '\n\n' + v.t)),
+            mk('Delete', async () => { if (confirm('Delete the saved summary for \u201c' + nameOf(id) + '\u201d?')) { await sumDelete(id); h.status('Summary deleted.'); } }));
+          d.append(sm, meta, body, row); bd.appendChild(d);
+        });
+      };
+      det.addEventListener('toggle', render); document.addEventListener('ppv-sums', render); render();
+    }
     // ---------- Lyrics & timestamp editor ----------
     {
       const edet = { open: false }, mkEl = (t, c, h) => { const e = document.createElement(t); if (c) e.className = c; if (h != null) e.innerHTML = h; return e; };
@@ -2872,7 +2982,7 @@
         '#ppv-edpage .elist{flex:1;overflow:auto;padding:8px 12px 16px;-webkit-overflow-scrolling:touch}#ppv-edpage .eempty{opacity:.6;text-align:center;padding:40px 10px}' +
         '#ppv-edpage .er{border:1px solid var(--line,#3a3a40);border-radius:12px;padding:8px;margin-top:8px;background:rgba(127,127,127,.07)}#ppv-edpage .er.on{border-color:var(--accent,#7c3aed);box-shadow:0 0 0 1px var(--accent,#7c3aed) inset}#ppv-edpage .er.sel{background:rgba(124,58,237,.14)}' +
         '#ppv-edpage .er .r1{display:flex;gap:6px;align-items:center;flex-wrap:wrap}#ppv-edpage .er .n{font-size:11px;opacity:.6;width:26px;text-align:center}#ppv-edpage .er .et{width:84px;text-align:center;font-variant-numeric:tabular-nums}#ppv-edpage .er .arrow{opacity:.5}' +
-        '#ppv-edpage .er textarea{display:block;width:100%;margin-top:6px;resize:none;line-height:1.35;overflow:hidden}#ppv-edpage.fs-s .er textarea{font-size:13px}#ppv-edpage.fs-l .er textarea{font-size:17px}#ppv-edpage.fs-x .er textarea{font-size:20px}' +
+        '#ppv-edpage .er textarea{display:block;width:100%;margin-top:6px;resize:none;line-height:1.35;overflow:hidden;min-height:calc(1.35em + 16px)}#ppv-edpage.fs-s .er textarea{font-size:13px}#ppv-edpage.fs-l .er textarea{font-size:17px}#ppv-edpage.fs-x .er textarea{font-size:20px}' +
         '#ppv-edpage .er .r3{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}#ppv-edpage .er .r3 button{padding:5px 9px;font-size:12px}#ppv-edpage .er.hide{display:none}#ppv-edpage .er.bad .et{border-color:#ff6b6b}' +
         '#ppv-edpage .etap{display:none;padding:8px 12px;border-top:1px solid var(--line,#333);text-align:center}#ppv-edpage .etap.on{display:block}#ppv-edpage .etap button{width:100%;padding:18px;font-size:18px;font-weight:700}#ppv-edpage .etap small{display:block;opacity:.7;margin-bottom:6px}' +
         '#ppv-edpage .ebar{display:flex;align-items:center;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line,#333);background:var(--bg,#15161a)}#ppv-edpage .ebar .st{flex:1;font-size:12px;opacity:.8;min-width:0}#ppv-edpage .ebar .go{padding:13px 18px;font-size:15px}' +
@@ -2894,7 +3004,7 @@
           '<div class="sep"></div><button id="e-fit">Fit ends to next line</button><button id="e-auto">Reset ends to auto</button><button id="e-ovl">Remove overlaps</button><button id="e-rnd">Round to 0.1s</button>' +
           '<div class="sep"></div><label>Min length<input type="number" id="e-min" value="1" step="0.1" min="0.3" style="width:70px"> s</label><button id="e-mingo">Make short lines longer</button></div>' +
         '<div class="etool" data-p="text"><button id="e-fr">Find &amp; replace…</button><button id="e-trim">Trim spaces</button><button id="e-cap">Capitalise first letter</button><button id="e-up">UPPER</button><button id="e-low">lower</button><button id="e-brk">Remove [bracketed] text</button><button id="e-empty">Delete empty lines</button><button id="e-dup">Delete repeated lines</button></div>' +
-        '<div class="etool" data-p="rep"><button id="e-rscan">Scan repeated lines</button><button id="e-rscanA">Scan with audio</button><button id="e-rall" class="pri">Apply all suggestions</button><label><input type="checkbox" id="e-rshow"> Also show repeats that already agree</label></div>' +
+        '<div class="etool" data-p="rep"><button id="e-rscan">Scan repeated lines</button><button id="e-rscanA">Scan with audio</button><button id="e-rall" class="pri">Apply to selected groups</button><button id="e-rsel">Select all</button><button id="e-rnone">Select none</button><label><input type="checkbox" id="e-rshow"> Also show repeats that already agree</label></div>' +
         '<div class="etool" data-p="file"><button id="e-sync">Sync my own lyrics…</button><button id="e-net">Find lyrics online…</button><button id="e-tr">Translate lyrics…</button><div class="sep"></div><button id="e-paste">Paste text…</button><button id="e-loadf">Open file…</button><button id="e-revert">Revert to saved</button><div class="sep"></div><button id="e-dsrt">Download .srt</button><button id="e-dlrc">Download .lrc</button><button id="e-dtxt">Download .txt</button><input type="file" id="e-file" accept=".srt,.vtt,.lrc,.txt" style="display:none"></div>' +
         '<div class="etool" data-p="view"><label><input type="checkbox" id="e-follow" checked> Follow playback</label><label><input type="checkbox" id="e-ends" checked> Show end times</label><label>Text size <select id="e-fs"><option value="s">Small</option><option value="m" selected>Medium</option><option value="l">Large</option><option value="x">Extra large</option></select></label></div>' +
         '<div class="efilter"><input type="text" id="e-q" placeholder="Search lines…"><span class="ecount" id="e-cnt"></span></div>' +
@@ -2934,7 +3044,8 @@
           nm.onclick = () => mut(() => { r.s = Math.max(0, r.s - 0.1); if (r.e != null) r.e = Math.max(0, r.e - 0.1); sortRows(); }); np.onclick = () => mut(() => { r.s += 0.1; if (r.e != null) r.e += 0.1; sortRows(); });
           r1.append(num, tin); if (showE) r1.append(mkEl('span', 'arrow', '→'), ein); r1.append(nm, np);
           const tx = mkEl('textarea'); tx.value = r.text; tx.rows = 1; tx.placeholder = 'Line text'; let first = true;
-          const fit = () => { tx.style.height = 'auto'; tx.style.height = (tx.scrollHeight + 2) + 'px'; };
+          const fit = () => { if (!tx.offsetWidth) return; tx.style.height = 'auto'; tx.style.height = (tx.scrollHeight + 2) + 'px'; };   // hidden (width 0) -> leave it to the observer below
+          if (window.ResizeObserver) { let lw = 0; new ResizeObserver(() => { const w = tx.offsetWidth; if (w && w !== lw) { lw = w; fit(); } }).observe(tx); }   // refit when the page is shown, rotated or the text size changes
           tx.oninput = () => { if (first) { snap(); first = false; } r.text = tx.value; fit(); upBar(); }; tx.onfocus = () => { sel = r; first = true; };
           const r3 = mkEl('div', 'r3');
           const B = (t, ttl, fn, cls) => { const b = mkEl('button', cls || '', t); b.title = ttl; b.onclick = fn; r3.appendChild(b); return b; };
@@ -3060,6 +3171,7 @@
       rcss.textContent = '#ppv-edpage .rg{border:1px solid var(--line,#3a3a40);border-radius:12px;padding:10px;margin-top:10px;background:rgba(127,127,127,.07)}#ppv-edpage .rg h4{margin:0 0 6px;font-size:13px}#ppv-edpage .rg .tms{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}#ppv-edpage .rg .tms button{padding:3px 8px;font-size:12px}' +
         '#ppv-edpage .rv{display:flex;gap:8px;align-items:flex-start;padding:8px;border:1px solid var(--line,#444);border-radius:10px;margin-top:6px;cursor:pointer}#ppv-edpage .rv.on{border-color:var(--accent,#7c3aed);background:rgba(124,58,237,.14)}#ppv-edpage .rv input[type=radio]{margin-top:3px;accent-color:var(--accent,#7c3aed)}#ppv-edpage .rv .tx{flex:1;line-height:1.35}#ppv-edpage .rv .bd{font-size:11px;opacity:.75;white-space:nowrap}#ppv-edpage .rv input[type=text]{flex:1;width:100%}' +
         '#ppv-edpage .rg .ap{width:100%;margin-top:8px;padding:11px}#ppv-edpage .rnote{font-size:12px;opacity:.7;margin-top:8px}';
+      rcss.textContent += '#ppv-edpage .rg h4{display:flex;align-items:center;gap:8px}#ppv-edpage .rg .occs{margin-bottom:8px}#ppv-edpage .rg .occ{display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-top:1px solid rgba(127,127,127,.25);cursor:pointer}#ppv-edpage .rg .occ:first-of-type{border-top:0}#ppv-edpage .rg .occ button{padding:3px 8px;font-size:12px;flex:none}#ppv-edpage .rg .occ .ot{flex:1;min-width:0;font-size:13px;word-break:break-word}#ppv-edpage .rg .occ input{margin-top:5px;flex:none}#ppv-edpage .rg .osel{display:flex;gap:6px;margin-bottom:4px}#ppv-edpage .rg .osel button{padding:2px 8px;font-size:11px}';
       document.head.appendChild(rcss);
       const repEl = mkEl('div', 'elist'); repEl.id = 'e-replist'; repEl.style.display = 'none'; rowsEl.after(repEl);
       let repGroups = [];                                                // [{rows:[row refs], pick:string|null, own:string}]
@@ -3079,8 +3191,9 @@
         } catch (e) { console.error(e); toast('Scan failed: ' + errText(e)); }
         b1.disabled = b2.disabled = false;
       };
-      const repApply = (g, text) => { text = String(text || '').trim(); if (!text) { toast('Pick a version or write a custom one first.'); return; } snap(); g.rows.forEach(r => { r.text = text; }); render(); repRender(); toast('Applied to ' + g.rows.length + ' lines.'); };
+      const repApply = (g, text) => { text = String(text || '').trim(); const tgt = g.rows.filter(r => !(g.off && g.off.has(r))); if (!tgt.length) { toast('Tick at least one line first.'); return; } if (!text && tgt.some(r => !(g.asg && g.asg.get(r)))) { toast('Pick a version or write a custom one first.'); return; } snap(); tgt.forEach(r => { r.text = (g.asg && g.asg.get(r)) || text; }); render(); repRender(); toast('Applied to ' + tgt.length + ' line' + (tgt.length === 1 ? '' : 's') + (tgt.length < g.rows.length ? ' (' + (g.rows.length - tgt.length) + ' left as they were)' : '') + '.'); };
       const repSuggest = g => { const v = rpVote(g.rows.map(r => ({ text: r.text, alts: r.alts }))); return v ? v.text : ''; };
+      const repSelBtn = () => { const n = repGroups.filter(g => g.on !== false && repVariants(g).filter(v => !v.alt).length >= 2 && g.rows.some(r => !(g.off && g.off.has(r)))).length; const b = $e('#e-rall'); if (b) b.textContent = n ? 'Apply to ' + n + ' selected group' + (n === 1 ? '' : 's') : 'Apply to selected groups'; };
       function repRender() {
         repEl.textContent = '';
         const showAll = $e('#e-rshow').checked; let shown = 0;
@@ -3090,8 +3203,27 @@
           if (real < 2 && !showAll && !g.rows.some(r => r.alts && r.alts.length)) return;
           shown++;
           const sug = repSuggest(g), cur0 = g.pick != null ? g.pick : sug, card = mkEl('div', 'rg');
-          card.appendChild(mkEl('h4', '', 'Sung ' + g.rows.length + '× · ' + real + ' version' + (real === 1 ? '' : 's') + ' heard'));
-          const tms = mkEl('div', 'tms'); g.rows.forEach(r => { const b = mkEl('button', '', '▶ ' + fmtT(r.s).replace(/\.\d+$/, '')); b.title = 'Listen to this one'; b.onclick = () => { const m = media(); if (m) { m.currentTime = Math.max(0, r.s - 0.2); m.play && m.play().catch(() => {}); } }; tms.appendChild(b); }); card.appendChild(tms);
+          { const h4 = mkEl('h4'), gc = mkEl('input'); gc.type = 'checkbox'; gc.checked = g.on !== false; gc.title = 'Include this group when applying to selected groups'; gc.onchange = () => { g.on = gc.checked; repSelBtn(); }; h4.append(gc, document.createTextNode('Sung ' + g.rows.length + '× · ' + real + ' version' + (real === 1 ? '' : 's') + ' heard')); card.appendChild(h4); }
+          g.off = g.off || new Set(); g.asg = g.asg || new Map(); let apBtn = null;
+          const upApply = () => { if (!apBtn) return; const n = g.rows.filter(r => !g.off.has(r)).length; apBtn.textContent = 'Apply to ' + (n === g.rows.length ? 'all ' : '') + n + ' selected line' + (n === 1 ? '' : 's'); apBtn.disabled = !n; };
+          const tms = mkEl('div', 'occs'), osel = mkEl('div', 'osel');
+          const setAll = v => { g.rows.forEach(r => { if (v) g.off.delete(r); else g.off.add(r); }); tms.querySelectorAll('input').forEach(c => { c.checked = v; }); upApply(); repSelBtn(); };
+          { const a1 = mkEl('button', '', 'All lines'), a2 = mkEl('button', '', 'None'); a1.onclick = () => setAll(true); a2.onclick = () => setAll(false); osel.append(a1, a2); }
+          card.appendChild(osel);
+          g.rows.forEach(r => {
+            const lab = mkEl('label', 'occ'), cb = mkEl('input'); cb.type = 'checkbox'; cb.checked = !g.off.has(r);
+            cb.onchange = () => { if (cb.checked) g.off.delete(r); else g.off.add(r); upApply(); repSelBtn(); };
+            const pb = mkEl('button', '', '▶ ' + fmtT(r.s).replace(/\.\d+$/, '')); pb.title = 'Listen to this one';
+            pb.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); const m = media(); if (m) { m.currentTime = Math.max(0, r.s - 0.2); m.play && m.play().catch(() => {}); } };
+            const tt = mkEl('span', 'ot'), tl = mkEl('div'), ss = mkEl('select'); tl.textContent = r.text; ss.title = 'Which wording this line gets';
+            ss.style.cssText = 'width:100%;margin-top:4px;font-size:12px;padding:4px';
+            { const o0 = mkEl('option'); o0.value = ''; o0.textContent = 'Gets the picked wording below'; ss.appendChild(o0); vs.forEach((v, vi) => { const o = mkEl('option'); o.value = String(vi); o.textContent = (v.text.length > 60 ? v.text.slice(0, 58) + '…' : v.text) + (v.n ? ' (×' + v.n + ')' : ' (other pass)'); ss.appendChild(o); });
+              const cv = g.asg.get(r); if (cv) { const k = vs.findIndex(v => v.text === cv); if (k >= 0) ss.value = String(k); } }
+            ss.onclick = ev => ev.stopPropagation();
+            ss.onchange = () => { if (ss.value === '') g.asg.delete(r); else { g.asg.set(r, vs[+ss.value].text); if (!cb.checked) { cb.checked = true; g.off.delete(r); } } upApply(); repSelBtn(); };
+            tt.append(tl, ss); lab.append(cb, pb, tt); tms.appendChild(lab);
+          });
+          card.appendChild(tms);
           const pickIt = txt => { g.pick = txt; repRender(); };
           vs.forEach(v => {
             const on = rpNorm(v.text) === rpNorm(cur0) && g.pick !== '\u0000own', d = mkEl('label', 'rv' + (on ? ' on' : '')), rd = mkEl('input'); rd.type = 'radio'; rd.name = 'rg' + gi; rd.checked = on;
@@ -3102,14 +3234,17 @@
           const oin = mkEl('input'); oin.type = 'text'; oin.placeholder = 'None of these — write my own'; oin.value = g.own || '';
           oin.oninput = () => { g.own = oin.value; g.pick = '\u0000own'; own.classList.add('on'); orad.checked = true; card.querySelectorAll('.rv').forEach(x => { if (x !== own) x.classList.remove('on'); }); }; oin.onfocus = () => { if (g.pick !== '\u0000own') { g.pick = '\u0000own'; own.classList.add('on'); orad.checked = true; card.querySelectorAll('.rv').forEach(x => { if (x !== own) x.classList.remove('on'); }); } };
           own.append(orad, oin); card.appendChild(own);
-          const ap = mkEl('button', 'pri ap', 'Apply to all ' + g.rows.length + ' lines'); ap.onclick = () => repApply(g, g.pick === '\u0000own' ? g.own : cur0); card.appendChild(ap);
+          const ap = mkEl('button', 'pri ap', ''); apBtn = ap; upApply(); ap.onclick = () => repApply(g, g.pick === '\u0000own' ? g.own : cur0); card.appendChild(ap);
           repEl.appendChild(card);
         });
         if (!shown) repEl.appendChild(mkEl('div', 'eempty', repGroups.length ? 'Nothing to decide: every repeated line already has the same wording.' : 'Tap “Scan repeated lines” to find lines that were sung more than once and choose the right wording.<br><br>“Scan with audio” also catches repeats that Whisper wrote differently each time.'));
-        else repEl.appendChild(mkEl('div', 'rnote', 'Tip: tap ▶ to hear each time the line is sung. If none of the versions is right, write a custom version and apply it to all of them.'));
+        else repEl.appendChild(mkEl('div', 'rnote', 'Tip: tap ▶ to hear each time the line is sung. Use the menu under a line to give it a specific wording. If none of the versions is right, tick only the lines that should change (a line that was changed on purpose can be left out), or write a custom version.'));
+        repSelBtn();
       }
       $e('#e-rscan').onclick = () => repScan(false); $e('#e-rscanA').onclick = () => repScan(true); $e('#e-rshow').onchange = repRender;
-      $e('#e-rall').onclick = () => { let n = 0; snap(); repGroups.forEach(g => { if (repVariants(g).filter(v => !v.alt).length < 2) return; const s = repSuggest(g); if (s) { g.rows.forEach(r => { r.text = s; }); n++; } }); if (!n) { hist.pop(); toast('Nothing to apply.'); return; } render(); repRender(); toast('Applied the suggested wording to ' + n + ' repeated line' + (n === 1 ? '' : 's') + '.'); };
+      $e('#e-rall').onclick = () => { let n = 0, k = 0; snap(); repGroups.forEach(g => { if (g.on === false || repVariants(g).filter(v => !v.alt).length < 2) return; const sg = repSuggest(g); if (!sg) return; const tg = g.rows.filter(r => !(g.off && g.off.has(r))); if (!tg.length) return; tg.forEach(r => { r.text = (g.asg && g.asg.get(r)) || sg; }); n++; k += tg.length; }); if (!n) { hist.pop(); toast('Nothing to apply. Tick at least one group.'); return; } render(); repRender(); toast('Applied the suggested wording to ' + k + ' line' + (k === 1 ? '' : 's') + ' in ' + n + ' group' + (n === 1 ? '' : 's') + '.'); };
+      $e('#e-rsel').onclick = () => { repGroups.forEach(g => { g.on = true; if (g.off) g.off.clear(); }); repRender(); };
+      $e('#e-rnone').onclick = () => { repGroups.forEach(g => { g.on = false; }); repRender(); };
       // ================= Lyrics you already know: line them up with what the audio says =================
       const lyricLines = txt => String(txt).split(/\r?\n/).map(l => l.replace(/^\s*(\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]\s*)+/, '').trim()).filter(l => l && !/^\[[^\]]*\]$/.test(l));
       const srcRows = () => rows.filter(r => r.text.trim()).map(r => ({ s: r.s, e: endOf(rows.indexOf(r)), text: r.text }));
@@ -3732,6 +3867,7 @@
       #ppv-chat .ch-m.bot{align-self:flex-start;background:#2a2b31}
       #ppv-chat .ch-m.me{align-self:flex-end;background:var(--accent,#7c5cff);color:#fff}
       #ppv-chat .ch-a{align-self:flex-start;display:flex;gap:6px;flex-wrap:wrap}
+      #ppv-chat .lf-box{padding:4px 10px}#ppv-chat .lf-it{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-top:1px solid #3a3b42;cursor:pointer}#ppv-chat .lf-it:first-child{border-top:0}#ppv-chat .lf-it input{margin-top:3px;flex:none}#ppv-chat .lf-it span{flex:1;min-width:0}#ppv-chat .ch-a button:disabled{opacity:.4}#ppv-chat .lf-it{border-top:0;padding:7px 0 2px}#ppv-chat .lf-item{border-top:1px solid #3a3b42}#ppv-chat .lf-item:first-child{border-top:0}#ppv-chat .lf-it u.o{text-decoration:underline wavy #ff6b6b;text-underline-offset:3px}#ppv-chat .lf-it u.n{text-decoration:underline #4ade80;text-underline-offset:3px}#ppv-chat .lf-row{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 6px 26px}#ppv-chat .lf-ed{flex-direction:column;gap:6px;margin:0 0 8px 26px}#ppv-chat .lf-ed input{padding:7px;border-radius:8px;background:#2a2b31;color:#eee;border:1px solid #444;font:inherit;width:100%;box-sizing:border-box}#ppv-chat .lf-ed button{align-self:flex-start}#ppv-chat .lf-h{font-size:12px;opacity:.75}
       #ppv-chat .ch-i{display:flex;gap:6px;padding:8px;border-top:1px solid #2e2f36}
       #ppv-chat .ch-i input{flex:1;min-width:0;padding:8px;border-radius:8px;background:#2a2b31;color:#eee;border:1px solid #444;font:inherit}
       #ppv-chat .ch-i .ch-mic{padding:6px 9px;display:flex;align-items:center}
@@ -4704,8 +4840,9 @@
           return;
         }
         const prof = soundProfile(c, t.kind), text = [ai, prof.line ? 'Sound: ' + prof.line : ''].filter(Boolean).join('\n\n');
-        sumSave(t.dbId, { t: text, ts: Date.now() });
+        const kept = await sumSave(t.dbId, { t: text, ts: Date.now(), len: sumLenKey(), sty: sumStyleKey() });
         live.textContent = '\ud83d\udcdd ' + label + '\n\n' + text; scrollDown();
+        if (!kept) add('bot', blTone('I could not save that summary on this device (storage is full or blocked). Copy it now if you want to keep it.'));
         actions([['\ud83d\udcac Talk about it', (b, d) => { d.remove(); startSongTalk(i); }]]);
       } catch (e) { console.warn(e); try { live.remove(); } catch (x) {} add('bot', blTone('I could not write it: ' + errText(e))); }
       finally { sumBusy = false; holdModel = false; idleUnload(); }
@@ -4746,7 +4883,7 @@
       return 'You are Bloop, talking in depth with the user about ONE song: "' + t.title + '"' + (st.artist ? ' by ' + st.artist : '') + '. ' +
         'Cover what they ask about: the LITERAL meaning (what the words actually say happens), the METAPHORICAL meaning (images, symbols, double meanings and what they stand for), and the COMPOSITION (structure, how the music, tempo, key, instruments and vocals support the words). ' +
         'Use the lyrics and facts below. You may add what you reliably know about this song and artist; never invent facts, and say clearly when something is interpretation rather than fact. ' +
-        'Quote at most a short line at a time. Answer the question directly in one to three short paragraphs, then you may suggest one thing to explore next.\n' +
+        'Quote at most a short line at a time. Answer the question directly ' + (CHAT_STYLES[chatStyleKey()].bul ? CHAT_LENS[chatLenKey()].bul : CHAT_LENS[chatLenKey()].talk) + ', then you may suggest one thing to explore next. ' + CHAT_STYLES[chatStyleKey()].talk + '\n' +
         (sum ? '\nSAVED SUMMARY:\n' + sum.replace(/\n*Sound:[^\n]*$/, '') + '\n' : '') +
         (f.lines.length ? '\nCOMPOSITION FACTS (from the app\'s audio analysis):\n- ' + f.lines.join('\n- ') + '\n' : '') +
         (lyr.length ? '\nLYRICS (automatic transcript, may contain mistakes' + (cut ? ', shortened' : '') + '):\n' + lyr.join('\n') : '\nNo lyrics are saved for this song.');
@@ -4785,7 +4922,7 @@
       const el = add('bot', '\u2026');
       try {
         const g = await ensureModel(x => { el.textContent = x; });
-        const ctx = ctxOf(), mx = Math.max(160, Math.min(420, Math.floor(ctx * 0.18)));
+        const ctx = ctxOf(), mx = Math.max(90, Math.min(Math.floor(ctx * 0.3), Math.round(Math.max(160, Math.min(420, Math.floor(ctx * 0.18))) * CHAT_LENS[chatLenKey()].mul)));
         const lyricTok = Math.max(250, Math.floor(ctx * 0.85) - mx - 700 - Math.min(3, st.hist.length / 2) * 160);
         const uMsg = { role: 'user', content: text };
         let fit = fitMsgs([{ role: 'system', content: songTalkSys(st, lyricTok) }].concat(st.hist.slice(-8), [uMsg]), mx);
@@ -4854,16 +4991,75 @@
       return lfSave();
     }
     const lfSim = (a, b) => { a = mNorm(a); b = mNorm(b); if (!a || !b) return 0; const mx = Math.max(a.length, b.length), d = mLev(a, b, Math.ceil(mx * 0.6)); return 1 - d / mx; };
-    function lfSuggest(list, intro) {                                     // [[n, newText, why]] -> buttons per change + accept all
+    const lfTok = q => String(q).trim().split(/\s+/).filter(Boolean), lfW = w => w.toLowerCase().replace(/[^\p{L}\p{N}']/gu, '');
+    function lfDiff(o, n) {                                               // word diff: which words of the old line (and of the new one) differ
+      const a = lfTok(o), b = lfTok(n), A = a.map(lfW), B = b.map(lfW), L = a.length, M = b.length, dp = [];
+      for (let x = 0; x <= L; x++) dp.push(new Array(M + 1).fill(0));
+      for (let x = L - 1; x >= 0; x--) for (let y = M - 1; y >= 0; y--) dp[x][y] = A[x] === B[y] ? dp[x + 1][y + 1] + 1 : Math.max(dp[x + 1][y], dp[x][y + 1]);
+      const oBad = new Array(L).fill(true), nBad = new Array(M).fill(true); let x = 0, y = 0;
+      while (x < L && y < M) { if (A[x] === B[y]) { oBad[x] = nBad[y] = false; x++; y++; } else if (dp[x + 1][y] >= dp[x][y + 1]) x++; else y++; }
+      const span = f => { const k = f.indexOf(true); return k < 0 ? null : [k, f.lastIndexOf(true)]; };
+      return { a, b, os: span(oBad), ns: span(nBad), oBad, nBad };
+    }
+    function lfMark(tok, bad, cls) {                                      // the words with the differing ones underlined
+      const f = document.createDocumentFragment();
+      tok.forEach((w, k) => { if (k) f.appendChild(document.createTextNode(' ')); if (bad[k]) { const u = document.createElement('u'); u.className = cls; u.textContent = w; f.appendChild(u); } else f.appendChild(document.createTextNode(w)); });
+      return f;
+    }
+    function lfSuggest(list, intro) {                                     // [[n, newText, why]] -> one list: tick boxes, per-line Accept / Skip / Both wrong, underlined differences
       const F = lyFix; if (!F) return;
       const todo = list.filter(([n, tx]) => n >= 1 && n <= F.texts.length && tx && tx !== F.texts[n - 1]);
       if (!todo.length) return false;
       if (intro) add('bot', blTone(intro));
+      const box = document.createElement('div'); box.className = 'ch-m bot lf-box'; const items = [];
+      let bar = null, accB = null;
+      const live = () => items.filter(o => o.item.isConnected), picked = () => live().filter(o => o.cb.checked);
+      const upd = () => { if (!accB) return; const k = picked().length; accB.textContent = '\u2713 Accept ' + (k === live().length ? 'all ' : '') + k + ' ticked'; accB.disabled = !k; };
+      const after = () => { if (!live().length) { box.remove(); if (bar) bar.remove(); } else upd(); };
+      const mkB = (t, fn) => { const b = document.createElement('button'); b.textContent = t; b.className = 'ch-c'; b.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); fn(b); }; return b; };
       todo.forEach(([n, tx, why]) => {
-        add('bot', 'Line ' + n + (why ? ' (' + why + ')' : '') + ':\n\u2013 ' + F.texts[n - 1] + '\n+ ' + tx);
-        actions([['\u2713 Accept', (b, d) => { d.remove(); if (lfApply(n, tx)) add('bot', '\u2713 Line ' + n + ' fixed.'); }], ['Skip', (b, d) => d.remove()]]);
+        const old = F.texts[n - 1], d = lfDiff(old, tx);
+        const item = document.createElement('div'), lab = document.createElement('label'), cb = document.createElement('input'), sp = document.createElement('span');
+        item.className = 'lf-item'; lab.className = 'lf-it'; cb.type = 'checkbox'; cb.checked = true; cb.onchange = upd;
+        sp.appendChild(document.createTextNode('Line ' + n + (why ? ' (' + why + ')' : '') + ':\n\u2013 ')); sp.appendChild(lfMark(d.a, d.oBad, 'o'));
+        sp.appendChild(document.createTextNode('\n+ ')); sp.appendChild(lfMark(d.b, d.nBad, 'n'));
+        lab.append(cb, sp); item.appendChild(lab);
+        const o = { n, tx, item, cb }; items.push(o);
+        const row = document.createElement('div'), ed = document.createElement('div'); row.className = 'lf-row'; ed.className = 'lf-ed'; ed.style.display = 'none';
+        const done = (txt, msg) => { if (lfApply(n, txt)) add('bot', msg); item.remove(); after(); };
+        row.append(
+          mkB('\u2713 Accept', () => done(tx, '\u2713 Line ' + n + ' fixed.')),
+          mkB('\u2715 Skip', () => { item.remove(); after(); }),
+          mkB('\u270e Both wrong', () => { ed.style.display = ed.style.display === 'none' ? 'flex' : 'none'; }));
+        // Editor for when neither the heard line nor the suggestion is right: rewrite just the underlined part, or the whole line.
+        const inp = v => { const i = document.createElement('input'); i.type = 'text'; i.value = v; return i; };
+        const hint = t => { const h = document.createElement('div'); h.className = 'lf-h'; h.textContent = t; return h; };
+        let partIn = null;
+        if (d.os) {
+          const bad = d.a.slice(d.os[0], d.os[1] + 1).join(' '), sugPart = d.ns ? d.b.slice(d.ns[0], d.ns[1] + 1).join(' ') : '';
+          partIn = inp(sugPart); partIn.placeholder = 'What the underlined part should say';
+          const pre = d.a.slice(0, d.os[0]), post = d.a.slice(d.os[1] + 1);
+          ed.append(hint('Just the underlined part (\u201c' + bad + '\u201d):'), partIn,
+            mkB('Use this part fix', () => { const v = partIn.value.trim(); if (!v) { add('bot', 'Type what the underlined part should say, or use the whole-line box.'); return; } done(pre.concat([v], post).join(' '), '\u2713 Line ' + n + ' fixed with your wording for \u201c' + bad + '\u201d.'); }));
+        }
+        const whole = inp(tx); whole.placeholder = 'The whole line';
+        ed.append(hint('Or rewrite the whole line:'), whole,
+          mkB('Use my whole line', () => { const v = whole.value.trim(); if (!v) { add('bot', 'The line cannot be empty.'); return; } done(v, '\u2713 Line ' + n + ' set to your wording.'); }),
+          mkB('Cancel', () => { ed.style.display = 'none'; }));
+        item.append(row, ed); box.appendChild(item);
       });
-      if (todo.length > 1) actions([['\u2713 Accept all ' + todo.length, (b, d) => { d.remove(); let k = 0; todo.forEach(([n, tx]) => { if (F.texts[n - 1] !== tx && lfApply(n, tx)) k++; }); add('bot', blTone('\u2713 ' + k + ' line' + (k === 1 ? '' : 's') + ' fixed. Say \u201cundo\u201d to take back the last one.')); }]]);
+      clist.appendChild(box); scrollDown();
+      bar = actions([
+        ['\u2713 Accept', (b, d) => {
+          const sel = picked(); let k = 0;
+          sel.forEach(o => { if (F.texts[o.n - 1] !== o.tx && lfApply(o.n, o.tx)) k++; o.item.remove(); });
+          add('bot', blTone('\u2713 ' + k + ' line' + (k === 1 ? '' : 's') + ' fixed. Say \u201cundo\u201d to take back the last one.'));
+          after();
+        }],
+        ['Select all', () => { live().forEach(o => { o.cb.checked = true; }); upd(); }],
+        ['Select none', () => { live().forEach(o => { o.cb.checked = false; }); upd(); }],
+        ['Skip the rest', (b, d) => { box.remove(); d.remove(); }]]);
+      accB = bar.children[0]; upd();
       return true;
     }
     function lfConsistency() {                                            // choruses: most common wording wins, no AI
@@ -4881,33 +5077,78 @@
       }
       return out;
     }
-    const LF_SYS = 'You correct automatic lyric transcriptions. Fix only clear transcription mistakes: misheard words, words that make no sense in context, broken grammar a singer would not sing, and names or places that were heard as ordinary words. ' +
-      'Keep the singer\'s own style, slang, contractions and repetition. Do not rewrite, improve, censor or translate, and never add or remove lines. ' +
+    const LF_SYS = 'You correct automatic lyric transcriptions. The speech recognizer often hears a phrase that SOUNDS like what was sung but means something else, so a line can read fluently and still be wrong. ' +
+      'Check each line against the song\'s subject (given below), the lines around it, and normal grammar. Fix: misheard words, words that make no sense in context, lines that are fluent but do not fit what the song is talking about when a similar-sounding phrase would fit, and names or places heard as ordinary words. ' +
+      'A fix must sound almost the same when spoken aloud and keep about the same length. Keep the singer\'s own style, slang, contractions and repetition. Do not rewrite, improve, censor or translate, and never add or remove lines. ' +
       'Reply with ONLY the lines you change, one per line, exactly as: number| corrected line. If nothing needs fixing, reply: NONE';
+    const LF_SYS2 = 'You are a careful proofreader of automatic lyric transcriptions. The speech recognizer often writes a phrase that SOUNDS like what was sung but is the wrong words. Such a line is usually grammatical, so being grammatical does not make it right. ' +
+      'Go through every line and ask: does this fit the song\'s subject and the lines before and after it? Does each word make sense here? Is there a similar-sounding word or phrase that fits better (for example a name, a place, a common expression, or a repeated phrase from nearby lines)? ' +
+      'If a line is odd, out of place, or unrelated to its surroundings, give the line the singer most likely sang. It must sound almost the same when spoken aloud and have about the same number of syllables. ' +
+      'Do not change lines that already fit. Do not polish, censor, translate, add or remove lines. Reply with ONLY the lines you change, one per line, exactly as: number| corrected line. If nothing needs fixing, reply: NONE';
+    const lfPho = a => String(a || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\bkn/g, 'n').replace(/\bwr/g, 'r').replace(/ph/g, 'f').replace(/ck/g, 'k').replace(/c(?=[eiy])/g, 's').replace(/c/g, 'k').replace(/q/g, 'k').replace(/x/g, 'ks').replace(/z/g, 's').replace(/gh/g, '').replace(/([a-z])\1+/g, '$1').replace(/(?<=[a-z])[aeiouy]+/g, '').replace(/\s+/g, ' ').trim();   // rough sound skeleton, so sound-alike fixes pass the guard even when the spelling differs
+    const lfGuard = (o, tx, deep) => { if (!tx || tx === o) return false; const lr = tx.length / Math.max(1, o.length); if (lr < (deep ? 0.4 : 0.5) || lr > (deep ? 2.2 : 1.8)) return false; return lfSim(o, tx) >= (deep ? 0.3 : 0.4) || lfSim(lfPho(o), lfPho(tx)) >= 0.6; };
     const lfParse = (r, lo, hi) => String(r || '').split(/\n/).map(ln => ln.match(/^\s*(?:line\s*)?(\d{1,4})\s*[|:.)\]-]\s*(.+?)\s*$/i)).filter(Boolean).map(m => [+m[1], m[2].replace(/^["\u201c]+|["\u201d]+$/g, '').trim()]).filter(([n]) => n >= lo && n <= hi);
-    async function lfAiPass() {
+    // Decode pass: a word that is out of place (a name like "Lincoln" in a line that has nothing to do with it) is often the recognizer
+    // hearing two ordinary words as one name, or one word as another. The model is asked to sound the odd word out and say what was sung.
+    const LF_SYS3 = 'You repair automatic lyric transcriptions. The speech recognizer often turns ordinary words into a NAME or an odd word that has nothing to do with the song, or glues two words into one, or splits one word in two. ' +
+      'For example, "Kingston my heart" was really "king\'s in my heart", and "hold me Carolina" was really "hold me, carry on". ' +
+      'Look at each line. If a word (especially a name or a rare word) does not fit the song\'s subject or the lines around it, say it out loud syllable by syllable and work out which ordinary word or words sound the same and make sense there. The fix can be one word, two or three words, or a different word. ' +
+      'Change only the odd word or words. Keep every other word exactly as written. Do not polish, translate, add or remove lines. If the odd word really could be a real name that belongs, leave it. ' +
+      'Reply with ONLY the lines you change, one per line, exactly as: number| corrected line. If nothing needs fixing, reply: NONE';
+    function lfSuspects() {                                                // mid-line capitalised words (names) that are not in the title or artist and are not sung over and over
+      const F = lyFix, T = F.texts, cnt = new Map(), out = new Map(), skip = new Set(lfTok((F.t.title || '') + ' ' + (F.artist || '')).map(lfW).filter(Boolean));
+      T.forEach(q => new Set(lfTok(q).map(lfW)).forEach(w => { if (w) cnt.set(w, (cnt.get(w) || 0) + 1); }));
+      T.forEach((q, j) => {
+        const tk = lfTok(q), bad = [];
+        tk.forEach((w, k) => { const c = lfW(w); if (k && c.length >= 3 && /^\p{Lu}\p{Ll}/u.test(w) && !/[.!?]["')\u201d]?$/.test(tk[k - 1]) && !skip.has(c) && (cnt.get(c) || 0) <= 2) bad.push(w.replace(/^[^\p{L}]+|[^\p{L}\p{N}']+$/gu, '')); });
+        if (bad.length) out.set(j, bad);
+      });
+      return out;
+    }
+    const lfDecGuard = (o, tx) => {                                        // looser than lfGuard: the odd word may become 2-3 words, but it must sound like what it replaces
+      if (!tx || tx === o) return false; const lr = tx.length / Math.max(1, o.length); if (lr < 0.5 || lr > 2.2) return false;
+      const d = lfDiff(o, tx); if (!d.os || !d.ns) return lfGuard(o, tx, true);
+      if (d.os[1] - d.os[0] > 3 || d.ns[1] - d.ns[0] > 4) return false;     // a rewrite of the whole line is not a decode
+      const a = d.a.slice(d.os[0], d.os[1] + 1).join(' '), b = d.b.slice(d.ns[0], d.ns[1] + 1).join(' ');
+      const sk = x => lfPho(x).replace(/[aeiouy\s]/g, '').replace(/h/g, ''), x = sk(a), y = sk(b); if (!x || !y) return lfSim(a, b) >= 0.4;   // consonant skeleton: "Lincoln" ~ "the link on"
+      const [sh, lo] = x.length <= y.length ? [x, y] : [y, x]; let prev = new Array(lo.length + 1).fill(0);                         // best match of the shorter skeleton anywhere inside the longer (extra little words like "the" are free)
+      for (let i = 1; i <= sh.length; i++) { const cur = [i]; for (let j = 1; j <= lo.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (sh[i - 1] === lo[j - 1] ? 0 : 1)); prev = cur; }
+      return 1 - Math.min(...prev) / sh.length >= 0.55 || lfSim(a, b) >= 0.4;
+    };
+    async function lfAiPass(mode) {
+      const dec = mode === 'decode', deep = mode === true || dec;
       const F = lyFix; if (!F || F.busy) return; F.busy = true;
       chatBusy = true; holdModel = true; cm('work');
-      const status = add('bot', '\u2026'), who = F.t.title + (F.artist ? ' by ' + F.artist : '');
+      const sus = dec ? lfSuspects() : null, status = add('bot', '\u2026'), who = F.t.title + (F.artist ? ' by ' + F.artist : '');
       let found = 0;
       try {
         const g = await ensureModel(x => { status.textContent = x; });
-        const T = F.texts, N = T.length, CH = 14;
+        const T = F.texts, N = T.length, CH = deep ? 8 : 12, CX = deep ? 8 : 5;
+        if (F.theme == null) {                                           // what the song is about: the single biggest help for spotting lines that read fine but do not belong
+          F.theme = ''; status.textContent = 'Getting the gist of the song\u2026'; scrollDown();
+          try {
+            const ctxT = ctxOf(), lim = Math.max(1200, Math.min(6000, Math.floor(ctxT * 2.2)));
+            let body = ''; for (let k = 0; k < N && body.length < lim; k++) body += T[k] + '\n';
+            const o = await g([{ role: 'system', content: 'These are automatic lyrics and some words are wrong. In ONE short sentence, say what the song is about and its mood. Do not quote lines.' }, { role: 'user', content: 'Song: ' + who + '\n' + body }], { max_new_tokens: 70, do_sample: false, temperature: 0, top_k: 1, repetition_penalty: 1.05 });
+            let tr = o && o[0] && o[0].generated_text; tr = Array.isArray(tr) ? (tr[tr.length - 1] || {}).content : tr; F.theme = String(tr || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+          } catch (e) { console.warn('lyric fix theme failed', e); }
+        }
         for (let s0 = 0; s0 < N && lyFix === F; s0 += CH) {
           const s1 = Math.min(N, s0 + CH);
-          status.textContent = 'Reading lines ' + (s0 + 1) + '\u2013' + s1 + ' of ' + N + '\u2026'; scrollDown();
-          const ctxB = T.slice(Math.max(0, s0 - 3), s0).join(' / '), ctxA = T.slice(s1, Math.min(N, s1 + 3)).join(' / ');
-          const user = 'Song: ' + who + '\n' + (ctxB ? 'Lines just before (context only): ' + ctxB + '\n' : '') + 'Lines to check:\n' +
-            T.slice(s0, s1).map((q, k) => (s0 + k + 1) + '| ' + q).join('\n') + (ctxA ? '\nLines just after (context only): ' + ctxA : '');
+          status.textContent = (dec ? 'Sounding out odd words in lines ' : deep ? 'Looking closely at lines ' : 'Reading lines ') + (s0 + 1) + '\u2013' + s1 + ' of ' + N + '\u2026'; scrollDown();
+          const ctxB = T.slice(Math.max(0, s0 - CX), s0).join(' / '), ctxA = T.slice(s1, Math.min(N, s1 + CX)).join(' / ');
+          const user = 'Song: ' + who + '\n' + (F.theme ? 'What the song is about: ' + F.theme + '\n' : '') + (ctxB ? 'Lines just before (context only): ' + ctxB + '\n' : '') + 'Lines to check:\n' +
+            T.slice(s0, s1).map((q, k) => (s0 + k + 1) + '| ' + q).join('\n') + (dec ? (() => { const h = []; for (let k = s0; k < s1; k++) if (sus.has(k)) h.push((k + 1) + '| ' + sus.get(k).join(', ')); return h.length ? '\nWords that look out of place (check these first):\n' + h.join('\n') : ''; })() : '') + (ctxA ? '\nLines just after (context only): ' + ctxA : '');
           let r = '';
-          try { const o = await g([{ role: 'system', content: LF_SYS }, { role: 'user', content: user }], { max_new_tokens: 420, do_sample: false, temperature: 0, top_k: 1, repetition_penalty: 1.05 }); r = o && o[0] && o[0].generated_text; r = Array.isArray(r) ? (r[r.length - 1] || {}).content : r; }
+          try { const o = await g([{ role: 'system', content: dec ? LF_SYS3 : deep ? LF_SYS2 : LF_SYS }, { role: 'user', content: user }], { max_new_tokens: 420, do_sample: false, temperature: 0, top_k: 1, repetition_penalty: 1.05 }); r = o && o[0] && o[0].generated_text; r = Array.isArray(r) ? (r[r.length - 1] || {}).content : r; }
           catch (e) { console.warn('lyric fix chunk failed', e); continue; }
           if (/^\s*none\s*$/i.test(String(r))) continue;
           // Guard against rewrites: a fix must still look like the line it replaces.
-          const sug = lfParse(r, s0 + 1, s1).filter(([n, tx]) => { const o = T[n - 1]; if (!tx || tx === o) return false; const lr = tx.length / Math.max(1, o.length); return lr >= 0.5 && lr <= 1.8 && lfSim(o, tx) >= 0.45; }).map(([n, tx]) => [n, tx, '']);
+          const sug = lfParse(r, s0 + 1, s1).filter(([n, tx]) => dec ? lfDecGuard(T[n - 1], tx) : lfGuard(T[n - 1], tx, deep)).map(([n, tx]) => { let why = deep ? 'sounds similar, fits the song better' : ''; if (dec) { const d = lfDiff(T[n - 1], tx); if (d.os && d.ns) why = 'heard \u201c' + d.a.slice(d.os[0], d.os[1] + 1).join(' ') + '\u201d, probably \u201c' + d.b.slice(d.ns[0], d.ns[1] + 1).join(' ') + '\u201d'; } return [n, tx, why]; });
           if (sug.length) { found += sug.length; lfSuggest(sug); }
         }
-        status.textContent = found ? 'Done reading: ' + found + ' suggestion' + (found === 1 ? '' : 's') + ' above.' : 'Done reading. I did not find anything I am sure is wrong.';
+        status.textContent = found ? (dec ? 'Done decoding: ' : 'Done reading: ') + found + ' suggestion' + (found === 1 ? '' : 's') + ' above.' : 'Done reading. I did not find anything I am sure is wrong.';
+        if (!dec) { const btns = []; if (!deep) btns.push(['\ud83d\udd0e Look harder (finds more, may be less sure)', (b, d) => { d.remove(); lfAiPass(true); }]); btns.push(['\ud83e\udde9 Decode odd words and names', (b, d) => { d.remove(); lfAiPass('decode'); }]); actions(btns); }
         add('bot', blTone('You can also tell me: \u201cline 12 should be \u2026\u201d, \u201creplace Carly with Charlie\u201d, \u201cshow the lyrics\u201d, or ask about any line. Say \u201cdone\u201d when you are finished.'));
       } catch (e) { console.error(e); status.textContent = 'Oops, my brain would not load: ' + errText(e); }
       finally { F.busy = false; chatBusy = false; holdModel = false; cm('idle'); idleUnload(); scrollDown(); }
@@ -4938,7 +5179,7 @@
       add('bot', blTone('Let\'s fix the lyrics of ' + t.title + (artist ? ' by ' + artist : '') + ' (' + lyFix.texts.length + ' lines' + (data.kind === 'subs' ? ', timing stays as it is' : '') + '). Nothing changes until you accept it.'));
       const cons = lfConsistency();
       if (!lfSuggest(cons, 'First, lines that repeat (like the chorus) but were heard a little differently:')) add('bot', 'The repeated lines already match. \u2713');
-      if (brainOn() && (gen || lsGet('ppvChatDl') === '1')) actions([['\ud83d\udd0d Check every line with AI', (b, d) => { d.remove(); lfAiPass(); }], ['Show the lyrics', (b, d) => { d.remove(); lfShow(); }]]);
+      if (brainOn() && (gen || lsGet('ppvChatDl') === '1')) actions([['\ud83d\udd0d Check every line with AI', (b, d) => { d.remove(); lfAiPass(); }], ['\ud83e\udde9 Decode odd words and names', (b, d) => { d.remove(); lfAiPass('decode'); }], ['Show the lyrics', (b, d) => { d.remove(); lfShow(); }]]);
       else add('bot', 'Turn on my AI brain in the assistant settings for the line-by-line check. You can still edit lines here: \u201cline 12 should be \u2026\u201d.');
     }
     function lfShow(from) {
@@ -4959,6 +5200,8 @@
       if ((m = text.match(/^(?:show|list|read)(?: me)?(?: the)? (?:lyrics|lines)(?: from(?: line)? (\d+))?$|^show from line (\d+)$/i))) { lfShow(+(m[1] || m[2] || 1)); return; }
       if (/^undo(?: last| that)?$/i.test(text)) { const u = F.stack.pop(); if (!u) { add('bot', 'Nothing to undo.'); return; } F.texts[u[0] - 1] = u[1]; F.changed = Math.max(0, F.changed - 1); lfSave(); add('bot', '\u21ba Line ' + u[0] + ' is back to: ' + u[1]); return; }
       if (/^undo (?:all|everything)$/i.test(text)) { lfUndoAll(); return; }
+      if (/^(?:decode|check|fix|find)(?: the)? (?:odd|weird|wrong|strange|unrelated)? ?(?:words?|names?)(?: and (?:words?|names?))?$|^(?:decode|sound out) (?:it|them|the lyrics)$/i.test(text)) { await lfAiPass('decode'); return; }
+      if (/^(?:look|check|go over|read|review)(?: it| them| the lyrics)? (?:harder|closer|more carefully|deeper)$|^(?:deep|deeper|harder) check$/i.test(text)) { await lfAiPass(true); return; }
       if (/^(?:check|review|go over|proofread)(?: it| them| the lyrics)?(?: again)?$|^check again$/i.test(text)) { await lfAiPass(); return; }
       // Anything else: ask the AI with the numbered lyrics; fixes it proposes come back as Accept buttons.
       if (!brainOn() || (!gen && lsGet('ppvChatDl') !== '1')) { add('bot', 'That needs my AI brain. Edits work without it: \u201cline 12 should be \u2026\u201d, \u201creplace X with Y\u201d.'); return; }
@@ -7543,7 +7786,10 @@
     // ---------- Limits for the small on-device models: keep replies whole and keep the prompt inside the model's context ----------
     const CHAT_CTX = { qwen05i4: 1280, qwen15i4: 4096, qwen15lm: 4096, gemma4: 4096, gemma4e4b: 4096 };   // tokens the model can hold (prompt + reply); other models: 2048
     const ctxOf = () => CHAT_CTX[chatKey()] || 2048;
-    const replyMax = () => Math.max(60, Math.min(140, Math.floor(ctxOf() / 9)));                     // room for a full one-or-two sentence reply
+    const replyMax = () => {                                                                           // room for a whole reply of the chosen length (a small context cannot hold more)
+      const c = ctxOf(), base = Math.max(60, Math.min(140, Math.floor(c / 9))), k = chatLenKey(), bl = CHAT_STYLES[chatStyleKey()].bul ? 1.3 : 1;
+      return Math.round(({ short: Math.max(40, Math.floor(base * 0.6)), normal: base, medium: Math.max(120, Math.min(260, Math.floor(c / 7))), long: Math.max(180, Math.min(420, Math.floor(c / 5))) }[k]) * bl);
+    };
     const estTok = x => Math.ceil(String(x).length / 3);
     const msgTok = a => a.reduce((n, m) => n + estTok(m.content) + 4, 0);
     // Drop the oldest history pairs until the prompt plus the reply fit. over = even system + new message alone are too big.
@@ -7575,9 +7821,9 @@
       } catch (e) { return ''; }
     };
     const chatSys = (text, found, compact) => {
-      const A = window.__ppApi, t = A && A.tracks()[A.currentIndex()];
-      return 'You are Bloop, a small bouncy ball who lives in a music player. You are friendly, playful and a little silly.' + blSkinNote() + selfCtx() + (compact ? '' : PERSONA) +
-        ' Reply to exactly what the user just said, in one or two short plain sentences. Answer their question or react to their statement first. Do not repeat yourself or earlier replies. Stay on their topic. No lists, no markdown, no emoji.' +
+      const A = window.__ppApi, t = A && A.tracks()[A.currentIndex()], ST = CHAT_STYLES[chatStyleKey()], LN = CHAT_LENS[chatLenKey()];
+      return 'You are Bloop, a small bouncy ball who lives in a music player.' + ST.intro + blSkinNote() + selfCtx() + (compact || !ST.persona ? '' : PERSONA) +
+        ' Reply to exactly what the user just said, ' + (ST.bul ? LN.bul : LN.say) + '. Answer their question or react to their statement first. Do not repeat yourself or earlier replies. Stay on their topic. ' + ST.fmt +
         ' You cannot press buttons yourself. When an ACTION RESULT line appears below, the app already did it for the user: confirm it in one short sentence, and never say you did something that is not listed there. If they want something else done, tell them what to type, such as play something chill, or say help. You are not a doctor, lawyer or counselor. If someone sounds distressed, be kind and suggest talking to someone they trust.' +
         nowCtx() + (musicMode ? musicCtx() + musicRules : '') + (found ? ' LOOKED UP OR DONE JUST NOW in the user\'s player (real data and ACTION RESULTs, answer from it; if it says nothing was found, say you could not find it and never invent songs): ' + found.replace(/\n/g, ' | ') : '');
     };
@@ -7838,6 +8084,12 @@
       '<div class="ppv-note">Off: Bloop only does tasks and answers app questions. On: he can also chat. It is taken out of memory whenever he does a task. It is a tiny model: it can be wrong, and it is not a counselor.</div>' +
       '<label class="ppv-c" style="display:block">Bloop\'s memory: <b id="ppv-mem-val"></b><input type="range" id="ppv-mem" min="0" max="8" step="1" style="width:100%;display:block"></label>' +
       '<div class="ppv-note">How many recent messages and replies are remembered while chatting. 0 forgets each message right away. Higher keeps more context but is slower. Tasks and commands never need memory.</div>' +
+      '<div style="margin-top:10px"><b>How Bloop replies</b></div>' +
+      '<label class="ppv-c" style="display:block">Chat reply length: <select id="ppv-clen" data-sync="ppvChatLen" style="width:100%;display:block">' + menuOpts(CHAT_LENS) + '</select></label>' +
+      '<label class="ppv-c" style="display:block">Chat reply style: <select id="ppv-csty" data-sync="ppvChatStyle" style="width:100%;display:block">' + menuOpts(CHAT_STYLES) + '</select></label>' +
+      '<label class="ppv-c" style="display:block">Summary length: <select id="ppv-slen2" data-sync="ppvSumLen" style="width:100%;display:block">' + menuOpts(SUM_LENS) + '</select></label>' +
+      '<label class="ppv-c" style="display:block">Summary style: <select id="ppv-ssty2" data-sync="ppvSumStyle" style="width:100%;display:block">' + menuOpts(SUM_STYLES) + '</select></label>' +
+      '<div class="ppv-note">The chat menus apply to normal chat and Song Talk. The summary menus apply to AI summaries, here and under Lyrics &amp; subtitles. A tiny model may not follow every instruction exactly, and long replies take longer. Lyric Fix keeps its own short format.</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-agent-on"> Allow Bloop to run commands (play, playlists, tagging, volume\u2026)</label>' +
       '<label id="ppv-chatgpul" class="ppv-c" style="display:none"><input type="checkbox" id="ppv-chatgpu"> Use GPU (experimental, ~270 MB download)</label>' +
       '<label id="ppv-lmgpul" class="ppv-c" style="display:none"><input type="checkbox" id="ppv-lmgpu"> Run the app-only (LiteRT-LM) models on the phone GPU: much faster. Falls back to the CPU by itself. Applies the next time the model loads.</label>' +
@@ -7849,6 +8101,7 @@
       const cmod = p.querySelector('#ppv-chat-model');
       cmod.innerHTML = Object.keys(mas.chat.models).filter(k => NATIVE || !mas.chat.models[k].lm).map(k => '<option value="' + k + '">' + mas.chat.models[k].label + '</option>').join('');
       cmod.value = mas.chat.key(); cmod.onchange = () => mas.chat.setModel(cmod.value);
+      [['#ppv-clen', chatLenKey], ['#ppv-csty', chatStyleKey], ['#ppv-slen2', sumLenKey], ['#ppv-ssty2', sumStyleKey]].forEach(([q, f]) => { const x = p.querySelector(q); if (x) x.value = f(); });
       const ms = p.querySelector('#ppv-mem'), mv = p.querySelector('#ppv-mem-val'), memTxt = n => n === 0 ? 'none' : n + (n === 1 ? ' exchange' : ' exchanges');
       ms.value = mas.chat.memory.get(); mv.textContent = memTxt(+ms.value);
       ms.oninput = () => { const n = mas.chat.memory.set(ms.value); mv.textContent = memTxt(n); };

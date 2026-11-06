@@ -2373,7 +2373,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
     justify-content:center;
     pointer-events:none;
     padding:0 6%;
-    z-index:5;   /* same level as .gesture-layer but later in the DOM, so the draggable line sits above it */
+    z-index:7;   /* above the gesture layer (5), ASS layer (5) and fps counter (6) so the draggable line is never covered; below the video tools (8) */
   }
   #subtitle-overlay.pos-top{ bottom:auto; top:8%; }
   #subtitle-overlay span{
@@ -2400,6 +2400,9 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
     width:max-content; max-width:88%; padding:0; transition:none;
   }
   #subtitle-overlay span.on{ pointer-events:auto; cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; }
+  html.pp-native-video #subtitle-overlay{ z-index:7; }
+  html.pp-native-video #subtitle-overlay span.on{ pointer-events:auto !important; }
+  html.pp-native-video #pp-ass-layer, html.pp-native-video .gesture-flash, html.pp-native-video #fps-counter{ pointer-events:none !important; }
   #subtitle-overlay.dragging span.on{ cursor:grabbing; }
   /* Subtitle style controls (scale, outline, shadow, background, line spacing, weight) */
   #subtitle-overlay span{ font-size:calc(16px * var(--sub-scale,1)); line-height:var(--sub-lh,1.4); font-weight:var(--sub-weight,400); background:rgba(0,0,0,var(--sub-bg,.7)); text-shadow:var(--sub-ts,none); }
@@ -11506,6 +11509,32 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       el.classList.toggle('on', on && visible);
       if (!on || !visible) return;
       const now = performance.now();
+      // Native video: the page's <video> is a stand-in (no frame callbacks, no drop counter), so read the native renderer's numbers instead.
+      if (window.PPNative && PPNative.videoActive && PPNative.videoActive()){
+        while (rafT.length && now - rafT[0] > 1000) rafT.shift();
+        const st = PPNative.memcStatus || {}, playingN = !videoEl.paused && !videoEl.ended, rate = videoEl.playbackRate || 1;
+        const srcN = st.inFps > 0 ? st.inFps : ((PPNative.videoFps && PPNative.videoFps()) || null);
+        const hzN = rafT.length > 2 ? (rafT.length - 1) * 1000 / (rafT[rafT.length - 1] - rafT[0]) : null;
+        const smN = !!(st.smoothing && !st.failed && !st.bypass);
+        let shownN = null;
+        if (playingN){
+          if (smN) shownN = hzN != null ? Math.min(st.outFps || hzN, hzN) : (st.outFps || null);
+          else if (srcN != null) shownN = hzN != null ? Math.min(srcN * rate, hzN) : srcN * rate;
+        }
+        const fN = v => v == null ? '--' : v.toFixed(1);
+        let modeN = 'native renderer';
+        if (st.failed) modeN += ', smoothing unsupported';
+        else if (st.bypass) modeN += ', smoothing skipped (over ' + memcMaxIn + ' fps)';
+        else if (smN) modeN += ', smoothing: ' + (st.mode === 'ultra' ? 'ultra' : st.mode === 'motion' ? 'advanced' : 'simple');
+        el.textContent =
+          'Source  ' + fN(srcN) + ' fps\n' +
+          'Shown   ' + fN(shownN) + ' fps\n' +
+          'Screen  ' + (hzN == null ? '--' : Math.round(hzN)) + ' Hz\n' +
+          'Dropped n/a (native)\n' +
+          (st.ring && smN ? 'Render  ' + st.ring + '\n' : '') +
+          modeN;
+        return;
+      }
       while (vf.length && now - vf[0].w > 1000) vf.shift();
       const playing = !videoEl.paused && !videoEl.ended && vf.length >= 2 && now - vf[vf.length - 1].w < 500;
       let src = null;
@@ -11776,7 +11805,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (vs) return { x:(1 - vs.sx) / 2, y:(1 - vs.sy) / 2, w:vs.sx, h:vs.sy };
     const area = subtitleOverlay.parentElement, W = area.clientWidth, H = area.clientHeight, vw = videoEl.videoWidth, vh = videoEl.videoHeight;
     if (!W || !H || !vw || !vh) return { x:0, y:0, w:1, h:1 };           // audio or not loaded yet: the whole box
-    const cover = getComputedStyle(videoEl).objectFit === 'cover';
+    let cover = false; try { cover = getComputedStyle(window.PPNative && PPNative.raw ? PPNative.raw(videoEl) : videoEl).objectFit === 'cover'; } catch(err){}   // in native mode videoEl is a Proxy, which getComputedStyle rejects: use the real element
     const sc = cover ? Math.max(W / vw, H / vh) : Math.min(W / vw, H / vh);
     const w = vw * sc / W, h = vh * sc / H;
     return { x:(1 - w) / 2, y:(1 - h) / 2, w, h };
