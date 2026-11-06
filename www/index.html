@@ -9144,6 +9144,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       origHeight: t.convertedFromVideo ? (t._origHeight || null) : undefined
     }));
     try { localStorage.setItem(PLAYLIST_KEY, JSON.stringify(meta)); } catch(e){ /* storage full or unavailable */ }
+    try { window.dispatchEvent(new Event('pp-library-saved')); } catch(e){}   // vocal-separator.js re-fetches lyrics for tracks whose title changed
   }
 
   async function restoreLibrary(){
