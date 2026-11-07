@@ -104,4 +104,23 @@ d.sub("""L.querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>{const k=b.data
 d.sub("""L.querySelectorAll('[data-ck]').forEach(b=>b.onclick=e=>{e.stopPropagation();const k=b.dataset.ck,dx={...(S.dex||{})},dm={...(S.dmod||{})};if(dx[k])delete dx[k];else{dx[k]=1;delete dm[k]}S.dex=dx;S.dmod=dm;dmSave();renderDM()});""", "")
 d.sub("</style>", ".dmck{pointer-events:none}.dmcd[data-x] *{pointer-events:none}\n</style>")
 
+# ---- one button per section instead of "Check all" + "Boost all" ----
+# Each colour section (and the top "all cards" row) gets a single button that
+# moves every card in it through the same cycle as one tile:
+# normal -> boosted -> off -> normal. If the section is mixed, the next step is
+# "boost all". The label says what the next tap does. Classes keep their own
+# Boost all / Clear boosts (they can't be taken out of the deck).
+d.sub("""  const head=(id,title,keys)=>'<div class="dmsechd"><button type="button" class="dmsecT" data-scol="'+id+'">'+(dmCol[id]?'\\u25B8 ':'\\u25BE ')+title+'</button>'+btn(id,keys)+(id==='cls'?'':boostBtn(id,keys))+'</div>';""",
+      """  const grpSt=keys=>{const dx=S.dex||{},dm=S.dmod||{};if(keys.length&&keys.every(k=>dx[k]))return 'off';if(keys.length&&keys.every(k=>!dx[k]&&dm[k]))return 'boosted';if(keys.length&&keys.every(k=>!dx[k]&&!dm[k]))return 'normal';return 'mixed'};
+  const cycBtn=(sec,keys,big)=>{const st=grpSt(keys),w=big?'all cards':'all',lbl=st==='boosted'?'Turn '+w+' off':st==='off'?'Turn '+w+' on':'Boost '+w;return '<button type="button" class="dmall'+(big?' big':'')+(st==='boosted'?' on':'')+'" data-cyc="'+sec+'">'+lbl+'</button>'};
+  const head=(id,title,keys)=>'<div class="dmsechd"><button type="button" class="dmsecT" data-scol="'+id+'">'+(dmCol[id]?'\\u25B8 ':'\\u25BE ')+title+'</button>'+(id==='cls'?btn(id,keys):cycBtn(id,keys))+'</div>';""")
+d.sub("""+'<button type="button" class="dmall big'+(allIn(cardKeys)?' on':'')+'" data-sec="all">'+(allIn(cardKeys)?'Uncheck all cards':'Check all cards')+'</button> <button type="button" class="dmall big'+(bOn(cardKeys)?' on':'')+'" data-bsec="all">'+(bOn(cardKeys)?'Clear boosts':'Boost all cards')+'</button></div>'""",
+      """+cycBtn('all',cardKeys,1)+'</div>'""")
+d.sub("""L.querySelectorAll('[data-scol]').forEach(b=>b.onclick=()=>{""",
+      """L.querySelectorAll('[data-cyc]').forEach(b=>b.onclick=()=>{const keys=dmSecKeys[b.dataset.cyc]||[],dx={...(S.dex||{})},dm={...(S.dmod||{})};
+ const st=keys.length&&keys.every(k=>dx[k])?'off':keys.length&&keys.every(k=>!dx[k]&&dm[k])?'boosted':'other';
+ keys.forEach(k=>{if(st==='boosted'){delete dm[k];dx[k]=1}else if(st==='off'){delete dx[k]}else{delete dx[k];dm[k]=dm[k]||1}});
+ S.dex=dx;S.dmod=dm;dmSave();renderDM()});
+L.querySelectorAll('[data-scol]').forEach(b=>b.onclick=()=>{""")
+
 d.save(sys.argv[2])
