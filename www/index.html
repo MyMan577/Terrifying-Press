@@ -26546,7 +26546,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     // src is set before the frame joins the page, so loading it adds no Back step
     frame = document.createElement('iframe');
     frame.src = g.src;
-    frame.setAttribute('allow', 'fullscreen; autoplay');
+    frame.setAttribute('allow', 'fullscreen; autoplay; camera');
     var started = Date.now();
     frame.addEventListener('load', function(){
       syncGameMusic();
