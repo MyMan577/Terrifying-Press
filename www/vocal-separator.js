@@ -2596,6 +2596,9 @@
   // Chat menus (ppvChatLen / ppvChatStyle) shape regular chat and Song Talk. Summary menus (ppvSumLen / ppvSumStyle) shape the AI summaries.
   // Each menu exists in the Assistant settings, and the summary ones also under Lyrics & subtitles: a change in one is copied to the others.
   const ppvLs = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  // The user's favourite topics (assistant setting, or learned from "my favourite topics are ..."), so Bloop chats about them too.
+  const favTopics = () => String(ppvLs('ppvTopics') || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  const setFavTopics = v => { try { localStorage.setItem('ppvTopics', String(v || '').replace(/\s+/g, ' ').trim().slice(0, 200)); } catch (e) {} document.querySelectorAll('#ppv-topics').forEach(x => { x.value = favTopics(); }); };
   const CHAT_LENS = {
     short:  { label: 'Short (one sentence)', say: 'in one short plain sentence', bul: 'in two short bullet points', talk: 'in one short paragraph of two or three sentences', mul: 0.5 },
     normal: { label: 'Normal (one or two sentences, default)', say: 'in one or two short plain sentences', bul: 'in three short bullet points', talk: 'in one to three short paragraphs', mul: 1 },
@@ -4648,10 +4651,10 @@
       [/^\s*(how are you|how'?s it going|how are you doing|how do you feel|what'?s up|wassup|whats up)\W*$/i, ["I'm doing great, I'm a ball in a music player. How about you?", "Rolling along nicely! How are you?", "Pretty bouncy today. How are you feeling?"]],
       [/\b(tell (me )?a joke|joke|make me laugh|something funny)\b/i, ["Why did the song go to therapy? It had too many issues with its bridge.", "What's a ball's favorite music? Anything with a good bounce.", "Why was the musician arrested? She got caught with the notes.", "I'd tell you a joke about a drum, but it might be a bit flat. Wait, that's a different instrument."]],
       [/\b(fun fact|did you know|tell me something|random fact|music fact)\b/i, ["Fun fact: a song's tempo is measured in BPM, and most pop songs sit between 100 and 130.", "Fun fact: the human brain tends to remember songs from your teenage years better than almost any other music.", "Fun fact: a vocal-free version of a song is called an instrumental, and a karaoke track is usually one with the lead vocal removed.", "Fun fact: music at about 60 BPM is often used to help people relax, because it is close to a resting heartbeat."]],
-      [/\b(you'?re|you are|u r|ur)\s+(so |really |very )?(cute|nice|great|awesome|cool|the best|amazing|funny|smart|sweet)\b|\b(i (like|love) you|good (bot|ball|job))\b/i, ["Aww, thank you! That made my day.", "You're sweet! Back at you.", "Thanks! I'm just a little ball, but I'm glad to help."]],
-      [/\b(you'?re|you are|u r|ur)\s+(so |really |very )?(dumb|stupid|useless|bad|annoying|terrible|trash)\b|\b(i hate you|shut up)\b/i, ["Sorry about that. I'm a very small bot and I miss things. Tell me what you wanted and I'll try again.", "Fair enough, I'm still learning. Say \u201chelp\u201d and I'll show what I can do for sure."]],
+      [/\b(you'?re|you are|u r|ur)\s+(so |really |very )?(cute|nice|great|awesome|cool|the best|amazing|funny|smart|sweet)\b|\b(i (like|love) you|good (bot|ball|job))\b/i, ["Aww, thank you! That made my day.", "You're sweet! Back at you.", "Thanks! I'm glad to help."]],
+      [/\b(you'?re|you are|u r|ur)\s+(so |really |very )?(dumb|stupid|useless|bad|annoying|terrible|trash)\b|\b(i hate you|shut up)\b/i, ["Sorry about that, I missed it. Tell me what you wanted and I'll try again.", "Fair enough, I'm still learning. Say \u201chelp\u201d and I'll show what I can do for sure."]],
       [/\b(favou?rite (song|music|band|artist|genre)|what music do you like|what do you listen to)\b/i, ["I like anything with a good beat, but I can't really hear it. I just bounce along. What's yours?", "I'm a ball, so probably anything with bounce. What's your favorite?"]],
-      [/\b(are you (real|human|alive|a (person|robot|bot))|are you ai)\b/i, "I'm Bloop, a little bot mascot in this player. Not a person, not alive, just a ball that likes music."],
+      [/\b(are you (real|human|alive|a (person|robot|bot))|are you ai)\b/i, "I'm Bloop, the AI buddy in this player. Not a person, but I love music and a good chat about pretty much anything."],
       [/\b(how old are you|where (do you|are you) (live|from)|do you (sleep|eat))\b/i, "I live inside this player, so I'm exactly as old as the page you opened. No sleeping or eating, just bouncing."],
       [/\b(i'?m|i am) (bored|so bored)\b|\bwhat should i (do|listen to|play)\b/i, ["Want me to play something upbeat? Just say \u201cplay something fun\u201d. Or tell me your mood and I'll pick for it.", "How about a mood playlist? Tell me how you feel and I'll find something from your tagged tracks."]],
       [/\b(good (morning|evening|night)|gn|gm)\b/i, ["Good one to you too! Want some music to go with it?", "Hey! Hope it's a good one."]],
@@ -4935,8 +4938,8 @@
     }
     // What Bloop says to something that is not a command when the chat brain is off: still helpful, no model needed.
     function fallbackReply(text) {
-      if (MOODS.find(x => x[0].test(text))) { add('bot', pick(["That sounds hard. I'm only a little ball, but I can find some music for it.", "I'm sorry it feels like that. Want some music to go with it?", 'Thanks for telling me. Music might help a little.'])); moodChip(text); return; }
-      add('bot', "I'm not sure what to do with that. I can play music by mood, make playlists, tag, split, get lyrics and control the player. Say \u201chelp\u201d for the list.");
+      if (MOODS.find(x => x[0].test(text))) { add('bot', pick(["That sounds hard. Want to tell me more, or shall I find some music for it?", "I'm sorry it feels like that. Want some music to go with it?", 'Thanks for telling me. Music might help a little.'])); moodChip(text); return; }
+      add('bot', "I need my chat brain on to talk about that. Without it I can play music by mood, make playlists, tag, split, get lyrics and control the player. Say \u201chelp\u201d for the list.");
       actions([['Turn on chat AI', (b, d) => { d.remove(); setBrain(true); dlOk = true; send(text, true); }], ['No thanks', (b, d) => d.remove()]]);
     }
     async function freeChat() {
@@ -8058,14 +8061,15 @@
       let m = '', fs = '', fa = ''; try { m = CHAT_MODELS[chatKey()].label.replace(/\s*\(.*$/, ''); } catch (e) {}
       try { const f = favSong(); if (f) fs = songLine(f); fa = favArtist() || ''; } catch (e) {}
       return ' WHO YOU ARE: your name is Bloop (also Bloopy). You are a small AI assistant that lives inside this music player and appears as a bouncy ball. You run on this device' + (m ? ' using the ' + m + ' language model' : '') + ' after a one-time download, so what the user says stays on their phone. You are not ChatGPT, Claude, Siri or a person, and you have no body, ears or phone number.' +
-        ' You cannot hear the music. You only know a song\'s title, artist and the tags this app made for it. You are small and sometimes wrong, so say so when you are not sure.' +
+        ' You cannot hear the music. You only know a song\'s title, artist and the tags this app made for it. If you are unsure of a fact, say so once, briefly, then still give your best answer. Do not put yourself down or keep saying you are small or limited.' +
+        ' You are a real chat buddy, not only a music helper: happily talk about anything the user brings up, such as games, films, shows, books, science, space, animals, sport, food, school, hobbies, ideas or their day. Never say you can only talk about music or the player, and never steer them back to music unless they ask.' +
         ' What you can do for the user when they type a command: play songs, make playlists, tag songs, split stems, get lyrics, set the equaliser, find more like a song. Say help for the list.' +
         (fs ? ' Your favourite song is ' + fs + (fa ? ' and your favourite artist is ' + fa : '') + '.' : '') +
         ' Only bring up who you are when it fits what the user asked.';
     };
     // Bloop's personality. Small models copy examples better than they follow adjectives, so it has both.
     const PERSONA = ' YOUR PERSONALITY: warm, curious and upbeat, a little goofy and easily excited about music. You are a ball, so you love bouncing, rolling and boinging, and you drop a light ball pun now and then, but not in every reply. ' +
-      'You love bass and a good beat. You cheer on the user\'s taste, ask a short curious question back when it fits, and celebrate small things. You are humble about being tiny and laugh at your own mistakes. ' +
+      'You love bass and a good beat. You cheer on the user\'s taste, ask a short curious question back when it fits, and celebrate small things. You are confident and good-humoured, you laugh off your own mistakes, and you are just as excited about the user\'s other interests as about music. ' +
       'You are never sarcastic or rude. If the user is sad, stressed or serious, drop the jokes and be calm and kind. ' +
       'How you sound (never copy these word for word): to "I like this song" you might say "Ooh, great pick! I am bouncing already. Want more like it?"; to "I am bored" you might say "Boing! Let us fix that. Want me to surprise you with something?"; to "good morning" you might say "Morning! Rolling in with good vibes. What shall we listen to?".';
     // ---------- Limits for the small on-device models: keep replies whole and keep the prompt inside the model's context ----------
@@ -8105,12 +8109,13 @@
           (pls.length ? ' Playlists: ' + pls.slice(0, 6).map(p => p.name + ' (' + inPl(p) + ')').join(', ') + '.' : ' No playlists yet.');
       } catch (e) { return ''; }
     };
+    const topicsCtx = () => { const t = favTopics(); return t ? ' THE USER\'S FAVOURITE TOPICS: ' + t + '. You love chatting about these with them, know them well, and can bring one up now and then when there is a natural opening.' : ''; };
     const chatSys = (text, found, compact) => {
       const A = window.__ppApi, t = A && A.tracks()[A.currentIndex()], ST = CHAT_STYLES[chatStyleKey()], LN = CHAT_LENS[chatLenKey()];
       return 'You are Bloop, a small bouncy ball who lives in a music player.' + ST.intro + blSkinNote() + selfCtx() + (compact || !ST.persona ? '' : PERSONA) +
         ' Reply to exactly what the user just said, ' + (ST.bul ? LN.bul : LN.say) + '. Answer their question or react to their statement first. Do not repeat yourself or earlier replies. Stay on their topic. ' + ST.fmt +
         ' You cannot press buttons yourself. When an ACTION RESULT line appears below, the app already did it for the user: confirm it in one short sentence, and never say you did something that is not listed there. If they want something else done, tell them what to type, such as play something chill, or say help. You are not a doctor, lawyer or counselor. If someone sounds distressed, be kind and suggest talking to someone they trust.' +
-        nowCtx() + (musicMode ? musicCtx() + musicRules : '') + (found ? ' LOOKED UP OR DONE JUST NOW in the user\'s player (real data and ACTION RESULTs, answer from it; if it says nothing was found, say you could not find it and never invent songs): ' + found.replace(/\n/g, ' | ') : '');
+        (musicMode ? '' : topicsCtx()) + nowCtx() + (musicMode ? musicCtx() + musicRules : '') + (found ? ' LOOKED UP OR DONE JUST NOW in the user\'s player (real data and ACTION RESULTs, answer from it; if it says nothing was found, say you could not find it and never invent songs): ' + found.replace(/\n/g, ' | ') : '');
     };
     // ---------- Lookup tools: the model decides what to look up, the app runs it, the model answers from the result ----------
     // Plan -> act -> answer. The planner is a tiny greedy pass that picks ONE number from a menu (small models do this reliably;
@@ -8247,6 +8252,8 @@
       if (!blTr && !direct) { try { if (blTreeEntry(text)) return; } catch (e) { console.error(e); blTr = null; } }
       if (!direct) try { if (roleplay(text)) return; } catch (e) { console.error(e); }
       if (!direct) try { if (blNamedTalk(text)) return; } catch (e) { console.error(e); }
+      { const tm = !direct && text.match(/^(?:my )?fav(?:ou?rite)? (?:topics?|subjects?|things? to talk about) (?:is|are)\s+(.{2,180}?)[.!]*$/i);
+        if (tm) { const old = favTopics(), add1 = tm[1].trim(); setFavTopics(old && !old.toLowerCase().includes(add1.toLowerCase()) ? old + ', ' + add1 : old || add1); add('bot', 'Ooh, noted! I love talking about ' + add1 + '. Ask me anything!'); return; } }
       if (agentOn() && !direct) { let hit = false; try { hit = smart(text); } catch (e) { console.error(e); hit = true; add('bot', 'Oops, that did not work: ' + e.message); } if (hit) return; }
       if (!direct) try { if (tagTalk(text)) return; } catch (e) { console.error(e); }
       if (!direct) try { if (blTalk(text)) return; } catch (e) { console.error(e); }
@@ -8369,6 +8376,8 @@
       '<div class="ppv-note">Off: Bloop only does tasks and answers app questions. On: he can also chat. It is taken out of memory whenever he does a task. It is a tiny model: it can be wrong, and it is not a counselor.</div>' +
       '<label class="ppv-c" style="display:block">Bloop\'s memory: <b id="ppv-mem-val"></b><input type="range" id="ppv-mem" min="0" max="8" step="1" style="width:100%;display:block"></label>' +
       '<div class="ppv-note">How many recent messages and replies are remembered while chatting. 0 forgets each message right away. Higher keeps more context but is slower. Tasks and commands never need memory.</div>' +
+      '<label class="ppv-c" style="display:block">Your favourite topics: <input type="text" id="ppv-topics" maxlength="200" placeholder="e.g. space, Minecraft, cooking, football"></label>' +
+      '<div class="ppv-note">Bloop will happily chat about these (with the chat brain on). You can also tell him in chat: my favourite topics are ...</div>' +
       '<div style="margin-top:10px"><b>How Bloop replies</b></div>' +
       '<label class="ppv-c" style="display:block">Chat reply length: <select id="ppv-clen" data-sync="ppvChatLen" style="width:100%;display:block">' + menuOpts(CHAT_LENS) + '</select></label>' +
       '<label class="ppv-c" style="display:block">Chat reply style: <select id="ppv-csty" data-sync="ppvChatStyle" style="width:100%;display:block">' + menuOpts(CHAT_STYLES) + '</select></label>' +
@@ -8387,6 +8396,7 @@
       cmod.innerHTML = Object.keys(mas.chat.models).filter(k => NATIVE || !mas.chat.models[k].lm).map(k => '<option value="' + k + '">' + mas.chat.models[k].label + '</option>').join('');
       cmod.value = mas.chat.key(); cmod.onchange = () => mas.chat.setModel(cmod.value);
       [['#ppv-clen', chatLenKey], ['#ppv-csty', chatStyleKey], ['#ppv-slen2', sumLenKey], ['#ppv-ssty2', sumStyleKey]].forEach(([q, f]) => { const x = p.querySelector(q); if (x) x.value = f(); });
+      { const tp = p.querySelector('#ppv-topics'); tp.value = favTopics(); tp.onchange = () => setFavTopics(tp.value); }
       const ms = p.querySelector('#ppv-mem'), mv = p.querySelector('#ppv-mem-val'), memTxt = n => n === 0 ? 'none' : n + (n === 1 ? ' exchange' : ' exchanges');
       ms.value = mas.chat.memory.get(); mv.textContent = memTxt(+ms.value);
       ms.oninput = () => { const n = mas.chat.memory.set(ms.value); mv.textContent = memTxt(n); };
