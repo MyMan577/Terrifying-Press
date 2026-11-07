@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="tbl" cx=".5" cy=".45" r=".75"><stop offset="0" stop-color="#1d5654"/><stop offset="1" stop-color="#06171a"/></radialGradient>
+    <linearGradient id="rb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff5a4e"/><stop offset=".34" stop-color="#f9c613"/><stop offset=".66" stop-color="#2e9e4f"/><stop offset="1" stop-color="#1e6fd9"/></linearGradient>
+    <pattern id="str" width="24" height="24" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="24" height="24" fill="#1d2132"/><rect width="12" height="24" fill="#262b40"/></pattern>
+    <filter id="sh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#000" flood-opacity=".5"/></filter>
+  </defs>
+  <rect width="512" height="512" fill="url(#tbl)"/>
+  <circle cx="256" cy="256" r="196" fill="none" stroke="#f9c613" stroke-opacity=".35" stroke-width="5" stroke-dasharray="16 14"/>
+  <!-- card back behind -->
+  <g filter="url(#sh)" transform="translate(196 262) rotate(-14)">
+    <rect x="-92" y="-136" width="184" height="272" rx="26" fill="#fff"/>
+    <rect x="-82" y="-126" width="164" height="252" rx="20" fill="url(#str)"/>
+    <rect x="-56" y="-56" width="112" height="112" rx="32" fill="url(#rb)"/>
+    <text y="-4" text-anchor="middle" font-family="Arial Black,Arial,sans-serif" font-weight="900" font-size="26" fill="#fff">LAST</text>
+    <text y="26" text-anchor="middle" font-family="Arial Black,Arial,sans-serif" font-weight="900" font-size="26" fill="#fff">CARD</text>
+  </g>
+  <!-- the last card, face up -->
+  <g filter="url(#sh)" transform="translate(316 250) rotate(10)">
+    <rect x="-92" y="-136" width="184" height="272" rx="26" fill="#fff"/>
+    <rect x="-82" y="-126" width="164" height="252" rx="20" fill="#e53935"/>
+    <rect x="-82" y="-126" width="164" height="252" rx="20" fill="url(#gl)" opacity="0"/>
+    <rect x="-62" y="-62" width="124" height="124" rx="40" fill="#fff"/>
+    <text y="40" text-anchor="middle" font-family="Arial Black,Arial,sans-serif" font-weight="900" font-size="112" fill="#e53935">1</text>
+    <text x="-60" y="-90" font-family="Arial Black,Arial,sans-serif" font-weight="900" font-size="38" fill="#fff">1</text>
+  </g>
+</svg>
