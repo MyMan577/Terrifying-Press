@@ -53,6 +53,18 @@ d.sub("""  // Award coins for winning
 """, "")
 d.cut_line("window._betRefreshCoinDisplay === 'function'", count=2)
 
+# ---- Press Play bridge: game music only while Press Play is silent ----
+# Press Play calls __ppHostMute(true) while its own music plays. Only the music
+# bus is muted; sound effects keep playing.
+d.sub("""  musicGain = audioCtx.createGain();
+  musicGain.gain.value = 0.28;""", """  musicGain = audioCtx.createGain();
+  musicGain.gain.value = window.__ppMusicMuted ? 0 : 0.28;""")
+d.sub("function initMusic() {", """window.__ppHostMute = function(m) {
+  window.__ppMusicMuted = !!m;
+  if (musicGain) musicGain.gain.value = m ? 0 : 0.28;
+};
+function initMusic() {""")
+
 # ---- plainer text: the longest ball descriptions ----
 d.text([
  ["Life-drain shots heal self for 40% of damage dealt", "Shots heal it for 40% of the damage. Attacks faster the more it has healed."],

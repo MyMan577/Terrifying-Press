@@ -8871,11 +8871,15 @@ let musicLoopStart = 0;
 let musicPlaying = false;
 let currentMusicTier = -1; // 0=calm, 1=mid, 2=intense
 
+window.__ppHostMute = function(m) {
+  window.__ppMusicMuted = !!m;
+  if (musicGain) musicGain.gain.value = m ? 0 : 0.28;
+};
 function initMusic() {
   if (!audioCtx) return;
   if (musicGain) return;
   musicGain = audioCtx.createGain();
-  musicGain.gain.value = 0.28;
+  musicGain.gain.value = window.__ppMusicMuted ? 0 : 0.28;
   musicGain.connect(audioCtx.destination);
 }
 

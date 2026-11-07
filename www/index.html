@@ -26405,7 +26405,11 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     background-size:cover; background-position:center; transition:opacity .35s ease; }
   .ppg-load::before{ content:''; position:absolute; inset:0; background:radial-gradient(circle at 50% 50%, rgba(0,0,0,.15), rgba(0,0,0,.85) 75%); }
   .ppg-load > *{ position:relative; }
-  .ppg-load img{ width:96px; height:96px; border-radius:24%; box-shadow:0 18px 40px -12px rgba(0,0,0,.9); }
+  .ppg-lart{ width:96px; height:96px; border-radius:24%; overflow:hidden; box-shadow:0 18px 40px -12px rgba(0,0,0,.9); }
+  .ppg-lart img{ width:100%; height:100%; display:block; }
+  .ppg-mono{ width:100%; height:100%; display:grid; place-items:center; position:relative; container-type:inline-size; }
+  .ppg-mono::after{ content:''; position:absolute; inset:0; background:radial-gradient(120% 80% at 25% 15%, rgba(255,255,255,.35), transparent 55%); }
+  .ppg-mono span{ position:relative; z-index:1; font-weight:800; font-size:34cqw; letter-spacing:1px; color:#fff; text-shadow:0 3px 10px rgba(0,0,0,.35); }
   .ppg-load .ppg-lname{ font-size:18px; font-weight:700; color:#fff; letter-spacing:.3px; }
   .ppg-load .ppg-bar{ width:120px; height:3px; border-radius:3px; background:rgba(255,255,255,.12); overflow:hidden; }
   .ppg-load .ppg-bar::after{ content:''; display:block; width:40%; height:100%; border-radius:3px; background:linear-gradient(90deg,#6ee7d0,#8b5cff); animation:ppgBar 1s ease-in-out infinite; }
@@ -26420,8 +26424,19 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   'use strict';
   var GAMES = [
     { id:'obby', name:'Obby Builder', tag:'Build a course, then beat it.', icon:'games/obby/icon.png', src:'games/obby/index.html', bg:'#101634', ownMusic:true, exitIn:'#sidebarHeader' },
-    { id:'nebula', name:'Nebula Touch', tag:'Stir a field of light with your fingers.', icon:'games/nebula/icon.png', src:'games/nebula/index.html', bg:'#07060d', loading:'games/nebula/loading.jpg' }
+    { id:'nebula', name:'Nebula Touch', tag:'Stir a field of light with your fingers.', icon:'games/nebula/icon.png', src:'games/nebula/index.html', bg:'#07060d', loading:'games/nebula/loading.jpg' },
+    { id:'toque', name:'Toque & Spear', tag:'Hunt, fight and bond with the spirits of the wild.', src:'games/toque/index.html', bg:'#2b1530', mono:'TS', grad:['#ff8a5c','#7a3fa8'] },
+    { id:'weaponball', name:'Weapon Ball', tag:'Pick your balls and watch them fight it out.', src:'games/weaponball/index.html', bg:'#e9edf5', mono:'WB', grad:['#ff5a5a','#3a7bff'], ownMusic:true },
+    { id:'anteup', name:'Ante Up', tag:'Play poker hands to beat ten antes.', src:'games/anteup/index.html', bg:'#0f2a1c', mono:'AU', grad:['#e8c15a','#1f6a45'] },
+    { id:'lastcard', name:'Last Card', tag:'Match colours and numbers. Be first to empty your hand.', src:'games/lastcard/index.html', bg:'#14403f', mono:'LC', grad:['#ff5a4e','#14b8a6'] },
+    { id:'blob', name:'Blob Barrage', tag:'Turn-based blob battles with silly weapons.', src:'games/blob/index.html', bg:'#dfe5f3', mono:'BB', grad:['#8fe3b0','#2f7fd0'] },
+    { id:'bastion', name:'Bastion Brawl', tag:'Send troops in and knock down the towers.', src:'games/bastion/index.html', bg:'#1a1430', mono:'BB', grad:['#ffb84d','#8b5cff'] }
   ];
+  // Until a game has its own icon, it gets a coloured tile with its initials.
+  function artHTML(g){
+    if (g.icon) return '<img src="' + g.icon + '" alt="" loading="lazy">';
+    return '<div class="ppg-mono" style="background:linear-gradient(135deg,' + g.grad[0] + ',' + g.grad[1] + ')"><span>' + esc(g.mono) + '</span></div>';
+  }
   var PAD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M7.6 6.5h8.8a5.2 5.2 0 0 1 5.1 4.2l.9 4.9a2.7 2.7 0 0 1-4.7 2.3l-2.1-2.4H8.4l-2.1 2.4a2.7 2.7 0 0 1-4.7-2.3l.9-4.9a5.2 5.2 0 0 1 5.1-4.2z"/><path fill="#5a3fc4" d="M6.6 9.3h1.6v1.6h1.6v1.6H8.2v1.6H6.6v-1.6H5v-1.6h1.6z"/><circle cx="16.2" cy="10.2" r="1.15" fill="#5a3fc4"/><circle cx="18" cy="12.3" r="1.15" fill="#5a3fc4"/></svg>';
   var CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
   var X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
@@ -26462,7 +26477,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   grid.innerHTML = '<div class="ppg-head"><button type="button" class="ppg-back" aria-label="Back">' + CHEV + '</button><h1 class="ppg-title">Games</h1></div>' +
     '<div class="ppg-sub">' + GAMES.length + ' games. Your music keeps playing.</div>' +
     '<div class="ppg-grid">' + GAMES.map(function(g){
-      return '<button type="button" class="ppg-card" data-game="' + g.id + '"><div class="ppg-art" style="background:' + g.bg + '"><img src="' + g.icon + '" alt="" loading="lazy"></div>' +
+      return '<button type="button" class="ppg-card" data-game="' + g.id + '"><div class="ppg-art" style="background:' + g.bg + '">' + artHTML(g) + '</div>' +
         '<div class="ppg-name">' + esc(g.name) + '</div><div class="ppg-tag">' + esc(g.tag) + '</div></button>';
     }).join('') + '</div>';
   document.body.appendChild(grid);
@@ -26506,7 +26521,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     load.className = 'ppg-load';
     load.style.backgroundColor = g.bg;
     if (g.loading) load.style.backgroundImage = 'url(' + g.loading + ')';
-    load.innerHTML = '<img src="' + g.icon + '" alt=""><div class="ppg-lname">' + esc(g.name) + '</div><div class="ppg-bar"></div>';
+    load.innerHTML = '<div class="ppg-lart">' + artHTML(g) + '</div><div class="ppg-lname">' + esc(g.name) + '</div><div class="ppg-bar"></div>';
     var exit = document.createElement('button');
     exit.type = 'button'; exit.className = 'ppg-exit'; exit.innerHTML = X + 'Exit';
     exit.addEventListener('click', closeGame);
