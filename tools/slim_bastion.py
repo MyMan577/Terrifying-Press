@@ -57,6 +57,12 @@ d.s = (d.s[:i] + "  const _deathSpawns = [];\n" + block +
        "    return isAlive;\n  });\n  if (_deathSpawns.length) state.units.push(..._deathSpawns);\n" +
        d.s[j + len("    return isAlive;\n  });\n"):])
 
+# ---- fix: the Bot Deck button sat on top of the title on phone-width screens ----
+# It was pinned to the top-left corner; now it takes its own line above the title.
+d.sub("""  #botDeckBtn {
+    position: absolute; top: 16px; left: 16px;""", """  #botDeckBtn {
+    position: relative; top: auto; left: auto; align-self: flex-start; margin: 0 0 6px; flex-shrink: 0;""")
+
 # ---- online multiplayer out ----
 d.cut_line('<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>')
 d.cut_line('<button id="multiplayerBtn" onclick="openMpModal()">')
