@@ -312,10 +312,14 @@
         return;
       }
       S.adopting = false; S.advancedUri = null;
-      await Player.loadMedia(Object.assign(metaFor(t, uri), { autoplay: false }));
-      await Player.setLoop({ loop: S.loop });
-      await Player.setVolume({ volume: S.muted ? 0 : S.vol });
-      await Player.setRate({ rate: S.rate, preservePitch: S.preservePitch });
+      // Loop, volume and rate belong to the player, not to the item, so they need not wait for the load: send them
+      // together (these four bridge round trips used to run one after another before play() could go through).
+      await Promise.all([
+        Player.loadMedia(Object.assign(metaFor(t, uri), { autoplay: false })),
+        Player.setLoop({ loop: S.loop }).catch(function () {}),
+        Player.setVolume({ volume: S.muted ? 0 : S.vol }).catch(function () {}),
+        Player.setRate({ rate: S.rate, preservePitch: S.preservePitch }).catch(function () {})
+      ]);
       pushFx(true);
       syncViz();
       scheduleRect();
