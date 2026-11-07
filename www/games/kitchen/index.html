@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Kitchen Rush</title>
+<script src="../qrlink/qrlink.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
   html, body {
@@ -181,27 +182,6 @@
   #helperPickModal .sub { font-size: 13px; color: #c9bfa8; margin-bottom: 18px; }
   #helperPickChoices { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; max-width: 440px; }
 
-  #coopModal {
-    position: absolute; inset: 0;
-    background: rgba(20,16,11,0.92);
-    display: none; flex-direction: column; align-items: center; justify-content: center;
-    color: #efe9db; text-align: center; z-index: 215; padding: 20px;
-  }
-  #coopModal h1 { font-size: 24px; color: #f2c76b; margin-bottom: 4px; font-weight: normal; letter-spacing: 0.5px; }
-  #coopModal .sub { font-size: 12.5px; color: #c9bfa8; margin-bottom: 14px; max-width: 340px; }
-  #coopModal input[type="text"] {
-    width: 100%; text-align: center; letter-spacing: 3px; text-transform: uppercase;
-    font-family: inherit; font-size: 18px; font-weight: bold;
-    background: rgba(0,0,0,0.3); color: #efe9db; border: 2px solid #9b8567; border-radius: 6px;
-    padding: 8px; margin-bottom: 10px;
-  }
-  #coopModal .btn.small { padding: 6px 14px; font-size: 12px; }
-  #coopRoomCode {
-    font-size: 30px; font-weight: bold; letter-spacing: 4px; color: #f2c76b;
-    background: rgba(0,0,0,0.3); border: 2px solid #9b8567; border-radius: 8px;
-    padding: 10px 18px; margin-bottom: 10px;
-  }
-
   #coopWaitOverlay {
     position: absolute; inset: 0;
     background: rgba(20,16,11,0.72);
@@ -334,7 +314,7 @@
   #modeBox  { top: 56px; right: 14px; display: none; color: #f2c76b; font-size: 13px; max-width: calc(100vw - 170px); text-align: right; }
   #exitBtn  { display: none; top: 96px; left: 14px; cursor: pointer; pointer-events: auto; z-index: 30; background: rgba(120,44,32,0.9); border-color: #d98a7c; font-size: 13px; }
   #exitBtn:active { transform: scale(0.95); }
-  #coopBox { display: none !important; } /* co-op needs PeerJS, which Press Play does not ship */
+  #game.in-kitchen #coopBox  { display: none; }
   #game.in-kitchen #exitBtn  { display: block; }
   /* timer only exists during a match (visibility keeps the HUD row spacing) */
   #timerBox { visibility: hidden; }
@@ -412,29 +392,6 @@
     <h1>PICK A HAND</h1>
     <div class="sub">Pick someone to help this shift.</div>
     <div id="helperPickChoices"></div>
-  </div>
-
-  <div id="coopModal">
-    <h1>CO-OP</h1>
-    <div class="sub">Always plays Endless Mode. Share a room code to connect.</div>
-    <div id="coopChoiceRow" style="display:flex; gap:12px;">
-      <button class="btn" id="coopHostBtn">HOST</button>
-      <button class="btn" id="coopJoinBtn">JOIN</button>
-    </div>
-
-    <div id="coopHostPanel" style="display:none; width:100%; max-width:360px; flex-direction:column; align-items:center;">
-      <p class="sub" style="margin-bottom:6px;">Share this code with your co-op partner:</p>
-      <div id="coopRoomCode">……</div>
-    </div>
-
-    <div id="coopJoinPanel" style="display:none; width:100%; max-width:360px;">
-      <p class="sub" style="margin-bottom:6px;">Enter the host's room code:</p>
-      <input type="text" id="coopJoinCodeInput" maxlength="6" placeholder="ABCD12">
-      <button class="btn" id="coopJoinConnectBtn">CONNECT</button>
-    </div>
-
-    <div id="coopStatus" class="sub" style="margin-top:10px; min-height:16px;"></div>
-    <button class="btn" id="coopCloseBtn" style="margin-top:12px;">CLOSE</button>
   </div>
 
   <div id="coopWaitOverlay">
@@ -691,6 +648,8 @@
     { id:'no_burn_run', icon:'🧯', name:'Clean Kitchen', desc:'Serve 5+ orders in a shift without burning anything', check:s=>s.noBurnRuns>=1 },
     { id:'upgrades_10', icon:'⬆️', name:'Upgraded', desc:'Choose 10 upgrades', check:s=>s.upgradesChosen>=10 },
     { id:'upgrades_50', icon:'⬆️', name:'Fully Loaded', desc:'Choose 50 upgrades', check:s=>s.upgradesChosen>=50 },
+    { id:'coop_play', icon:'🤜🤛', name:'Two Cooks, One Kitchen', desc:'Play a co-op shift', check:s=>s.coopGamesPlayed>=1 },
+    { id:'coop_5', icon:'🤜🤛', name:'Dynamic Duo', desc:'Play 5 co-op shifts', check:s=>s.coopGamesPlayed>=5 },
     { id:'helpers_hired_5', icon:'👥', name:'Building a Crew', desc:'Hire 5 helpers', check:s=>s.helpersHired>=5 },
     { id:'games_50', icon:'🎖️', name:'Veteran', desc:'Play 50 shifts', check:s=>s.gamesPlayed>=50 },
   ];
@@ -4939,11 +4898,10 @@
       .forEach(id => { document.getElementById(id).style.display = 'none'; });
     // leave any co-op session cleanly (null the state first so the close
     // handler doesn't show a "connection lost" banner for our own exit)
-    const conn = netConn, peer = netPeer;
-    netRole = null; netConnected = false; netConn = null; netPeer = null; netMyCode = null; coopActive = false;
+    const conn = netConn;
+    netRole = null; netConnected = false; netConn = null; coopActive = false;
     inputDir2 = null; inputMag2 = 0; moveVec2 = {dx:0,dy:0};
     try { if (conn) conn.close(); } catch(e){}
-    try { if (peer) peer.destroy(); } catch(e){}
     goToHub();
   }
   const exitBtnEl = document.getElementById('exitBtn');
@@ -4989,35 +4947,13 @@
   //   correctly on the host regardless.
   // - No reconnect handling - a dropped channel ends the session.
 
-  // Host-authoritative PeerJS transport (same pattern as Crown Clash): a
-  // public PeerJS relay (0.peerjs.com) handles the initial handshake via a
-  // short room code, then it's a direct peer-to-peer data connection - no
-  // server involved in gameplay traffic.
+  // Transport: QRLink (../qrlink/qrlink.js). The phones trade QR codes once,
+  // then talk directly over a WebRTC data channel. No server involved.
   let netRole = null;       // null | 'host' | 'guest'
   let netConnected = false;
-  let netPeer = null;
   let netConn = null;
-  let netMyCode = null;
   let netLastSnapAt = 0;
   const NET_SNAPSHOT_MS = 20; // ~50 snapshots/sec - host has plenty of headroom at 60fps
-  const NET_ID_PREFIX = 'kitchenrush-';
-
-  function setCoopStatus(msg){ document.getElementById('coopStatus').textContent = msg; }
-
-  function netGenRoomCode(){
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = '';
-    for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
-    return code;
-  }
-
-  function netSetupConn(conn, role){
-    netConn = conn;
-    conn.on('open', () => { netRole = role; netConnected = true; netOnConnected(); });
-    conn.on('data', msg => netOnMessage(msg));
-    conn.on('close', () => netOnDisconnected());
-    conn.on('error', () => netOnDisconnected());
-  }
 
   // Called when the connection closes or drops. Host: keeps running solo
   // (player2 just stops receiving input) but shows a banner so it's clear
@@ -5030,8 +4966,8 @@
     document.getElementById('coopWaitOverlay').style.display = 'none';
     const banner = document.getElementById('coopDisconnectBanner');
     document.getElementById('coopDisconnectText').textContent = wasHost
-      ? "Your co-op partner disconnected. You can keep playing solo, or head back to the hub."
-      : "Lost connection to the host.";
+      ? "Your partner left. Keep playing solo, or head back to the hub."
+      : "Lost the connection to the host.";
     document.getElementById('coopDisconnectOkBtn').textContent = wasHost ? 'DISMISS' : 'RETURN TO HUB';
     banner.style.display = 'flex';
     if (wasHost){
@@ -5058,82 +4994,15 @@
     if (netConn && netConn.open) netConn.send(obj);
   }
 
-  // ---- HOST SIDE ----
-  function netHostStart(){
-    if (netPeer) { netPeer.destroy(); netPeer = null; }
-    const code = netGenRoomCode();
-    netMyCode = code;
-    document.getElementById('coopRoomCode').textContent = '……';
-    setCoopStatus('Connecting to relay…');
-
-    netPeer = new Peer(NET_ID_PREFIX + code, {
-      host: '0.peerjs.com', port: 443, path: '/', secure: true,
-      config: { iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-      ]},
-    });
-
-    netPeer.on('open', () => {
-      document.getElementById('coopRoomCode').textContent = code;
-      setCoopStatus('Share this code with your co-op partner.');
-    });
-
-    netPeer.on('connection', conn => {
-      netSetupConn(conn, 'host');
-      setCoopStatus('✅ Partner connected! Starting…');
-    });
-
-    netPeer.on('error', err => {
-      if (err.type === 'unavailable-id') {
-        netPeer.destroy();
-        netHostStart();
-      } else {
-        setCoopStatus('⚠️ Connection error. Refresh and retry.');
-      }
-    });
-  }
-
-  // ---- GUEST SIDE ----
-  function netJoinRoom(){
-    const raw = document.getElementById('coopJoinCodeInput').value.trim().toUpperCase();
-    if (raw.length < 4){ setCoopStatus('Enter the 6-character room code.'); return; }
-    if (!netPeer){
-      netPeer = new Peer(NET_ID_PREFIX + 'join-' + Math.random().toString(36).slice(2, 8), {
-        host: '0.peerjs.com', port: 443, path: '/', secure: true,
-        config: { iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-        ]},
-      });
-    }
-    setCoopStatus('Connecting…');
-    document.getElementById('coopJoinConnectBtn').disabled = true;
-
-    function doJoin(){
-      const conn = netPeer.connect(NET_ID_PREFIX + raw, { reliable: true });
-      netSetupConn(conn, 'guest');
-      conn.on('open', () => setCoopStatus('✅ Connected! Starting…'));
-      conn.on('error', () => {
-        setCoopStatus('⚠️ Could not find that room. Check the code.');
-        document.getElementById('coopJoinConnectBtn').disabled = false;
-      });
-    }
-
-    if (netPeer.open){
-      doJoin();
-    } else {
-      netPeer.on('open', doJoin);
-      netPeer.on('error', () => {
-        setCoopStatus('⚠️ Connection failed. Refresh and retry.');
-        document.getElementById('coopJoinConnectBtn').disabled = false;
-      });
-    }
+  function netStart(conn, role){
+    netConn = conn; netRole = role; netConnected = true;
+    conn.on('data', netOnMessage);
+    conn.on('close', () => { if (netConn === conn) netOnDisconnected(); });
+    netOnConnected();
   }
 
   // ---- ON CONNECTED ----
   function netOnConnected(){
-    document.getElementById('coopModal').style.display = 'none';
     coopActive = true;
     gameMode = 'endless'; // co-op is always Endless Mode
     document.getElementById('actionZone').style.display = 'flex';
@@ -5175,6 +5044,8 @@
   // ---- HOST: BUILD + BROADCAST SNAPSHOT ----
   function netMaybeBroadcastSnapshot(ts){
     if (ts - netLastSnapAt < NET_SNAPSHOT_MS) return;
+    // if the link is backed up, skip a frame instead of piling up stale snapshots
+    if (netConn && netConn.buffered && netConn.buffered() > 64 * 1024) return;
     netLastSnapAt = ts;
     sendNet({ t:'snap', s: netBuildSnapshot() });
   }
@@ -5268,33 +5139,23 @@
     }
   }
 
-  // ---- MODAL WIRING ----
+  // ---- CO-OP BUTTON ----
   const coopBoxEl = document.getElementById('coopBox');
-  const coopModalEl = document.getElementById('coopModal');
-  function openCoopModal(){
-    coopModalEl.style.display = 'flex';
-    document.getElementById('coopChoiceRow').style.display = 'flex';
-    document.getElementById('coopHostPanel').style.display = 'none';
-    document.getElementById('coopJoinPanel').style.display = 'none';
-    setCoopStatus('');
+  let coopLinkOpen = false;
+  function openCoopLink(){
+    if (coopLinkOpen || scene !== 'hub' || netConnected) return;
+    if (!window.QRLink){ showToast('Co-op isn\'t available'); return; }
+    coopLinkOpen = true;
+    QRLink.open({
+      app: 'kitchen', accent: '#d99a3e',
+      title: 'Co-op',
+      hint: 'Two chefs, one kitchen, Endless mode. One phone hosts, the other joins.',
+      onConnected: (conn, role) => { coopLinkOpen = false; netStart(conn, role); },
+      onCancel: () => { coopLinkOpen = false; }
+    });
   }
-  coopBoxEl.addEventListener('click', () => { if (scene === 'hub' && !netConnected) openCoopModal(); });
-  coopBoxEl.addEventListener('touchend', e => { e.preventDefault(); if (scene === 'hub' && !netConnected) openCoopModal(); }, {passive:false});
-
-  document.getElementById('coopHostBtn').addEventListener('click', () => {
-    document.getElementById('coopChoiceRow').style.display = 'none';
-    document.getElementById('coopHostPanel').style.display = 'flex';
-    netHostStart();
-  });
-  document.getElementById('coopJoinBtn').addEventListener('click', () => {
-    document.getElementById('coopChoiceRow').style.display = 'none';
-    document.getElementById('coopJoinPanel').style.display = 'block';
-  });
-  document.getElementById('coopJoinConnectBtn').addEventListener('click', netJoinRoom);
-  document.getElementById('coopCloseBtn').addEventListener('click', () => {
-    coopModalEl.style.display = 'none';
-    if (netPeer && !netConnected){ netPeer.destroy(); netPeer = null; netMyCode = null; }
-  });
+  coopBoxEl.addEventListener('click', openCoopLink);
+  coopBoxEl.addEventListener('touchend', e => { e.preventDefault(); openCoopLink(); }, {passive:false});
   // ==================== END CO-OP NETWORKING ====================
 
   // boot straight into the free-roam hub

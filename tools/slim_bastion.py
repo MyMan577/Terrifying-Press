@@ -3,7 +3,8 @@
 
 Generic fantasy names (Knight, Valkyrie, Witch, Baby Dragon...) stay. Only
 the names that are Clash Royale's own get new ones, along with the game's
-name. Online multiplayer (PeerJS) is removed: bot battles only.
+name. Online play runs over QR Link (two phones scan each other's code)
+instead of PeerJS.
 usage: slim_bastion.py <in> <out>"""
 import sys, os, re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -63,11 +64,41 @@ d.sub("""  #botDeckBtn {
     position: absolute; top: 16px; left: 16px;""", """  #botDeckBtn {
     position: relative; top: auto; left: auto; align-self: flex-start; margin: 0 0 6px; flex-shrink: 0;""")
 
-# ---- online multiplayer out ----
-d.cut_line('<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>')
-d.cut_line('<button id="multiplayerBtn" onclick="openMpModal()">')
+# ---- online play: PeerJS out, QR Link in ----
+# The phones connect by scanning each other's QR code (www/games/qrlink).
+# The new online code lives in tools/bastion_mp.js and replaces the old block.
+MP_JS = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bastion_mp.js'), encoding='utf-8').read()
+d.sub('<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>',
+      '<script src="../qrlink/qrlink.js"></script>')
+d.sub('<button id="multiplayerBtn" onclick="openMpModal()">🌐 Multiplayer</button>',
+      '<button id="multiplayerBtn" onclick="openMpModal()">📱 Play a friend</button>')
 d.cut('<!-- Multiplayer Modal -->', '<button class="mp-btn-ghost" onclick="closeMpModal()">← Back to Deck</button>\n</div>\n')
 d.cut('// ── Room code generation', 'const DLC_CLAIMED_KEY', keep_end=True)
+d.sub('// ── Host-Authoritative Multiplayer (PeerJS) ──', '// ── Host-Authoritative Multiplayer (QR Link) ──')
+d.sub('the host broadcasts full authoritative state at ~20 Hz.', 'the host broadcasts full authoritative state at ~30 Hz.')
+d.sub('const SYNC_MS = 50; // 20 Hz state push from host → joiner', 'const SYNC_MS = 33; // ~30 Hz state push from host → joiner')
+d.sub('  myCode: null,\n', '  inMatch: false, meReady: false, themReady: false,\n')
 d.cut('function openMpModal() {', 'function toggleMute() {', keep_end=True)
+d.sub('function toggleMute() {', MP_JS + 'function toggleMute() {')
+# end of match: tell the other phone once, then offer a rematch
+d.sub("""  if (mp && mp.active && mp.conn) {
+    try { mp.conn.send({ type: 'end', result, msg }); } catch(e) {}
+    mp.active = false;
+  }""", "  mpOnEnd(result, msg);")
+# emotes: the joiner sends its own; the host's travel in the snapshot
+d.sub("""  if (state.isMultiplayer && team === 'player') {
+    if (mp.isHost) {
+      if (mp.conn && mp.active) mp.conn.send({ type: 'input', plays: [{ type: 'emote', emoteId, team: 'player' }] });
+    } else {
+      mp.pendingLocalPlays.push({ type: 'emote', emoteId, team: 'player' });
+    }
+  }""", """  if (state.isMultiplayer && team === 'player' && !mp.isHost) {
+    mp.pendingLocalPlays.push({ type: 'emote', emoteId });
+  }""")
+# Leave in an online match forfeits it (it used to do nothing)
+d.sub("""function leaveGame() {
+  if (!state || state.isMultiplayer) return;""", """function leaveGame() {
+  if (!state) return;
+  if (state.isMultiplayer) { if (state.running) endGame('lose', 'You left the match.'); return; }""")
 
 d.save(sys.argv[2])
