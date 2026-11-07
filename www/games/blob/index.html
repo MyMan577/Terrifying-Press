@@ -1112,7 +1112,7 @@ function renderSetup(){if(subPg){renderSub();return}const d=SD,sc=document.getEl
  +(banOpen?`<div class="bg">${items.map(i=>`<button class="ib${d.ban.includes(i)?'':' al'}" data-b="${i}">${WPN[i].n}</button>`).join('')}</div><div class="bt2"><button id="ball">Allow all</button><button id="bnone">Ban all</button></div><div style="height:8px"></div>`:'')+`</div>`
  +`<div class="sec">Bots</div><div class="grp">`+sw('Random bot names','an',d.an)+sw('Bot personalities','pe',d.pe)+`</div><div class="sec">Players</div>`;
  for(let t=0;t<d.nt;t++){const nb=d.bots[t].filter(Boolean).length;h+=`<div class="tc" style="--c:${TCOL[t]}"><div class="th"><b>${TN[t]} team</b><small>${d.nw-nb} Human · ${nb} Bot</small></div><div class="chips">`;for(let i=0;i<d.nw;i++)h+=`<button class="chip${d.bots[t][i]?' bot':''}" data-t="${t}" data-i="${i}"><span class="n">${i+1}</span>${d.bots[t][i]?'Bot':'Human'}</button>`;h+='</div></div>'}
- h+=`<p class="hint">Tap a blob to switch it between Human and Bot. Options lock once a match starts.</p><div class="ba"><button id="suc">Cancel</button><button id="suok">Start match</button></div>`;
+ h+=`<p class="hint">Tap a blob to switch it between Human and Bot. Start match begins a new match with these settings; Cancel goes back to this one.</p><div class="ba"><button id="suc">Cancel</button><button id="suok">Start match</button></div>`;
  const e=document.getElementById('sup');e.innerHTML=h;e.scrollTop=sc}
 let subPg=null,subSc=0;
 function kitOf(c,u){return u in c.si?c.si[u]:(c.lo?0:(DEFK[u]||0))}
@@ -1193,6 +1193,6 @@ if(subPg){subClick(b);return}
  nd.addEventListener('pointerdown',e=>{if(e.target===nd)close()})}
 init();openSetup();let last=0,acc=0;
 const mSet=document.getElementById('m');
-function L(t){acc+=Math.min(50,t-last);last=t;while(acc>=16.67){if(!npz){update();cam();fr++}acc-=16.67}draw();syncW();mSet.disabled=state!='over';requestAnimationFrame(L)}
+function L(t){acc+=Math.min(50,t-last);last=t;while(acc>=16.67){if(!npz){update();cam();fr++}acc-=16.67}draw();syncW();requestAnimationFrame(L)}
 requestAnimationFrame(L);
 </script></body></html>
