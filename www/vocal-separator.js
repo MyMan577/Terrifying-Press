@@ -1406,11 +1406,12 @@
     const parents = {}; (r.style || []).forEach(([n, p]) => { const m = n.match(/\(([^)]*)\)$/), g = m ? m[1] : n; parents[g] = Math.max(parents[g] || 0, p); });
     const gp = Object.entries(parents).filter(v => v[1] > 0);
     const topRel = (a, n) => { const m = Math.max(0, ...a.map(v => v[1])); return m > 0 ? top(a, n, m * 0.35) : 'none'; };
-    if (gp.length && topRel(gp, 3) !== 'none') L.push('Genre: ' + topRel(gp, 3));
+    const gpMax = Math.max(0, ...gp.map(v => v[1])), dOK = gpMax >= 0.15;   // Discogs genres only when they are confident; otherwise the AudioSet genre (the one that worked in the older build)
+    if (dOK) L.push('Genre: ' + topRel(gp, 3));
     else if (r.genre) { const g = top(r.genre, 3, 0.1); L.push(g === 'none' ? 'Genre (unclear): ' + top(r.genre, 2, 0) : 'Genre: ' + g); }
     if (r.style && topRel(r.style, 4) !== 'none') L.push('Style: ' + topRel(r.style, 4));
     if (r.styleDbg) L.push('(styles: ' + r.styleDbg + ')');
-    if (gp.length && r.genre) { const g = top(r.genre, 2, 0.15); if (g !== 'none') L.push('Also sounds like: ' + g); }
+    if (dOK && r.genre) { const g = top(r.genre, 2, 0.15); if (g !== 'none') L.push('Also sounds like: ' + g); }
     const hd = Object.values(r.heads || {}), MOODS = ['happy', 'sad', 'relaxed', 'aggressive', 'party'];
     const moods = Object.entries(r.heads || {}).filter(([id, h]) => MOODS.includes(id) && h.kind === 'binary').map(([id, h]) => [h.label, h.p[h.pos]]);
     if (moods.length >= 3) { const m = top(moods, 3, 0.5); L.push(m === 'none' ? 'Mood (leaning): ' + top(moods, 2, 0) : 'Mood: ' + m); }
@@ -1446,7 +1447,7 @@
       c.gp = rel(Object.entries(par), 3); c.st = rel(r.style, 5);   // relative to the strongest style: the absolute level varies a lot between models   // averaged style activations are small by nature, so the cut-offs are low
     }
     c.gn = top(r.genre, 3, 0.08); c.md = top(r.mood, 3, 0.08);
-    if (c.gp && c.gp.length) c.gn = c.gp;                              // Discogs-EffNet genres are far stronger than AudioSet's
+    if (c.gp && c.gp.length && c.gp[0][1] >= 15) c.gn = c.gp; else if (c.gp) c.gp = [];   // weak Discogs genres: keep the AudioSet genre                              // Discogs-EffNet genres are far stronger than AudioSet's
     if (r.genre && !c.gn.length) c.gn = top(r.genre, 2, 0); if (r.mood && !c.md.length) c.md = top(r.mood, 2, 0);
     const ins = {}; (r.inst || []).forEach(([n, p]) => { if (p >= 0.4) ins[n] = p; }); (r.inst2 || []).forEach(([n, p]) => { if (p >= 0.2) ins[n] = Math.max(ins[n] || 0, p); });
     c.in = top(Object.entries(ins), 8, 0);
