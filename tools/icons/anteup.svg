@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="felt" cx=".5" cy=".38" r=".8"><stop offset="0" stop-color="#2f6b4a"/><stop offset=".7" stop-color="#173d2a"/><stop offset="1" stop-color="#0c2418"/></radialGradient>
+    <filter id="sh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#000" flood-opacity=".45"/></filter>
+    <g id="card"><rect x="-70" y="-100" width="140" height="200" rx="16" fill="#f8f3e6"/><rect x="-70" y="-100" width="140" height="200" rx="16" fill="none" stroke="#c9a227" stroke-width="4"/></g>
+  </defs>
+  <rect width="512" height="512" fill="url(#felt)"/>
+  <circle cx="256" cy="230" r="190" fill="none" stroke="#c9a227" stroke-opacity=".18" stroke-width="3"/>
+  <g filter="url(#sh)">
+    <g transform="translate(176 248) rotate(-18)"><use href="#card"/>
+      <text x="-50" y="-58" font-family="Georgia,serif" font-weight="700" font-size="40" fill="#b8222a">K</text>
+      <text x="0" y="22" text-anchor="middle" font-family="Georgia,serif" font-size="72" fill="#b8222a">♥</text></g>
+    <g transform="translate(256 228)"><use href="#card"/>
+      <text x="-50" y="-58" font-family="Georgia,serif" font-weight="700" font-size="40" fill="#1d1d24">A</text>
+      <text x="0" y="24" text-anchor="middle" font-family="Georgia,serif" font-size="80" fill="#1d1d24">♠</text></g>
+    <g transform="translate(336 248) rotate(18)"><use href="#card"/>
+      <text x="-50" y="-58" font-family="Georgia,serif" font-weight="700" font-size="40" fill="#b8222a">Q</text>
+      <text x="0" y="22" text-anchor="middle" font-family="Georgia,serif" font-size="72" fill="#b8222a">♦</text></g>
+  </g>
+  <!-- chip -->
+  <g filter="url(#sh)" transform="translate(372 392)">
+    <circle r="62" fill="#c9a227"/>
+    <circle r="62" fill="none" stroke="#fff3c4" stroke-width="12" stroke-dasharray="20 18"/>
+    <circle r="40" fill="#e8c15a"/><circle r="40" fill="none" stroke="#8a6a10" stroke-width="3"/>
+    <text y="15" text-anchor="middle" font-family="Georgia,serif" font-weight="700" font-size="42" fill="#5a4208">$</text>
+  </g>
+</svg>

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7cc4ff"/><stop offset="1" stop-color="#d8eeff"/></linearGradient>
+    <linearGradient id="dirt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8a5a32"/><stop offset="1" stop-color="#4a2e18"/></linearGradient>
+    <radialGradient id="boom" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff6c0"/><stop offset=".45" stop-color="#ffb13a"/><stop offset=".8" stop-color="#ff5a1f"/><stop offset="1" stop-color="#ff5a1f" stop-opacity="0"/></radialGradient>
+    <filter id="sh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#1a2440" flood-opacity=".35"/></filter>
+  </defs>
+  <rect width="512" height="512" fill="url(#sky)"/>
+  <ellipse cx="110" cy="110" rx="70" ry="26" fill="#fff" opacity=".8"/><ellipse cx="420" cy="80" rx="56" ry="20" fill="#fff" opacity=".7"/>
+  <!-- explosion on the far hill -->
+  <circle cx="400" cy="250" r="88" fill="url(#boom)"/>
+  <path d="M300 300 Q400 230 512 268 V512 H300Z" fill="#6aa84f"/>
+  <path d="M300 312 Q400 244 512 280 V512 H300Z" fill="url(#dirt)"/>
+  <!-- near hill -->
+  <path d="M0 360 Q150 300 330 372 T512 420 V512 H0Z" fill="#6aa84f"/>
+  <path d="M0 374 Q150 314 330 386 T512 434 V512 H0Z" fill="url(#dirt)"/>
+  <rect y="470" width="512" height="42" fill="#2878d0" opacity=".85"/>
+  <!-- rocket in flight -->
+  <path d="M260 196 Q320 150 372 200" fill="none" stroke="#ffffff" stroke-width="5" stroke-dasharray="4 14" stroke-linecap="round" opacity=".8"/>
+  <g transform="translate(378 206) rotate(40)"><rect x="-16" y="-6" width="30" height="12" rx="3" fill="#cfd4dc"/><path d="M14 -6 L26 0 L14 6Z" fill="#d93a2b"/><path d="M-16 -6 L-26 -12 L-22 0 L-26 12 L-16 6Z" fill="#d93a2b"/></g>
+  <!-- the blob with a bazooka -->
+  <g filter="url(#sh)" transform="translate(170 300)">
+    <ellipse cx="0" cy="0" rx="78" ry="86" fill="#8fe3b0"/>
+    <ellipse cx="-26" cy="-38" rx="26" ry="16" fill="#ffffff" opacity=".55" transform="rotate(-20 -26 -38)"/>
+    <rect x="-74" y="-60" width="148" height="20" rx="8" fill="#2a6fe0"/>
+    <path d="M70 -54 L104 -70 L96 -44 Z" fill="#2a6fe0"/>
+    <circle cx="14" cy="-12" r="16" fill="#fff"/><circle cx="52" cy="-12" r="16" fill="#fff"/>
+    <circle cx="20" cy="-10" r="8" fill="#16202c"/><circle cx="58" cy="-10" r="8" fill="#16202c"/>
+    <path d="M14 24 Q34 38 56 24" fill="none" stroke="#16202c" stroke-width="6" stroke-linecap="round"/>
+    <g transform="rotate(-28 20 30)"><rect x="-10" y="16" width="120" height="30" rx="8" fill="#6b7a45"/><rect x="-10" y="38" width="120" height="8" fill="#4a5630"/><rect x="104" y="12" width="14" height="38" rx="3" fill="#2e3519"/><rect x="34" y="16" width="10" height="30" fill="#d9b52e"/></g>
+  </g>
+</svg>

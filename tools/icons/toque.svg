@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff9a5c"/><stop offset=".45" stop-color="#f0607a"/><stop offset=".75" stop-color="#8a4fb0"/><stop offset="1" stop-color="#3a2a6a"/>
+    </linearGradient>
+    <radialGradient id="sun" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#fff6d8"/><stop offset=".6" stop-color="#ffe08a"/><stop offset="1" stop-color="#ffb35c" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#sky)"/>
+  <circle cx="300" cy="250" r="150" fill="url(#sun)"/>
+  <circle cx="300" cy="250" r="88" fill="#fff1c4"/>
+  <!-- far hills and water -->
+  <path d="M0 330 Q90 290 170 318 T340 300 T512 312 V512 H0Z" fill="#4a3478"/>
+  <rect y="360" width="512" height="152" fill="#2a2458"/>
+  <g stroke="#ffffff" stroke-opacity=".18" stroke-width="3" stroke-linecap="round">
+    <line x1="230" y1="380" x2="370" y2="380"/><line x1="250" y1="398" x2="350" y2="398"/><line x1="270" y1="416" x2="330" y2="416"/>
+  </g>
+  <path d="M0 440 Q120 420 230 446 T512 436 V512 H0Z" fill="#1a1530"/>
+  <!-- Kanata -->
+  <g fill="#0d0a14">
+    <rect x="128" y="372" width="30" height="96" rx="12"/>
+    <rect x="168" y="372" width="30" height="96" rx="12"/>
+    <path d="M112 248 Q163 230 214 248 L222 380 H104 Z"/>
+    <circle cx="163" cy="206" r="46"/>
+    <path d="M205 262 L262 318" stroke="#0d0a14" stroke-width="22" stroke-linecap="round"/>
+    <!-- spear -->
+    <rect x="268" y="96" width="12" height="372" rx="5" transform="rotate(8 274 282)"/>
+    <path d="M276 52 L300 104 L254 100 Z" transform="rotate(8 274 282)"/>
+  </g>
+  <!-- the red toque -->
+  <path d="M117 186 Q118 120 163 112 Q210 118 211 186 Z" fill="#d81e3a"/>
+  <rect x="112" y="178" width="104" height="22" rx="8" fill="#b0122c"/>
+  <circle cx="163" cy="108" r="13" fill="#d81e3a"/>
+</svg>

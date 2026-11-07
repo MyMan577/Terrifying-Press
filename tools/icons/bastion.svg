@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a2a7a"/><stop offset="1" stop-color="#140f2c"/></linearGradient>
+    <linearGradient id="stone" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7d7a92"/><stop offset=".5" stop-color="#b5b2c8"/><stop offset="1" stop-color="#6a6780"/></linearGradient>
+    <radialGradient id="glow" cx=".5" cy=".42" r=".55"><stop offset="0" stop-color="#ffb84d" stop-opacity=".45"/><stop offset="1" stop-color="#ffb84d" stop-opacity="0"/></radialGradient>
+    <filter id="sh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000" flood-opacity=".5"/></filter>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect width="512" height="512" fill="url(#glow)"/>
+  <g fill="#ffffff" opacity=".6"><circle cx="80" cy="70" r="2.5"/><circle cx="430" cy="110" r="2"/><circle cx="380" cy="46" r="1.8"/><circle cx="120" cy="150" r="1.6"/></g>
+  <!-- crossed swords behind -->
+  <g filter="url(#sh)">
+    <g transform="rotate(-38 256 290)"><rect x="248" y="70" width="16" height="300" rx="3" fill="#dfe4ee"/><rect x="252" y="70" width="4" height="300" fill="#fff"/><path d="M248 70 L256 40 L264 70Z" fill="#dfe4ee"/><rect x="222" y="366" width="68" height="14" rx="6" fill="#c9a227"/><rect x="250" y="380" width="12" height="44" rx="4" fill="#6b3a1a"/></g>
+    <g transform="rotate(38 256 290)"><rect x="248" y="70" width="16" height="300" rx="3" fill="#dfe4ee"/><rect x="252" y="70" width="4" height="300" fill="#fff"/><path d="M248 70 L256 40 L264 70Z" fill="#dfe4ee"/><rect x="222" y="366" width="68" height="14" rx="6" fill="#c9a227"/><rect x="250" y="380" width="12" height="44" rx="4" fill="#6b3a1a"/></g>
+  </g>
+  <!-- the keep -->
+  <g filter="url(#sh)">
+    <path d="M166 210 H346 V440 H166 Z" fill="url(#stone)"/>
+    <path d="M150 178 h36 v32 h-36z M208 178 h36 v32 h-36z M268 178 h36 v32 h-36z M326 178 h36 v32 h-36z" fill="#9a97b0"/>
+    <rect x="150" y="200" width="212" height="22" fill="#8a879f"/>
+    <path d="M226 440 V370 Q256 336 286 370 V440 Z" fill="#2a1a10"/>
+    <g fill="#4a4660" opacity=".5"><rect x="180" y="250" width="40" height="8" rx="2"/><rect x="292" y="282" width="40" height="8" rx="2"/><rect x="196" y="316" width="36" height="8" rx="2"/></g>
+    <rect x="248" y="96" width="8" height="90" fill="#5a4a2a"/>
+    <path d="M256 100 H332 L314 124 L332 148 H256 Z" fill="#ff7a4d"/>
+    <path d="M276 114 l8 8 l12 -16" fill="none" stroke="#fff3c4" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <path d="M0 440 Q256 410 512 440 V512 H0Z" fill="#2a6a3a"/>
+</svg>
