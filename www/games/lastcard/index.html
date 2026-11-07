@@ -33,6 +33,8 @@ html,body{text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased;h
 #hand{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom,0px) + 6px);height:calc(var(--ch)*1.3);display:flex;justify-content:center;align-items:flex-end;padding:0 8px}
 #hand .card{margin-left:var(--ov,0);transform-origin:50% 130%;transform:translateY(calc(var(--ty,0px) + var(--lift,0px))) rotate(var(--rot,0deg)) scale(var(--sc,1));transition:transform .2s,filter .2s;cursor:pointer}
 #hand .card:first-child{margin-left:0}
+#hand.scroll{justify-content:flex-start;overflow-x:auto;overflow-y:hidden;height:calc(var(--ch)*1.3 + 40px);padding:0 14px;scrollbar-width:none;-webkit-overflow-scrolling:touch}#hand.scroll::-webkit-scrollbar{display:none}
+#hand.scroll .card:last-child{margin-right:76px}
 #hand .ok{--lift:-18px}#hand .ok:hover{--lift:-36px;--sc:1.14;z-index:5}#hand .ok:active{--sc:1.24}#hand .dim{filter:brightness(.5)}
 #bar{position:absolute;left:0;right:0;bottom:calc(var(--ch)*1.3 + 14px + env(safe-area-inset-bottom,0px));display:flex;justify-content:center;gap:10px}
 .btn{font:inherit;font-family:'Lilita One',sans-serif;font-size:18px;border:0;border-radius:99px;padding:8px 20px;background:#fff;color:#16302f;cursor:pointer;box-shadow:0 4px 0 #0005}
@@ -486,12 +488,14 @@ function renderSeats(){G.p.forEach((p,i)=>{if(!i)return;const m=(S.mode==='flip'
  {const e=cardEl(0,1);e.style.cssText=rackStyle(i,o,1);f+=e.outerHTML}}
  const e=$('#s'+i);e.className='seat'+(G.cur===i&&!G.over?' act':'')+(G.pick?' pick':'')+(G.p[i].out?' out':'');
  e.innerHTML=`<div class="fan" style="transform:rotate(${(S.mode==='flip'||S.mode==='open')?0:seatRot(i).toFixed(1)}deg)">${f}</div><div class="pill">${p.name}<span>${p.hand.length}</span>${S.mode==='party'&&G.lk&&G.lk.includes(i)?'<em style="font-style:normal">&#9939;</em>':''}</div>`})}
-function renderHand(){const h=$('#hand');h.innerHTML='';const n=me().hand.length,mine=G.cur===0&&!G.busy&&!G.over;if(G.pn!=null&&n>G.pn)G.called=0;G.pn=n;
+function renderHand(){const h=$('#hand'),sl=h.scrollLeft;h.innerHTML='';const n=me().hand.length,mine=G.cur===0&&!G.busy&&!G.over;if(G.pn!=null&&n>G.pn)G.called=0;G.pn=n;
  [...me().hand].sort((a,b)=>COLS.concat('k').indexOf(a.c)-COLS.concat('k').indexOf(b.c)||VO.indexOf(a.v)-VO.indexOf(b.v)).forEach((c,i)=>{
   const e=cardEl(c),m=i-(n-1)/2,can=G.mpr?ok(c):mine?(G.drew?c.id===G.drew.id:((S.liar&&S.bluff)||ok(c))):(S.jump&&G.jr&&jumpable(c));
-  e.style.setProperty('--rot',m*Math.min(3,18/n)+'deg');e.style.setProperty('--ty',m*m*(n>8?.35:.6)+'px');
+  const hw=(n-1)/2||1;e.style.setProperty('--rot',m*Math.min(3,18/n)+'deg');e.style.setProperty('--ty',m*m*Math.min(n>8?.35:.6,22/(hw*hw))+'px');
   if(can)e.classList.add('ok');else if(mine||G.mpr)e.classList.add('dim');e.onclick=()=>clickCard(c);h.appendChild(e)});
- const w=h.firstChild?h.firstChild.offsetWidth:0;h.style.setProperty('--ov',(n>1?Math.round((Math.min(w*.62,(h.clientWidth-16-w)/(n-1))-w)*(devicePixelRatio||1))/(devicePixelRatio||1):0)+'px');
+ const w=h.firstChild?h.firstChild.offsetWidth:0,fit=n>1?(h.clientWidth-16-w)/(n-1):w,tight=n>1&&fit<w*.36;h.classList.toggle('scroll',tight);
+ if(tight)h.querySelectorAll('.card').forEach(e=>{e.style.setProperty('--rot','0deg');e.style.setProperty('--ty','0px')});
+ const step=tight?w*.4:Math.min(w*.62,fit);h.style.setProperty('--ov',(n>1?Math.round((step-w)*(devicePixelRatio||1))/(devicePixelRatio||1):0)+'px');if(tight)h.scrollLeft=sl;
  $('#deck').classList.toggle('pulse',(mine&&!G.drew||!!G.mpr)&&!me().hand.some(ok));
  $('#pass').hidden=!(mine&&G.drew);$('#cb').hidden=!(S.calls&&mine&&!G.drew&&!G.cu);$('#uno').hidden=!(mine&&n===2&&!G.called&&!G.dl&&!G.drew);$('#uno').classList.toggle('hot',!$('#uno').hidden);const bb=$('#bluff');bb.hidden=!S.liar||G.over||G.dl;bb.textContent='Bluff: '+(S.bluff?'on':'off');bb.style.background=S.bluff?'#f9c613':'';$('#rqb').hidden=G.over||G.dl||!S.calls;$('#rqb').style.opacity=canReq(0)?'':'.45'}
 function renderMid(){fxUpdate();tpRender();const d=$('#disc');[...d.querySelectorAll('.card')].forEach(e=>e.remove());
@@ -513,6 +517,7 @@ async function endTurn(i,skip=0){if(G.req&&G.req.to===i){const r=G.req;G.req=nul
 if(S.mode==='tri'&&!G.pl&&!G.over&&G.lit){G.busy=1;await tpPress(i,null)}let dbl=0;if(S.mode==='tri'){if(G.tc&&G.pl&&!G.sx&&G.p[i].hand.some(ok)){dbl=1;toast(nmOf(i)+' may play a matching card')}else G.tc=0}if(S.mode==='spin'&&G.x2){if(G.x2s)G.x2s=0;else if(G.pl&&!G.sx&&!skip&&!G.pend&&!G.over&&G.p[i].hand.some(ok)){dbl=1;toast(nmOf(i)+' may play a second card')}}G.sx=dbl;G.pl=0;if(!i)G.cu=0;G.turns=(G.turns||0)+1;G.cur=dbl?i:nx(i,1+skip);if(S.mode==='tri'&&!dbl)tpLit();G.busy=0;G.drew=null;render();if(G.hr){const r=G.hr;G.hr=null;r()}}
 async function draw(i,n,pre){if(S.mode!=='party'||!G.lk||G.lkx||!(n>0)||!G.lk.includes(i))return draw0(i,n,pre);const o=G.lk[0]===i?G.lk[1]:G.lk[0];if(G.p[o].out)return draw0(i,n,pre);const g=G;G.lkx=1;toast('Linked! '+nmOf(o)+(o?' draws ':' draw ')+n+' too');linkPulse(i,o);try{const r=await Promise.all([draw0(i,n,pre),draw0(o,n)]);return r[0]}finally{g.lkx=0}}
 async function draw0(i,n,pre){if(n>1)G.know[i].v.clear();const out=[];for(let k=0;k<n;k++){if(!G.deck.length){const t=G.disc.pop();G.deck=sh(G.disc.map(x=>x.real||x).filter(x=>!x.fk));G.disc=[t]}
+ if(!G.deck.length&&!(pre&&!k)){G.packs=(G.packs||4)+1;const o=G.packs*1000;G.deck=mkDeck().map(x=>({...x,id:x.id+o}));G.nx=null;toast('New pack shuffled in')}
  const P0=pre&&!k;if(!G.deck.length&&!P0)break;const c=P0?pre:dpop();if(!P0){AU.play('draw',pn(i));$('#deck').animate([{transform:'scale(1)'},{transform:'scale(.92)'},{transform:'scale(1)'}],{duration:220});await fly(c,i!==0,R($('#deck')),R(i?$('#s'+i):$('#hand')),450)}G.p[i].hand.push(c);G.know[i].v.delete('x'+c.c+c.v);G.know[i].v.delete(c.c);out.push(c);render()}
  {const q=G.p[i];if(LIM()&&!q.out&&q.hand.length>=LIM()){q.out=1;G.deck.unshift(...q.hand);q.hand=[];toast(q.name+' hit '+LIM()+' cards: out!');AU.play('bad');render();const al=G.p.map((_,k)=>k).filter(k=>!G.p[k].out);if(!i||al.length===1)return win(al.length===1?al[0]:al[0])}}
  return out}
@@ -694,7 +699,7 @@ async function clickCard0(c){if(G.over)return;if(G.mpr){if(ok(c)){const r=G.mpr;
 async function humanDraw(){if(G&&G.mpr){const r=G.mpr;G.mpr=null;r(null);return}if(!G||G.cur!==0||G.busy||G.drew||G.over)return;G.busy=1;
  if(G.pend){const n=G.pend;G.pend=0;await draw(0,n);return endTurn(0)}
  if(!me().hand.some(ok))G.know[0].v=new Set([G.col]);
- if(S.mode!=='attack'&&!(S.liar&&S.bluff)){let top=G.deck[G.deck.length-1];while(S.until&&top&&!ok(top)){await draw(0,1);top=G.deck[G.deck.length-1]}if(top&&ok(top))return drawReveal(top)}
+ if(S.mode!=='attack'&&!(S.liar&&S.bluff)){let top=dnext();while(S.until&&top&&!ok(top)){await draw(0,1);top=dnext()}if(top&&ok(top))return drawReveal(top)}
  const c=await drawUntil(0);if(!c||!ok(c))return endTurn(0);
  if(S.force)return humanPlay(c);G.drew=c;G.busy=0;render()}
 $('#pass').onclick=()=>{if(G.drew&&!G.busy)endTurn(0)};
@@ -829,14 +834,14 @@ const alivePl=pi=>G.p.map((_,k)=>k).filter(k=>k!==pi&&!G.p[k].out);
 const botReqOne=t=>{const K=G.know[t],o=[...COLS.map(c=>({k:'col',v:c,tag:c})),{k:'wild',tag:'w'},{k:'sp',sp:'any',col:'turn'}];return o.map(r=>[(r.tag&&K.v.has(r.tag)?2:0)-(r.tag&&K.h.has(r.tag)?2:0)+Math.random()*1.5+(r.k==='wild'?.4:0),r]).sort((a,b)=>b[0]-a[0])[0][1]};
 const botReqAll=()=>{const x=Math.random();return x<.4?{k:'wild'}:x<.7?{k:'sp',sp:'any',col:'turn'}:{k:'col',v:COLS[Math.random()*4|0]}};
 async function manipFx(pi,c){if(S.intel&&(c.v==='E'||c.v==='N'||c.v==='B'))return intelPlay(pi,c.v);if(!S.truth)return;if(c.v==='T'||c.v==='G')await truthPlay(pi,c.v==='G');else if(c.v==='C')await controlPlay(pi);else if(c.v==='M')await mindPlay(pi);else if(c.v==='A')await almightyPlay(pi)}
-async function obeyTurn(t,r,by=t){const p=G.p[t],m=()=>p.hand.filter(c=>fmatch(r,c)&&ok(c));G.busy=1;G.nb=1;renderHand();
+async function obeyTurn(t,r,by=t){const p=G.p[t],m=()=>p.hand.filter(c=>fmatch(r,c));G.busy=1;G.nb=1;renderHand();
  try{
   toast(nmOf(t)+' must place '+fdesc(r));await gsleep(1600);
   if(!m().length){say(t,"I can't!");toast((t?p.name+' draws':'You draw')+' until able (odds doubled)');await gsleep(1000);
    let g=0;while(!p.out&&!G.over&&!m().length&&g++<30){biasDeck(r);const d=await draw(t,1);if(!d||!d.length)break}
    G.know[t].v.clear();if(G.over)return;if(p.out||!m().length)return endTurn(t)}
   let c,col=null;
-  if(by===0){const x=await handPick(t,by===t?'Obey the request':'You control '+p.name,'Place '+fdesc(r)+'.',z=>fmatch(r,z)&&ok(z));c=x.c;col=x.col}
+  if(by===0){const x=await handPick(t,by===t?'Obey the request':'You control '+p.name,'Place '+fdesc(r)+'.',z=>fmatch(r,z));c=x.c;col=x.col}
   else{c=m().sort((a,b)=>(isNaN(a.v)-isNaN(b.v))||Math.random()-.5)[0];if(c.c==='k')col=botCol(p,c)}
   if(t===0&&by!==0)G.called=1;
   return await doPlay(t,c,col)
@@ -937,7 +942,7 @@ async function presentFx(c,back,from,hold,st0,pi){const st=st0||await liftFx(c,b
  await box.animate([{transform:tilt},{transform:`translate(${dx}px,${dy}px) scale(${D.width/W}) perspective(700px) rotateX(0deg) rotateZ(0deg)`}],{duration:420,easing:'cubic-bezier(.3,.7,.2,1)',fill:'forwards'}).finished;dead();G.pf=D;G.pq=1;box.remove();return col}
 function askPK(st){return new Promise(res=>{const d=document.createElement('div');d.className='pkb';d.style.cssText=`position:fixed;left:${st.sx}px;top:${st.sy}px;width:${st.W}px;height:${st.H}px;z-index:25;pointer-events:none;display:flex;gap:8px;justify-content:center;align-items:flex-end;padding-bottom:10px;transform:${st.tilt}`;
  [['Play','var(--g)','#fff',1],['Keep','#fff','#16302f',0]].forEach(([t,bg,fg,v])=>{const b=document.createElement('button');b.className='btn';b.textContent=t;b.style.cssText=`pointer-events:auto;background:${bg};color:${fg};font-size:17px;padding:8px 16px`;b.onclick=()=>{d.remove();res(v)};d.appendChild(b)});document.body.appendChild(d)})}
-async function drawReveal(c){const p=me();G.deck.pop();G.know[0].v.delete('x'+c.c+c.v);AU.play('draw',0);$('#deck').animate([{transform:'scale(1)'},{transform:'scale(.92)'},{transform:'scale(1)'}],{duration:220});
+async function drawReveal(c){const p=me();{const k=G.deck.indexOf(c);if(k>=0)G.deck.splice(k,1);G.nx=null}G.know[0].v.delete('x'+c.c+c.v);AU.play('draw',0);$('#deck').animate([{transform:'scale(1)'},{transform:'scale(.92)'},{transform:'scale(1)'}],{duration:220});
  const st=await liftFx(c,0,R($('#deck')));let play=1;if(!S.force)play=await askPK(st);else await sleep(500);st.dead();
  if(play){p.hand.push(c);G.drew=null;G.st=st;return doPlay(0,c,c.c==='k'&&c.v!=='U'?pickColor:null)}
  await st.to(R($('#hand')));await draw(0,1,c);return endTurn(0)}
@@ -1377,11 +1382,12 @@ function dmChance(k){const d=applyDeckMod(mkDeck0()),px=S.dpct||{},w=x=>{const p
  const tot=d.reduce((a,x)=>a+w(x),0),mine=d.filter(x=>'x'+x.c+x.v===k),n=mine.length,wm=mine.reduce((a,x)=>a+w(x),0);
  return{pct:tot>0?wm/tot*100:0,copies:n,total:d.length}}
 function dmChanceText(k){const c=dmChance(k);return 'Chance on each draw: '+c.pct.toFixed(1)+'%  ·  '+c.copies+' of '+c.total+' cards in the deck'}
-function dpop(){const px=S.dpct||{};if(!Object.keys(px).length||!G.deck.length)return G.deck.pop();
- const w=G.deck.map(c=>{const pc=px['x'+c.c+c.v];return pc===undefined?1:Math.max(0,pc)/100});
- const tot=w.reduce((x,y)=>x+y,0);if(tot<=0)return G.deck.pop();
- let r=Math.random()*tot,pick=-1;for(let i=0;i<w.length;i++){if(w[i]<=0)continue;pick=i;r-=w[i];if(r<0)break}
- return G.deck.splice(pick,1)[0]}
+function dnext(){if(!G.deck.length)return null;if(G.nx&&G.deck.includes(G.nx))return G.nx;
+ const px=S.dpct||{};let pick=G.deck.length-1;
+ if(Object.keys(px).length){const w=G.deck.map(c=>{const pc=px['x'+c.c+c.v];return pc===undefined?1:Math.max(0,pc)/100});
+  const tot=w.reduce((x,y)=>x+y,0);if(tot>0){let r=Math.random()*tot;pick=-1;for(let i=0;i<w.length;i++){if(w[i]<=0)continue;pick=i;r-=w[i];if(r<0)break}}}
+ return G.nx=G.deck[pick]}
+function dpop(){const c=dnext();G.nx=null;if(!c)return G.deck.pop();G.deck.splice(G.deck.indexOf(c),1);return c}
 function applyDeckMod(d){const dx=S.dex||{},gone=c=>!!(dx['x'+c.c+c.v]||(c.f&&dx['x'+c.f.c+c.f.v]));for(let i=d.length-1;i>=0;i--)if(gone(d[i]))d.splice(i,1);const m=S.dmod||{},keys=dmKeys(m);if(!keys.length)return d;const tests=keys.map(k=>[k,dmKeyTest(k)]),anyFav=x=>tests.some(([,t])=>t(x)),id0=900000;let id=id0;
  for(const [k,t] of tests){const src=d.filter(x=>(k[0]==='x'&&k.length>2?true:dmPlain(x))&&t(x));if(!src.length)continue;
   for(let n=m[k];n>0;n--){const dn=d.filter(x=>dmPlain(x)&&!anyFav(x));if(!dn.length)break;const out=dn[Math.random()*dn.length|0];d.splice(d.indexOf(out),1);const s0=src[Math.random()*src.length|0],cl={...s0,id:id++};if(s0.f)cl.f={...s0.f};d.push(cl)}}
