@@ -1024,6 +1024,20 @@
     ['happy', 'mood_happy', 'Happy', 0], ['sad', 'mood_sad', 'Sad', 1], ['relaxed', 'mood_relaxed', 'Relaxed', 1], ['aggressive', 'mood_aggressive', 'Aggressive', 0],
     ['party', 'mood_party', 'Party', 1], ['acoustic', 'mood_acoustic', 'Acoustic', 0], ['electronic', 'mood_electronic', 'Electronic', 0], ['danceable', 'danceability', 'Danceable', 0]
   ].map(([id, dir, label, pos]) => ({ id, label, pos, base: dir + '-discogs-effnet-1', file: ESS + dir + '/' + dir + '-discogs-effnet-1.onnx', info: ESS + dir + '/' + dir + '-discogs-effnet-1.json' }));
+  // Extra heads on the same embedding (each ~0.5 MB, almost free to run): 56 moods/themes, singer's voice, bright/dark tone,
+  // how approachable (mainstream) and how engaging a track is. Same download routes as the mood heads. Any that cannot be
+  // downloaded are skipped (and not retried for 3 days), so they never block tagging. Multi-class heads need their .json
+  // (class names); two-class ones fall back to the names below.
+  const EXTRA_HEADS = [
+    ['theme', 'mtg_jamendo_moodtheme', 'Mood/theme', 'multi', 'theme', null],
+    ['gender', 'gender', 'Voice', 'class', 'gender', ['female', 'male']],
+    ['tone', 'nsynth_bright_dark', 'Tone', 'class', 'timbre', ['bright', 'dark']],
+    ['approachable', 'approachability_2c', 'Approachable', 'binary', 'feel', ['not_approachable', 'approachable']],
+    ['engaging', 'engagement_2c', 'Engaging', 'binary', 'feel', ['not_engaging', 'engaging']]
+  ].map(([id, dir, label, kind, group, classes]) => ({ id, label, kind, group, classes, pos: 1, extra: true, base: dir + '-discogs-effnet-1', file: ESS + dir + '/' + dir + '-discogs-effnet-1.onnx', info: ESS + dir + '/' + dir + '-discogs-effnet-1.json' }));
+  const HEAD_MISS = 'ppvHeadMiss', MISS_MS = 3 * 864e5;
+  const headMiss = () => { try { return JSON.parse(localStorage.getItem(HEAD_MISS)) || {}; } catch (e) { return {}; } };
+  const setHeadMiss = (id, on) => { const m = headMiss(); if (on) m[id] = Date.now(); else delete m[id]; try { localStorage.setItem(HEAD_MISS, JSON.stringify(m)); } catch (e) {} };
   const moodsOn = () => { try { return localStorage.getItem('ppvMoods') !== '0'; } catch (e) { return true; } };
   // Fetch with a hard deadline (response start AND stalls mid-download), so a dead host can never freeze the app.
   async function fetchTimed(url, ms, onProgress) {
@@ -1077,27 +1091,31 @@
   let headsLog = [];                                                 // why each mood model failed, shown in the tag result
   async function builtinHeads(status, low, prog) {
     if (headsFailed) return [];
-    const ok = new Array(BUILTIN_HEADS.length).fill(null); let got = 0;
+    const miss = headMiss(), LIST = BUILTIN_HEADS.concat(EXTRA_HEADS.filter(b => !(miss[b.id] && Date.now() - miss[b.id] < MISS_MS)));
+    const ok = new Array(LIST.length).fill(null); let got = 0;
     const one = async (b, k) => {
       try {
         let h = null; try { const c = await idbGet('tghm_' + b.id); if (c) h = JSON.parse(c); } catch (e) {}
         if (!h || !(NATIVE ? (await NP.exists({ id: 'tgh_' + b.id })).ready : await idbGet('tgh_' + b.id))) {
-          h = { id: b.id, label: b.label, kind: 'binary', group: 'mood', pos: b.pos, classes: null };
+          h = { id: b.id, label: b.label, kind: b.kind || 'binary', group: b.group || 'mood', pos: b.pos, classes: b.classes ? b.classes.slice() : null };
           const buf = NATIVE ? (await nativeHeadFetch(b), null) : await fetchHeadFile(b, 'onnx', 8000);
-          try { const j = JSON.parse(new TextDecoder().decode(await fetchHeadFile(b, 'json', 4000))); if (j.classes && j.classes.length === 2) { h.classes = j.classes; const p = j.classes.findIndex(c => !/^(non|not)[_ -]/i.test(c)); if (p >= 0) h.pos = p; } } catch (e) {}
+          let j = null; try { j = JSON.parse(new TextDecoder().decode(await fetchHeadFile(b, 'json', 4000))); } catch (e) {}
+          if (j && Array.isArray(j.classes) && j.classes.length >= 2 && (h.kind === 'multi' || j.classes.length === 2)) h.classes = j.classes;
+          if (h.kind === 'binary' && h.classes && h.classes.length === 2) { const p = h.classes.findIndex(c => !/^(non|not)[_ -]/i.test(c)); if (p >= 0) h.pos = p; }
+          if (h.kind !== 'binary' && !h.classes) throw new Error('class names (.json) not found');
           if (buf) await idbPut('tgh_' + b.id, buf);
           await idbPut('tghm_' + b.id, JSON.stringify(h));
         }
-        ok[k] = h; headsFailed = false;
-      } catch (e) { headsLog.push(b.label + ': ' + ((e && e.message) || e)); console.warn('mood head skipped', b.id, e); }
-      finally { got++; status('Mood models: ' + got + ' of ' + BUILTIN_HEADS.length + ' ready…'); prog && prog(got / BUILTIN_HEADS.length); }
+        ok[k] = h; headsFailed = false; if (b.extra) setHeadMiss(b.id, false);
+      } catch (e) { if (b.extra) setHeadMiss(b.id, true); else headsLog.push(b.label + ': ' + ((e && e.message) || e)); console.warn('mood head skipped', b.id, e); }
+      finally { got++; status('Mood & theme models: ' + got + ' of ' + LIST.length + ' ready…'); prog && prog(got / LIST.length); }
     };
-    status('Mood models: checking…');
-    const all = Promise.all(BUILTIN_HEADS.map(one));                  // all eight at once, so the wait is the slowest one, not the sum
+    status('Mood & theme models: checking…');
+    const all = Promise.all(LIST.map(one));                           // all at once, so the wait is the slowest one, not the sum
     await Promise.race([all, new Promise(r => setTimeout(r, 25000))]);   // never hold up tagging for more than 25 s
-    if (got < BUILTIN_HEADS.length) headsLog.push('some are still downloading in the background, they will be ready next run');
+    if (got < LIST.length) headsLog.push('some are still downloading in the background, they will be ready next run');
     const out = ok.filter(Boolean);
-    if (!out.length) headsFailed = true;                              // skip the wait on the next tracks (cleared if a background download succeeds, or by Refresh)
+    if (!out.some(h => !EXTRA_HEADS.some(b => b.id === h.id))) headsFailed = true;                              // skip the wait on the next tracks (cleared if a background download succeeds, or by Refresh)
     return out;
   }
   async function loadHeads(status, low, enabled, prog) {
@@ -1119,13 +1137,15 @@
     }
     let custom = heads.length > 0;
     if (!custom) heads.push(...await builtinHeads(status, low, prog));
-    return heads.length && (custom || heads.length === BUILTIN_HEADS.length) ? (headsMemo = heads) : heads;   // only remember a complete set       // don't remember an empty result, so a later run can try again
+    const core = heads.filter(h => BUILTIN_HEADS.some(b => b.id === h.id)).length;
+    return heads.length && (custom || core === BUILTIN_HEADS.length) ? (headsMemo = heads) : heads;   // only remember a complete set       // don't remember an empty result, so a later run can try again
   }
   async function resetHeads() {
     headsMemo = null; headsFailed = false;
     try { const c = await idbGet('tg_manifest'); if (c) for (const h of (JSON.parse(c).heads || [])) await idbDel('tgh_' + h.id); } catch (e) {}
     await idbDel('tg_manifest').catch(() => {});
-    for (const b of BUILTIN_HEADS) { if (NATIVE) await NP.remove({ id: 'tgh_' + b.id }).catch(() => {}); await idbDel('tgh_' + b.id).catch(() => {}); await idbDel('tghm_' + b.id).catch(() => {}); }
+    try { localStorage.removeItem(HEAD_MISS); } catch (e) {}
+    for (const b of BUILTIN_HEADS.concat(EXTRA_HEADS)) { if (NATIVE) await NP.remove({ id: 'tgh_' + b.id }).catch(() => {}); await idbDel('tgh_' + b.id).catch(() => {}); await idbDel('tghm_' + b.id).catch(() => {}); }
   }
 
   // ---------- Tempo (BPM) from the log-mel frames we already have ----------
@@ -1623,7 +1643,7 @@
     else if (r.mood) { const m = top(r.mood, 2, 0.1); L.push(m === 'none' ? 'Mood (unclear): ' + top(r.mood, 2, 0) : 'Mood: ' + m); }
     const bin = Object.entries(r.heads || {}).filter(([id, h]) => h.kind === 'binary' && !(moods.length >= 3 && MOODS.includes(id))).map(([id, h]) => [h.label, h.p[h.pos]]);
     if (bin.length) { const f5 = top(bin, 5, 0.5); L.push(f5 === 'none' ? 'Feels (leaning): ' + top(bin, 3, 0) : 'Feels: ' + f5); }
-    hd.filter(h => h.kind !== 'binary' && h.group !== 'gender').forEach(h => L.push(h.label + ': ' + top(h.p.map((p, i) => [h.classes[i], p]), 4, 0.1)));
+    hd.filter(h => h.kind !== 'binary' && h.group !== 'gender').forEach(h => { const mx = Math.max(0, ...h.p); L.push(h.label + ': ' + top(h.p.map((p, i) => [h.classes[i], p]), h.group === 'theme' ? 5 : 4, h.group === 'theme' ? Math.max(0.05, mx * 0.45) : 0.1)); });
     const g = hd.find(h => h.group === 'gender'); if (g && r.voice >= 0.5) L.push('Voice: ' + top(g.p.map((p, i) => [g.classes[i], p]), 1, 0.5));
     if (r.inst) L.push('Instruments: ' + top(r.inst, 6, 0.4));
     if (r.inst2) L.push('Also heard: ' + top(r.inst2, 6, 0.2));
@@ -1661,6 +1681,7 @@
     c.hd = {}; c.hm = {};
     Object.entries(r.heads || {}).forEach(([id, h]) => {
       if (h.kind === 'binary') c.hd[id] = Math.round(h.p[h.pos] * 100);
+      else if (h.group === 'theme') { const a = h.p.map((p, i) => [h.classes[i], p]), mx = Math.max(0, ...h.p); c.hm[id] = mx >= 0.05 ? top(a, 5, mx * 0.45) : []; }
       else c.hm[id] = top(h.p.map((p, i) => [h.classes[i], p]), 5, 0.1);
     });
     {                                                                  // Mood from the Essentia mood heads when they ran; AudioSet's mood classes are near noise
@@ -2562,6 +2583,87 @@
     for (const q of lines) { const k = q.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); if (!k || seen.has(k)) continue; seen.add(k); out.push(q); }
     return { lines: out, words: out.join(' ').split(/\s+/).filter(Boolean).length };
   }
+  // ---------- Song map: where the song changes (intro, verse, chorus, bridge, outro), from the lyrics AND the sound ----------
+  // Lyrics (timed subtitle cues, else LRC, else plain stanzas) are cut into blocks at pauses and at the sound-section edges.
+  // Blocks whose lines come back are the chorus; a one-off block after the second chorus is the bridge; the rest are verses.
+  // Stretches with no singing keep the sound analysis label (Intro, Outro, Instrumental, Breakdown, Drop...).
+  // Used by the AI summary (lyrics laid out by section), Song Talk and the tag view.
+  function songMap(dbId, c) {
+    c = c || loadTags()[dbId];
+    const sc = c && c.sc && c.sc.length ? c.sc : null;
+    let cues = [], timed = true;
+    try { const e = (JSON.parse(localStorage.getItem('playerSubtitles')) || {})[dbId]; if (e && e.c) cues = e.c.map(q => [+q[0], +q[1], String(q[2] || '').trim()]).filter(q => q[2] && isFinite(q[0])); } catch (x) {}
+    if (cues.length < 6) {
+      let raw = ''; try { raw = String((JSON.parse(localStorage.getItem('playerLyricsV1')) || {})[dbId] || ''); } catch (x) {}
+      const re = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g, lrc = [];
+      raw.split(/\r?\n/).forEach(l => { const ts = []; let m; re.lastIndex = 0; while ((m = re.exec(l))) ts.push(+m[1] * 60 + +m[2] + (m[3] ? +('0.' + m[3]) : 0)); const tx = l.replace(re, '').trim(); if (tx && !/^\[[a-z]+:/i.test(l)) ts.forEach(t => lrc.push([t, NaN, tx])); });
+      if (lrc.length >= 6) cues = lrc.sort((a, b) => a[0] - b[0]);
+      else if (raw.trim()) {                                              // plain lyrics: stanzas (blank lines) are the blocks, no times
+        timed = false; let k = 0; cues = [];
+        raw.replace(/\[[^\]]*\]/g, '').split(/\r?\n/).forEach(l => { l = l.trim(); if (!l) { k++; return; } cues.push([k, NaN, l]); });
+      }
+    }
+    cues.forEach((q, i) => { if (!isFinite(q[1]) || q[1] <= q[0]) q[1] = timed ? (cues[i + 1] ? Math.min(cues[i + 1][0], q[0] + 6) : q[0] + 4) : q[0]; });
+    if (cues.length < 6 && !sc) return null;
+    const nz = q => q.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    const secAt = t => sc ? sc.findIndex(x => t >= x[0] - 0.5 && t < x[1]) : -1;
+    const lc = new Map(); cues.forEach(q => { const k = nz(q[2]); if (k.length >= 4) lc.set(k, (lc.get(k) || 0) + 1); });
+    const rp = i => cues[i] && lc.get(nz(cues[i][2])) >= 2;
+    const flip = i => i > 0 && rp(i) !== rp(i - 1) && rp(i) === rp(i + 1) && rp(i - 1) === rp(i - 2);   // repeated lines start or stop (two lines either side agree)
+    const blocks = []; let cur = null;
+    cues.forEach((q, i) => {
+      const si = timed ? secAt(q[0]) : -1, brk = !cur || (timed ? q[0] - cues[i - 1][1] > 3.5 || (sc && si !== cur.si && cur.lines.length >= 2) || (cur.lines.length >= 2 && flip(i)) : q[0] !== cues[i - 1][0]) || cur.lines.length >= 12;
+      if (brk) { cur = { t0: q[0], t1: q[1], si, lines: [] }; blocks.push(cur); }
+      cur.lines.push(q[2]); cur.t1 = q[1];
+    });
+    // repeats: how often each line is sung, and which blocks are (nearly) the same block again
+    blocks.forEach(b => { b.keys = new Set(b.lines.map(nz).filter(k => k.length >= 4)); b.rep = b.keys.size ? [...b.keys].filter(k => lc.get(k) >= 2).length / b.keys.size : 0; });
+    const jac = (a, b) => { let n = 0; a.keys.forEach(k => { if (b.keys.has(k)) n++; }); const u = a.keys.size + b.keys.size - n; return u ? n / u : 0; };
+    const grp = []; blocks.forEach(b => { if (b.rep < 0.5) return; let g = grp.find(g => g.some(x => jac(x, b) >= 0.34)); if (!g) grp.push(g = []); g.push(b); });
+    grp.sort((a, b) => b.length - a.length || b.reduce((n, x) => n + x.lines.length, 0) - a.reduce((n, x) => n + x.lines.length, 0));
+    const chorus = new Set(grp[0] && grp[0].length >= 2 ? grp[0] : []), refrain = new Set(grp.slice(1).filter(g => g.length >= 2).flat());
+    const audioLab = b => b.si >= 0 && sc ? String(sc[b.si][2]).replace(/\s+\d+$/, '') : '';
+    let seenCh = 0;
+    blocks.forEach((b, i) => {
+      if (chorus.has(b)) { b.lab = 'Chorus'; seenCh++; return; }
+      if (refrain.has(b)) { b.lab = 'Refrain'; return; }
+      const laterCh = blocks.slice(i + 1).some(x => chorus.has(x)), al = audioLab(b);
+      if (chorus.size && seenCh >= 2 && (laterCh || i >= blocks.length - 2) && !blocks.slice(i + 1).some(x => x.lab === 'Bridge') && !blocks.some(x => x.lab === 'Bridge')) b.lab = 'Bridge';
+      else if (!chorus.size && /^(Chorus|Bridge|Drop)$/.test(al)) b.lab = al === 'Drop' ? 'Chorus' : al;
+      else b.lab = 'Verse';
+    });
+    // a verse that runs straight into a chorus with no pause and is short is a pre-chorus
+    blocks.forEach((b, i) => { const nx = blocks[i + 1]; if (b.lab === 'Verse' && nx && nx.lab === 'Chorus' && b.lines.length <= 3 && i > 0 && blocks[i - 1].lab === 'Verse' && timed && nx.t0 - b.t1 < 2) b.lab = 'Pre-chorus'; });
+    // merge neighbours with the same label (a verse cut by a breath)
+    const parts = [];
+    blocks.forEach(b => { const p = parts[parts.length - 1]; if (p && p.lab === b.lab && b.lab === 'Verse' && p.lines.length + b.lines.length <= 14 && (!timed || b.t0 - p.t1 < 6)) { p.lines.push(...b.lines); p.t1 = b.t1; } else parts.push({ t0: b.t0, t1: b.t1, lab: b.lab, lines: b.lines.slice(), sung: true }); });
+    // stretches with no singing, from the sound analysis
+    if (sc && timed && blocks.length) sc.forEach(x => {
+      const a = x[0], z = x[1]; if (z - a < 6) return;
+      if (parts.some(p => p.sung && p.t0 < z - 2 && p.t1 > a + 2)) return;
+      const lab = String(x[2]).replace(/\s+\d+$/, ''); parts.push({ t0: a, t1: z, lab: /^(Verse|Chorus|Bridge)$/.test(lab) ? 'Instrumental' : lab, lines: [], sung: false });
+    });
+    if (!blocks.length && sc) sc.forEach(x => parts.push({ t0: x[0], t1: x[1], lab: String(x[2]).replace(/\s+\d+$/, ''), lines: [], sung: false, audio: true }));
+    if (timed) parts.sort((a, b) => a.t0 - b.t0);
+    if (timed && parts.length && !parts[0].sung && parts[0].lab === 'Instrumental') parts[0].lab = 'Intro';
+    if (timed && parts.length > 1 && !parts[parts.length - 1].sung && parts[parts.length - 1].lab === 'Instrumental') parts[parts.length - 1].lab = 'Outro';
+    const tot = {}, n = {}; parts.forEach(p => { tot[p.lab] = (tot[p.lab] || 0) + 1; });
+    parts.forEach(p => { if (/^(Verse|Instrumental|Breakdown|Interlude)$/.test(p.lab) && tot[p.lab] > 1) { n[p.lab] = (n[p.lab] || 0) + 1; p.name = p.lab + ' ' + n[p.lab]; } else p.name = p.lab; });
+    if (!parts.length) return null;
+    const form = parts.map(p => p.name).join(', ');
+    return { parts, form, text: songMap.fmt(parts, timed), timed, lyrics: blocks.length > 0, chorus: chorus.size };
+  }
+  songMap.fmt = (parts, timed) => {
+    const nz = q => q.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); let firstCh = null;
+    return parts.map(p => {
+      if (!p.sung) return '[' + p.name + (timed ? ' ' + mmss(p.t0) + '-' + mmss(p.t1) : '') + (p.audio ? ']' : ', no singing]');
+      const key = p.lines.map(nz).join('|'), same = p.lab === 'Chorus' && firstCh === key;
+      if (p.lab === 'Chorus' && !firstCh) firstCh = key;
+      return '[' + p.name + (timed ? ' ' + mmss(p.t0) : '') + ']\n' + (same ? '(same words as the first chorus)' : p.lines.join('\n'));
+    }).join('\n\n');
+  };
+  // one line for the tag view / Song Talk: "Intro 0:00 · Verse 1 0:14 · Chorus 0:48 ..."
+  const songMapLine = m => m ? m.parts.slice(0, 16).map(p => p.name + (m.timed ? ' ' + mmss(p.t0) : '')).join(' · ') : '';
   function soundProfile(c, kind) {                                     // plain-language description straight from the saved tags, no AI involved
     if (!c) return { line: '', hint: '' };
     const nm = q => String(q).replace(/\s*\([^)]*\)$/, '').replace(/ music$/i, '').toLowerCase();
@@ -2676,20 +2778,37 @@
       ? 'You explain songs for a music app. Write about what the song MEANS: the story or situation, who is speaking and to whom, the feelings, the message and themes, and why it matters to people. ' +
         'Do NOT describe how it sounds: no tempo, genre, instruments, production or vocal style. ' +
         'Base it on the lyrics you are given. You may add what you reliably know about this specific song and artist (what it is widely understood to be about, the story behind it), but never invent facts; when unsure, stay with the lyrics. ' +
-        'Describe the lyrics in your own words instead of quoting them. ' + ST.say + ' Write ' + wd + '.'
+        'Describe the lyrics in your own words instead of quoting them. ' +
+        'When the lyrics are marked by section ([Verse 1], [Chorus], [Bridge] ...), use that: the chorus usually carries the main message, the verses build the story, and a bridge often brings a turn, a doubt or a new angle. Explain how the meaning develops through the song, but do not list the sections or give timestamps. ' +
+        'A FEEL line may give the mood and themes the audio analysis heard: use it only as a hint for the meaning and never describe the sound. ' + ST.say + ' Write ' + wd + '.'
       : 'You summarize videos for a media app. Write about what the video is about: its subject, main points or story, and why it matters. Do not describe the audio. ' +
         'Use only the transcript you are given; never invent names or events. ' + ST.say + ' Write ' + wd + '.';
     const opt = { max_new_tokens: LN.tok, do_sample: true, temperature: 0.4, top_p: 0.9, repetition_penalty: 1.08 };
-    const head = 'Title: ' + t.title + (who ? '\nArtist: ' + who : '') + '\nType: ' + kind;
+    let feel = '';
+    if (kind === 'song' && c) {                                        // hints from the audio tags that help with MEANING (themes, voice), not with the sound
+      const th = ((c.hm || {}).theme || []).map(x => String(x[0]).replace(/_/g, ' ')), gv = ((c.hm || {}).gender || [])[0];
+      const md = (c.md || []).map(x => String(x[0])).filter(x => !th.includes(x));
+      const bits = th.concat(md).slice(0, 6);
+      feel = (bits.length ? 'mood and themes: ' + bits.join(', ') : '') + (gv && gv[1] >= 65 && (c.v == null || c.v >= 50) ? (bits.length ? '; ' : '') + 'the lead singer sounds ' + gv[0] : '');
+    }
+    const head = 'Title: ' + t.title + (who ? '\nArtist: ' + who : '') + '\nType: ' + kind + (feel ? '\nFEEL (audio analysis, a hint only): ' + feel : '');
+    const map = kind === 'song' && t.dbId != null ? (() => { try { return songMap(t.dbId, c); } catch (e) { console.warn('song map', e); return null; } })() : null;
     let user;
     if (tr.words < 12) {
       if (kind !== 'song' || !who) return '';
       user = head + '\nNo lyrics are saved for this song.\n\nIf you genuinely know this exact song, explain what it is about and what it means in ' + wd + '. If you do not know it, reply with only the word UNKNOWN.';
     } else if (tr.words <= 600) {
       // Fit the lyrics to the model's context instead of shrinking the answer: keep the reply budget, drop lyric lines from the end.
-      let lines = tr.lines.slice();
-      if (ctx) { const room = Math.floor(ctx * 0.92) - opt.max_new_tokens - Math.ceil((sys.length + head.length + 120) / 3); while (lines.length > 6 && Math.ceil(lines.join('\n').length / 3) > room) lines.pop(); }
-      user = head + '\nLyrics (automatic transcript, may contain mistakes' + (lines.length < tr.lines.length ? ', shortened' : '') + '):\n' + lines.join('\n') + '\n\nExplain what this ' + kind + ' is about and what it means.';
+      const room = ctx ? Math.floor(ctx * 0.92) - opt.max_new_tokens - Math.ceil((sys.length + head.length + 160) / 3) : Infinity;
+      if (map && map.lyrics && map.chorus) {                           // lyrics laid out by section (verse / chorus / bridge), so the model sees how the song is built
+        let ps = map.parts.slice(), txt = map.text, cut = false;
+        while (ps.length > 3 && Math.ceil(txt.length / 3) > room) { ps.pop(); cut = true; txt = songMap.fmt(ps, map.timed); }
+        user = head + '\nSong form: ' + map.form + '\nLyrics by section (automatic, may contain mistakes' + (cut ? ', shortened' : '') + '):\n' + txt + '\n\nExplain what this ' + kind + ' is about and what it means.';
+      } else {
+        let lines = tr.lines.slice();
+        while (lines.length > 6 && Math.ceil(lines.join('\n').length / 3) > room) lines.pop();
+        user = head + (map && map.form ? '\nSong form: ' + map.form : '') + '\nLyrics (automatic transcript, may contain mistakes' + (lines.length < tr.lines.length ? ', shortened' : '') + '):\n' + lines.join('\n') + '\n\nExplain what this ' + kind + ' is about and what it means.';
+      }
     } else {
       let chunks = [], cur = [], n = 0;
       for (const q of tr.lines) { cur.push(q); n += q.split(/\s+/).length; if (n >= 320) { chunks.push(cur.join('\n')); cur = []; n = 0; } }
@@ -2718,7 +2837,7 @@
     d1.innerHTML = '<summary>Library tools (tags)</summary>' +
       '<div id="ppv-count" class="ppv-note"></div>' +
       '<label class="ppv-c"><input type="checkbox" id="ppv-deep"> Scan the whole track (slower, finds first vocals)</label>' +
-      '<label class="ppv-c"><input type="checkbox" id="ppv-moods"> Mood models (8 tiny files, ~4 MB, downloaded once)</label>' +
+      '<label class="ppv-c"><input type="checkbox" id="ppv-moods"> Mood &amp; theme models (13 tiny files, ~6 MB, downloaded once)</label>' +
       '<label class="ppv-c"><input type="checkbox" id="ppv-aeq"> Auto-EQ from genre when tagging</label>' +
       '<label class="ppv-c"><input type="checkbox" id="ppv-askip"> Skip long intros (needs whole-track tags)</label>' +
 '<details id="ppv-bgd"><summary>Background tagging &amp; surprise playlists</summary>' +
@@ -2834,7 +2953,7 @@
         head.innerHTML = '<b></b><div style="opacity:.7;font-size:11px"></div>';
         head.firstChild.textContent = (t.kind === 'video' ? '🎬 ' : '🎵 ') + (t.artist && !/^(Unknown artist|Video|Stream)$/.test(t.artist) ? t.artist + ' – ' : '') + t.title;
         head.lastChild.textContent = [c.bpm ? c.bpm + ' BPM' : '', c.key || '', c.gp && c.gp[0] ? c.gp[0][0] : '', c.st && c.st[0] ? c.st[0][0].replace(/ \(.*\)$/, '') : '', c.md && c.md[0] ? c.md[0][0] : '', c.v != null ? (c.v >= 50 ? 'vocals' : 'instrumental') : ''].filter(Boolean).join(' · ') || 'tagged';
-        body.style.cssText = 'display:none;white-space:pre-wrap;font-size:12px;margin-top:6px'; body.textContent = fmtStored(c);
+        body.style.cssText = 'display:none;white-space:pre-wrap;font-size:12px;margin-top:6px'; body.textContent = fmtStored(c) + (() => { if (t.kind === 'video') return ''; try { const m = songMap(t.dbId, c); return m && m.lyrics ? '\nSong map (lyrics + sound): ' + songMapLine(m) : ''; } catch (e) { return ''; } })();
         const play = document.createElement('button'); play.className = 'ppv-sec'; play.textContent = 'Play this track'; play.style.display = 'none';
         play.onclick = ev => { ev.stopPropagation(); const i = a.tracks().indexOf(t); if (i >= 0) a.play(i, a.tracks().map((_, k) => k)); };
         row.onclick = () => { const open = body.style.display === 'none'; body.style.display = open ? 'block' : 'none'; play.style.display = open ? 'block' : 'none'; };
@@ -5135,6 +5254,7 @@
       if (c.v != null) L.push(c.v >= 50 ? 'Has vocals' : 'Mostly instrumental');
       if (c.fv != null) L.push('Vocals from ' + mmssT(c.fv) + ' to ' + mmssT(c.lv));
       if (c.d) L.push('Length: ' + mmssT(c.d));
+      try { const m = songMap(t.dbId, c); if (m) L.push('Song map (where the song changes, from the lyrics and the sound): ' + songMapLine(m)); } catch (e) {}
       // Structure from the timed lyrics: lines that come back are the chorus / hook.
       let cues = []; try { const e = (JSON.parse(localStorage.getItem('playerSubtitles')) || {})[t.dbId]; if (e && e.c) cues = e.c.map(q => [+q[0], String(q[2] || '').trim()]).filter(q => q[1]); } catch (x) {}
       if (cues.length >= 6) {
