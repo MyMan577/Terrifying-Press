@@ -2619,6 +2619,31 @@
   const chatLenKey = () => { const k = ppvLs('ppvChatLen'); return CHAT_LENS[k] ? k : 'normal'; };
   const chatStyleKey = () => { const k = ppvLs('ppvChatStyle'); return CHAT_STYLES[k] ? k : 'bloop'; };
   const sumStyleKey = () => { const k = ppvLs('ppvSumStyle'); return SUM_STYLES[k] ? k : 'plain'; };
+  // Optional hard cap on summary size (ppvSumMax). Off by default. When on, the model is told the limit, gets a smaller
+  // token budget, and anything past the limit is cut back to the last whole sentence (or whole bullet) that fits.
+  const SUM_MAX = {
+    off: { label: 'No limit (default)', w: 0 },
+    w40: { label: 'About 40 words', w: 40 },
+    w75: { label: 'About 75 words', w: 75 },
+    w120: { label: 'About 120 words', w: 120 },
+    w200: { label: 'About 200 words', w: 200 }
+  };
+  const sumMaxKey = () => { const k = ppvLs('ppvSumMax'); return SUM_MAX[k] ? k : 'off'; };
+  const sumCap = (r, w) => {
+    r = String(r || '').trim(); if (!w) return r;
+    const wc = x => (x.match(/\S+/g) || []).length; if (wc(r) <= w) return r;
+    const lines = r.split('\n');
+    if (lines.filter(l => /^\s*[-•*]\s/.test(l)).length >= 2) {           // bullets: keep whole bullets that fit
+      const out = []; let n = 0;
+      for (const l of lines) { const k = wc(l); if (n + k > w && out.some(x => x.trim())) break; out.push(l); n += k; }
+      return out.join('\n').trim();
+    }
+    const re = /[^.!?…]+[.!?…]+["'”’)]*\s*/g; let m, out = '', n = 0;   // prose: keep whole sentences that fit, paragraph breaks included
+    while ((m = re.exec(r))) { const k = wc(m[0]); if (n + k > w) break; out += m[0]; n += k; }
+    out = out.trim();
+    if (wc(out) >= Math.min(8, w)) return out;
+    return r.split(/\s+/).slice(0, w).join(' ').replace(/[\s,;:\-]+$/, '') + '…'; // one very long sentence: cut by words
+  };
   const menuOpts = o => Object.keys(o).map(k => '<option value="' + k + '">' + o[k].label + '</option>').join('');
   document.addEventListener('change', e => {                          // keep copies of the same menu in step, and save the choice
     const sel = e.target; if (!sel || !sel.dataset || !sel.dataset.sync) return;
@@ -2648,7 +2673,9 @@
   // With no lyrics it may still answer from what it reliably knows about a well-known song; if it doesn't know it, it says UNKNOWN.
   async function aiSummary(t, c, tr, ask, say, lenKey, ctx) {
     const kind = t.kind === 'video' ? 'video' : 'song', LN = SUM_LENS[lenKey] || SUM_LENS.detailed, ST = SUM_STYLES[sumStyleKey()] || SUM_STYLES.plain;
-    const wd = ST.bul ? ST.bul[SUM_LENS[lenKey] ? lenKey : 'detailed'] : LN.words;            // how much to write: the length menu, worded for the chosen style
+    let wd = ST.bul ? ST.bul[SUM_LENS[lenKey] ? lenKey : 'detailed'] : LN.words;            // how much to write: the length menu, worded for the chosen style
+    const cap = SUM_MAX[sumMaxKey()].w;
+    if (cap) wd += '. Keep the whole reply under ' + cap + ' words; this limit matters more than the length above';
     const who = t.artist && !/^(unknown artist|video|stream)$/i.test(t.artist) ? t.artist : '';
     const sys = kind === 'song'
       ? 'You explain songs for a music app. Write about what the song MEANS: the story or situation, who is speaking and to whom, the feelings, the message and themes, and why it matters to people. ' +
@@ -2657,7 +2684,7 @@
         'Describe the lyrics in your own words instead of quoting them. ' + ST.say + ' Write ' + wd + '.'
       : 'You summarize videos for a media app. Write about what the video is about: its subject, main points or story, and why it matters. Do not describe the audio. ' +
         'Use only the transcript you are given; never invent names or events. ' + ST.say + ' Write ' + wd + '.';
-    const opt = { max_new_tokens: LN.tok, do_sample: true, temperature: 0.4, top_p: 0.9, repetition_penalty: 1.08 };
+    const opt = { max_new_tokens: cap ? Math.min(LN.tok, Math.round(cap * 1.8) + 30) : LN.tok, do_sample: true, temperature: 0.4, top_p: 0.9, repetition_penalty: 1.08 };
     const head = 'Title: ' + t.title + (who ? '\nArtist: ' + who : '') + '\nType: ' + kind;
     let user;
     if (tr.words < 12) {
@@ -2666,7 +2693,7 @@
     } else if (tr.words <= 600) {
       // Fit the lyrics to the model's context instead of shrinking the answer: keep the reply budget, drop lyric lines from the end.
       let lines = tr.lines.slice();
-      if (ctx) { const room = Math.floor(ctx * 0.92) - LN.tok - Math.ceil((sys.length + head.length + 120) / 3); while (lines.length > 6 && Math.ceil(lines.join('\n').length / 3) > room) lines.pop(); }
+      if (ctx) { const room = Math.floor(ctx * 0.92) - opt.max_new_tokens - Math.ceil((sys.length + head.length + 120) / 3); while (lines.length > 6 && Math.ceil(lines.join('\n').length / 3) > room) lines.pop(); }
       user = head + '\nLyrics (automatic transcript, may contain mistakes' + (lines.length < tr.lines.length ? ', shortened' : '') + '):\n' + lines.join('\n') + '\n\nExplain what this ' + kind + ' is about and what it means.';
     } else {
       let chunks = [], cur = [], n = 0;
@@ -2686,7 +2713,7 @@
     say('Writing the summary…');
     const out = String(await ask([{ role: 'system', content: sys }, { role: 'user', content: user }], opt, say) || '').trim();
     if (/^\W*unknown\W*$/i.test(out) || /^(?:i(?:'m| am) not (?:familiar|sure)|i don'?t know)/i.test(out)) return '';
-    return sumOk(out) ? sumParas(sumTrim(out), ST.bul ? 0 : LN.paras || 0) : '';
+    return sumOk(out) ? sumCap(sumParas(sumTrim(out), ST.bul || cap ? 0 : LN.paras || 0), cap) : '';
   }
   function smartUI(p, h) {
     const css = document.createElement('style');
@@ -2734,6 +2761,7 @@
       '<div id="ppv-wout" class="ppv-out"></div>' +
       '<label class="ppv-c" style="display:block;margin-top:10px">Summary length: <select id="ppv-sumlen" data-sync="ppvSumLen" style="width:100%;display:block">' + Object.keys(SUM_LENS).map(k => '<option value="' + k + '">' + SUM_LENS[k].label + '</option>').join('') + '</select></label>' +
       '<label class="ppv-c" style="display:block;margin-top:10px">Summary style: <select id="ppv-sumstyle" data-sync="ppvSumStyle" style="width:100%;display:block">' + menuOpts(SUM_STYLES) + '</select></label>' +
+      '<label class="ppv-c" style="display:block;margin-top:10px">Summary word limit: <select id="ppv-summax" data-sync="ppvSumMax" style="width:100%;display:block">' + menuOpts(SUM_MAX) + '</select></label>' +
       '<button id="ppv-sumgo" class="ppv-sec" style="margin-top:10px">Summarize current track (AI)</button>' +
       '<div class="ppv-note">Combines the track\u2019s tags (tempo, key, genre, mood, instruments) with its lyrics or subtitles, so it knows both how it sounds and what it is about. Tags are made first if missing. The written part uses the Bloop AI brain (one-time download). Without lyrics or subtitles you get the sound summary only.</div>' +
       '<div id="ppv-sumout" class="ppv-out"></div>' +
@@ -3115,7 +3143,7 @@
       try { if (NATIVE) { const ids = PK_FILES.map(f => f[0]).concat(Object.values(WHN).flatMap(k => [k + '_enc', k + '_dec', k + '_encf'])); for (const id of ids) { try { await NP.remove({ id }); } catch (e) {} } } if (asr) { await asr.dispose(); asr = null; asrId = ''; } const ks = await caches.keys(); for (const k of ks) if (/transformers/i.test(k)) await caches.delete(k); h.status('Whisper download removed.'); } catch (e) { h.status('Error: ' + errText(e)); }
     };
     // ---------- AI summary ----------
-    { const ss = $('#ppv-sumstyle'); if (ss) ss.value = sumStyleKey(); }
+    { const ss = $('#ppv-sumstyle'); if (ss) ss.value = sumStyleKey(); const sx = $('#ppv-summax'); if (sx) sx.value = sumMaxKey(); }
     { const sl = $('#ppv-sumlen'); sl.value = sumLenKey(); sl.onchange = () => { try { localStorage.setItem('ppvSumLen', sl.value); } catch (e) {} }; }
     $('#ppv-lyfix').onclick = () => { const a = window.__ppApi, i = a ? a.currentIndex() : -1; if (i < 0) { h.status('Play or select a track first.'); return; } if (h.mas && h.mas.lyricFix) h.mas.lyricFix(i); };
     $('#ppv-sumtalk').onclick = () => { const a = window.__ppApi, i = a ? a.currentIndex() : -1; if (i < 0) { h.status('Play or select a track first.'); return; } if (h.mas && h.mas.songTalk) h.mas.songTalk(i); };
@@ -8313,7 +8341,8 @@
       '<label class="ppv-c" style="display:block">Chat reply style: <select id="ppv-csty" data-sync="ppvChatStyle" style="width:100%;display:block">' + menuOpts(CHAT_STYLES) + '</select></label>' +
       '<label class="ppv-c" style="display:block">Summary length: <select id="ppv-slen2" data-sync="ppvSumLen" style="width:100%;display:block">' + menuOpts(SUM_LENS) + '</select></label>' +
       '<label class="ppv-c" style="display:block">Summary style: <select id="ppv-ssty2" data-sync="ppvSumStyle" style="width:100%;display:block">' + menuOpts(SUM_STYLES) + '</select></label>' +
-      '<div class="ppv-note">The chat menus apply to normal chat and Song Talk. The summary menus apply to AI summaries, here and under Lyrics &amp; subtitles. A tiny model may not follow every instruction exactly, and long replies take longer. Lyric Fix keeps its own short format.</div>' +
+      '<label class="ppv-c" style="display:block">Summary word limit: <select id="ppv-smax2" data-sync="ppvSumMax" style="width:100%;display:block">' + menuOpts(SUM_MAX) + '</select></label>' +
+      '<div class="ppv-note">The chat menus apply to normal chat and Song Talk. The summary menus apply to AI summaries, here and under Lyrics &amp; subtitles. A tiny model may not follow every instruction exactly, and long replies take longer. The word limit is a hard cap: anything past it is cut at the last full sentence. Lyric Fix keeps its own short format.</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-agent-on"> Allow Bloop to run commands (play, playlists, tagging, volume\u2026)</label>' +
       '<label id="ppv-chatgpul" class="ppv-c" style="display:none"><input type="checkbox" id="ppv-chatgpu"> Use GPU (experimental, ~270 MB download)</label>' +
       '<label id="ppv-lmgpul" class="ppv-c" style="display:none"><input type="checkbox" id="ppv-lmgpu"> Run the app-only (LiteRT-LM) models on the phone GPU: much faster. Falls back to the CPU by itself. Applies the next time the model loads.</label>' +
@@ -8325,7 +8354,7 @@
       const cmod = p.querySelector('#ppv-chat-model');
       cmod.innerHTML = Object.keys(mas.chat.models).filter(k => NATIVE || !mas.chat.models[k].lm).map(k => '<option value="' + k + '">' + mas.chat.models[k].label + '</option>').join('');
       cmod.value = mas.chat.key(); cmod.onchange = () => mas.chat.setModel(cmod.value);
-      [['#ppv-clen', chatLenKey], ['#ppv-csty', chatStyleKey], ['#ppv-slen2', sumLenKey], ['#ppv-ssty2', sumStyleKey]].forEach(([q, f]) => { const x = p.querySelector(q); if (x) x.value = f(); });
+      [['#ppv-clen', chatLenKey], ['#ppv-csty', chatStyleKey], ['#ppv-slen2', sumLenKey], ['#ppv-ssty2', sumStyleKey], ['#ppv-smax2', sumMaxKey]].forEach(([q, f]) => { const x = p.querySelector(q); if (x) x.value = f(); });
       const ms = p.querySelector('#ppv-mem'), mv = p.querySelector('#ppv-mem-val'), memTxt = n => n === 0 ? 'none' : n + (n === 1 ? ' exchange' : ' exchanges');
       ms.value = mas.chat.memory.get(); mv.textContent = memTxt(+ms.value);
       ms.oninput = () => { const n = mas.chat.memory.set(ms.value); mv.textContent = memTxt(n); };
