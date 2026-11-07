@@ -3415,7 +3415,30 @@
         } catch (e) { console.error(e); toast('Scan failed: ' + errText(e)); }
         b1.disabled = b2.disabled = false;
       };
-      const repApply = (g, text) => { text = String(text || '').trim(); const tgt = g.rows.filter(r => !(g.off && g.off.has(r))); if (!tgt.length) { toast('Tick at least one line first.'); return; } if (!text && tgt.some(r => !(g.asg && g.asg.get(r)))) { toast('Pick a version or write a custom one first.'); return; } snap(); tgt.forEach(r => { r.text = (g.asg && g.asg.get(r)) || text; }); render(); repRender(); toast('Applied to ' + tgt.length + ' line' + (tgt.length === 1 ? '' : 's') + (tgt.length < g.rows.length ? ' (' + (g.rows.length - tgt.length) + ' left as they were)' : '') + '.'); };
+      // Several wordings can be right (a chorus that really changes between passes), so they are ticked, not picked.
+      // Applying: a line whose wording is ticked keeps it; any other line gets the CLOSEST ticked wording (a mishearing sits
+      // nearest to what was really sung); the per-line menu still overrides both.
+      const repSimTxt = (a, b) => { a = rpNorm(a); b = rpNorm(b); if (!a || !b) return 0; const n = a.length, m = b.length; let prev = Array.from({ length: m + 1 }, (_, j) => j); for (let i = 1; i <= n; i++) { const cur = [i]; for (let j = 1; j <= m; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; } return 1 - prev[m] / Math.max(n, m); };
+      const repPicked = g => {                                            // ticked wordings as text, own wording included when ticked
+        const vs = repVariants(g), out = vs.filter(v => g.picks && g.picks.has(rpNorm(v.text))).map(v => v.text);
+        if (g.ownOn && String(g.own || '').trim()) out.push(String(g.own).trim());
+        return out;
+      };
+      const repTarget = (g, r, picked) => {
+        const a = g.asg && g.asg.get(r); if (a) return a;
+        if (!picked.length) return null;
+        if (picked.some(p => rpNorm(p) === rpNorm(r.text))) return r.text;   // already one of the right wordings: keep it
+        return picked.slice().sort((x, y) => repSimTxt(r.text, y) - repSimTxt(r.text, x))[0];
+      };
+      const repApply = (g, text) => {
+        const tgt = g.rows.filter(r => !(g.off && g.off.has(r))); if (!tgt.length) { toast('Tick at least one line first.'); return; }
+        let picked = repPicked(g); if (!picked.length && String(text || '').trim()) picked = [String(text).trim()];
+        if (!picked.length && tgt.some(r => !(g.asg && g.asg.get(r)))) { toast('Tick at least one right wording, or write your own.'); return; }
+        snap(); let ch = 0, kept = 0;
+        tgt.forEach(r => { const nt = repTarget(g, r, picked); if (nt == null) return; if (nt === r.text) kept++; else { r.text = nt; ch++; } });
+        render(); repRender();
+        toast((ch ? 'Changed ' + ch + ' line' + (ch === 1 ? '' : 's') : 'Nothing needed changing') + (kept ? ', kept ' + kept + ' that already had a right wording' : '') + (tgt.length < g.rows.length ? ' (' + (g.rows.length - tgt.length) + ' unticked left as they were)' : '') + '.');
+      };
       const repSuggest = g => { const v = rpVote(g.rows.map(r => ({ text: r.text, alts: r.alts }))); return v ? v.text : ''; };
       const repSelBtn = () => { const n = repGroups.filter(g => g.on !== false && repVariants(g).filter(v => !v.alt).length >= 2 && g.rows.some(r => !(g.off && g.off.has(r)))).length; const b = $e('#e-rall'); if (b) b.textContent = n ? 'Apply to ' + n + ' selected group' + (n === 1 ? '' : 's') : 'Apply to selected groups'; };
       function repRender() {
@@ -3448,17 +3471,20 @@
             tt.append(tl, ss); lab.append(cb, pb, tt); tms.appendChild(lab);
           });
           card.appendChild(tms);
-          const pickIt = txt => { g.pick = txt; repRender(); };
+          if (!g.picks) g.picks = new Set(cur0 ? [rpNorm(cur0)] : []);        // starts with the suggested wording ticked
+          const togglePick = txt => { const k = rpNorm(txt); if (g.picks.has(k)) g.picks.delete(k); else g.picks.add(k); repRender(); };
+          card.appendChild(mkEl('div', 'rnote', 'Tick every wording that is right. Lines that already have a ticked wording keep it; the others get the closest ticked one.'));
           vs.forEach(v => {
-            const on = rpNorm(v.text) === rpNorm(cur0) && g.pick !== '\u0000own', d = mkEl('label', 'rv' + (on ? ' on' : '')), rd = mkEl('input'); rd.type = 'radio'; rd.name = 'rg' + gi; rd.checked = on;
+            const on = g.picks.has(rpNorm(v.text)), d = mkEl('label', 'rv' + (on ? ' on' : '')), rd = mkEl('input'); rd.type = 'checkbox'; rd.checked = on;
             const tx = mkEl('span', 'tx'); tx.textContent = v.text; const bd = mkEl('span', 'bd', (v.n ? '×' + v.n : 'other pass') + (rpNorm(v.text) === rpNorm(sug) ? ' · suggested' : ''));
-            d.append(rd, tx, bd); d.onclick = ev => { ev.preventDefault(); pickIt(v.text); }; card.appendChild(d);
+            d.append(rd, tx, bd); d.onclick = ev => { ev.preventDefault(); togglePick(v.text); }; card.appendChild(d);
           });
-          const own = mkEl('label', 'rv' + (g.pick === '\u0000own' ? ' on' : '')), orad = mkEl('input'); orad.type = 'radio'; orad.name = 'rg' + gi; orad.checked = g.pick === '\u0000own';
+          const own = mkEl('label', 'rv' + (g.ownOn ? ' on' : '')), orad = mkEl('input'); orad.type = 'checkbox'; orad.checked = !!g.ownOn;
+          orad.onclick = ev => { ev.stopPropagation(); g.ownOn = orad.checked; own.classList.toggle('on', g.ownOn); };
           const oin = mkEl('input'); oin.type = 'text'; oin.placeholder = 'None of these — write my own'; oin.value = g.own || '';
-          oin.oninput = () => { g.own = oin.value; g.pick = '\u0000own'; own.classList.add('on'); orad.checked = true; card.querySelectorAll('.rv').forEach(x => { if (x !== own) x.classList.remove('on'); }); }; oin.onfocus = () => { if (g.pick !== '\u0000own') { g.pick = '\u0000own'; own.classList.add('on'); orad.checked = true; card.querySelectorAll('.rv').forEach(x => { if (x !== own) x.classList.remove('on'); }); } };
+          oin.oninput = () => { g.own = oin.value; g.ownOn = !!oin.value.trim(); orad.checked = g.ownOn; own.classList.toggle('on', g.ownOn); };   // typing ticks it; other ticks stay
           own.append(orad, oin); card.appendChild(own);
-          const ap = mkEl('button', 'pri ap', ''); apBtn = ap; upApply(); ap.onclick = () => repApply(g, g.pick === '\u0000own' ? g.own : cur0); card.appendChild(ap);
+          const ap = mkEl('button', 'pri ap', ''); apBtn = ap; upApply(); ap.onclick = () => repApply(g, ''); card.appendChild(ap);
           repEl.appendChild(card);
         });
         if (!shown) repEl.appendChild(mkEl('div', 'eempty', repGroups.length ? 'Nothing to decide: every repeated line already has the same wording.' : 'Tap “Scan repeated lines” to find lines that were sung more than once and choose the right wording.<br><br>“Scan with audio” also catches repeats that Whisper wrote differently each time.'));
@@ -3466,7 +3492,7 @@
         repSelBtn();
       }
       $e('#e-rscan').onclick = () => repScan(false); $e('#e-rscanA').onclick = () => repScan(true); $e('#e-rshow').onchange = repRender;
-      $e('#e-rall').onclick = () => { let n = 0, k = 0; snap(); repGroups.forEach(g => { if (g.on === false || repVariants(g).filter(v => !v.alt).length < 2) return; const sg = repSuggest(g); if (!sg) return; const tg = g.rows.filter(r => !(g.off && g.off.has(r))); if (!tg.length) return; tg.forEach(r => { r.text = (g.asg && g.asg.get(r)) || sg; }); n++; k += tg.length; }); if (!n) { hist.pop(); toast('Nothing to apply. Tick at least one group.'); return; } render(); repRender(); toast('Applied the suggested wording to ' + k + ' line' + (k === 1 ? '' : 's') + ' in ' + n + ' group' + (n === 1 ? '' : 's') + '.'); };
+      $e('#e-rall').onclick = () => { let n = 0, k = 0; snap(); repGroups.forEach(g => { if (g.on === false || repVariants(g).filter(v => !v.alt).length < 2) return; let picked = repPicked(g); if (!picked.length) { const sg = repSuggest(g); if (!sg) return; picked = [sg]; } const tg = g.rows.filter(r => !(g.off && g.off.has(r))); if (!tg.length) return; tg.forEach(r => { const nt = repTarget(g, r, picked); if (nt != null && nt !== r.text) { r.text = nt; k++; } }); n++; }); if (!n) { hist.pop(); toast('Nothing to apply. Tick at least one group.'); return; } render(); repRender(); toast('Applied the ticked wordings: ' + k + ' line' + (k === 1 ? '' : 's') + ' in ' + n + ' group' + (n === 1 ? '' : 's') + '.'); };
       $e('#e-rsel').onclick = () => { repGroups.forEach(g => { g.on = true; if (g.off) g.off.clear(); }); repRender(); };
       $e('#e-rnone').onclick = () => { repGroups.forEach(g => { g.on = false; }); repRender(); };
       // ================= Lyrics you already know: line them up with what the audio says =================
@@ -5286,28 +5312,43 @@
       accB = bar.children[0]; upd();
       return true;
     }
-    function lfConsistency() {                                            // choruses: most common wording wins, no AI
+    // Choruses often change on purpose between passes ("I'm falling" -> "I'm flying", a twist in the last chorus), so a
+    // repeat is only flagged when the difference looks like a mishearing: spacing/punctuation only, or ONE word that is
+    // one letter off with the same first letter ("dawn"/"down", "save"/"saves"). A different word, several changed words, or a line sung only
+    // twice is left alone. Each flag is still just a suggestion with Accept / Skip.
+    function lfMisheard(a, b) {
+      if (mFlat(a) === mFlat(b)) return true;                            // "gonna" vs "gon na", commas, capitals
+      const wa = mNorm(a).split(' '), wb = mNorm(b).split(' ');
+      if (wa.length !== wb.length) return false;
+      const diff = []; for (let k = 0; k < wa.length; k++) if (wa[k] !== wb[k]) diff.push(k);
+      if (diff.length !== 1) return false;
+      const x = wa[diff[0]], y = wb[diff[0]];
+      return x[0] === y[0] && mLev(x, y, 1) <= 1;                         // one letter, same start: "dawn"/"down" yes, "falling"/"flying" or "night"/"light" no
+    }
+    function lfConsistency() {
       const F = lyFix, T = F.texts, n = T.length, used = new Array(n).fill(false), out = [];
       for (let i = 0; i < n; i++) {
         if (used[i] || mNorm(T[i]).length < 10) continue;
         const grp = [i];
         for (let j = i + 1; j < n; j++) if (!used[j] && lfSim(T[i], T[j]) >= 0.8) grp.push(j);
-        if (grp.length < 3) continue;
+        if (grp.length < 3) continue;                                     // needs at least three passes to know which one is odd
         grp.forEach(j => used[j] = true);
         const cnt = new Map(); grp.forEach(j => cnt.set(T[j], (cnt.get(T[j]) || 0) + 1));
         const best = [...cnt.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0];
-        if (best[1] < 2) continue;
-        grp.forEach(j => { if (T[j] !== best[0]) out.push([j + 1, best[0], 'matches the other ' + best[1] + ' times this line is sung']); });
+        if (best[1] < 2 || best[1] < grp.length / 2) continue;           // no clear majority: the variations are probably the song
+        grp.forEach(j => { if (T[j] !== best[0] && cnt.get(T[j]) === 1 && lfMisheard(T[j], best[0])) out.push([j + 1, best[0], 'possibly misheard: the other ' + best[1] + ' times it is sung this way']); });
       }
       return out;
     }
     const LF_SYS = 'You correct automatic lyric transcriptions. The speech recognizer often hears a phrase that SOUNDS like what was sung but means something else, so a line can read fluently and still be wrong. ' +
       'Check each line against the song\'s subject (given below), the lines around it, and normal grammar. Fix: misheard words, words that make no sense in context, lines that are fluent but do not fit what the song is talking about when a similar-sounding phrase would fit, and names or places heard as ordinary words. ' +
+      'Repeated lines such as a chorus can change on purpose between repeats: do not make them match unless one is clearly misheard. ' +
       'A fix must sound almost the same when spoken aloud and keep about the same length. Keep the singer\'s own style, slang, contractions and repetition. Do not rewrite, improve, censor or translate, and never add or remove lines. ' +
       'Reply with ONLY the lines you change, one per line, exactly as: number| corrected line. If nothing needs fixing, reply: NONE';
     const LF_SYS2 = 'You are a careful proofreader of automatic lyric transcriptions. The speech recognizer often writes a phrase that SOUNDS like what was sung but is the wrong words. Such a line is usually grammatical, so being grammatical does not make it right. ' +
       'Go through every line and ask: does this fit the song\'s subject and the lines before and after it? Does each word make sense here? Is there a similar-sounding word or phrase that fits better (for example a name, a place, a common expression, or a repeated phrase from nearby lines)? ' +
       'If a line is odd, out of place, or unrelated to its surroundings, give the line the singer most likely sang. It must sound almost the same when spoken aloud and have about the same number of syllables. ' +
+      'Repeated lines such as a chorus can change on purpose between repeats: do not make them match unless one is clearly misheard. ' +
       'Do not change lines that already fit. Do not polish, censor, translate, add or remove lines. Reply with ONLY the lines you change, one per line, exactly as: number| corrected line. If nothing needs fixing, reply: NONE';
     const lfPho = a => String(a || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z\s]/g, '').replace(/\bkn/g, 'n').replace(/\bwr/g, 'r').replace(/ph/g, 'f').replace(/ck/g, 'k').replace(/c(?=[eiy])/g, 's').replace(/c/g, 'k').replace(/q/g, 'k').replace(/x/g, 'ks').replace(/z/g, 's').replace(/gh/g, '').replace(/([a-z])\1+/g, '$1').replace(/(?<=[a-z])[aeiouy]+/g, '').replace(/\s+/g, ' ').trim();   // rough sound skeleton, so sound-alike fixes pass the guard even when the spelling differs
     const lfGuard = (o, tx, deep) => { if (!tx || tx === o) return false; const lr = tx.length / Math.max(1, o.length); if (lr < (deep ? 0.4 : 0.5) || lr > (deep ? 2.2 : 1.8)) return false; return lfSim(o, tx) >= (deep ? 0.3 : 0.4) || lfSim(lfPho(o), lfPho(tx)) >= 0.6; };
@@ -5318,6 +5359,7 @@
       'For example, "Kingston my heart" was really "king\'s in my heart", and "hold me Carolina" was really "hold me, carry on". ' +
       'Look at each line. If a word (especially a name or a rare word) does not fit the song\'s subject or the lines around it, say it out loud syllable by syllable and work out which ordinary word or words sound the same and make sense there. The fix can be one word, two or three words, or a different word. ' +
       'Change only the odd word or words. Keep every other word exactly as written. Do not polish, translate, add or remove lines. If the odd word really could be a real name that belongs, leave it. ' +
+      'Repeated lines such as a chorus can change on purpose between repeats: do not make them match unless one is clearly misheard. ' +
       'Reply with ONLY the lines you change, one per line, exactly as: number| corrected line. If nothing needs fixing, reply: NONE';
     function lfSuspects() {                                                // mid-line capitalised words (names) that are not in the title or artist and are not sung over and over
       const F = lyFix, T = F.texts, cnt = new Map(), out = new Map(), skip = new Set(lfTok((F.t.title || '') + ' ' + (F.artist || '')).map(lfW).filter(Boolean));
@@ -5402,7 +5444,7 @@
       cin.placeholder = 'e.g. line 12 should be \u2026';
       add('bot', blTone('Let\'s fix the lyrics of ' + t.title + (artist ? ' by ' + artist : '') + ' (' + lyFix.texts.length + ' lines' + (data.kind === 'subs' ? ', timing stays as it is' : '') + '). Nothing changes until you accept it.'));
       const cons = lfConsistency();
-      if (!lfSuggest(cons, 'First, lines that repeat (like the chorus) but were heard a little differently:')) add('bot', 'The repeated lines already match. \u2713');
+      if (!lfSuggest(cons, 'First, repeated lines (like the chorus) where one pass looks misheard. Skip any that the song really changes:')) add('bot', 'No repeated lines look misheard. \u2713');
       if (brainOn() && (gen || lsGet('ppvChatDl') === '1')) actions([['\ud83d\udd0d Check every line with AI', (b, d) => { d.remove(); lfAiPass(); }], ['\ud83e\udde9 Decode odd words and names', (b, d) => { d.remove(); lfAiPass('decode'); }], ['Show the lyrics', (b, d) => { d.remove(); lfShow(); }]]);
       else add('bot', 'Turn on my AI brain in the assistant settings for the line-by-line check. You can still edit lines here: \u201cline 12 should be \u2026\u201d.');
     }
