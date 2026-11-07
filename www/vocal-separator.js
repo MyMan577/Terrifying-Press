@@ -1331,12 +1331,23 @@
     segs.forEach(sg => { cnt[sg.lab] = (cnt[sg.lab] || 0) + 1; if (tot[sg.lab] > 1) sg.lab += ' ' + cnt[sg.lab]; });
     // per-section tags
     const MOODS = ['happy', 'sad', 'relaxed', 'aggressive', 'party'], mh = (P.heads || []).filter(h => h.kind === 'binary' && MOODS.includes(h.id)).map(h => { let lo = Infinity, hi = -Infinity; for (const v of h.v) { if (v < lo) lo = v; if (v > hi) hi = v; } return Object.assign({ raw: lo < 0 || hi > 1 }, h); });
+    // singer's voice per section (gender head), only where there is real singing: lets the map spot a second singer / duet
+    const gh = (P.heads || []).find(h => h.group === 'gender' && h.classes && h.classes.length === h.n && h.n >= 2);
+    const voiceOf = sg => {
+      if (!gh || sg.voc < 0.45) return '';
+      const acc = new Float64Array(gh.n); let c2 = 0;
+      for (let p = sg.a; p < sg.b; p++) { if (P.voice[p] < 0.5) continue; for (let k = 0; k < gh.n; k++) acc[k] += gh.v[p * gh.n + k]; c2++; }
+      if (c2 < 3) return '';
+      let pr = Array.from(acc, v => v / c2); if (pr.some(v => v < 0 || v > 1)) { const mx = Math.max(...pr), ex = pr.map(v => Math.exp(v - mx)), sm = ex.reduce((a, b) => a + b, 0); pr = ex.map(v => v / sm); }
+      const sm = pr.reduce((a, b) => a + b, 0) || 1; let bi = 0; pr.forEach((v, k) => { if (v > pr[bi]) bi = k; });
+      const conf = Math.round(pr[bi] / sm * 100); return conf >= 62 ? gh.classes[bi] + ':' + conf : '';
+    };
     const sections = segs.map((sg, i) => {
       const inst = groups.filter(g => avg(g.on, sg.a, sg.b) >= 0.6).map(g => g.name);
       let gen = ''; if (P.gen) { const acc = new Float64Array(400); for (let p = sg.a; p < sg.b; p++) for (let c2 = 0; c2 < 400; c2++) { let v = P.gen[p * 400 + c2]; if (!Number.isFinite(v)) v = 0; acc[c2] += P.genRaw ? sig(v) : v; } let bi = 0; for (let c2 = 1; c2 < 400; c2++) if (acc[c2] > acc[bi]) bi = c2; gen = String(P.DISCOGS[bi]).replace(/\s*\([^)]*\)$/, ''); }
       let md = '', bv = 0.45; for (const h of mh) { let v = 0; for (let p = sg.a; p < sg.b; p++) { const x = h.v[p * h.n + h.pos]; v += h.raw ? sig(x) : x; } v /= (sg.b - sg.a); if (v > bv) { bv = v; md = h.id; } }
       return { t0: i === 0 ? Math.max(0, Math.round(P.t[0] - 1)) : Math.round(P.t[sg.a] - 0.5), t1: i === last ? Math.round(P.dur ? Math.min(P.dur, P.t[n - 1] + 1) : P.t[n - 1] + 1) : Math.round(P.t[segs[i + 1].a] - 0.5),
-        label: sg.lab, group: String.fromCharCode(65 + sg.k), voc: Math.round(sg.voc * 100), en: Math.round(sg.e * 100), inst, gen, md };
+        label: sg.lab, group: String.fromCharCode(65 + sg.k), voc: Math.round(sg.voc * 100), en: Math.round(sg.e * 100), inst, gen, md, vg: voiceOf(sg) };
     });
     // entries and exits (merged when several arrive together)
     let ev = []; for (const g of groups) for (let i = 1; i < n; i++) if (g.on[i] !== g.on[i - 1] && i >= 3 && i <= n - 3) ev.push([Math.round(P.t[i] - 0.5), g.name, g.on[i]]);
@@ -1347,14 +1358,14 @@
   // compact form for saving, and plain-language lines for the tag view and for the AI
   function compactStruct(r) {
     if (!r.sections || !r.sections.length) return null;
-    return { sc: r.sections.map(s => [s.t0, s.t1, s.label, s.voc, s.en, s.inst.join('+'), s.gen, s.md]), ie: (r.stemEv || []).map(e => [e[0], e[1], e[2]]), scs: r.structSpan, scw: r.structWhole ? 1 : 0 };
+    return { sc: r.sections.map(s => [s.t0, s.t1, s.label, s.voc, s.en, s.inst.join('+'), s.gen, s.md, s.vg || '']), ie: (r.stemEv || []).map(e => [e[0], e[1], e[2]]), scs: r.structSpan, scw: r.structWhole ? 1 : 0 };
   }
   function structLines(c) {
     if (!c || !c.sc || !c.sc.length) return [];
     const mode = k => { const f = {}; c.sc.forEach(s => { if (s[k]) f[s[k]] = (f[s[k]] || 0) + (s[1] - s[0]); }); const e = Object.entries(f).sort((p, q) => q[1] - p[1])[0]; return e ? e[0] : ''; }, mg = mode(6), mm = mode(7);
     const nrg = e => e >= 66 ? 'loud' : e >= 33 ? 'medium' : 'quiet';
     const L = ['Sections' + (c.scs ? ' (' + mmss(c.scs[0]) + '-' + mmss(c.scs[1]) + (c.scw ? '' : ', middle part only') + ')' : '') + ':'];
-    c.sc.forEach(s => { const bits = [nrg(s[4]), s[3] >= 50 ? 'vocals' : s[3] >= 20 ? 'some vocals' : 'no vocals']; if (s[5]) bits.push(s[5].split('+').filter(x => x !== 'vocals').join(', ')); if (s[6] && s[6] !== mg) bits.push(s[6]); if (s[7] && s[7] !== mm) bits.push(s[7]); L.push('  ' + mmss(s[0]) + ' ' + s[2] + ' (' + bits.filter(Boolean).join('; ') + ')'); });
+    c.sc.forEach(s => { const bits = [nrg(s[4]), s[3] >= 50 ? 'vocals' : s[3] >= 20 ? 'some vocals' : 'no vocals']; if (s[5]) bits.push(s[5].split('+').filter(x => x !== 'vocals').join(', ')); if (s[6] && s[6] !== mg) bits.push(s[6]); if (s[7] && s[7] !== mm) bits.push(s[7]); if (s[8]) bits.push(String(s[8]).split(':')[0] + ' voice'); L.push('  ' + mmss(s[0]) + ' ' + s[2] + ' (' + bits.filter(Boolean).join('; ') + ')'); });
     if (c.ie && c.ie.length) L.push('Enter/exit: ' + c.ie.map(e => mmss(e[0]) + ' ' + e[1] + (e[2] ? ' in' : ' out')).join(' · '));
     return L;
   }
@@ -1577,7 +1588,7 @@
       }
       try {                                                            // sections, per-section tags, instrument entries/exits
         const stp = { t: Float32Array.from(idx, q => off / 16000 + q * 62 * 256 / 16000 + 1), emb: embAll, inst: instAll, gen: gAny ? gAll : null, genRaw: styleLo < 0 || styleHi > 1, voice: pv, loud: pLoud, whole: !!whole, dur: r.dur, INST40, DISCOGS,
-          heads: heads.map((h, j) => hper[j] ? { id: h.id, kind: h.kind, pos: h.pos, n: hper[j].n, v: hper[j] } : null).filter(Boolean) };
+          heads: heads.map((h, j) => hper[j] ? { id: h.id, kind: h.kind, group: h.group, classes: h.classes, pos: h.pos, n: hper[j].n, v: hper[j] } : null).filter(Boolean) };
         const sr = structureFromPatches(stp); if (sr) { r.sections = sr.sections; r.stemEv = sr.events; r.structSpan = [sr.from, sr.to]; r.structWhole = !!whole; }
       } catch (e) { console.error(e); r.errors.push('Structure: ' + e.message); }
     } catch (e) { console.error(e); r.errors.push('EffNet: ' + e.message); }
@@ -2650,20 +2661,64 @@
     const tot = {}, n = {}; parts.forEach(p => { tot[p.lab] = (tot[p.lab] || 0) + 1; });
     parts.forEach(p => { if (/^(Verse|Instrumental|Breakdown|Interlude)$/.test(p.lab) && tot[p.lab] > 1) { n[p.lab] = (n[p.lab] || 0) + 1; p.name = p.lab + ' ' + n[p.lab]; } else p.name = p.lab; });
     if (!parts.length) return null;
+    // what each part sounds like (from the sound sections it overlaps) and what changes from the part before
+    if (sc && timed) {
+      const ie = (c && c.ie) || [], nrg = e => e >= 66 ? 'loud' : e >= 33 ? 'medium' : 'quiet', vlev = v => v >= 50 ? 2 : v >= 20 ? 1 : 0;
+      const and = a => a.length <= 1 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
+      parts.forEach(p => {
+        const t1 = Math.max(p.t1, p.t0 + 1); let w = 0, voc = 0, en = 0; const ins = {}, vg = {};
+        sc.forEach(x => {
+          const ov = Math.min(t1, x[1]) - Math.max(p.t0, x[0]); if (ov <= 0) return;
+          w += ov; voc += x[3] * ov; en += x[4] * ov;
+          String(x[5] || '').split('+').filter(n => n && n !== 'vocals').forEach(n => { ins[n] = (ins[n] || 0) + ov; });
+          if (x[8]) { const g = String(x[8]).split(':')[0]; vg[g] = (vg[g] || 0) + ov; }
+        });
+        if (!w) return;
+        const gv = Object.entries(vg).sort((a, b) => b[1] - a[1])[0];
+        p.snd = { voc: voc / w, en: en / w, inst: Object.keys(ins).filter(n => ins[n] >= 0.5 * w), voice: gv && gv[1] >= 0.5 * w ? gv[0] : '' };
+        p.inside = ie.filter(e => e[0] > p.t0 + 4 && e[0] < t1 - 2).slice(0, 3).map(e => { const many = String(e[1]).includes('+'); return String(e[1]).split('+').join(' and ') + (e[2] ? (many ? ' come in' : ' comes in') : (many ? ' drop out' : ' drops out')) + ' at ' + mmss(e[0]); });
+      });
+      let prev = null, prevSung = null, mainV = '';
+      parts.forEach(p => {
+        const d = p.snd; if (!d) return;
+        const ch = [];
+        if (!prev) ch.push(nrg(d.en) + ' start' + (d.inst.length ? ' with ' + and(d.inst) : ''));
+        else {
+          const q = prev.snd, de = d.en - q.en;
+          if (de >= 35) ch.push('much louder'); else if (de >= 15) ch.push('louder'); else if (de <= -35) ch.push('much quieter'); else if (de <= -15) ch.push('quieter');
+          const inn = d.inst.filter(n => !q.inst.includes(n)), out = q.inst.filter(n => !d.inst.includes(n));
+          if (inn.length) ch.push(and(inn) + (inn.length > 1 ? ' come' : ' comes') + ' in');
+          if (out.length) ch.push(and(out) + (out.length > 1 ? ' drop' : ' drops') + ' out');
+          const a = vlev(q.voc), b = vlev(d.voc);
+          if (a === 0 && b > 0) ch.push('singing starts'); else if (a > 0 && b === 0) ch.push('singing stops'); else if (b > a) ch.push('more singing'); else if (b < a) ch.push('less singing');
+          if (!ch.length) ch.push('much the same sound');
+        }
+        if (d.voice && !mainV) mainV = d.voice;
+        if (d.voice && prevSung && prevSung.snd.voice && d.voice !== prevSung.snd.voice) ch.push(d.voice === mainV ? 'back to the ' + d.voice + ' voice' : 'a ' + d.voice + ' voice takes over (maybe a second singer)');
+        if (p.inside.length) ch.push('then ' + p.inside.join(', '));
+        p.change = ch.join('; ');
+        p.sound = [nrg(d.en), d.inst.length ? and(d.inst) : '', vlev(d.voc) === 2 ? 'full vocals' : vlev(d.voc) === 1 ? 'some vocals' : 'no vocals', d.voice ? d.voice + ' voice' : ''].filter(Boolean).join(', ');
+        prev = p; if (vlev(d.voc) > 0) prevSung = p;
+      });
+      if (new Set(parts.filter(p => p.snd && p.snd.voice).map(p => p.snd.voice)).size > 1) parts.duet = true;
+    }
     const form = parts.map(p => p.name).join(', ');
-    return { parts, form, text: songMap.fmt(parts, timed), timed, lyrics: blocks.length > 0, chorus: chorus.size };
+    return { parts, form, text: songMap.fmt(parts, timed), timed, lyrics: blocks.length > 0, chorus: chorus.size, duet: !!parts.duet };
   }
   songMap.fmt = (parts, timed) => {
     const nz = q => q.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); let firstCh = null;
     return parts.map(p => {
-      if (!p.sung) return '[' + p.name + (timed ? ' ' + mmss(p.t0) + '-' + mmss(p.t1) : '') + (p.audio ? ']' : ', no singing]');
+      const note = p.change ? ' \u2014 ' + p.change : '';
+      if (!p.sung) return '[' + p.name + (timed ? ' ' + mmss(p.t0) + '-' + mmss(p.t1) : '') + (p.audio ? '' : ', no singing') + note + ']';
       const key = p.lines.map(nz).join('|'), same = p.lab === 'Chorus' && firstCh === key;
       if (p.lab === 'Chorus' && !firstCh) firstCh = key;
-      return '[' + p.name + (timed ? ' ' + mmss(p.t0) : '') + ']\n' + (same ? '(same words as the first chorus)' : p.lines.join('\n'));
+      return '[' + p.name + (timed ? ' ' + mmss(p.t0) : '') + note + ']\n' + (same ? '(same words as the first chorus)' : p.lines.join('\n'));
     }).join('\n\n');
   };
   // one line for the tag view / Song Talk: "Intro 0:00 · Verse 1 0:14 · Chorus 0:48 ..."
   const songMapLine = m => m ? m.parts.slice(0, 16).map(p => p.name + (m.timed ? ' ' + mmss(p.t0) : '')).join(' · ') : '';
+  // one row per part with what changes: "1:54 Bridge: quieter; drums drop out; piano comes in"
+  const songMapRows = m => m ? m.parts.slice(0, 16).map(p => '  ' + (m.timed ? mmss(p.t0) + ' ' : '') + p.name + (p.change ? ': ' + p.change : '')) : [];
   function soundProfile(c, kind) {                                     // plain-language description straight from the saved tags, no AI involved
     if (!c) return { line: '', hint: '' };
     const nm = q => String(q).replace(/\s*\([^)]*\)$/, '').replace(/ music$/i, '').toLowerCase();
@@ -2780,7 +2835,7 @@
         'Base it on the lyrics you are given. You may add what you reliably know about this specific song and artist (what it is widely understood to be about, the story behind it), but never invent facts; when unsure, stay with the lyrics. ' +
         'Describe the lyrics in your own words instead of quoting them. ' +
         'When the lyrics are marked by section ([Verse 1], [Chorus], [Bridge] ...), use that: the chorus usually carries the main message, the verses build the story, and a bridge often brings a turn, a doubt or a new angle. Explain how the meaning develops through the song, but do not list the sections or give timestamps. ' +
-        'A FEEL line may give the mood and themes the audio analysis heard: use it only as a hint for the meaning and never describe the sound. ' + ST.say + ' Write ' + wd + '.'
+        'A FEEL line may give the mood and themes the audio analysis heard, and a note after a section name may say how the music changes there (louder, quieter, instruments in or out, another voice). Use these only as hints for the meaning, for example a stripped-back bridge as a vulnerable moment or a second voice as the other person answering, and never describe the sound itself. ' + ST.say + ' Write ' + wd + '.'
       : 'You summarize videos for a media app. Write about what the video is about: its subject, main points or story, and why it matters. Do not describe the audio. ' +
         'Use only the transcript you are given; never invent names or events. ' + ST.say + ' Write ' + wd + '.';
     const opt = { max_new_tokens: LN.tok, do_sample: true, temperature: 0.4, top_p: 0.9, repetition_penalty: 1.08 };
@@ -2791,8 +2846,9 @@
       const bits = th.concat(md).slice(0, 6);
       feel = (bits.length ? 'mood and themes: ' + bits.join(', ') : '') + (gv && gv[1] >= 65 && (c.v == null || c.v >= 50) ? (bits.length ? '; ' : '') + 'the lead singer sounds ' + gv[0] : '');
     }
-    const head = 'Title: ' + t.title + (who ? '\nArtist: ' + who : '') + '\nType: ' + kind + (feel ? '\nFEEL (audio analysis, a hint only): ' + feel : '');
+    let head = 'Title: ' + t.title + (who ? '\nArtist: ' + who : '') + '\nType: ' + kind + (feel ? '\nFEEL (audio analysis, a hint only): ' + feel : '');
     const map = kind === 'song' && t.dbId != null ? (() => { try { return songMap(t.dbId, c); } catch (e) { console.warn('song map', e); return null; } })() : null;
+    if (map && map.duet) head += (feel ? '' : '\nFEEL (audio analysis, a hint only): ') + (feel ? '; ' : '') + 'the voice changes between parts, so there may be two singers';
     let user;
     if (tr.words < 12) {
       if (kind !== 'song' || !who) return '';
@@ -2953,7 +3009,7 @@
         head.innerHTML = '<b></b><div style="opacity:.7;font-size:11px"></div>';
         head.firstChild.textContent = (t.kind === 'video' ? '🎬 ' : '🎵 ') + (t.artist && !/^(Unknown artist|Video|Stream)$/.test(t.artist) ? t.artist + ' – ' : '') + t.title;
         head.lastChild.textContent = [c.bpm ? c.bpm + ' BPM' : '', c.key || '', c.gp && c.gp[0] ? c.gp[0][0] : '', c.st && c.st[0] ? c.st[0][0].replace(/ \(.*\)$/, '') : '', c.md && c.md[0] ? c.md[0][0] : '', c.v != null ? (c.v >= 50 ? 'vocals' : 'instrumental') : ''].filter(Boolean).join(' · ') || 'tagged';
-        body.style.cssText = 'display:none;white-space:pre-wrap;font-size:12px;margin-top:6px'; body.textContent = fmtStored(c) + (() => { if (t.kind === 'video') return ''; try { const m = songMap(t.dbId, c); return m && m.lyrics ? '\nSong map (lyrics + sound): ' + songMapLine(m) : ''; } catch (e) { return ''; } })();
+        body.style.cssText = 'display:none;white-space:pre-wrap;font-size:12px;margin-top:6px'; body.textContent = fmtStored(c) + (() => { if (t.kind === 'video') return ''; try { const m = songMap(t.dbId, c); return m && m.lyrics ? '\nSong map (lyrics + sound):\n' + songMapRows(m).join('\n') : ''; } catch (e) { return ''; } })();
         const play = document.createElement('button'); play.className = 'ppv-sec'; play.textContent = 'Play this track'; play.style.display = 'none';
         play.onclick = ev => { ev.stopPropagation(); const i = a.tracks().indexOf(t); if (i >= 0) a.play(i, a.tracks().map((_, k) => k)); };
         row.onclick = () => { const open = body.style.display === 'none'; body.style.display = open ? 'block' : 'none'; play.style.display = open ? 'block' : 'none'; };
@@ -5254,7 +5310,7 @@
       if (c.v != null) L.push(c.v >= 50 ? 'Has vocals' : 'Mostly instrumental');
       if (c.fv != null) L.push('Vocals from ' + mmssT(c.fv) + ' to ' + mmssT(c.lv));
       if (c.d) L.push('Length: ' + mmssT(c.d));
-      try { const m = songMap(t.dbId, c); if (m) L.push('Song map (where the song changes, from the lyrics and the sound): ' + songMapLine(m)); } catch (e) {}
+      try { const m = songMap(t.dbId, c); if (m) L.push('Song map (where the song changes and what changes in the music, from the lyrics and the sound):\n' + songMapRows(m).join('\n') + (m.duet ? '\n  (the voice changes between parts: maybe two singers)' : '')); } catch (e) {}
       // Structure from the timed lyrics: lines that come back are the chorus / hook.
       let cues = []; try { const e = (JSON.parse(localStorage.getItem('playerSubtitles')) || {})[t.dbId]; if (e && e.c) cues = e.c.map(q => [+q[0], String(q[2] || '').trim()]).filter(q => q[1]); } catch (x) {}
       if (cues.length >= 6) {
