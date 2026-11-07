@@ -1131,6 +1131,12 @@
     letter-spacing: 0.01em;
   }
 </style>
+<style>
+#ui #actions{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:8px!important}
+#ui #actions .btn{min-height:62px;padding:10px 6px!important;font-size:13px!important;line-height:1.15;justify-content:center}
+#ui #actions .btn .icon{font-size:19px}
+#ui #actions #btnSkills{grid-column:1/-1!important;min-height:46px;font-size:13px!important}
+</style>
 </head>
 <body>
 <div id="stage">
@@ -1431,7 +1437,9 @@ window.addEventListener('resize', resize);
 resize();
 
 // ---------- Ground / parallax layout ----------
-function groundY(){ return H*0.70; }
+function groundY(){ const u = document.getElementById('ui'); let top = Infinity;
+  if (u && !u.classList.contains('hidden')) top = u.getBoundingClientRect().top - stage.getBoundingClientRect().top;
+  return Math.min(H*0.70, top - 8); }
 
 // ---------- Particle system for fx ----------
 let particles = [];
@@ -3493,7 +3501,11 @@ function layout(){
   hero.homeX = W*0.20; hero.x = hero.homeX; hero.y = groundY()-H*0.055; hero.scale = H*0.00125;
   enemy.homeX = W*0.82; enemy.x = enemy.homeX; enemy.y = groundY()-H*0.065; enemy.scale = H*0.00135;
   beaver.x = W*0.12; beaver.y = groundY()-H*0.025; beaver.scale = H*0.00085;
+  __lastGround = groundY();
 }
+let __lastGround = null;
+function __followGround(){ const g = groundY(); if (__lastGround !== null && Math.abs(g - __lastGround) > 0.5){ const d = g - __lastGround; hero.y += d; enemy.y += d; beaver.y += d; } __lastGround = g; }
+{ const u = document.getElementById('ui'); if (u){ new MutationObserver(__followGround).observe(u, { attributes:true, attributeFilter:['class'] }); if (window.ResizeObserver) new ResizeObserver(__followGround).observe(u); } }
 
 // Draw a silhouette humanoid using simple limb segments (all black fill)
 
@@ -17923,7 +17935,7 @@ function drawChronicleEnemySeal(kind, t){
 }
 
 const legacyDrawHeroForChronicle = drawHero;
-drawHero = function(t){ legacyDrawHeroForChronicle(t); drawChronicleHeroDetails(t); };
+
 const legacyDrawEnemyElkForChronicle = drawEnemyElk;
 drawEnemyElk = function(t){ legacyDrawEnemyElkForChronicle(t); drawChronicleEnemySeal('elk',t); };
 const legacyDrawEnemyHawkForChronicle = drawEnemyHawk;

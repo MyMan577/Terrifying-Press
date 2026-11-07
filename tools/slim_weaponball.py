@@ -90,4 +90,9 @@ d.text([
  ["No ranged attack. Passively gains +5 flat damage", "No shooting. Gets stronger while moving, then rams with a shockwave."],
 ])
 
+# ---- fix: the mode buttons ran off the sides of a phone screen ----
+# The row (1v1 ... ROGUELITE, DRAFT) never wrapped, so on a phone its label
+# was cut off on the left and Roguelite / Draft on the right. Let it wrap.
+d.sub("</head>", "<style>.mode-toggle-wrap{flex-wrap:wrap;justify-content:center;row-gap:6px;max-width:100%;padding:0 8px;box-sizing:border-box}</style>\n</head>")
+
 d.save(sys.argv[2])

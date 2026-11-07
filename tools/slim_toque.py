@@ -64,4 +64,41 @@ d.text([
  ["Unlocks a village action: for 50% of your gold", "Unlocks Invasive Species in the village: pay half your gold (at least 5,000g) to make a creature common in an area for 5 minutes."],
 ])
 
+# ---- Kanata without the "Chronicle" armour overlay ----
+# A later layer painted a teal tunic with a gold V and ring emblem over his
+# silhouette in battle. His normal drawing (black silhouette, red toque) stays.
+d.sub("drawHero = function(t){ legacyDrawHeroForChronicle(t); drawChronicleHeroDetails(t); };", "")
+
+# ---- bigger, full-width battle buttons ----
+# A later style gave the action row five columns for four buttons, leaving an
+# empty gap on the right; the buttons were ~67x50. Four columns, taller
+# buttons, a little larger text, Field Techniques full width underneath.
+d.sub("</head>", """<style>
+#ui #actions{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:8px!important}
+#ui #actions .btn{min-height:62px;padding:10px 6px!important;font-size:13px!important;line-height:1.15;justify-content:center}
+#ui #actions .btn .icon{font-size:19px}
+#ui #actions #btnSkills{grid-column:1/-1!important;min-height:46px;font-size:13px!important}
+</style>
+</head>""")
+
+# ---- keep Kanata standing above the battle panel ----
+# The ground line was fixed at 70% of the screen; with the bigger buttons the
+# panel reached above that and covered his feet. The ground now sits just
+# above the panel whenever the panel would cover it.
+d.sub("function groundY(){ return H*0.70; }",
+      "function groundY(){ const u = document.getElementById('ui'); let top = Infinity;\n"
+      "  if (u && !u.classList.contains('hidden')) top = u.getBoundingClientRect().top - stage.getBoundingClientRect().top;\n"
+      "  return Math.min(H*0.70, top - 8); }")
+
+# The battle sets everyone's height a moment before the panel appears, so
+# when the ground moves (panel shown, hidden or resized) shift Kanata, the
+# enemy and the beaver by the same amount.
+d.sub("""  beaver.x = W*0.12; beaver.y = groundY()-H*0.025; beaver.scale = H*0.00085;
+}""", """  beaver.x = W*0.12; beaver.y = groundY()-H*0.025; beaver.scale = H*0.00085;
+  __lastGround = groundY();
+}
+let __lastGround = null;
+function __followGround(){ const g = groundY(); if (__lastGround !== null && Math.abs(g - __lastGround) > 0.5){ const d = g - __lastGround; hero.y += d; enemy.y += d; beaver.y += d; } __lastGround = g; }
+{ const u = document.getElementById('ui'); if (u){ new MutationObserver(__followGround).observe(u, { attributes:true, attributeFilter:['class'] }); if (window.ResizeObserver) new ResizeObserver(__followGround).observe(u); } }""")
+
 d.save(sys.argv[2])
