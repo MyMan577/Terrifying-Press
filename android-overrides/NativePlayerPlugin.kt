@@ -101,12 +101,16 @@ class NativePlayerPlugin : Plugin() {
     private fun origOf(item: MediaItem?): String? =
         item?.mediaMetadata?.extras?.getString("orig") ?: item?.localConfiguration?.uri?.toString()
 
-    private fun probeAsync(orig: String?) {
+    private fun probeAsync(orig: String?, src: String? = orig) {
         probedDurMs = -1L
-        if (orig == null) return
+        if (orig == null || src == null) return
         bg.execute {
-            val d = SourceResolver.probeDurationMs(context, orig)
-            if (srcOrig == orig) probedDurMs = d
+            val d = SourceResolver.probeDurationMs(context, src)
+            if (srcOrig == orig) {
+                probedDurMs = d
+                // Only matters when ExoPlayer's own parser could not tell the length: tell the page once we know it.
+                if (d > 0) main.post { if (svc?.player?.duration == C.TIME_UNSET && srcOrig == orig) notifyListeners("state", snapshot("duration")) }
+            }
         }
     }
 
@@ -215,14 +219,16 @@ class NativePlayerPlugin : Plugin() {
         nextGen++                                   // any queued "next" belongs to the previous track
         srcOrig = orig; probedDurMs = -1L
         bg.execute {
-            // Off the main thread: verify the source can be seeked (copy it locally if it can't) and probe its length.
+            // Off the main thread: verify the source can be seeked (copy it locally if it can't).
+            // The length probe is NOT done here: parsing a whole video with MediaMetadataRetriever can take seconds,
+            // and ExoPlayer reports the duration itself. It runs after the item is handed over (probeAsync below).
             val play = try { SourceResolver.playable(context, orig) } catch (e: Exception) { orig }
-            val dur = SourceResolver.probeDurationMs(context, play)
             main.post {
                 if (gen != loadGen) { call.resolve(); return@post }   // a newer load superseded this one
                 withSvc(call) { s ->
                     val item = buildItem(orig, play, call.data)
-                    currentItem = item; nextUri = null; probedDurMs = dur
+                    currentItem = item; nextUri = null
+                    probeAsync(orig, play)
                     s.player.setAudioAttributes(
                         AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
                             .setContentType(if (kind == "video") C.AUDIO_CONTENT_TYPE_MOVIE else C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)

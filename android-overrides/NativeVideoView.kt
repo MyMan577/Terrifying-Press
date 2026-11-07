@@ -231,6 +231,9 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
 
     override fun surfaceChanged(h: SurfaceHolder, format: Int, width: Int, height: Int) {
         gl.post { outW = width; outH = height; E.boxChanged(); requestRenderGl() }
+        // The buffers follow the new size a little later; redraw once they have, so the picture is laid out for them.
+        gl.postDelayed({ requestRenderGl() }, 80)
+        gl.postDelayed({ requestRenderGl() }, 300)
     }
 
     override fun surfaceDestroyed(h: SurfaceHolder) {
@@ -335,6 +338,12 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
     private fun beginWindow(): Boolean {
         if (released || !glOk || win == EGL14.EGL_NO_SURFACE || outW <= 0 || outH <= 0) return false
         current()
+        // Draw for the buffer's real size, not the size the last surfaceChanged reported: after the box is resized
+        // those can differ for a frame or two, and a picture laid out for one size then shown in the other is
+        // squashed or stretched (a paused picture stays that way until the next frame).
+        val qw = IntArray(1); val qh = IntArray(1)
+        if (EGL14.eglQuerySurface(dpy, win, EGL14.EGL_WIDTH, qw, 0) && EGL14.eglQuerySurface(dpy, win, EGL14.EGL_HEIGHT, qh, 0)
+            && qw[0] > 0 && qh[0] > 0) { outW = qw[0]; outH = qh[0] }
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
         GLES20.glViewport(0, 0, outW, outH)
         GLES20.glClearColor(0f, 0f, 0f, 1f)
