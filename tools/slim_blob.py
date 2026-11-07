@@ -55,7 +55,7 @@ d.text([
  ["Calls down a storm of about 45 flaming meteors", "Around 45 flaming meteors rain on the whole map, yours included, so dig in. Mystery crates only, and very rare."],
  ["Flaming uppercut. You leap up and launch any blob", "Leap up in flames and launch anyone in reach into the air (30 damage). Starts with 1."],
  ["Tap the map to place a girder.", "Tap the map to place a steel beam. Aim tilts it. Doesn't end your turn. Starts with 2."],
- ["Tap the map. A red maple bomber drops 9 bombs", "Tap the map. A bomber drops 9 bouncing bombs in a line that hop across the map, exploding on every landing."],
+ ["Tap the map. A red maple bomber drops 9 bombs", "Tap the map. A bomber drops 9 bombs in a tight line on that spot. Each one bounces a few times, exploding on every landing."],
 ])
 for old, new in [("n:'Sheep'", "n:'Wind-up beetle'"), ("n:'Old woman'", "n:'Big beetle'"), ("n:'Concrete moose'", "n:'Bouncing anvil'"),
                  ("n:'Mail strike'", "n:'Parcel drop'"), ("n:'Ming vase'", "n:'Clay pot'"), ("n:'Scales of justice'", "n:'Even split'"),
@@ -118,5 +118,35 @@ for sel, rule in CSS.items():
     m = re.search(r'^' + re.escape(sel) + r'\{[^}]*\}', d.s, re.M)
     if not m: sys.exit('css rule not found: ' + sel)
     d.s = d.s[:m.start()] + rule + d.s[m.end():]
+
+# ---- fix: flamethrower hitbox ----
+# Damage used an invisible 82px cone checked every 4 frames, while the visible
+# flames fly up to ~120px and pass through walls. Now the flame puffs are the
+# hitbox: each puff burns any blob it touches (3 dmg, at most every 4 frames per
+# blob, same rate as before) and dies when it hits terrain.
+OLD_FT_START = "function stepFt(){fts.forEach(f=>{const w=f.w;f.t--;if(w.hp<=0){f.t=0;return}"
+i = d.s.index(OLD_FT_START); j = d.s.index("fts=fts.filter(f=>f.t>0)}", i) + len("fts=fts.filter(f=>f.t>0)}")
+old = d.s[i:j]
+assert "if(f.t%4==0){teams.forEach(t=>t.w.forEach(v=>{if(v===w||v.hp<=0)return;const dx=v.x-ox,dy=v.y-5-oy,d=Math.hypot(dx,dy);if(d>82||d<1)return;" in old
+NEW_FT = ("function stepFt(){fts.forEach(f=>{const w=f.w;f.t--;f.ps=f.ps||[];f.hc=f.hc||new Map();if(w.hp<=0)f.t=0;"
+ "const a=f.a*Math.PI/180,cx=Math.cos(a)*f.d,cy=-Math.sin(a),ox=w.x+cx*8,oy=w.y-6+cy*8;\n"
+ " if(f.t>0)for(let i=0;i<3;i++){const sp=3.2+R()*2.4,sa=(R()-.5)*.34,c2=Math.cos(sa),s2=Math.sin(sa),q={x:ox,y:oy,vx:(cx*c2-cy*s2)*sp,vy:(cx*s2+cy*c2)*sp-.1,gr:-.01,l:13+R()*9,c:['#ff4a1c','#ff8a1f','#ffd23a'][i],r:2+R()*3.2};fx.push(q);f.ps.push(q)}\n"
+ " f.ps=f.ps.filter(q=>{if(q.l<=0)return false;if(solid(q.x,q.y)){q.l=0;return false}\n"
+ "  teams.forEach(t=>t.w.forEach(v=>{if(v===w||v.hp<=0)return;const dx=v.x-q.x,dy=v.y-5-q.y,rr=6+q.r*.6;if(dx*dx+dy*dy>rr*rr)return;if(fr-(f.hc.get(v)??-99)<4)return;f.hc.set(v,fr);hurt(v,3);v.lh=w;cnt(w,v)}));return true});\n"
+ " if(f.t>0&&f.t%10==0){let x=ox,y=oy,hit=0;for(let k=0;k<82&&!hit;k+=3){x+=cx*3;y+=cy*3;if(solid(x,y))hit=1}if(!hit){let k=0;while(k++<40&&!solid(x,y))y++;hit=solid(x,y)}if(hit&&fires.length<200){let gy=y;while(gy>0&&solid(x,gy))gy--;fires.push({x,y:gy+1,e:fr+420,o:w})}}});"
+ "fts=fts.filter(f=>f.t>0||f.ps.length)}")
+d.s = d.s[:i] + NEW_FT + d.s[j:]
+
+# ---- fix: Canadian strike lands on the marked spot ----
+# Bombs left the plane already moving forward, drifting ~60-70px before the first
+# landing, then every bounce carried them up to ~150px further. Now each bomb is
+# released early by exactly its drift (fall simulated against the ground under
+# its target), and each bounce hops at most ~12px forward.
+d.sub("function plane(w,x0,xs,mk,k){const dir=x0>=w.x?1:-1,q=xs.map(d=>mk(Math.max(20,Math.min(W-20,x0+d)))).sort((a,b)=>dir*(a.x-b.x));",
+      "function plane(w,x0,xs,mk,k){const dir=x0>=w.x?1:-1,q=xs.map(d=>mk(Math.max(20,Math.min(W-20,x0+d)))).map(p=>{if(p.cs){let y=-12,vy=p.vy,t=0;while(t<600&&y<WL&&!solid(p.x,y+2)){vy+=.15;y+=vy;t++}p.rx=p.x-dir*1.2*t}return p}).sort((a,b)=>dir*((a.rx??a.x)-(b.rx??b.x)));")
+d.sub("while(pl.q.length&&(pl.dir>0?pl.x>=pl.q[0].x:pl.x<=pl.q[0].x)){const sp=pl.q.shift();sp.y=pl.y+6;if(sp.cs){sp.dr=pl.dir;sp.vx=pl.dir*1.2}proj.push(sp)}",
+      "while(pl.q.length&&(pl.dir>0?pl.x>=(pl.q[0].rx??pl.q[0].x):pl.x<=(pl.q[0].rx??pl.q[0].x))){const sp=pl.q.shift();sp.y=pl.y+6;if(sp.cs){sp.dr=pl.dir;sp.vx=pl.dir*1.2;if(sp.rx!==undefined)sp.x=sp.rx}proj.push(sp)}")
+d.sub("p.vy=-Math.max(2.6,Math.min(9.5,iv*.76));p.vx*=.94;break}",
+      "p.vy=-Math.max(2.6,Math.min(9.5,iv*.76));p.vx=Math.sign(p.vx)*Math.min(Math.abs(p.vx)*.94,12*.15/(2*Math.abs(p.vy)));break}")
 
 d.save(sys.argv[2])
