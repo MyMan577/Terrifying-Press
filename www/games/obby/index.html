@@ -5161,7 +5161,38 @@ let srEchoFrames = [];
   window._gameTILE      = TILE;  
   Object.defineProperty(window, '_gameViewW', { get: () => viewW, configurable: true });
   Object.defineProperty(window, '_gameViewH', { get: () => viewH, configurable: true });
-  window._getChar       = () => getChar();  
+  window._getChar       = () => getChar();
+  // Playing together (online.js) reaches into the game through this.
+  window.__obby = {
+    get mode() { return mode; }, setMode: m => setMode(m),
+    get won() { return won; },
+    get char() { return selectedCharacter; },
+    player, cam,
+    exportLevel: () => exportLevel(), importLevel: j => importLevel(j),
+    resetPlayer: () => resetPlayer(),
+    setMessage: t => setMessage(t),
+    // Draw the other player: borrow `player` and the character for one drawPlayer() call.
+    drawAs(s, label) {
+      const F = ['x','y','vx','vy','w','h','onGround','dashDir','isDashing','gravityFlipped','hpInvuln','enemyKnockbackInvuln','isWallSliding','onWall','wallSide','slashTimer','swordMode'];
+      const keep = {}; for (const k of F) keep[k] = player[k];
+      const keepChar = selectedCharacter, keepCtx = ctx;
+      try {
+        for (const k of F) if (s[k] !== undefined) player[k] = s[k];
+        if (s.char) selectedCharacter = s.char;
+        drawPlayer();
+      } catch (e) { /* a character we can't draw: the name tag still shows */ }
+      finally {
+        for (const k of F) player[k] = keep[k];
+        selectedCharacter = keepChar; ctx = keepCtx;
+      }
+      if (label) {
+        const tx = (s.x + (s.w || player.w) / 2) * TILE - cam.x, ty = s.y * TILE - cam.y - 14;
+        ctx.save(); ctx.font = 'bold 12px system-ui, sans-serif'; ctx.textAlign = 'center';
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.strokeText(label, tx, ty);
+        ctx.fillStyle = '#fff'; ctx.fillText(label, tx, ty); ctx.restore();
+      }
+    }
+  };
   
   Object.defineProperty(window, '_srEchoFrames', {
     get: () => srEchoFrames,
@@ -22590,7 +22621,7 @@ function resolveCollisions(axis, dt) {
       ctx.restore();
     }
 
-    drawParticles(); drawConduitEffects(); drawPlayer();
+    drawParticles(); drawConduitEffects(); if (window.__obbyNet) window.__obbyNet.frame(); drawPlayer();
     if (window._drawSelectionOverlay) window._drawSelectionOverlay();
     
     if (window.drifterDrawHook) window.drifterDrawHook(ctx, Date.now()*0.001, cam);
@@ -39554,5 +39585,7 @@ window._claimLBro = function() {
   initUI();
 })();
 </script>
+<script src="../qrlink/qrlink.js"></script>
+<script src="online.js"></script>
 </body>
 </html>
