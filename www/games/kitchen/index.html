@@ -404,13 +404,13 @@
 
   <div id="classSelectModal">
     <h1>CHOOSE YOUR CHEF</h1>
-    <div class="sub">Each class has an active ability - tap it mid-shift</div>
+    <div class="sub">Each chef has an ability. Tap it during a shift.</div>
     <div id="classChoices"></div>
   </div>
 
   <div id="helperPickModal">
     <h1>PICK A HAND</h1>
-    <div class="sub">One kitchen hand joins you for this shift</div>
+    <div class="sub">Pick someone to help this shift.</div>
     <div id="helperPickChoices"></div>
   </div>
 
@@ -451,7 +451,7 @@
 
   <div id="exitConfirmModal">
     <h1>LEAVE SHIFT?</h1>
-    <div class="sub">Your progress in this run will be lost.</div>
+    <div class="sub">You'll lose this run.</div>
     <div style="display:flex; gap:12px;">
       <button class="btn" id="exitStayBtn" style="background:#4a6a5a; border-color:#2f4a3f;">STAY</button>
       <button class="btn" id="exitLeaveBtn" style="background:#a4432c; border-color:#6f2a1a;">LEAVE</button>
@@ -463,7 +463,7 @@
     <div id="tutText"></div>
     <button class="btn" id="tutFinishBtn">FINISH</button>
   </div>
-  <div id="tutStick">TOUCH AND DRAG HERE</div>
+  <div id="tutStick">DRAG HERE</div>
 
   <div id="orders"></div>
   <div id="toast"></div>
@@ -479,14 +479,14 @@
 
   <div id="levelUpModal">
     <h1>LEVEL UP!</h1>
-    <div class="sub">Pick an upgrade for this shift</div>
+    <div class="sub">Pick an upgrade.</div>
     <div id="upgradeChoices"></div>
   </div>
 
   <div id="shiftBreakModal">
     <div>
       <h1>SHIFT COMPLETE!</h1>
-      <div class="sub" id="shiftBreakSub">All tables cleared. Get ready for the next shift.</div>
+      <div class="sub" id="shiftBreakSub">Tables cleared. Next shift soon.</div>
     </div>
     <div id="shiftBreakCountdown">30</div>
   </div>
@@ -656,43 +656,43 @@
 
   const ACHIEVEMENTS = [
     { id:'first_serve', icon:'🍽️', name:'First Ticket', desc:'Serve your first order', check:s=>s.ordersServed>=1 },
-    { id:'serve_10', icon:'🍔', name:'Line Cook', desc:'Serve 10 orders lifetime', check:s=>s.ordersServed>=10 },
-    { id:'serve_50', icon:'🍔', name:'Short Order Cook', desc:'Serve 50 orders lifetime', check:s=>s.ordersServed>=50 },
-    { id:'serve_100', icon:'🍔', name:'Grill Master', desc:'Serve 100 orders lifetime', check:s=>s.ordersServed>=100 },
-    { id:'serve_250', icon:'🏅', name:'Kitchen Legend', desc:'Serve 250 orders lifetime', check:s=>s.ordersServed>=250 },
-    { id:'serve_500', icon:'🏆', name:'Iron Chef', desc:'Serve 500 orders lifetime', check:s=>s.ordersServed>=500 },
-    { id:'serve_1000', icon:'👑', name:'Michelin Star', desc:'Serve 1000 orders lifetime', check:s=>s.ordersServed>=1000 },
-    { id:'helper_10', icon:'🤝', name:'Delegate', desc:'Have helpers serve 10 orders', check:s=>s.helperOrdersServed>=10 },
-    { id:'helper_50', icon:'🤝', name:'Manager Material', desc:'Have helpers serve 50 orders', check:s=>s.helperOrdersServed>=50 },
-    { id:'score_100', icon:'💵', name:'First Paycheck', desc:'Score 100+ points in a single shift', check:(s,h)=> Math.max(h.normal||0,h.rush||0,h.endless||0)>=100 },
-    { id:'score_250', icon:'💵', name:'Making Bank', desc:'Score 250+ points in a single shift', check:(s,h)=> Math.max(h.normal||0,h.rush||0,h.endless||0)>=250 },
-    { id:'score_500', icon:'💰', name:'Head Chef Material', desc:'Score 500+ points in a single shift', check:(s,h)=> Math.max(h.normal||0,h.rush||0,h.endless||0)>=500 },
-    { id:'score_1000', icon:'💎', name:'Restaurant Empire', desc:'Score 1000+ points in a single shift', check:(s,h)=> Math.max(h.normal||0,h.rush||0,h.endless||0)>=1000 },
+    { id:'serve_10', icon:'🍔', name:'Line Cook', desc:'Serve 10 orders', check:s=>s.ordersServed>=10 },
+    { id:'serve_50', icon:'🍔', name:'Short Order Cook', desc:'Serve 50 orders', check:s=>s.ordersServed>=50 },
+    { id:'serve_100', icon:'🍔', name:'Grill Master', desc:'Serve 100 orders', check:s=>s.ordersServed>=100 },
+    { id:'serve_250', icon:'🏅', name:'Kitchen Legend', desc:'Serve 250 orders', check:s=>s.ordersServed>=250 },
+    { id:'serve_500', icon:'🏆', name:'Iron Chef', desc:'Serve 500 orders', check:s=>s.ordersServed>=500 },
+    { id:'serve_1000', icon:'👑', name:'Michelin Star', desc:'Serve 1000 orders', check:s=>s.ordersServed>=1000 },
+    { id:'helper_10', icon:'🤝', name:'Delegate', desc:'Helpers serve 10 orders', check:s=>s.helperOrdersServed>=10 },
+    { id:'helper_50', icon:'🤝', name:'Manager Material', desc:'Helpers serve 50 orders', check:s=>s.helperOrdersServed>=50 },
+    { id:'score_100', icon:'💵', name:'First Paycheck', desc:'Score 100+ in one shift', check:(s,h)=> Math.max(h.normal||0,h.rush||0,h.endless||0)>=100 },
+    { id:'score_250', icon:'💵', name:'Making Bank', desc:'Score 250+ in one shift', check:(s,h)=> Math.max(h.normal||0,h.rush||0,h.endless||0)>=250 },
+    { id:'score_500', icon:'💰', name:'Head Chef Material', desc:'Score 500+ in one shift', check:(s,h)=> Math.max(h.normal||0,h.rush||0,h.endless||0)>=500 },
+    { id:'score_1000', icon:'💎', name:'Restaurant Empire', desc:'Score 1000+ in one shift', check:(s,h)=> Math.max(h.normal||0,h.rush||0,h.endless||0)>=1000 },
     { id:'level_5', icon:'⭐', name:'Rising Star', desc:'Reach level 5 in a shift', check:s=>s.maxLevel>=5 },
     { id:'level_10', icon:'🌟', name:'Seasoned Chef', desc:'Reach level 10 in a shift', check:s=>s.maxLevel>=10 },
     { id:'level_15', icon:'✨', name:'Master of the Line', desc:'Reach level 15 in a shift', check:s=>s.maxLevel>=15 },
     { id:'rush_played', icon:'🔥', name:'Feel the Heat', desc:'Play a Rush Hour shift', check:s=>(s.modesPlayed.rush||0)>=1 },
     { id:'tickets_completed', icon:'🎫', name:'Ticket Runner', desc:'Complete a Ticket Rush', check:s=>s.ticketRushCompleted>=1 },
     { id:'tickets_fast', icon:'⏱️', name:'Speed Demon', desc:'Finish Ticket Rush in under 2 minutes', check:(s,h)=> h.tickets!=null && h.tickets<=120 },
-    { id:'endless_shift3', icon:'♾️', name:'Just Getting Started', desc:'Reach Shift 3 in Endless mode', check:s=>s.maxShift>=3 },
-    { id:'endless_shift5', icon:'♾️', name:'In The Weeds', desc:'Reach Shift 5 in Endless mode', check:s=>s.maxShift>=5 },
-    { id:'endless_shift10', icon:'♾️', name:'Never Closing', desc:'Reach Shift 10 in Endless mode', check:s=>s.maxShift>=10 },
-    { id:'flawless_shift', icon:'🧼', name:'Flawless Service', desc:'Clear an Endless shift with zero mistakes', check:s=>s.flawlessShifts>=1 },
-    { id:'flawless_shift_5', icon:'🧼', name:'Untouchable', desc:'Clear 5 Endless shifts with zero mistakes', check:s=>s.flawlessShifts>=5 },
+    { id:'endless_shift3', icon:'♾️', name:'Just Getting Started', desc:'Reach Shift 3 in Endless', check:s=>s.maxShift>=3 },
+    { id:'endless_shift5', icon:'♾️', name:'In The Weeds', desc:'Reach Shift 5 in Endless', check:s=>s.maxShift>=5 },
+    { id:'endless_shift10', icon:'♾️', name:'Never Closing', desc:'Reach Shift 10 in Endless', check:s=>s.maxShift>=10 },
+    { id:'flawless_shift', icon:'🧼', name:'Flawless Service', desc:'Clear an Endless shift with no mistakes', check:s=>s.flawlessShifts>=1 },
+    { id:'flawless_shift_5', icon:'🧼', name:'Untouchable', desc:'Clear 5 Endless shifts with no mistakes', check:s=>s.flawlessShifts>=5 },
     { id:'classes_all', icon:'👨‍🍳', name:'Culinary School', desc:'Try every chef class', check:s=>Object.keys(s.classesUsed).length>=CHEF_CLASSES.length },
-    { id:'ability_10', icon:'⚡', name:'Getting the Hang of It', desc:'Use a class ability 10 times', check:s=>s.abilitiesUsed>=10 },
-    { id:'ability_50', icon:'⚡', name:'Ability Addict', desc:'Use a class ability 50 times', check:s=>s.abilitiesUsed>=50 },
-    { id:'recipe_all', icon:'📖', name:'Full Menu', desc:'Serve every recipe on the menu', check:s=>Object.keys(s.recipesServed).length>=RECIPES.length },
+    { id:'ability_10', icon:'⚡', name:'Getting the Hang of It', desc:'Use your ability 10 times', check:s=>s.abilitiesUsed>=10 },
+    { id:'ability_50', icon:'⚡', name:'Ability Addict', desc:'Use your ability 50 times', check:s=>s.abilitiesUsed>=50 },
+    { id:'recipe_all', icon:'📖', name:'Full Menu', desc:'Serve every recipe', check:s=>Object.keys(s.recipesServed).length>=RECIPES.length },
     { id:'fries_10', icon:'🍟', name:'Fry Cook', desc:'Serve 10 orders of Fries', check:s=>(s.recipesServed['Fries']||0)>=10 },
-    { id:'side_fries_10', icon:'🍟', name:'Combo Meal', desc:'Serve 10 orders with a side of fries', check:s=>s.sideFriesServed>=10 },
+    { id:'side_fries_10', icon:'🍟', name:'Combo Meal', desc:'Serve 10 orders with fries on the side', check:s=>s.sideFriesServed>=10 },
     { id:'works_5', icon:'🍔', name:'The Works Wizard', desc:'Serve "The Works" 5 times', check:s=>(s.recipesServed['The Works']||0)>=5 },
-    { id:'burnt_10', icon:'🔥', name:'Kitchen Fire', desc:'Burn 10 items lifetime', check:s=>s.itemsBurnt>=10 },
-    { id:'burnt_50', icon:'🚒', name:'Call the Fire Department', desc:'Burn 50 items lifetime', check:s=>s.itemsBurnt>=50 },
-    { id:'no_burn_run', icon:'🧯', name:'Clean Kitchen', desc:'Finish a shift (5+ orders) without burning anything', check:s=>s.noBurnRuns>=1 },
-    { id:'upgrades_10', icon:'⬆️', name:'Upgraded', desc:'Choose 10 upgrades lifetime', check:s=>s.upgradesChosen>=10 },
-    { id:'upgrades_50', icon:'⬆️', name:'Fully Loaded', desc:'Choose 50 upgrades lifetime', check:s=>s.upgradesChosen>=50 },
-    { id:'helpers_hired_5', icon:'👥', name:'Building a Crew', desc:'Bring in 5 kitchen helpers lifetime', check:s=>s.helpersHired>=5 },
-    { id:'games_50', icon:'🎖️', name:'Veteran', desc:'Play 50 shifts lifetime', check:s=>s.gamesPlayed>=50 },
+    { id:'burnt_10', icon:'🔥', name:'Kitchen Fire', desc:'Burn 10 items', check:s=>s.itemsBurnt>=10 },
+    { id:'burnt_50', icon:'🚒', name:'Call the Fire Department', desc:'Burn 50 items', check:s=>s.itemsBurnt>=50 },
+    { id:'no_burn_run', icon:'🧯', name:'Clean Kitchen', desc:'Serve 5+ orders in a shift without burning anything', check:s=>s.noBurnRuns>=1 },
+    { id:'upgrades_10', icon:'⬆️', name:'Upgraded', desc:'Choose 10 upgrades', check:s=>s.upgradesChosen>=10 },
+    { id:'upgrades_50', icon:'⬆️', name:'Fully Loaded', desc:'Choose 50 upgrades', check:s=>s.upgradesChosen>=50 },
+    { id:'helpers_hired_5', icon:'👥', name:'Building a Crew', desc:'Hire 5 helpers', check:s=>s.helpersHired>=5 },
+    { id:'games_50', icon:'🎖️', name:'Veteran', desc:'Play 50 shifts', check:s=>s.gamesPlayed>=50 },
   ];
 
   function checkAchievements(){
@@ -720,7 +720,7 @@
     beep(740, 0.1, {type:'sine', gain:0.16});
     beep(988, 0.16, {type:'sine', gain:0.18, delay:0.1});
     const el = document.getElementById('achToast');
-    el.innerHTML = '<div class="achToastIcon">'+ach.icon+'</div><div><div class="achToastTitle">Achievement Unlocked!</div><div class="achToastName">'+ach.name+'</div></div>';
+    el.innerHTML = '<div class="achToastIcon">'+ach.icon+'</div><div><div class="achToastTitle">Achievement unlocked</div><div class="achToastName">'+ach.name+'</div></div>';
     el.style.opacity = '1';
     el.style.transform = 'translate(-50%, 0)';
     setTimeout(() => {
@@ -783,17 +783,17 @@
   // Each entry is a walkable 1x1 tile in the hub that launches a game mode.
   const HUB_MODES = [
     { id: 'kitchen', x: 5, y: 5, label: 'MORNING SHIFT', color: '#5a8f4a',
-      desc: 'A relaxed 60-second shift to warm up. Orders come in at a steady pace.', btnLabel: 'PLAY' },
+      desc: 'An easy 60 seconds to warm up. Orders come in at a steady pace.', btnLabel: 'PLAY' },
     { id: 'rush',    x: 3, y: 3, label: 'RUSH HOUR',     color: '#a4432c',
-      desc: 'Orders fly in fast for 60 seconds. Score as much as you can before time runs out.', btnLabel: 'PLAY' },
+      desc: '60 seconds of fast orders. Score as much as you can.', btnLabel: 'PLAY' },
     { id: 'tickets', x: 7, y: 7, label: 'TICKET RUSH',   color: '#3f6b8c',
-      desc: 'Clear 10 tickets as fast as you can. Your time is the score.', btnLabel: 'PLAY' },
+      desc: 'Clear 10 tickets as fast as you can.', btnLabel: 'PLAY' },
     { id: 'endless', x: 3, y: 7, label: 'ENDLESS',       color: '#6b4c85',
-      desc: 'Keep serving shift after shift, getting harder each time. Five mistakes ends the run.', btnLabel: 'PLAY' },
+      desc: 'Shift after shift, each one harder. Five mistakes and you\'re out.', btnLabel: 'PLAY' },
     { id: 'achievements', x: 7, y: 3, label: 'ACHIEVEMENTS', color: '#8a7a3a',
-      desc: 'See every achievement and how close you are to unlocking it.', btnLabel: 'VIEW' },
+      desc: 'See what you\'ve unlocked.', btnLabel: 'VIEW' },
     { id: 'tutorial', x: 5, y: 2, label: 'TUTORIAL', color: '#2f7f8f',
-      desc: 'Learn the controls: taking orders, chopping, cooking, plating and serving.', btnLabel: 'PLAY' }
+      desc: 'Learn to take orders, cook, plate and serve.', btnLabel: 'PLAY' }
   ];
 
   let gameMode = 'normal'; // 'normal' | 'rush' | 'tickets' | 'endless'
@@ -976,7 +976,7 @@
     resize();
     if (!hubToastShown){
       hubToastShown = true;
-      showToast('Walk onto a tile to start a shift');
+      showToast('Walk onto a tile to start');
     }
   }
 
@@ -1188,10 +1188,10 @@
   const UPGRADE_POOL = [
     { id:'knives', icon:'🔪', name:'Sharp Knives', desc:'Chopping is 15% faster', apply(){ chopSpeedMult *= 1.15; } },
     { id:'stove', icon:'🔥', name:'Hot Stove', desc:'Cooking is 15% faster', apply(){ cookSpeedMult *= 1.15; } },
-    { id:'patience', icon:'⏳', name:'Patient Customers', desc:'Orders give 15% more time', apply(){ orderTimeMult *= 1.15; } },
-    { id:'tickets', icon:'🎫', name:'Extra Ticket', desc:'+1 max active order', maxStack:2, apply(){ maxOrdersBonus += 1; } },
-    { id:'sous', icon:'🤖', name:'Sous Chef Bot', desc:'Hires a dedicated kitchen hand (rotates: chopper, cook, waiter)', apply(){ addSousHelper(); } },
-    { id:'tips', icon:'💰', name:'Big Tipper', desc:'Earn 10% more score per order', apply(){ scoreMult *= 1.10; } },
+    { id:'patience', icon:'⏳', name:'Patient Customers', desc:'Orders wait 15% longer', apply(){ orderTimeMult *= 1.15; } },
+    { id:'tickets', icon:'🎫', name:'Extra Ticket', desc:'One more order at a time', maxStack:2, apply(){ maxOrdersBonus += 1; } },
+    { id:'sous', icon:'🤖', name:'Sous Chef Bot', desc:'Adds a helper. Chopper first, then cook, then waiter', apply(){ addSousHelper(); } },
+    { id:'tips', icon:'💰', name:'Big Tipper', desc:'10% more points per order', apply(){ scoreMult *= 1.10; } },
     { id:'firesafe', icon:'🧯', name:'Fire Safety', desc:'Patties take longer to burn', maxStack:3, apply(){ burnGraceBonus += 0.3; } },
   ];
 
@@ -1210,7 +1210,7 @@
   let sousHelperRoleIndex = 0; // cycles chopper -> chef -> waiter as Sous Chef Bot stacks up
 
   const CHEF_CLASSES = [
-    { id:'flash', icon:'⚡', name:'Flash Finish', desc:'Instantly finish every board, stove & fryer in progress', cooldown:25,
+    { id:'flash', icon:'⚡', name:'Flash Finish', desc:'Finish everything that\'s chopping, cooking or frying', cooldown:25,
       cast(){
         let hit = false;
         STATIONS.forEach(st => {
@@ -1221,10 +1221,10 @@
         showToast(hit ? 'Flash Finish!' : 'Nothing to finish');
       }
     },
-    { id:'phantom', icon:'👻', name:'Phantom Sous', desc:'Passive: a helper chops, cooks & stages ingredients all shift', passive:true,
+    { id:'phantom', icon:'👻', name:'Phantom Sous', desc:'Always on: a helper chops, cooks and preps all shift', passive:true,
       onShiftStart(){ spawnHelperWithRole('generalist'); }
     },
-    { id:'salvage', icon:'🧯', name:'Second Wind', desc:'Instantly un-burn everything on the stoves & fryers', cooldown:20,
+    { id:'salvage', icon:'🧯', name:'Second Wind', desc:'Un-burn everything on the stoves and fryers', cooldown:20,
       cast(){
         let hit = false;
         STATIONS.forEach(st => {
@@ -1241,10 +1241,10 @@
         let worst = activeOrders[0];
         activeOrders.forEach(o => { if (o.timeLeft < worst.timeLeft) worst = o; });
         worst.timeLeft = worst.fullTime;
-        showToast('Order Recalled!');
+        showToast('Timer refilled');
       }
     },
-    { id:'overclock', icon:'🔥', name:'Overclock Grill', desc:'Triple chop & cook speed for 6s', cooldown:30, duration:6,
+    { id:'overclock', icon:'🔥', name:'Overclock Grill', desc:'Chop and cook 3x faster for 6s', cooldown:30, duration:6,
       onStart(){ overclockStacks++; showToast('Overclocked!'); },
       onEnd(){ overclockStacks = Math.max(0, overclockStacks - 1); }
     }
@@ -2182,7 +2182,7 @@
     shiftBreakTimeLeft = ENDLESS_BREAK_SECONDS;
     const modal = document.getElementById('shiftBreakModal');
     const countdownEl = document.getElementById('shiftBreakCountdown');
-    document.getElementById('shiftBreakSub').textContent = 'All tables cleared. Get ready for shift ' + (shift + 1) + '.';
+    document.getElementById('shiftBreakSub').textContent = 'Tables cleared. Shift ' + (shift + 1) + ' starts soon.';
     countdownEl.textContent = shiftBreakTimeLeft;
     modal.classList.add('show');
 
@@ -2762,7 +2762,7 @@
     // helper is mid-task on) leaves state the step's guard doesn't know how
     // to recover from and stalls the whole thing.
     if (gameMode === 'tutorial' && !tutStationAllowed(st.type)){
-      showToast('Follow the current step first!');
+      showToast('Do this step first');
       return;
     }
 
@@ -2792,13 +2792,13 @@
         p.holding.items.push(kind);
         showToast('Added ' + itemDisplayName(kind) + ' to plate');
       } else {
-        showToast('Needs prepping first!');
+        showToast('Prep it first');
       }
       return;
     }
     if (p.holding) { showToast("Hands full!"); return; }
     p.holding = { kind: kind, chopped:false, cooked:false, plate:null };
-    showToast('Grabbed ' + kind);
+    showToast('Grabbed ' + itemDisplayName(kind));
   }
 
   function pickupPlate(p){
@@ -3026,14 +3026,14 @@
     const burntIdx = extra.indexOf('patty_burnt');
     const cookedMissingIdx = missing.indexOf('patty_cooked');
     if (burntIdx !== -1 && cookedMissingIdx !== -1){
-      parts.push('the patty is overcooked');
+      parts.push('burnt patty');
       extra.splice(burntIdx, 1);
       missing.splice(cookedMissingIdx, 1);
     }
     const friesBurntIdx = extra.indexOf('fries_burnt');
     const friesMissingIdx = missing.indexOf('fries_cooked');
     if (friesBurntIdx !== -1 && friesMissingIdx !== -1){
-      parts.push('the fries are overcooked');
+      parts.push('burnt fries');
       extra.splice(friesBurntIdx, 1);
       missing.splice(friesMissingIdx, 1);
     }
@@ -3042,22 +3042,22 @@
       parts.push('missing ' + missing.map(itemDisplayName).join(', '));
     }
     if (extra.length){
-      parts.push('doesn\'t need ' + extra.map(itemDisplayName).join(', '));
+      parts.push('no ' + extra.map(itemDisplayName).join(', '));
     }
 
-    if (!parts.length) return 'Wrong order for this table';
-    return 'Wrong order - ' + parts.join(', ');
+    if (!parts.length) return 'Wrong order';
+    return 'Wrong order: ' + parts.join(', ');
   }
 
   function doServe(customer, p){
     p = p || player;
     if (!p.holding || p.holding.kind !== 'plate'){
-      showToast('Need a plated dish');
+      showToast('Bring a plate');
       return;
     }
     const order = activeOrders.find(o => o.customerId === customer.id);
     if (!order){
-      showToast('No matching order');
+      showToast('Nobody ordered that');
       return;
     }
     const items = p.holding.items.slice().sort();
@@ -4406,9 +4406,9 @@
   // auto-staffs) - let the player pick one helper role before the clock/orders
   // begin, same pause-and-choose pattern as the level-up modal.
   const HELPER_PICK_ROLES = [
-    { role:'chopper',   icon:'🔪', name:'Chopper',   desc:'Preps veggies onto the boards for you' },
+    { role:'chopper',   icon:'🔪', name:'Chopper',   desc:'Chops veggies for you' },
     { role:'chef',      icon:'🍳', name:'Line Cook',  desc:'Cooks patties and fries for you' },
-    { role:'waiter',    icon:'🧑‍🍳', name:'Waiter',     desc:'Takes orders, plates them, and serves tables' }
+    { role:'waiter',    icon:'🧑‍🍳', name:'Waiter',     desc:'Takes orders, plates and serves' }
   ];
 
   function startGameWithHelperPick(){
@@ -4446,7 +4446,7 @@
     const skip = document.createElement('div');
     skip.className = 'class-card';
     skip.style.opacity = '0.85';
-    skip.innerHTML = '<div class="icon">🙅</div><div class="name">Solo</div><div class="desc">Skip the helper, work the line alone</div>';
+    skip.innerHTML = '<div class="icon">🙅</div><div class="name">Solo</div><div class="desc">Work alone</div>';
     const doSkip = (e) => {
       if (e) e.preventDefault();
       if (chosen) return;
@@ -4461,29 +4461,29 @@
 
   const SHIFT_FLAVOR = [
     { min: 0,   title: 'Rough Night',    lines: [
-      "The pass turned into chaos and you barely crawled out alive.",
-      "Tickets piled up faster than you could ever hope to clear them.",
-      "You spent more time apologizing to customers than plating food."
+      "That got messy fast.",
+      "Tickets piled up faster than you could clear them.",
+      "More apologizing than plating tonight."
     ]},
     { min: 100, title: 'Getting There',  lines: [
-      "Rocky start, but you settled into a groove by the end.",
-      "Some burnt patties, some clutch saves. Overall, a wash of a shift.",
-      "Nothing fancy tonight, but the line kept moving forward."
+      "Rocky start, but you found a groove.",
+      "Some burnt patties, some good saves.",
+      "Nothing fancy, but the line kept moving."
     ]},
     { min: 200, title: 'Solid Shift',    lines: [
-      "Steady hands and clean plates made for a respectable night.",
-      "You held the line without ever really falling behind.",
-      "A dependable service. Nothing dropped, nothing burned too badly."
+      "Steady hands, clean plates.",
+      "You never really fell behind.",
+      "Nothing dropped, not much burned."
     ]},
     { min: 350, title: 'On Fire',        lines: [
-      "Tickets barely hit the rail before you had them out the door.",
-      "The kitchen couldn't keep pace with you tonight, and that's a compliment.",
-      "Plate after plate, right on time. That's a chef in the zone."
+      "Orders went out almost as fast as they came in.",
+      "The kitchen could barely keep up with you.",
+      "Plate after plate, right on time."
     ]},
     { min: 500, title: 'Head Chef Material', lines: [
-      "That was a masterclass. Head chef material, through and through.",
-      "Every station ran like a machine tonight. Flawless line work.",
-      "They'll be telling stories about this shift for weeks to come."
+      "That was a masterclass.",
+      "Every station ran like clockwork.",
+      "People will talk about this shift for weeks."
     ]}
   ];
 
@@ -4514,7 +4514,7 @@
       if (highScores.tickets != null){
         bestText = (isNew ? 'New best! ' : 'Best: ') + fmtTime(highScores.tickets);
       }
-      document.getElementById('endMsg').textContent = 'All 10 tickets cleared! You climbed to level ' + level + '.';
+      document.getElementById('endMsg').textContent = 'All 10 tickets done. You hit level ' + level + '.';
     } else if (gameMode === 'endless'){
       document.getElementById('scoreLine').textContent = score + ' points';
       const isNew = recordScore('endless', score, false);
@@ -4524,7 +4524,7 @@
       const flavor = pickShiftFlavor(score);
       clearInterval(startShiftBreak._timer);
       document.getElementById('shiftBreakModal').classList.remove('show');
-      document.getElementById('endMsg').textContent = 'The kitchen shut its doors after ' + ENDLESS_MAX_STRIKES + ' mistakes. ' + flavor.line + ' You made it to Shift ' + shift + ' (Lv ' + level + ').';
+      document.getElementById('endMsg').textContent = ENDLESS_MAX_STRIKES + ' mistakes and you\'re out. ' + flavor.line + ' You made it to shift ' + shift + ', level ' + level + '.';
     } else {
       document.getElementById('scoreLine').textContent = score + ' points';
       const isNew = recordScore(gameMode, score, false);
@@ -4594,7 +4594,7 @@
   const tutHelperTarget = () => helpers.length ? [{ tx: helpers[0].x, ty: helpers[0].y - 0.1 }] : [];
 
   const TUT_STEPS = [
-    { id:'move', stick:true, text:'Drag inside the dotted area to walk to the marker.',
+    { id:'move', stick:true, text:'Drag in the dotted area to walk to the marker.',
       targets:() => [{ tx:4.5, ty:1.5 }],
       done:() => Math.hypot(player.x - 4.5, player.y - 1.5) < 0.6 },
     { id:'order1', text:'Face the customer and tap ACT to take their order.',
@@ -4641,7 +4641,7 @@
       targets:() => tutCust().concat([T_ACT]),
       done:() => tut.served >= 1 },
     { id:'upgrade1', text:'Level up! Take the Hot Stove.',
-      enter:() => { setTimeout(() => tutShowUpgrade(['knives','stove','tips'], 'stove', 'Upgrades power you up for the shift. Hot Stove makes stoves and fryers cook 15% faster. Take it.'), 700); },
+      enter:() => { setTimeout(() => tutShowUpgrade(['knives','stove','tips'], 'stove', 'Upgrades last for the shift. Hot Stove cooks 15% faster. Take it.'), 700); },
       targets:() => [],
       done:() => tut.upg >= 1 },
     { id:'order2', text:'Hot Stove is on. Take the new order to see it work.',
@@ -4668,10 +4668,10 @@
       targets:() => tutCust().concat([T_ACT]),
       done:() => tut.served >= 2 },
     { id:'upgrade2', text:'Another level up! Take the Sous Chef Bot.',
-      enter:() => { setTimeout(() => tutShowUpgrade(['sous','patience','tickets'], 'sous', 'Sous Chef Bot hires a helper that works on its own. Take it.'), 700); },
+      enter:() => { setTimeout(() => tutShowUpgrade(['sous','patience','tickets'], 'sous', 'Sous Chef Bot adds a helper who works on their own. Take it.'), 700); },
       targets:() => [],
       done:() => tut.upg >= 2 },
-    { id:'helper', text:'Sous Chef Bot is a chopper. It preps veggies for open orders.', btn:'GOT IT',
+    { id:'helper', text:'This helper is a chopper. They prep veggies for open orders.', btn:'GOT IT',
       targets:() => tutHelperTarget(),
       done:() => tut.btn },
     { id:'order3', text:'New order! Take it and watch your helper chop.',
@@ -4711,7 +4711,7 @@
       guard:() => (!player.holding && !tut.trashed) ? tutIdx('lettuce') : -1,
       targets:() => [tutAt(tutStation('trash')), T_ACT],
       done:() => tut.trashed },
-    { final:true, text:'Nice work! Take orders, cook, plate, serve.',
+    { final:true, text:'That\'s it. Take orders, cook, plate, serve.',
       targets:() => [], done:() => false }
   ];
   const TUT_PLATE_STEP = 'plate1';
