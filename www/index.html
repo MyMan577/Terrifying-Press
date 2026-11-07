@@ -4455,6 +4455,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
     <div id="sidebar-resize-handle" title="Drag to resize"></div>
     <div id="sidebar-header">
       <h1>Press Play Media<span class="ed-slot"></span><span id="title-tail"></span></h1>
+      <button type="button" class="pp-games-btn pp-games-btn-side" data-pp-games aria-label="Games"><span class="pp-gi"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M7.6 6.5h8.8a5.2 5.2 0 0 1 5.1 4.2l.9 4.9a2.7 2.7 0 0 1-4.7 2.3l-2.1-2.4H8.4l-2.1 2.4a2.7 2.7 0 0 1-4.7-2.3l.9-4.9a5.2 5.2 0 0 1 5.1-4.2z"/><path fill="#5a3fc4" d="M6.6 9.3h1.6v1.6h1.6v1.6H8.2v1.6H6.6v-1.6H5v-1.6h1.6z"/><circle cx="16.2" cy="10.2" r="1.15" fill="#5a3fc4"/><circle cx="18" cy="12.3" r="1.15" fill="#5a3fc4"/></svg></span><span>Games</span></button>
       <div id="ed-tag"></div>
       <p id="track-count">No tracks loaded</p>
     </div>
@@ -24883,7 +24884,8 @@ async function ppMp4Chapters(blob){
       const heroLabel = curIsVid ? 'NOW PLAYING' : (hist.length ? 'CONTINUE' : 'START HERE');
       const heroSub = heroI >= 0 ? (tracks[heroI].height ? tracks[heroI].height + 'p' : (tracks[heroI].ext || '').toUpperCase()) : '';
       const hero = heroI >= 0 ? heroHTML(tracks[heroI], heroI, heroLabel, heroSub) : '';
-      const head = '<h1 class="ph-app-title">Press Play Media<span class="ed-slot"></span></h1>' +
+      const head = '<div class="ph-title-row"><h1 class="ph-app-title">Press Play Media<span class="ed-slot"></span></h1>' +
+        '<button type="button" class="pp-games-btn" data-pp-games aria-label="Games"><span class="pp-gi"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M7.6 6.5h8.8a5.2 5.2 0 0 1 5.1 4.2l.9 4.9a2.7 2.7 0 0 1-4.7 2.3l-2.1-2.4H8.4l-2.1 2.4a2.7 2.7 0 0 1-4.7-2.3l.9-4.9a5.2 5.2 0 0 1 5.1-4.2z"/><path fill="#5a3fc4" d="M6.6 9.3h1.6v1.6h1.6v1.6H8.2v1.6H6.6v-1.6H5v-1.6h1.6z"/><circle cx="16.2" cy="10.2" r="1.15" fill="#5a3fc4"/><circle cx="18" cy="12.3" r="1.15" fill="#5a3fc4"/></svg></span><span>Games</span></button></div>' +
         (ed ? '<div class="ph-tag">' + TAGLINES[ed] + '</div>' : '');
       if (ed === 'lite'){
         const rows = vidIdx.map(i => listRowHTML(tracks[i], i, 'videos', tracks[i].height ? tracks[i].height + 'p' : (tracks[i].ext || '').toUpperCase(), i === cur));
@@ -26336,6 +26338,258 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     requestAnimationFrame(function(){ requestAnimationFrame(finish); });
   }, finish);
   setTimeout(finish, 12000);
+})();
+</script>
+<!-- ===== Games: special button, games page, full-screen game view ===== -->
+<style id="pp-games-style">
+  .ph-title-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding-right:var(--ph-r, 24px); }
+  .ph-title-row .ph-app-title{ padding-right:0; min-width:0; }
+  .pp-games-btn{
+    position:relative; flex:0 0 auto; display:inline-flex; align-items:center; gap:8px;
+    height:36px; padding:0 14px 0 4px; border-radius:999px; cursor:pointer;
+    font:600 14px/1 inherit; font-family:inherit; color:#fff; letter-spacing:.2px;
+    border:1px solid transparent;
+    background:linear-gradient(180deg,#1c1e26,#131419) padding-box,
+               linear-gradient(120deg,#6ee7d0,#8b5cff 70%,#ff5fd8) border-box;
+    box-shadow:0 0 0 1px rgba(0,0,0,.25), 0 6px 18px -6px rgba(110,231,208,.35), 0 6px 20px -8px rgba(139,92,255,.45);
+    -webkit-tap-highlight-color:transparent; transition:transform .12s ease, box-shadow .2s ease;
+  }
+  .pp-games-btn:active{ transform:scale(.95); }
+  .pp-games-btn .pp-gi{
+    width:28px; height:28px; border-radius:50%; display:grid; place-items:center;
+    background:radial-gradient(circle at 30% 25%,rgba(255,255,255,.35),transparent 55%), linear-gradient(135deg,#6ee7d0,#8b5cff);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);
+  }
+  .pp-games-btn .pp-gi svg{ width:18px; height:18px; display:block; }
+  .pp-games-btn-side{ position:absolute; top:14px; right:14px; height:32px; font-size:13px; }
+  .pp-games-btn-side .pp-gi{ width:24px; height:24px; }
+  .pp-games-btn-side .pp-gi svg{ width:15px; height:15px; }
+  #sidebar-header{ position:relative; }
+  body.pp-lite .pp-games-btn, body.pp-premium .pp-games-btn{ display:none !important; }
+
+  /* Games page */
+  #pp-games{
+    position:fixed; inset:0; z-index:2147482000; display:none; flex-direction:column;
+    background:radial-gradient(120% 60% at 50% -10%, rgba(139,92,255,.16), transparent 60%), var(--bg, #0c0d10);
+    color:var(--text, #e8e9ec); padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0);
+    opacity:0; transform:translateY(12px); transition:opacity .18s ease, transform .22s ease;
+  }
+  #pp-games.open{ display:flex; }
+  #pp-games.shown{ opacity:1; transform:none; }
+  .ppg-head{ display:flex; align-items:center; gap:6px; padding:14px 16px 6px 8px; }
+  .ppg-back{ width:40px; height:40px; border-radius:50%; border:0; background:none; color:inherit; display:grid; place-items:center; cursor:pointer; }
+  .ppg-back:active{ background:rgba(255,255,255,.08); }
+  .ppg-back svg{ width:24px; height:24px; }
+  .ppg-title{ font-size:24px; font-weight:700; margin:0; letter-spacing:.2px; }
+  .ppg-sub{ color:var(--text-dim, #8b8c93); font-size:13px; padding:0 24px 18px; }
+  .ppg-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:22px 16px; padding:0 20px 32px; overflow-y:auto; }
+  .ppg-card{ display:flex; flex-direction:column; justify-content:flex-start; align-self:start; border:0; background:none; color:inherit; text-align:left; padding:0; cursor:pointer; font-family:inherit; -webkit-tap-highlight-color:transparent; }
+  .ppg-art{ position:relative; aspect-ratio:1; border-radius:24%; overflow:hidden; box-shadow:0 14px 28px -12px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.06); transition:transform .15s ease; }
+  .ppg-art img{ width:100%; height:100%; display:block; object-fit:cover; }
+  .ppg-card:active .ppg-art{ transform:scale(.96); }
+  .ppg-name{ font-size:15px; font-weight:600; margin-top:10px; }
+  .ppg-tag{ font-size:12.5px; color:var(--text-dim, #8b8c93); margin-top:3px; line-height:1.35; }
+
+  /* Game view */
+  #pp-game{ position:fixed; inset:0; z-index:2147483000; display:none; background:#000; }
+  #pp-game.open{ display:block; }
+  #pp-game iframe{ position:absolute; inset:0; width:100%; height:100%; border:0; background:#000; }
+  .ppg-exit{
+    position:absolute; z-index:3; top:calc(env(safe-area-inset-top,0px) + 8px); left:50%; transform:translateX(-50%);
+    height:30px; padding:0 12px 0 9px; border-radius:999px; display:flex; align-items:center; gap:5px;
+    border:1px solid rgba(255,255,255,.16); background:rgba(10,11,15,.55); color:rgba(255,255,255,.85);
+    font:600 12px/1 inherit; font-family:inherit; cursor:pointer; -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+  }
+  .ppg-exit svg{ width:14px; height:14px; }
+  .ppg-load{ position:absolute; inset:0; z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    background-size:cover; background-position:center; transition:opacity .35s ease; }
+  .ppg-load::before{ content:''; position:absolute; inset:0; background:radial-gradient(circle at 50% 50%, rgba(0,0,0,.15), rgba(0,0,0,.85) 75%); }
+  .ppg-load > *{ position:relative; }
+  .ppg-load img{ width:96px; height:96px; border-radius:24%; box-shadow:0 18px 40px -12px rgba(0,0,0,.9); }
+  .ppg-load .ppg-lname{ font-size:18px; font-weight:700; color:#fff; letter-spacing:.3px; }
+  .ppg-load .ppg-bar{ width:120px; height:3px; border-radius:3px; background:rgba(255,255,255,.12); overflow:hidden; }
+  .ppg-load .ppg-bar::after{ content:''; display:block; width:40%; height:100%; border-radius:3px; background:linear-gradient(90deg,#6ee7d0,#8b5cff); animation:ppgBar 1s ease-in-out infinite; }
+  @keyframes ppgBar{ 0%{ transform:translateX(-100%); } 100%{ transform:translateX(250%); } }
+  .ppg-load.done{ opacity:0; pointer-events:none; }
+
+  /* While a game is open, the app underneath stops drawing. Playback keeps going. */
+  body.pp-gaming > *:not(#pp-game):not(script):not(style){ display:none !important; }
+</style>
+<script id="pp-games-js">
+(function(){
+  'use strict';
+  var GAMES = [
+    { id:'obby', name:'Obby Builder', tag:'Build a course, then beat it.', icon:'games/obby/icon.png', src:'games/obby/index.html', bg:'#101634', ownMusic:true, exitIn:'#sidebarHeader' },
+    { id:'nebula', name:'Nebula Touch', tag:'Stir a field of light with your fingers.', icon:'games/nebula/icon.png', src:'games/nebula/index.html', bg:'#07060d', loading:'games/nebula/loading.jpg' }
+  ];
+  var PAD = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M7.6 6.5h8.8a5.2 5.2 0 0 1 5.1 4.2l.9 4.9a2.7 2.7 0 0 1-4.7 2.3l-2.1-2.4H8.4l-2.1 2.4a2.7 2.7 0 0 1-4.7-2.3l.9-4.9a5.2 5.2 0 0 1 5.1-4.2z"/><path fill="#5a3fc4" d="M6.6 9.3h1.6v1.6h1.6v1.6H8.2v1.6H6.6v-1.6H5v-1.6h1.6z"/><circle cx="16.2" cy="10.2" r="1.15" fill="#5a3fc4"/><circle cx="18" cy="12.3" r="1.15" fill="#5a3fc4"/></svg>';
+  var CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+  var X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
+
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  // ---- the Games buttons (markup is in the page: sidebar header and Home title row) ----
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('[data-pp-games]');
+    if (!b) return;
+    e.preventDefault(); e.stopPropagation();
+    openGrid();
+  }, true);
+
+  // Classic layout: the window's Menu/Fullscreen buttons sit in the top-right corner.
+  // When the sidebar reaches under them (phones), the Games button moves to their left.
+  (function(){
+    var btn = document.querySelector('.pp-games-btn-side'), hdr = document.getElementById('sidebar-header');
+    if (!btn || !hdr) return;
+    function place(){
+      var m = document.getElementById('menu-btn'), right = 14;
+      if (m && m.getClientRects().length){
+        var hr = hdr.getBoundingClientRect(), mr = m.getBoundingClientRect();
+        if (mr.left < hr.right && mr.bottom > hr.top) right = Math.round(hr.right - mr.left) + 8;
+      }
+      btn.style.right = right + 'px';
+    }
+    place();
+    if (window.ResizeObserver) new ResizeObserver(place).observe(hdr);
+    window.addEventListener('resize', place);
+    new MutationObserver(place).observe(document.body, { attributes:true, attributeFilter:['class'] });   // layout switch
+  })();
+
+  // ---- games page ----
+  var grid = document.createElement('div');
+  grid.id = 'pp-games';
+  grid.setAttribute('role', 'dialog'); grid.setAttribute('aria-label', 'Games');
+  grid.innerHTML = '<div class="ppg-head"><button type="button" class="ppg-back" aria-label="Back">' + CHEV + '</button><h1 class="ppg-title">Games</h1></div>' +
+    '<div class="ppg-sub">' + GAMES.length + ' games. Your music keeps playing.</div>' +
+    '<div class="ppg-grid">' + GAMES.map(function(g){
+      return '<button type="button" class="ppg-card" data-game="' + g.id + '"><div class="ppg-art" style="background:' + g.bg + '"><img src="' + g.icon + '" alt="" loading="lazy"></div>' +
+        '<div class="ppg-name">' + esc(g.name) + '</div><div class="ppg-tag">' + esc(g.tag) + '</div></button>';
+    }).join('') + '</div>';
+  document.body.appendChild(grid);
+  grid.querySelector('.ppg-back').addEventListener('click', closeGrid);
+  grid.addEventListener('click', function(e){
+    var c = e.target.closest('.ppg-card'); if (c) openGame(c.getAttribute('data-game'));
+  });
+
+  function openGrid(){
+    if (grid.classList.contains('open')) return;
+    grid.classList.add('open');
+    requestAnimationFrame(function(){ grid.classList.add('shown'); });
+    try { history.pushState({ ppGames:1 }, ''); } catch(e){}
+  }
+  function hideGrid(){ grid.classList.remove('open', 'shown'); }
+  function closeGrid(){
+    if (history.state && history.state.ppGames) history.back(); else hideGrid();
+  }
+
+  // ---- game view ----
+  var view = document.createElement('div');
+  view.id = 'pp-game';
+  document.body.appendChild(view);
+  var current = null, frame = null, playObs = null;
+
+  function appPlaying(){ var b = document.getElementById('play-btn'); return !!(b && b.classList.contains('is-playing')); }
+  function syncGameMusic(){
+    if (!current || !current.ownMusic || !frame) return;
+    try { var w = frame.contentWindow; if (w && w.__ppHostMute) w.__ppHostMute(appPlaying()); } catch(e){}
+  }
+  function gameMode(on){
+    try { var P = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.PPGameMode; if (P) (on ? P.enter() : P.exit()).catch(function(){}); } catch(e){}
+  }
+
+  function openGame(id){
+    var g = GAMES.filter(function(x){ return x.id === id; })[0];
+    if (!g || current) return;
+    current = g;
+    view.innerHTML = '';
+    var load = document.createElement('div');
+    load.className = 'ppg-load';
+    load.style.backgroundColor = g.bg;
+    if (g.loading) load.style.backgroundImage = 'url(' + g.loading + ')';
+    load.innerHTML = '<img src="' + g.icon + '" alt=""><div class="ppg-lname">' + esc(g.name) + '</div><div class="ppg-bar"></div>';
+    var exit = document.createElement('button');
+    exit.type = 'button'; exit.className = 'ppg-exit'; exit.innerHTML = X + 'Exit';
+    exit.addEventListener('click', closeGame);
+    // src is set before the frame joins the page, so loading it adds no Back step
+    frame = document.createElement('iframe');
+    frame.src = g.src;
+    frame.setAttribute('allow', 'fullscreen; autoplay');
+    var started = Date.now();
+    frame.addEventListener('load', function(){
+      syncGameMusic();
+      if (g.exitIn) placeExitInside(g.exitIn);
+      setTimeout(function(){ load.classList.add('done'); }, Math.max(0, 700 - (Date.now() - started)));
+    });
+    view.appendChild(frame); view.appendChild(load);
+    if (!g.exitIn) view.appendChild(exit);
+    view.classList.add('open');
+    document.body.classList.add('pp-gaming');
+    slowApp(true);
+    gameMode(true);
+    var pb = document.getElementById('play-btn');
+    if (g.ownMusic && pb){ playObs = new MutationObserver(syncGameMusic); playObs.observe(pb, { attributes:true, attributeFilter:['class'] }); }
+    try { history.pushState({ ppGame:id }, ''); } catch(e){}
+  }
+  // Puts a matching Exit button inside the game's own menu (used where a floating one would cover the game's UI).
+  function placeExitInside(sel){
+    try {
+      var d = frame.contentDocument, host = d && d.querySelector(sel);
+      if (!host || d.getElementById('pp-exit-in')) return;
+      var st = d.createElement('style');
+      st.textContent = sel + '{position:relative}' + sel + ' #pp-exit-in{position:absolute!important;top:-2px!important;right:0!important;width:auto!important;height:24px!important;min-height:0!important;margin:0!important;padding:0 10px 0 7px!important;border-radius:999px!important;display:flex!important;align-items:center;gap:4px;box-shadow:none!important;transform:none!important;' +
+        'border:1px solid rgba(255,255,255,.16)!important;background:rgba(255,255,255,.06)!important;color:rgba(255,255,255,.85)!important;font:600 11.5px/1 system-ui,sans-serif!important;letter-spacing:0!important;cursor:pointer}' + sel + ' #pp-exit-in svg{width:12px;height:12px}';
+      d.head.appendChild(st);
+      var b = d.createElement('button');
+      b.id = 'pp-exit-in'; b.type = 'button'; b.innerHTML = X + 'Exit';
+      b.addEventListener('click', function(e){ e.stopPropagation(); closeGame(); });
+      host.appendChild(b);
+    } catch(e){}
+  }
+  function hideGame(){
+    if (!current) return;
+    if (playObs){ playObs.disconnect(); playObs = null; }
+    view.classList.remove('open');
+    view.innerHTML = '';   // unloads the game and its sound
+    frame = null; current = null;
+    document.body.classList.remove('pp-gaming');
+    slowApp(false);
+    gameMode(false);
+  }
+  function closeGame(){
+    if (history.state && history.state.ppGame) history.back(); else hideGame();
+  }
+
+  window.addEventListener('popstate', function(){
+    var st = history.state || {};
+    if (current && !st.ppGame) hideGame();
+    if (grid.classList.contains('open') && !st.ppGames && !st.ppGame) hideGrid();
+  });
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    if (current) closeGame(); else if (grid.classList.contains('open')) closeGrid();
+  });
+
+  // ---- slow the app's own animation loops while a game runs ----
+  // The game frame has its own requestAnimationFrame and is not affected.
+  var realRAF = window.requestAnimationFrame.bind(window), realCAF = window.cancelAnimationFrame.bind(window);
+  var slow = false, queue = new Map(), nextId = 1e9, timer = null;
+  function flush(){
+    timer = null;
+    var cbs = Array.from(queue.values()); queue.clear();
+    var t = performance.now();
+    cbs.forEach(function(cb){ try { cb(t); } catch(err){ setTimeout(function(){ throw err; }); } });
+  }
+  window.requestAnimationFrame = function(cb){
+    if (!slow) return realRAF(cb);
+    var id = ++nextId; queue.set(id, cb);
+    if (!timer) timer = setTimeout(flush, 250);
+    return id;
+  };
+  window.cancelAnimationFrame = function(id){ if (!queue.delete(id)) realCAF(id); };
+  function slowApp(on){
+    slow = on;
+    if (!on && queue.size){ if (timer){ clearTimeout(timer); timer = null; } realRAF(flush); }
+  }
 })();
 </script>
 <script src="./vocal-separator.js?v=20261030a" defer></script>   <!-- bump v= each time vocal-separator.js changes so phones fetch the new copy -->
