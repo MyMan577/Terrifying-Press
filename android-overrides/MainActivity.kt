@@ -57,6 +57,7 @@ class MainActivity : BridgeActivity() {
         registerPlugin(NativePlayerPlugin::class.java)
         registerPlugin(LibraryPlugin::class.java)
         registerPlugin(JobsPlugin::class.java)
+        registerPlugin(GameModePlugin::class.java)   // games page: 120 Hz lock, screen awake, renderer priority
         super.onCreate(savedInstanceState)
         instance = this
         nativeVideo = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("native", false)
