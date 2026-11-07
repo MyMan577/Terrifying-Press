@@ -20,34 +20,6 @@
   })();
   var ICE = [{ urls:'stun:stun.l.google.com:19302' }];
   var GATHER_MS = 2500;      // stop waiting for addresses after this
-  var GATHER_RELAY_MS = 5000; // relay addresses take longer to arrive
-
-  // ---------- relay (TURN) for phones on different networks ----------
-  // relay-config.js is written at build time from a repository secret and is
-  // never committed. It sets window.QRLINK_RELAY to either
-  //   { url: 'https://<app>.metered.live/api/v1/turn/credentials?apiKey=...' }
-  // (fetched; must return an array of RTCIceServer) or { iceServers: [...] }.
-  // Without it, phones still connect directly whenever their networks allow.
-  var relayPromise = null;
-  function relayServers(){
-    if (relayPromise) return relayPromise;
-    relayPromise = new Promise(function(res){
-      if (window.QRLINK_RELAY) return res(window.QRLINK_RELAY);
-      var s = document.createElement('script');
-      s.src = BASE + 'relay-config.js';
-      s.onload = s.onerror = function(){ res(window.QRLINK_RELAY || null); };
-      document.head.appendChild(s);
-    }).then(function(cfg){
-      if (!cfg) return [];
-      if (cfg.iceServers) return cfg.iceServers;
-      if (!cfg.url) return [];
-      var ctl = window.AbortController ? new AbortController() : null;
-      var t = setTimeout(function(){ if (ctl) ctl.abort(); }, 4000);
-      return fetch(cfg.url, ctl ? { signal: ctl.signal } : {}).then(function(r){ return r.ok ? r.json() : []; })
-        .then(function(list){ clearTimeout(t); return Array.isArray(list) ? list : (list && list.iceServers) || []; });
-    }).catch(function(){ relayPromise = null; return []; });   // try again next time
-    return relayPromise;
-  }
   var PING_MS = 1000, DEAD_MS = 7000;
   var VER = 'PPL1';
 
@@ -78,7 +50,7 @@
         var p = l.slice(12).split(' ');
         // foundation component proto priority address port typ type ...
         if (p[1] !== '1' || p[2].toLowerCase() !== 'udp') return;
-        var t = p[7] === 'host' ? 'h' : (p[7] === 'srflx' ? 's' : (p[7] === 'relay' ? 'r' : null));
+        var t = p[7] === 'host' ? 'h' : (p[7] === 'srflx' ? 's' : null);
         if (!t) return;
         var key = p[4] + ' ' + p[5];
         if (seen[key]) return; seen[key] = 1;
@@ -86,10 +58,7 @@
       }
     });
     if (!ufrag || !pwd || !fp) throw new Error('bad sdp');
-    // keep the code short: a few direct addresses plus at most 3 relay ones
-    var direct = cands.filter(function(c){ return c[0] !== 'r'; }).slice(0, 6);
-    var relay = cands.filter(function(c){ return c[0] === 'r'; }).slice(0, 3);
-    return [VER, app, kind, ufrag, pwd, b64u(fp)].concat(direct, relay).join('|');
+    return [VER, app, kind, ufrag, pwd, b64u(fp)].concat(cands.slice(0, 8)).join('|');
   }
 
   function decode(app, wantKind, text){
@@ -112,16 +81,15 @@
       if (rest.length !== 2) return;
       if (t === 'h') lines.push('a=candidate:' + (i+1) + ' 1 udp ' + (2122260223 - i) + ' ' + rest[0] + ' ' + rest[1] + ' typ host generation 0');
       else if (t === 's') lines.push('a=candidate:' + (i+1) + ' 1 udp ' + (1686052607 - i) + ' ' + rest[0] + ' ' + rest[1] + ' typ srflx raddr 0.0.0.0 rport 0 generation 0');
-      else if (t === 'r') lines.push('a=candidate:' + (i+1) + ' 1 udp ' + (41885439 - i) + ' ' + rest[0] + ' ' + rest[1] + ' typ relay raddr 0.0.0.0 rport 0 generation 0');
     });
     lines.push('a=end-of-candidates');
     return { type: wantKind === 'o' ? 'offer' : 'answer', sdp: lines.join('\r\n') + '\r\n' };
   }
 
-  function gathered(pc, ms){
+  function gathered(pc){
     return new Promise(function(res){
       if (pc.iceGatheringState === 'complete') return res();
-      var done = false, t = setTimeout(fin, ms || GATHER_MS);
+      var done = false, t = setTimeout(fin, GATHER_MS);
       function fin(){ if (done) return; done = true; clearTimeout(t); res(); }
       pc.addEventListener('icegatheringstatechange', function(){ if (pc.iceGatheringState === 'complete') fin(); });
       pc.addEventListener('icecandidate', function(e){ if (!e.candidate) fin(); });
@@ -215,7 +183,7 @@
     gotoffer: "That's a host code. Show this screen to the host instead.",
     gotanswer: "That's a reply code. Scan the host's code.",
     cam: "Can't use the camera. You can paste a code instead.",
-    fail: "Couldn't connect. Make sure both phones are online and try again."
+    fail: "Couldn't connect. Make sure both phones are online, then try again."
   };
 
   function open(opts){
@@ -249,15 +217,9 @@
         .catch(function(){ return false; });
     }
 
-    var gatherMs = GATHER_MS;
     function newPeer(){
-      return relayServers().then(function(relay){
-        gatherMs = relay.length ? GATHER_RELAY_MS : GATHER_MS;
-        var cfg = { iceServers: ICE.concat(relay) };
-        if (window.QRLINK_FORCE_RELAY) cfg.iceTransportPolicy = 'relay';   // tests only
-        pc = new RTCPeerConnection(cfg);
-        return pc;
-      });
+      pc = new RTCPeerConnection({ iceServers: ICE });
+      return pc;
     }
 
     function wire(channel, role){
@@ -355,11 +317,12 @@
     // ---- host ----
     function host(){
       busy('Making your code…');
-      warmCamera().then(newPeer).then(function(){
+      warmCamera().then(function(){
+        newPeer();
         wire(pc.createDataChannel('game', { ordered:true }), 'host');
         return pc.createOffer();
       }).then(function(o){ return pc.setLocalDescription(o); })
-        .then(function(){ return gathered(pc, gatherMs); })
+        .then(function(){ return gathered(pc); })
         .then(function(){ return loadLib('qrcode.min.js', 'qrcode'); })
         .then(function(){
           var code = encode(app, 'o', pc.localDescription.sdp);
@@ -382,12 +345,13 @@
       scan('Scan the host’s code', 'Point your camera at the code on the host’s phone.', function(text){
         var desc; try { desc = decode(app, 'o', text); } catch(e){ return e.message; }
         busy('Making your reply…');
-        warmCamera().then(newPeer).then(function(){
+        warmCamera().then(function(){
+          newPeer();
           pc.ondatachannel = function(e){ wire(e.channel, 'guest'); };
           return pc.setRemoteDescription(desc);
         }).then(function(){ return pc.createAnswer(); })
           .then(function(a){ return pc.setLocalDescription(a); })
-          .then(function(){ return gathered(pc, gatherMs); })
+          .then(function(){ return gathered(pc); })
           .then(function(){ return loadLib('qrcode.min.js', 'qrcode'); })
           .then(function(){
             if (finished) return;
