@@ -1290,7 +1290,7 @@
         return { n, at: (i, c) => { const v = per ? o.data[i * n + c] : o.data[c]; return Number.isFinite(v) ? v : 0; } };
       };
       const inst = new Float32Array(40), g400 = new Float32Array(400), embSum = new Float64Array(1280), hacc = heads.map(() => null), pv = [];
-      let voice = 0, rows = 0, used = 0, gotG = false, styleSrc = hG ? 'genre head' : 'effnet styles', styleLo = Infinity, styleHi = -Infinity; const pg = [];
+      let voice = 0, rows = 0, used = 0, gotG = false, styleSrc = hG ? 'genre head' : 'effnet styles', styleLo = Infinity, styleHi = -Infinity, styleBad = 0, styleBadAt = -1; const pg = [];
       for (let b = 0; b < take; b += 64) {
         const tb0 = performance.now(), cnt = Math.min(64, take - b), X = new Float32Array(64 * 128 * 96);      // the graph wants exactly 64 patches
         for (let i = 0; i < cnt; i++) { const s0 = idx[b + i] * 62 * 96; X.set(mel.subarray(s0, Math.min(mel.length, s0 + 128 * 96)), i * 128 * 96); }
@@ -1319,7 +1319,7 @@
           { const vv = yv.at(i, 1); voice += vv; pv.push(vv); }                // classes: instrumental, voice
           if (!useP[b + i]) continue;
           for (let c = 0; c < 1280; c++) embSum[c] += emb[i * 1280 + c];
-          if (yg) { gotG = true; const row = yg.slice(i * 400, i * 400 + 400); for (let c = 0; c < 400; c++) { const v = row[c]; if (v < styleLo) styleLo = v; if (v > styleHi) styleHi = v; } pg.push(row); }
+          if (yg) { gotG = true; const row = yg.slice(i * 400, i * 400 + 400); for (let c = 0; c < 400; c++) { let v = row[c]; if (!Number.isFinite(v)) { styleBad++; if (styleBadAt < 0) styleBadAt = c; row[c] = v = 0; } if (v < styleLo) styleLo = v; if (v > styleHi) styleHi = v; } pg.push(row); }
           used++;
         }
         rows += cnt; await tick();
@@ -1339,7 +1339,7 @@
         }
         r.style = DISCOGS.map((n, i) => [n, g400[i]]);
         const tp = r.style.slice().sort((a, b) => b[1] - a[1]).slice(0, 3).map(v => v[0] + ' ' + v[1].toFixed(3)).join(', ');
-        r.styleDbg = styleSrc + ', raw ' + styleLo.toFixed(3) + '..' + styleHi.toFixed(3) + (raw ? ' (sigmoid applied)' : '') + ', top ' + tp;
+        r.styleDbg = styleSrc + ', raw ' + styleLo.toFixed(3) + '..' + styleHi.toFixed(3) + (raw ? ' (sigmoid applied)' : '') + ', top ' + tp + (styleBad ? ', NaN values: ' + styleBad + ' of ' + pg.length * 400 + ' (first at ' + DISCOGS[styleBadAt] + ')' : '');
       } else r.errors.push('Styles skipped: the styles model could not be downloaded or has no 400-style output.');
       r.heads = {};
       heads.forEach((h, j) => {
