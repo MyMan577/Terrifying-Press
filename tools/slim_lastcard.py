@@ -39,4 +39,29 @@ d.sub(".fan>i{position:absolute;bottom:0;width:var(--mw);height:var(--mh);border
 d.sub(".logo{width:150px;margin:-6px auto 14px;padding:6px 0 0;text-align:center;font:400 62px/1 'Lilita One',sans-serif;color:var(--y);background:var(--r);border-radius:50%;transform:rotate(-8deg);text-shadow:3px 3px 0 #000;border:5px solid #fff;box-shadow:0 8px 0 #0005}",
       ".logo{margin:0 auto 14px;text-align:center;font:400 44px/.95 'Lilita One',sans-serif;letter-spacing:1px;background:linear-gradient(135deg,var(--r),var(--y) 34%,var(--g) 66%,var(--b));-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 3px 0 #0006)}")
 
+# ---- fix: "Draw until playable" kept drawing past playable cards ----
+# With a deck modifier on, draws are a weighted random pick (dpop), but your
+# draw loop judged "playable?" by looking at the TOP card of the deck, which
+# is usually not the card you got. Now the next card is picked once (dnext)
+# and both the check and the draw use that same card.
+d.sub("""function dpop(){const px=S.dpct||{};if(!Object.keys(px).length||!G.deck.length)return G.deck.pop();
+ const w=G.deck.map(c=>{const pc=px['x'+c.c+c.v];return pc===undefined?1:Math.max(0,pc)/100});
+ const tot=w.reduce((x,y)=>x+y,0);if(tot<=0)return G.deck.pop();
+ let r=Math.random()*tot,pick=-1;for(let i=0;i<w.length;i++){if(w[i]<=0)continue;pick=i;r-=w[i];if(r<0)break}
+ return G.deck.splice(pick,1)[0]}""",
+"""function dnext(){if(!G.deck.length)return null;if(G.nx&&G.deck.includes(G.nx))return G.nx;
+ const px=S.dpct||{};let pick=G.deck.length-1;
+ if(Object.keys(px).length){const w=G.deck.map(c=>{const pc=px['x'+c.c+c.v];return pc===undefined?1:Math.max(0,pc)/100});
+  const tot=w.reduce((x,y)=>x+y,0);if(tot>0){let r=Math.random()*tot;pick=-1;for(let i=0;i<w.length;i++){if(w[i]<=0)continue;pick=i;r-=w[i];if(r<0)break}}}
+ return G.nx=G.deck[pick]}
+function dpop(){const c=dnext();G.nx=null;if(!c)return G.deck.pop();G.deck.splice(G.deck.indexOf(c),1);return c}""")
+d.sub("""function drawReveal(c){const p=me();G.deck.pop();""", """function drawReveal(c){const p=me();{const k=G.deck.indexOf(c);if(k>=0)G.deck.splice(k,1);G.nx=null}""")
+# Draw-until only applies when you have nothing to play; holding a playable
+# card, Draw takes just one.
+d.sub("""if(S.mode!=='attack'&&!(S.liar&&S.bluff)){let top=G.deck[G.deck.length-1];while(S.until&&top&&!ok(top)){await draw(0,1);top=G.deck[G.deck.length-1]}if(top&&ok(top))return drawReveal(top)}
+ const c=await drawUntil(0);""",
+"""const canPlay=me().hand.some(ok);
+ if(S.mode!=='attack'&&!(S.liar&&S.bluff)){let top=dnext();while(S.until&&!canPlay&&top&&!ok(top)){await draw(0,1);top=dnext()}if(top&&ok(top))return drawReveal(top)}
+ const c=canPlay&&S.mode!=='attack'?(await draw(0,1))[0]:await drawUntil(0);""")
+
 d.save(sys.argv[2])

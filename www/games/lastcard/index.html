@@ -694,8 +694,9 @@ async function clickCard0(c){if(G.over)return;if(G.mpr){if(ok(c)){const r=G.mpr;
 async function humanDraw(){if(G&&G.mpr){const r=G.mpr;G.mpr=null;r(null);return}if(!G||G.cur!==0||G.busy||G.drew||G.over)return;G.busy=1;
  if(G.pend){const n=G.pend;G.pend=0;await draw(0,n);return endTurn(0)}
  if(!me().hand.some(ok))G.know[0].v=new Set([G.col]);
- if(S.mode!=='attack'&&!(S.liar&&S.bluff)){let top=G.deck[G.deck.length-1];while(S.until&&top&&!ok(top)){await draw(0,1);top=G.deck[G.deck.length-1]}if(top&&ok(top))return drawReveal(top)}
- const c=await drawUntil(0);if(!c||!ok(c))return endTurn(0);
+ const canPlay=me().hand.some(ok);
+ if(S.mode!=='attack'&&!(S.liar&&S.bluff)){let top=dnext();while(S.until&&!canPlay&&top&&!ok(top)){await draw(0,1);top=dnext()}if(top&&ok(top))return drawReveal(top)}
+ const c=canPlay&&S.mode!=='attack'?(await draw(0,1))[0]:await drawUntil(0);if(!c||!ok(c))return endTurn(0);
  if(S.force)return humanPlay(c);G.drew=c;G.busy=0;render()}
 $('#pass').onclick=()=>{if(G.drew&&!G.busy)endTurn(0)};
 $('#uno').onclick=()=>{if(G.dl||me().hand.length!==2||G.cur!==0||G.busy||G.called)return;AU.play('uno');G.called=1;$('#uno').hidden=true;$('#uno').classList.remove('hot');toast('Last card!')};
@@ -937,7 +938,7 @@ async function presentFx(c,back,from,hold,st0,pi){const st=st0||await liftFx(c,b
  await box.animate([{transform:tilt},{transform:`translate(${dx}px,${dy}px) scale(${D.width/W}) perspective(700px) rotateX(0deg) rotateZ(0deg)`}],{duration:420,easing:'cubic-bezier(.3,.7,.2,1)',fill:'forwards'}).finished;dead();G.pf=D;G.pq=1;box.remove();return col}
 function askPK(st){return new Promise(res=>{const d=document.createElement('div');d.className='pkb';d.style.cssText=`position:fixed;left:${st.sx}px;top:${st.sy}px;width:${st.W}px;height:${st.H}px;z-index:25;pointer-events:none;display:flex;gap:8px;justify-content:center;align-items:flex-end;padding-bottom:10px;transform:${st.tilt}`;
  [['Play','var(--g)','#fff',1],['Keep','#fff','#16302f',0]].forEach(([t,bg,fg,v])=>{const b=document.createElement('button');b.className='btn';b.textContent=t;b.style.cssText=`pointer-events:auto;background:${bg};color:${fg};font-size:17px;padding:8px 16px`;b.onclick=()=>{d.remove();res(v)};d.appendChild(b)});document.body.appendChild(d)})}
-async function drawReveal(c){const p=me();G.deck.pop();G.know[0].v.delete('x'+c.c+c.v);AU.play('draw',0);$('#deck').animate([{transform:'scale(1)'},{transform:'scale(.92)'},{transform:'scale(1)'}],{duration:220});
+async function drawReveal(c){const p=me();{const k=G.deck.indexOf(c);if(k>=0)G.deck.splice(k,1);G.nx=null}G.know[0].v.delete('x'+c.c+c.v);AU.play('draw',0);$('#deck').animate([{transform:'scale(1)'},{transform:'scale(.92)'},{transform:'scale(1)'}],{duration:220});
  const st=await liftFx(c,0,R($('#deck')));let play=1;if(!S.force)play=await askPK(st);else await sleep(500);st.dead();
  if(play){p.hand.push(c);G.drew=null;G.st=st;return doPlay(0,c,c.c==='k'&&c.v!=='U'?pickColor:null)}
  await st.to(R($('#hand')));await draw(0,1,c);return endTurn(0)}
@@ -1377,11 +1378,12 @@ function dmChance(k){const d=applyDeckMod(mkDeck0()),px=S.dpct||{},w=x=>{const p
  const tot=d.reduce((a,x)=>a+w(x),0),mine=d.filter(x=>'x'+x.c+x.v===k),n=mine.length,wm=mine.reduce((a,x)=>a+w(x),0);
  return{pct:tot>0?wm/tot*100:0,copies:n,total:d.length}}
 function dmChanceText(k){const c=dmChance(k);return 'Chance on each draw: '+c.pct.toFixed(1)+'%  ·  '+c.copies+' of '+c.total+' cards in the deck'}
-function dpop(){const px=S.dpct||{};if(!Object.keys(px).length||!G.deck.length)return G.deck.pop();
- const w=G.deck.map(c=>{const pc=px['x'+c.c+c.v];return pc===undefined?1:Math.max(0,pc)/100});
- const tot=w.reduce((x,y)=>x+y,0);if(tot<=0)return G.deck.pop();
- let r=Math.random()*tot,pick=-1;for(let i=0;i<w.length;i++){if(w[i]<=0)continue;pick=i;r-=w[i];if(r<0)break}
- return G.deck.splice(pick,1)[0]}
+function dnext(){if(!G.deck.length)return null;if(G.nx&&G.deck.includes(G.nx))return G.nx;
+ const px=S.dpct||{};let pick=G.deck.length-1;
+ if(Object.keys(px).length){const w=G.deck.map(c=>{const pc=px['x'+c.c+c.v];return pc===undefined?1:Math.max(0,pc)/100});
+  const tot=w.reduce((x,y)=>x+y,0);if(tot>0){let r=Math.random()*tot;pick=-1;for(let i=0;i<w.length;i++){if(w[i]<=0)continue;pick=i;r-=w[i];if(r<0)break}}}
+ return G.nx=G.deck[pick]}
+function dpop(){const c=dnext();G.nx=null;if(!c)return G.deck.pop();G.deck.splice(G.deck.indexOf(c),1);return c}
 function applyDeckMod(d){const dx=S.dex||{},gone=c=>!!(dx['x'+c.c+c.v]||(c.f&&dx['x'+c.f.c+c.f.v]));for(let i=d.length-1;i>=0;i--)if(gone(d[i]))d.splice(i,1);const m=S.dmod||{},keys=dmKeys(m);if(!keys.length)return d;const tests=keys.map(k=>[k,dmKeyTest(k)]),anyFav=x=>tests.some(([,t])=>t(x)),id0=900000;let id=id0;
  for(const [k,t] of tests){const src=d.filter(x=>(k[0]==='x'&&k.length>2?true:dmPlain(x))&&t(x));if(!src.length)continue;
   for(let n=m[k];n>0;n--){const dn=d.filter(x=>dmPlain(x)&&!anyFav(x));if(!dn.length)break;const out=dn[Math.random()*dn.length|0];d.splice(d.indexOf(out),1);const s0=src[Math.random()*src.length|0],cl={...s0,id:id++};if(s0.f)cl.f={...s0.f};d.push(cl)}}
