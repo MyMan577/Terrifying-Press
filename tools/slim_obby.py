@@ -96,6 +96,40 @@ else: out = out[:_gpi] + GP_DEF.lstrip('\n') + out[_gpi:]
 if out.count("      if (saved.includes(MARIO_ID)) {") != 1: problems.append('M Man unlock not found')
 out = out.replace("      if (saved.includes(MARIO_ID)) {", "      if (true) { // free from the start, as in the full game")
 
+# Press Play bridge, first thing in <head> so it wraps audio before the game
+# makes any. Press Play calls __ppHostMute(true) while its own music plays:
+# Obby's music context is suspended and its <audio> tracks muted, and the
+# game cannot resume them until Press Play goes quiet again.
+HOST_BRIDGE = """<script>
+(function(){
+  var muted = false, ctxs = [], els = new Set();
+  var AC = window.AudioContext || window.webkitAudioContext;
+  if (AC) {
+    var Wrapped = function(opts){
+      var c = opts === undefined ? new AC() : new AC(opts);
+      var realResume = c.resume.bind(c);
+      c.resume = function(){ return muted ? Promise.resolve() : realResume(); };
+      ctxs.push({ c: c, resume: realResume });
+      if (muted) c.suspend();
+      return c;
+    };
+    Wrapped.prototype = AC.prototype;
+    window.AudioContext = Wrapped; window.webkitAudioContext = Wrapped;
+  }
+  var realPlay = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function(){ els.add(this); this.muted = muted; return realPlay.apply(this, arguments); };
+  window.__ppHostMute = function(m){
+    muted = !!m;
+    ctxs.forEach(function(x){ try { muted ? x.c.suspend() : x.resume(); } catch(e){} });
+    els.forEach(function(e){ e.muted = muted; });
+  };
+})();
+</script>
+"""
+_h = out.find('<head>')
+if _h < 0: problems.append('<head> not found')
+else: out = out[:_h + 6] + '\n' + HOST_BRIDGE + out[_h + 6:]
+
 # --- HTML sections --------------------------------------------------------
 def cut_element(html, start_pat):
     m = re.search(start_pat, html)
