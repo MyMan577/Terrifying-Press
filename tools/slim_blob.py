@@ -69,6 +69,13 @@ d.sub("s:'ARMAGEDDON!'", "s:'SKYFALL!'")
 d.sub("s:'Justice!'", "s:'All even!'")
 d.sub("s:ai?'Baa!':'Tap Fire to detonate'", "s:ai?'Tick tick!':'Tap Fire to set it off'")
 
+# ---- fix: Setup button greyed out during a match ----
+# It was disabled every frame unless the match was over, so it looked broken.
+# Opening setup already pauses the match, Cancel resumes it, and Start match
+# begins a new match with the new settings, so it is safe to allow any time.
+d.sub("draw();syncW();mSet.disabled=state!='over';requestAnimationFrame(L)", "draw();syncW();requestAnimationFrame(L)")
+d.sub("Tap a blob to switch it between Human and Bot. Options lock once a match starts.", "Tap a blob to switch it between Human and Bot. Start match begins a new match with these settings; Cancel goes back to this one.")
+
 # ---- in-world art for the renamed weapons ----
 BEETLE = ("const sw=Math.sin(p.age*.45)*1.6;X.fillStyle='#22262e';[[-4,sw],[-1,-sw],[2,sw],[5,-sw]].forEach(l=>X.fillRect(l[0]-.9+l[1]*.5,-3,1.8,3));"
           "X.fillStyle=SHELL;X.beginPath();X.ellipse(0,-4.5,6.6,5,0,Math.PI,0);X.closePath();X.fill();"
