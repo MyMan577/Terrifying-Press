@@ -3,8 +3,9 @@
 
 Takes index.html from the MyMan577/Obby-Builder repo and writes a cut-down
 copy: removes the gauntlet, Aibot/Architect, skin/omen/godly/prestige/
-singularity boxes, exotic and alley characters, and look-alike characters.
-Keeps the 20 starters, the Silver/Gold/Retro capsules, the cosmetic mystery
+singularity boxes, exotic and alley characters, Y-Saur and K-Puffball.
+Keeps the 20 starters, the Silver/Gold/Retro capsules, the special characters
+(M Man, L-Brother, P-Princess, Chameleon, Grand Pebble), the cosmetic mystery
 boxes, the alley, the arcade, story, speedruns and the builder.
 
 usage: slim_obby.py <upstream index.html> <output index.html>
@@ -46,21 +47,20 @@ def cut_tag_block(marker, tag):
     while '</' + tag + '>' not in (lines[b] or ''): b += 1
     cut(a, b)
 
+# Grand Pebble stays, but its definition sits inside the godly-character code
+# that gets cut. Lift it out now and put it back in Grand Pebble's own script.
+_gp = re.search(r"\n  const GRAND_PEBBLE = \{.*?\n  \};\n", src, re.S)
+if not _gp: problems.append('Grand Pebble definition not found')
+GP_DEF = _gp.group(0).replace('const GRAND_PEBBLE =', 'window.GRAND_PEBBLE_DEF =') if _gp else ''
+
 # --- whole <script>/<style> elements -----------------------------------
 cut_tag_block("@keyframes architectPulse", 'style')          # Architect styles
 cut_tag_block("const CHAR_ID = 'arch_architect';", 'script')  # Architect + Aibot (AI chat)
 cut_tag_block("#gauntletRoot {", 'style')                     # Gauntlet styles
 cut_tag_block("gt-start-btn", 'script')                       # Gauntlet mode
 cut_tag_block("nmbox-coll-tabs{", 'script')                   # Godly relic boxes + godly chars
-cut_tag_block("window._claimMMan = function()", 'script')     # look-alike claim buttons
-cut_tag_block("const YSAUR_ID = 'cb_ysaur_godly';", 'script') # look-alike characters
-cut_tag_block("window._specialRewardClick = function()", 'script')  # 'special reward' = look-alike unlock
-cut_tag_block("const LBRO_DEF = {", 'script')
-cut_tag_block("const PEACH_ID = 'cb_peach_ref';", 'script')
-cut_tag_block("const KPUFF_ID = 'cb_kpuffball_ref';", 'script')
-for _ in range(2):
-    cut_tag_block("const CHAM_ID = 'cb_chameleon';", 'script') # chameleon (two blocks)
-cut_tag_block("window.unlockGrandPebble = function()", 'script')  # Grand Pebble (godly)
+cut_tag_block("const YSAUR_ID = 'cb_ysaur_godly';", 'script') # Y-Saur
+cut_tag_block("const KPUFF_ID = 'cb_kpuffball_ref';", 'script')  # K-Puffball
 
 # gauntlet HUD/overlay markup sits loose between its style and script
 i = find_line('<div id="gt-hud">')
@@ -87,6 +87,15 @@ for m in ["const SBOX_TIERS = [",          # skin boxes
 
 out = '\n'.join(l for l in lines if l is not None)
 
+_gpi = out.find("  window.unlockGrandPebble = function()")
+if _gpi < 0: problems.append('Grand Pebble script not found')
+else: out = out[:_gpi] + GP_DEF.lstrip('\n') + out[_gpi:]
+
+# In the full game M Man is unlocked for everyone from the start (another
+# character's code registered him). That code is cut, so register him here.
+if out.count("      if (saved.includes(MARIO_ID)) {") != 1: problems.append('M Man unlock not found')
+out = out.replace("      if (saved.includes(MARIO_ID)) {", "      if (true) { // free from the start, as in the full game")
+
 # --- HTML sections --------------------------------------------------------
 def cut_element(html, start_pat):
     m = re.search(start_pat, html)
@@ -105,18 +114,9 @@ def cut_element(html, start_pat):
 
 for sid in ['newMysteryBoxSection', 'skinBoxSection', 'omenBoxSection',
             'singularityBoxSection', 'prestigeShopSection', 'prestigeEquipSection',
-            'prestigeBoxSection', 'gauntletSection', 'specialRewardWrapper']:
+            'prestigeBoxSection', 'gauntletSection']:
     out = cut_element(out, r'<div [^>]*id="%s"' % sid)
 out = re.sub(r'\s*<button class="stab" data-stab="gauntlet">.*?</button>', '', out)
-for bid in ['mmanClaimBtn', 'lbroClaimBtn']:
-    # the claim row is the parent div of the button
-    m = re.search(r'id="%s"' % bid, out)
-    if m:
-        a = out.rfind('<div', 0, m.start())
-        out = out[:a] + cut_element(out[a:], r'^<div')
-    else:
-        problems.append('claim button not found: ' + bid)
-
 # --- capsules: Silver, Gold, Retro only ------------------------------------
 out = re.sub(r"\n\s*\{ id:'cb_prismatic',.*?color:'#ff70d0' \},", '', out, count=1, flags=re.S)
 for cid in ['cb_dawnblade', 'cb_abyssal', 'cb_riftwalker', 'cb_ironclad', 'cb_stormcaller']:
