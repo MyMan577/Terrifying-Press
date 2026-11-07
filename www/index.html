@@ -26393,15 +26393,18 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   /* Game view */
   #pp-game{ position:fixed; inset:0; z-index:2147483000; display:none; background:#000; }
   #pp-game.open{ display:block; }
-  #pp-game iframe{ position:absolute; inset:0; width:100%; height:100%; border:0; background:#000; }
-  .ppg-exit{
-    position:absolute; z-index:3; top:calc(env(safe-area-inset-top,0px) + 8px); left:50%; transform:translateX(-50%);
-    height:30px; padding:0 12px 0 9px; border-radius:999px; display:flex; align-items:center; gap:5px;
-    border:1px solid rgba(255,255,255,.16); background:rgba(10,11,15,.55); color:rgba(255,255,255,.85);
-    font:600 12px/1 inherit; font-family:inherit; cursor:pointer; -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
-  }
-  .ppg-exit svg{ width:14px; height:14px; }
-  .ppg-load{ position:absolute; inset:0; z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+  /* Press Play's own bar above the game: Exit lives here, so it can never sit on a game's buttons */
+  #pp-game{ --ppg-bar:calc(env(safe-area-inset-top,0px) + 36px); }
+  .ppg-topbar{ position:absolute; z-index:3; left:0; right:0; top:0; height:var(--ppg-bar); padding-top:env(safe-area-inset-top,0px); box-sizing:border-box;
+    display:flex; align-items:center; gap:10px; padding-left:8px; padding-right:12px; background:#0c0d10; border-bottom:1px solid rgba(255,255,255,.07); color:rgba(255,255,255,.9); }
+  #pp-game iframe{ position:absolute; left:0; right:0; bottom:0; top:var(--ppg-bar); width:100%; height:calc(100% - var(--ppg-bar)); border:0; background:#000; }
+  .ppg-exit{ height:26px; padding:0 11px 0 7px; border-radius:999px; display:flex; align-items:center; gap:4px; flex:0 0 auto;
+    border:1px solid rgba(255,255,255,.16); background:rgba(255,255,255,.06); color:rgba(255,255,255,.88);
+    font:600 12px/1 inherit; font-family:inherit; cursor:pointer; }
+  .ppg-exit:active{ background:rgba(255,255,255,.14); }
+  .ppg-exit svg{ width:13px; height:13px; }
+  .ppg-tname{ flex:1; min-width:0; text-align:center; font-size:13px; font-weight:600; color:rgba(255,255,255,.7); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-right:52px; }
+  .ppg-load{ position:absolute; left:0; right:0; bottom:0; top:var(--ppg-bar); z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
     background-size:cover; background-position:center; transition:opacity .35s ease; }
   .ppg-load::before{ content:''; position:absolute; inset:0; background:radial-gradient(circle at 50% 50%, rgba(0,0,0,.15), rgba(0,0,0,.85) 75%); }
   .ppg-load > *{ position:relative; }
@@ -26428,7 +26431,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
 (function(){
   'use strict';
   var GAMES = [
-    { id:'obby', name:'Obby Builder', tag:'Build a course, then beat it.', icon:'games/obby/icon.png', loading:'games/obby/loading.jpg', src:'games/obby/index.html', bg:'#101634', ownMusic:true, exitIn:'#sidebarHeader' },
+    { id:'obby', name:'Obby Builder', tag:'Build a course, then beat it.', icon:'games/obby/icon.png', loading:'games/obby/loading.jpg', src:'games/obby/index.html', bg:'#101634', ownMusic:true },
     { id:'nebula', name:'Nebula Touch', tag:'Stir a field of light with your fingers.', icon:'games/nebula/icon.png', src:'games/nebula/index.html', bg:'#07060d', loading:'games/nebula/loading.jpg', loadCenter:true },
     { id:'toque', icon:'games/toque/icon.png', loading:'games/toque/loading.jpg', name:'Toque & Spear', tag:'Hunt, fight and bond with the spirits of the wild.', src:'games/toque/index.html', bg:'#2b1530', mono:'TS', grad:['#ff8a5c','#7a3fa8'] },
     { id:'weaponball', icon:'games/weaponball/icon.png', loading:'games/weaponball/loading.jpg', name:'Weapon Ball', tag:'Pick your balls and watch them fight it out.', src:'games/weaponball/index.html', bg:'#e9edf5', mono:'WB', grad:['#ff5a5a','#3a7bff'], ownMusic:true },
@@ -26535,9 +26538,10 @@ body.pp-lite .eq-band-pro { display:flex !important; }
       load.innerHTML = '<div class="ppg-lbg" style="background-image:url(' + g.loading + ')"></div>' +
         '<div class="ppg-limg" style="background-image:url(' + g.loading + ')"></div><div class="ppg-linfo">' + info + '</div>';
     } else load.innerHTML = info;
-    var exit = document.createElement('button');
-    exit.type = 'button'; exit.className = 'ppg-exit'; exit.innerHTML = X + 'Exit';
-    exit.addEventListener('click', closeGame);
+    var bar = document.createElement('div');
+    bar.className = 'ppg-topbar';
+    bar.innerHTML = '<button type="button" class="ppg-exit" aria-label="Exit game">' + X + 'Exit</button><div class="ppg-tname">' + esc(g.name) + '</div>';
+    bar.querySelector('.ppg-exit').addEventListener('click', closeGame);
     // src is set before the frame joins the page, so loading it adds no Back step
     frame = document.createElement('iframe');
     frame.src = g.src;
@@ -26545,11 +26549,9 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     var started = Date.now();
     frame.addEventListener('load', function(){
       syncGameMusic();
-      if (g.exitIn) placeExitInside(g.exitIn);
       setTimeout(function(){ load.classList.add('done'); }, Math.max(0, 700 - (Date.now() - started)));
     });
-    view.appendChild(frame); view.appendChild(load);
-    if (!g.exitIn) view.appendChild(exit);
+    view.appendChild(frame); view.appendChild(load); view.appendChild(bar);
     view.classList.add('open');
     document.body.classList.add('pp-gaming');
     slowApp(true);
@@ -26557,21 +26559,6 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     var pb = document.getElementById('play-btn');
     if (g.ownMusic && pb){ playObs = new MutationObserver(syncGameMusic); playObs.observe(pb, { attributes:true, attributeFilter:['class'] }); }
     try { history.pushState({ ppGame:id }, ''); } catch(e){}
-  }
-  // Puts a matching Exit button inside the game's own menu (used where a floating one would cover the game's UI).
-  function placeExitInside(sel){
-    try {
-      var d = frame.contentDocument, host = d && d.querySelector(sel);
-      if (!host || d.getElementById('pp-exit-in')) return;
-      var st = d.createElement('style');
-      st.textContent = sel + '{position:relative}' + sel + ' #pp-exit-in{position:absolute!important;top:-2px!important;right:0!important;width:auto!important;height:24px!important;min-height:0!important;margin:0!important;padding:0 10px 0 7px!important;border-radius:999px!important;display:flex!important;align-items:center;gap:4px;box-shadow:none!important;transform:none!important;' +
-        'border:1px solid rgba(255,255,255,.16)!important;background:rgba(255,255,255,.06)!important;color:rgba(255,255,255,.85)!important;font:600 11.5px/1 system-ui,sans-serif!important;letter-spacing:0!important;cursor:pointer}' + sel + ' #pp-exit-in svg{width:12px;height:12px}';
-      d.head.appendChild(st);
-      var b = d.createElement('button');
-      b.id = 'pp-exit-in'; b.type = 'button'; b.innerHTML = X + 'Exit';
-      b.addEventListener('click', function(e){ e.stopPropagation(); closeGame(); });
-      host.appendChild(b);
-    } catch(e){}
   }
   function hideGame(){
     if (!current) return;
