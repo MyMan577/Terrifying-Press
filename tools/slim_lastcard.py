@@ -93,4 +93,15 @@ d.sub("""#hand .card:first-child{margin-left:0}""",
 #hand.scroll{justify-content:flex-start;overflow-x:auto;overflow-y:hidden;height:calc(var(--ch)*1.3 + 40px);padding:0 14px;scrollbar-width:none;-webkit-overflow-scrolling:touch}#hand.scroll::-webkit-scrollbar{display:none}
 #hand.scroll .card:last-child{margin-right:76px}""")
 
+# ---- fix: deck modifier card tiles felt random to tap ----
+# Each tile held two buttons: the tile toggled the boost (and did nothing at
+# all once the card was out of the deck), while the small tick in its corner
+# took the card in or out. Where a tap landed decided which one fired. Now the
+# whole tile is one button cycling normal -> boosted -> off -> normal, and the
+# tick only shows the state.
+d.sub("""L.querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>{const k=b.dataset.x;if((S.dex||{})[k])return;dmSetCount(k,m[k]?0:1);renderDM()});""",
+      """L.querySelectorAll('.dmcd[data-x]').forEach(b=>b.onclick=()=>{const k=b.dataset.x,dx={...(S.dex||{})},dm={...(S.dmod||{})};if(dx[k])delete dx[k];else if(!dm[k])dm[k]=1;else{delete dm[k];dx[k]=1}S.dex=dx;S.dmod=dm;dmSave();renderDM()});""")
+d.sub("""L.querySelectorAll('[data-ck]').forEach(b=>b.onclick=e=>{e.stopPropagation();const k=b.dataset.ck,dx={...(S.dex||{})},dm={...(S.dmod||{})};if(dx[k])delete dx[k];else{dx[k]=1;delete dm[k]}S.dex=dx;S.dmod=dm;dmSave();renderDM()});""", "")
+d.sub("</style>", ".dmck{pointer-events:none}.dmcd[data-x] *{pointer-events:none}\n</style>")
+
 d.save(sys.argv[2])

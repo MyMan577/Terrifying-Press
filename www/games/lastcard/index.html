@@ -180,6 +180,7 @@ select{font:inherit;font-size:15px;padding:8px 10px;border-radius:12px;backgroun
 .dmslot{display:flex;align-items:center;gap:10px;background:#ffffff12;border-radius:14px;padding:10px 12px}
 .dmslotinfo{flex:1;min-width:0}.dmslotinfo b{display:block;font:400 15px 'Lilita One',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dmslotinfo small{font-size:12px;color:#9aa0a3;line-height:1.3;display:block}
 .dmslotbtns{display:flex;gap:6px}.dmslotbtns button{font:inherit;font-size:13px;border:0;border-radius:99px;padding:6px 12px;background:var(--y);color:#2a2200;cursor:pointer}.dmslotbtns button.ghost{background:#ffffff1a;color:#e8eaeb}
+.dmck{pointer-events:none}.dmcd[data-x] *{pointer-events:none}
 </style></head><body>
 <div id="table"><div id="ring"></div><div id="seats"></div>
 <div id="mid"><div id="deck"></div><div id="disc"><span id="pend" hidden></span><span id="claimb" hidden></span></div></div>
@@ -1465,10 +1466,10 @@ function renderDM(){const L=$('#dmpl'),m=S.dmod||{},esc=x=>String(x).replace(/&/
  L.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{dmTab=b.dataset.tab;dmOddKey=null;renderDM()});
  L.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{const p=DMP[+b.dataset.p];S.mode=p[1];S.dmod={...p[2]};dmSave();try{localStorage.setItem('uno-mode',S.mode)}catch(e){}if(S.mode==='party'&&+$('#bots').value<5){$('#bots').value=5;$('#botsv').textContent=5}$('#dm').hidden=true;buildModes()});
  L.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{const k=b.dataset.k;dmSetCount(k,m[k]?0:1);renderDM()});
- L.querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>{const k=b.dataset.x;if((S.dex||{})[k])return;dmSetCount(k,m[k]?0:1);renderDM()});
+ L.querySelectorAll('.dmcd[data-x]').forEach(b=>b.onclick=()=>{const k=b.dataset.x,dx={...(S.dex||{})},dm={...(S.dmod||{})};if(dx[k])delete dx[k];else if(!dm[k])dm[k]=1;else{delete dm[k];dx[k]=1}S.dex=dx;S.dmod=dm;dmSave();renderDM()});
  L.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{const k=b.dataset.sk;dmSetCount(k,(m[k]||0)+(+b.dataset.d));renderDM()});
  L.querySelectorAll('.dmdel').forEach(b=>b.onclick=()=>{dmSetCount(b.dataset.sk,0);renderDM()});
- L.querySelectorAll('[data-ck]').forEach(b=>b.onclick=e=>{e.stopPropagation();const k=b.dataset.ck,dx={...(S.dex||{})},dm={...(S.dmod||{})};if(dx[k])delete dx[k];else{dx[k]=1;delete dm[k]}S.dex=dx;S.dmod=dm;dmSave();renderDM()});
+ 
 const rst=$('#dmrest');if(rst)rst.onclick=()=>{S.dex={};dmSave();renderDM()};
 L.querySelectorAll('[data-bump]').forEach(b=>b.onclick=()=>{const k=b.dataset.bump,n=(S.dmod||{})[k]||0;dmSetCount(k,n>=5?0:n+1);renderDM()});
 L.querySelectorAll('[data-bfill]').forEach(b=>{const k=b.dataset.bfill;b.appendChild(dmCardEl(k[1],k.slice(2)))});
