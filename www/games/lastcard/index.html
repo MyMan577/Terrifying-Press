@@ -1428,13 +1428,15 @@ function renderDM(){const L=$('#dmpl'),m=S.dmod||{},esc=x=>String(x).replace(/&/
   const btn=(sec,keys)=>sec==='cls'?'<button type="button" class="dmall'+(allOn(keys)?' on':'')+'" data-sec="cls">'+(allOn(keys)?'Clear boosts':'Boost all')+'</button>':'<button type="button" class="dmall'+(allIn(keys)?' on':'')+'" data-sec="'+sec+'">'+(allIn(keys)?'Uncheck all':'Check all')+'</button>';
   const bOn=keys=>{const ks=keys.filter(inDeck);return ks.length>0&&ks.every(k=>(S.dmod||{})[k])};
   const boostBtn=(sec,keys)=>'<button type="button" class="dmall'+(bOn(keys)?' on':'')+'" data-bsec="'+sec+'">'+(bOn(keys)?'Clear boosts':'Boost all')+'</button>';
-  const head=(id,title,keys)=>'<div class="dmsechd"><button type="button" class="dmsecT" data-scol="'+id+'">'+(dmCol[id]?'\u25B8 ':'\u25BE ')+title+'</button>'+btn(id,keys)+(id==='cls'?'':boostBtn(id,keys))+'</div>';
+  const grpSt=keys=>{const dx=S.dex||{},dm=S.dmod||{};if(keys.length&&keys.every(k=>dx[k]))return 'off';if(keys.length&&keys.every(k=>!dx[k]&&dm[k]))return 'boosted';if(keys.length&&keys.every(k=>!dx[k]&&!dm[k]))return 'normal';return 'mixed'};
+  const cycBtn=(sec,keys,big)=>{const st=grpSt(keys),w=big?'all cards':'all',lbl=st==='boosted'?'Turn '+w+' off':st==='off'?'Turn '+w+' on':'Boost '+w;return '<button type="button" class="dmall'+(big?' big':'')+(st==='boosted'?' on':'')+'" data-cyc="'+sec+'">'+lbl+'</button>'};
+  const head=(id,title,keys)=>'<div class="dmsechd"><button type="button" class="dmsecT" data-scol="'+id+'">'+(dmCol[id]?'\u25B8 ':'\u25BE ')+title+'</button>'+(id==='cls'?btn(id,keys):cycBtn(id,keys))+'</div>';
   const chips=DMC.map(([k,n])=>'<button type="button" class="dmchip'+(m[k]?' on':'')+'" data-k="'+k+'">'+n+'</button>').join('');
   const cardBtn=x=>{const out=!!(S.dex||{})[x.key];return '<button type="button" class="dmcd'+(m[x.key]&&!out?' on':'')+(out?' out':'')+'" title="'+esc(dmKeyName(x.key))+'" data-x="'+x.key+'"><i class="dmck" data-ck="'+x.key+'">'+(out?'\u2715':'\u2713')+'</i></button>'};
   const secs=colorSecs2.map(x=>head(x.id,x.title,x.keys)+(dmCol[x.id]?'':'<div class="dmcards"><div class="dmrow2">'+x.cards.map(cardBtn).join('')+'</div></div>')).join('');
   const dxk=S.dex||{},bk=dmKeys(m).filter(k=>!dxk[k]),tot=bk.reduce((t,k)=>t+m[k],0);
   const sel=bk.map(k=>{const isX=k[0]==='x'&&k.length>2;return '<button type="button" class="dmbst'+(isX?'':' cls')+'" data-bump="'+k+'" title="'+esc(dmKeyName(k))+'"'+(isX?' data-bfill="'+k+'"':'')+'>'+(isX?'':esc(dmKeyName(k)))+'<i class="dmbn">'+m[k]+'</i></button>'}).join('')||'<div class="dmnone">Nothing boosted yet. Tap a card above.</div>';
-  body='<div class="dmtop">'+(Object.keys(S.dex||{}).length?'<button type="button" class="dmall big" id="dmrest">Restore unchecked</button> ':'')+'<button type="button" class="dmall big'+(allIn(cardKeys)?' on':'')+'" data-sec="all">'+(allIn(cardKeys)?'Uncheck all cards':'Check all cards')+'</button> <button type="button" class="dmall big'+(bOn(cardKeys)?' on':'')+'" data-bsec="all">'+(bOn(cardKeys)?'Clear boosts':'Boost all cards')+'</button></div>'
+  body='<div class="dmtop">'+(Object.keys(S.dex||{}).length?'<button type="button" class="dmall big" id="dmrest">Restore unchecked</button> ':'')+cycBtn('all',cardKeys,1)+'</div>'
    +head('cls','Classes',clsKeys)+(dmCol.cls?'':'<div class="dmchips">'+chips+'</div>')
    +secs
    +'<div class="dmsec">Boosted'+(tot?' · '+tot+' extra':'')+' · tap to change, 5 then off</div><div class="dmbsts">'+sel+'</div>'
@@ -1479,6 +1481,10 @@ L.querySelectorAll('[data-sec]').forEach(b=>b.onclick=()=>{const sec=b.dataset.s
  keys.forEach(k=>{if(out){dx[k]=1;delete dm[k]}else delete dx[k]});
  S.dex=dx;S.dmod=dm;dmSave();renderDM()});
 L.querySelectorAll('[data-bsec]').forEach(b=>b.onclick=()=>{const keys=(dmSecKeys[b.dataset.bsec]||[]).filter(k=>!(S.dex||{})[k]),dm={...(S.dmod||{})},clear=keys.every(k=>dm[k]);keys.forEach(k=>{if(clear)delete dm[k];else dm[k]=dm[k]||1});S.dmod=dm;dmSave();renderDM()});
+L.querySelectorAll('[data-cyc]').forEach(b=>b.onclick=()=>{const keys=dmSecKeys[b.dataset.cyc]||[],dx={...(S.dex||{})},dm={...(S.dmod||{})};
+ const st=keys.length&&keys.every(k=>dx[k])?'off':keys.length&&keys.every(k=>!dx[k]&&dm[k])?'boosted':'other';
+ keys.forEach(k=>{if(st==='boosted'){delete dm[k];dx[k]=1}else if(st==='off'){delete dx[k]}else{delete dx[k];dm[k]=dm[k]||1}});
+ S.dex=dx;S.dmod=dm;dmSave();renderDM()});
 L.querySelectorAll('[data-scol]').forEach(b=>b.onclick=()=>{dmCol[b.dataset.scol]=!dmCol[b.dataset.scol];renderDM()});
 L.querySelectorAll('[data-odd]').forEach(b=>b.onclick=()=>{dmOddKey=b.dataset.odd;renderDM()});
 const ob=$('#dmoback');if(ob)ob.onclick=()=>{dmOddKey=null;renderDM()};
