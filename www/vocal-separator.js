@@ -1555,7 +1555,9 @@
         await ease(performance.now() - tb0, opt.rest, 'eff', cnt);
       }
       r.voice = voice / rows;
-      r.inst = INST40.map((n, i) => [n, inst[i]]);
+      { let lo = Infinity, hi = -Infinity; for (let i = 0; i < rows * 40 && i < instAll.length; i++) { const v = instAll[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+        const raw = lo < -0.01 || hi > 1.01;                          // the instrument head gave raw scores (logits), not 0..1: squash them, or 4.2 shows as 420%
+        r.inst = INST40.map((n, i) => [n, raw ? 1 / (1 + Math.exp(-inst[i])) : Math.max(0, Math.min(1, inst[i]))]); }
       const ur = Math.max(1, used);                                    // averages over the patches that had sound in them
       let nrm = 0; const em = new Float32Array(1280); for (let c = 0; c < 1280; c++) { em[c] = embSum[c] / ur; nrm += em[c] * em[c]; }
       nrm = Math.sqrt(nrm) || 1; for (let c = 0; c < 1280; c++) em[c] /= nrm; r.emb = em;
@@ -1665,7 +1667,19 @@
   // ---------- Saved tags (small, in localStorage) ----------
   const TAGS_KEY = 'ppTagsV2';
   let tagStore = null, tagVer = 0;
-  const loadTags = () => { if (tagStore) return tagStore; try { tagStore = JSON.parse(localStorage.getItem(TAGS_KEY)) || {}; } catch (e) { tagStore = {}; } return tagStore; };
+  const loadTags = () => {
+    if (tagStore) return tagStore; try { tagStore = JSON.parse(localStorage.getItem(TAGS_KEY)) || {}; } catch (e) { tagStore = {}; }
+    // Older builds could save instrument scores from raw model output (e.g. 420%). Squash those once, the same way the tagger now does.
+    let fixed = false; const sq = v => Math.round(100 / (1 + Math.exp(-v / 100)));
+    Object.values(tagStore).forEach(c => {
+      if (!c) return;
+      if (Array.isArray(c.in) && c.in.some(x => x && (x[1] > 100 || x[1] < 0))) { c.in = c.in.map(x => [x[0], x[1] > 100 || x[1] < 0 ? sq(x[1]) : x[1]]).sort((a, b) => b[1] - a[1]); fixed = true; }
+      if (c.bpm && (c.bpm < 30 || c.bpm > 300)) { delete c.bpm; fixed = true; }
+      if (c.v != null && (c.v > 100 || c.v < 0)) { c.v = Math.max(0, Math.min(100, c.v)); fixed = true; }
+    });
+    if (fixed) try { localStorage.setItem(TAGS_KEY, JSON.stringify(tagStore)); } catch (e) {}
+    return tagStore;
+  };
   const saveTagStore = () => { tagVer++; try { localStorage.setItem(TAGS_KEY, JSON.stringify(tagStore)); return true; } catch (e) { return false; } };
   function compactTags(r) {
     const top = (a, n, min) => (a || []).filter(v => v[1] >= min).sort((u, v) => v[1] - u[1]).slice(0, n).map(v => [v[0], Math.round(v[1] * 100)]);
@@ -2594,6 +2608,27 @@
     for (const q of lines) { const k = q.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim(); if (!k || seen.has(k)) continue; seen.add(k); out.push(q); }
     return { lines: out, words: out.join(' ').split(/\s+/).filter(Boolean).length };
   }
+  // ---------- Number guard for AI replies ----------
+  // Small models garble numbers they copy ("98 BPM" + "78%" came out as "9878 BPM"). Fix what is clearly wrong:
+  // a tempo that does not match the real one (allowing half/double time) becomes the real one, an impossible one is dropped,
+  // and percentages over 100 are removed.
+  function fixNums(text, bpms) {
+    const known = (bpms || []).filter(b => b > 0);
+    let out = String(text || '').replace(/\b(\d[\d,]*(?:\.\d+)?)\s*(BPM|bpm|beats per minute)\b/g, (all, num, unit) => {
+      const raw = num.replace(/,/g, ''), n = +raw;
+      const near = b => [b, b / 2, b * 2].some(x => Math.abs(n - x) <= 3);
+      if (known.some(near)) return all;
+      const inside = known.find(b => raw.includes(String(b)));
+      if (inside) return inside + ' ' + unit;
+      if (known.length === 1) return known[0] + ' ' + unit;
+      if (n >= 40 && n <= 250 && !known.length) return all;
+      return 'an unclear tempo';
+    });
+    out = out.replace(/\s*\(\s*(\d+(?:\.\d+)?)\s*%\s*\)/g, (all, n) => +n > 100 ? '' : all)
+      .replace(/\b(\d+(?:\.\d+)?)\s*%/g, (all, n) => +n > 100 ? '' : all)
+      .replace(/\b([Aa])bout an unclear tempo/g, '$1n unclear tempo').replace(/[ \t]{2,}/g, ' ').replace(/ ([,.;:])/g, '$1');
+    return out;
+  }
   // ---------- Song map: where the song changes (intro, verse, chorus, bridge, outro), from the lyrics AND the sound ----------
   // Lyrics (timed subtitle cues, else LRC, else plain stanzas) are cut into blocks at pauses and at the sound-section edges.
   // Blocks whose lines come back are the chorus; a one-off block after the second chorus is the bridge; the rest are verses.
@@ -2883,7 +2918,7 @@
     say('Writing the summary…');
     const out = String(await ask([{ role: 'system', content: sys }, { role: 'user', content: user }], opt, say) || '').trim();
     if (/^\W*unknown\W*$/i.test(out) || /^(?:i(?:'m| am) not (?:familiar|sure)|i don'?t know)/i.test(out)) return '';
-    return sumOk(out) ? sumCap(sumParas(sumTrim(out), ST.bul ? 0 : LN.paras || 0), LN.max, ST.bul ? LN.nb : 0) : '';
+    return sumOk(out) ? sumCap(fixNums(sumParas(sumTrim(out), ST.bul ? 0 : LN.paras || 0), c && c.bpm ? [c.bpm] : []), LN.max, ST.bul ? LN.nb : 0) : '';
   }
   function smartUI(p, h) {
     const css = document.createElement('style');
@@ -5300,11 +5335,13 @@
     let songTalk = null, stBar = null;
     const mmssT = x => Math.floor(x / 60) + ':' + String(Math.floor(x % 60)).padStart(2, '0');
     function songTalkFacts(t) {
-      const c = loadTags()[t.dbId] || {}, L = [], lst = a => (a || []).map(v => v[0] + (v[1] != null ? ' ' + v[1] + '%' : '')).join(', ');
-      if (c.bpm) L.push('Tempo: about ' + c.bpm + ' BPM');
+      // Few raw numbers on purpose: the small model garbles numbers it copies, so strengths are words and only the tempo is a number.
+      const c = loadTags()[t.dbId] || {}, L = [], how = v => v == null ? '' : v >= 70 ? ' (strong)' : v >= 40 ? '' : ' (faint)', lst = a => (a || []).map(v => v[0] + how(v[1])).join(', ');
+      if (c.bpm) L.push('Tempo: about ' + c.bpm + ' BPM (' + (c.bpm < 70 ? 'slow' : c.bpm < 100 ? 'mid-tempo' : c.bpm < 128 ? 'upbeat' : 'fast') + ')');
       if (c.key) L.push('Key: ' + c.key + (c.ck ? ' (' + c.ck + ')' : ''));
       if (c.gp && c.gp.length) L.push('Genre: ' + lst(c.gp)); if (c.st && c.st.length) L.push('Style: ' + lst(c.st));
-      const feel = Object.entries(c.hd || {}).filter(e => e[1] >= 50).map(e => e[0] + ' ' + e[1] + '%'); if (feel.length) L.push('Mood/feel (audio models): ' + feel.join(', '));
+      const feel = Object.entries(c.hd || {}).filter(e => e[1] >= 50).sort((a, b) => b[1] - a[1]).map(e => e[0] + how(e[1])); if (feel.length) L.push('Mood/feel (audio models): ' + feel.join(', '));
+      const th = ((c.hm || {}).theme || []).map(x => String(x[0]).replace(/_/g, ' ')); if (th.length) L.push('Themes (audio models): ' + th.join(', '));
       const IN2 = { acousticguitar: 'acoustic guitar', electricguitar: 'electric guitar', classicalguitar: 'classical guitar', acousticbassguitar: 'acoustic bass', electricpiano: 'electric piano', drummachine: 'drum machine', pipeorgan: 'pipe organ', doublebass: 'double bass' };
       if (c.in && c.in.length) L.push('Instruments heard: ' + lst(c.in.map(v => [IN2[v[0]] || v[0], v[1]])));
       if (c.v != null) L.push(c.v >= 50 ? 'Has vocals' : 'Mostly instrumental');
@@ -5382,6 +5419,7 @@
         const out = await g(fit.msgs, opts);
         let r = out && out[0] && out[0].generated_text; r = Array.isArray(r) ? (r[r.length - 1] || {}).content : (r || acc);
         r = finishSentence(String(r || acc).trim());
+        try { const tb = (loadTags()[st.t.dbId] || {}).bpm; r = fixNums(r, tb ? [tb] : []); } catch (e) {}
         if (!looksOk(r)) { el.textContent = 'Sorry, that came out garbled. Ask me again?'; return; }
         el.textContent = r; scrollDown(); try { vSpeak(r); } catch (e) {}
         if (songTalk === st) { st.hist.push(uMsg, { role: 'assistant', content: r }); st.hist = st.hist.slice(-12); }
@@ -8465,6 +8503,7 @@
         }
         if (!looksOk(r)) { el.textContent = "Sorry, that came out as gibberish. Try again, or tap Clear."; return void (chatBusy = false); }   // never feed garbage back into the history
         r = finishSentence(r);
+        try { const A = window.__ppApi, tg = loadTags(), cu = A && A.currentIndex() >= 0 ? A.tracks()[A.currentIndex()] : null; r = fixNums(r, cu && tg[cu.dbId] && tg[cu.dbId].bpm ? [tg[cu.dbId].bpm] : Object.values(tg).map(x => x && x.bpm).filter(Boolean)); } catch (e) {}
         el.textContent = r; try { vSpeak(r); } catch (e) {} hist.push({ role: 'user', content: text }, { role: 'assistant', content: r }); hist = memN() ? hist.slice(-2 * memN()) : [];
         if (!direct) moodChip(text);
       } catch (e) { console.error(e); dlOk = false; el.textContent = "Oops, my brain would not load: " + e.message; }
