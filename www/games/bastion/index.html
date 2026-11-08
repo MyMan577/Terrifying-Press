@@ -2074,6 +2074,10 @@ const CARDS = [
   { id:'pressplayparagon', name:'Press Play Paragon', emoji:'🎧', cost:5, hp:1900, dmg:250, speed:1.0, attackSpeed:1.2, range:1.2, type:'melee', color:'#8b5cff', size:16, deployDelay:1.0, windup:0.25,
     shieldHp:600, deathDmg:420, deathAoeRadius:3.0,
     isGachaCard:true, gachaRarity:'legendary', pppExclusive:true },
+  // Press Play Maestro: Press Play exclusive (only from the Press Play shop, never in the gacha or AI decks).
+  // A teal conductor that fires sound waves at air and ground, hitting everything in a small area.
+  { id:'pressplaymaestro', name:'Press Play Maestro', emoji:'🎛️', cost:5, hp:880, dmg:320, speed:0.67, attackSpeed:1.3, range:5.5, type:'ranged', color:'#6ee7d0', size:13, deployDelay:1.0, windup:0.4, hitsAir:true, isAoe:true, aoeRadius:2.2,
+    isGachaCard:true, gachaRarity:'legendary', pppExclusive:true },
   { id:'crystalvanguard', name:'Crystal Vanguard', emoji:'🔷', cost:4, hp:1550, dmg:235, speed:0.67, attackSpeed:1.596, range:1.2, type:'melee', color:'#44aaff', size:15, deployDelay:1.0, windup:0.3,
     shieldHp:500, deathDmg:350, deathAoeRadius:2.5,
     isGachaCard:true, gachaRarity:'rare' },
@@ -2234,7 +2238,7 @@ const CARDS = [
 // ── Card Categories ──────────────────────────────────────────────
 // Order determines display order in the grid (categories listed first appear first)
 const CARD_CATEGORIES = [
-  { id:'pressplay', label:'▶️ Press Play', ids:['pressplayparagon'] },
+  { id:'pressplay', label:'▶️ Press Play', ids:['pressplayparagon','pressplaymaestro'] },
   { id:'wincons', label:'🏆 Win Cons', ids:['giant2','royalgiant','golem','elixirgolem','lavahound','balloon','hogrider','ramrider','battle-ram','wallbreakers','goblngiant','thundertitan','magmaroller','phaseshifter','royalhogs','electrogiant','goblindrill','rambot','berserkerram','mortar','xbow'] },
   { id:'tanks', label:'🛡️ Tanks', ids:['giant','pekka','megaknight','cannoncart','royalrecruits','mirrorknight','frostwyvern','crystalgolem','davincitank'] },
   { id:'warriors', label:'⚔️ Warriors', ids:['mini','valkyrie','knight','darkprince','fisherman','miner','lumberjack','berserker','eliteberserkers','guards','bandit','executioner','battlehealer','prince','hunter','royalghost','rascals','shadowninja','phantomlancer','soulharvester','ronin'] },

@@ -490,8 +490,11 @@
       items: [
         { id:'cash10', n:'Pocket Money', d:'+$10 when your next run starts (a run you have going gets it right away).', p:40, buy:function(){ return boost('anteup', 'cash', 10); } },
         { id:'cash25', n:'Fat Wallet',   d:'+$25 the same way.', p:90, buy:function(){ return boost('anteup', 'cash', 25); } },
+        { id:'cash50', n:'Big Spender',  d:'+$50 the same way.', p:170, buy:function(){ return boost('anteup', 'cash', 50); } },
         { id:'encore', n:'Encore Charm', x:1, d:'Press Play exclusive charm for your next run: +4 Mult, then ×1.2 Mult on every hand. Never shows up in the game\'s own shop.', p:80,
-          off:function(){ return pending('anteup', 'encore') ? 'Ready for next run' : ''; }, buy:function(){ return boost('anteup', 'encore', 1); } }
+          off:function(){ return pending('anteup', 'encore') ? 'Ready for next run' : ''; }, buy:function(){ return boost('anteup', 'encore', 1); } },
+        { id:'bass', n:'Bass Boost Charm', x:1, d:'Press Play exclusive charm for your next run: ×1.5 Mult on every hand. Never shows up in the game\'s own shop.', p:110,
+          off:function(){ return pending('anteup', 'bass') ? 'Ready for next run' : ''; }, buy:function(){ return boost('anteup', 'bass', 1); } }
       ]
     },
     bastion: {
@@ -501,12 +504,22 @@
         { id:'v5',    n:'Voucher Bundle', d:'Five gacha pulls.', p:100, buy:function(){ return bastionAdd('vouchers', 5); } },
         { id:'crown', n:'CrownCard',      d:'A pull that is guaranteed Mythic or better.', p:150, buy:function(){ return bastionAdd('crownCards', 1); } },
         { id:'crownp',n:'CrownCard+',     d:'A pull that is guaranteed Legendary Limited.', p:300, buy:function(){ return bastionAdd('crownPlusCards', 1); } },
+        { id:'v10',   n:'Voucher Crate',  d:'Ten gacha pulls.', p:190, buy:function(){ return bastionAdd('vouchers', 10); } },
+        { id:'v25',   n:'Voucher Vault',  d:'Twenty-five gacha pulls.', p:450, buy:function(){ return bastionAdd('vouchers', 25); } },
+        { id:'crown3',n:'CrownCard Trio', d:'Three pulls that are each guaranteed Mythic or better.', p:420, buy:function(){ return bastionAdd('crownCards', 3); } },
         { id:'paragon', n:'Press Play Paragon', x:1, d:'Press Play exclusive troop (5 elixir): a shielded violet melee champion in headphones that lets out a big sound blast when it falls. Never in the gacha.', p:450,
           off:ownedOff('bastion', 'paragon'),
           buy:function(){
             if (owned('bastion', 'paragon')) return false;
             if (!jpatch('ccGachaState', function(o){ o.shopUnlocked = o.shopUnlocked || {}; o.shopUnlocked.pressplayparagon = true; }, JSON.parse(JSON.stringify(BASTION_DEFAULT)))) return false;
             P.own['bastion:paragon'] = 1; return true;
+          } },
+        { id:'maestro', n:'Press Play Maestro', x:1, d:'Press Play exclusive troop (5 elixir): a teal conductor in headphones that fires sound waves at air and ground, hitting everything in a small area. Never in the gacha.', p:480,
+          off:ownedOff('bastion', 'maestro'),
+          buy:function(){
+            if (owned('bastion', 'maestro')) return false;
+            if (!jpatch('ccGachaState', function(o){ o.shopUnlocked = o.shopUnlocked || {}; o.shopUnlocked.pressplaymaestro = true; }, JSON.parse(JSON.stringify(BASTION_DEFAULT)))) return false;
+            P.own['bastion:maestro'] = 1; return true;
           } }
       ]
     },
@@ -515,7 +528,10 @@
       items: [
         { id:'supply',  n:'Supply Drop',   d:'Each of your blobs starts the next CPU match with +2 Air strikes, +1 Homing launcher and +1 Cluster bomb.', p:35, buy:function(){ return boost('blob', 'supply', 1); } },
         { id:'arsenal', n:'Heavy Arsenal', d:'Each of your blobs starts the next CPU match with +1 Nuke, +1 Railgun and +1 Meteor shower.', p:90, buy:function(){ return boost('blob', 'arsenal', 1); } },
-        { id:'headphones', n:'Press Play Headphones', x:1, d:'Press Play exclusive: your blobs wear black and grey Press Play headphones in every match.', p:150, off:ownedOff('blob', 'headphones'), buy:exclusive('blob', 'headphones') }
+        { id:'medic',   n:'Medic Bag',     d:'Each of your blobs starts the next CPU match with +2 First aid kits and +1 Shield.', p:40, buy:function(){ return boost('blob', 'medic', 1); } },
+        { id:'fortress', n:'Fortress Kit', d:'Each of your blobs starts the next CPU match with +1 Mega shield, +1 Armor and +1 Aegis.', p:75, buy:function(){ return boost('blob', 'fortress', 1); } },
+        { id:'headphones', n:'Press Play Headphones', x:1, d:'Press Play exclusive: your blobs wear black and grey Press Play headphones in every match.', p:150, off:ownedOff('blob', 'headphones'), buy:exclusive('blob', 'headphones') },
+        { id:'aura', n:'Press Play Aura', x:1, d:'Press Play exclusive: your blobs glow with a pulsing teal, violet and pink sound-wave aura in every match.', p:170, off:ownedOff('blob', 'aura'), buy:exclusive('blob', 'aura') }
       ]
     },
     cube: {
@@ -523,19 +539,26 @@
       items: [
         { id:'c250',  n:'Coin Pouch',  d:'250 coins.', p:40, buy:function(){ return jpatch('dashcube-knight-v1', function(o){ o.coins = (o.coins || 0) + 250; }, {}); } },
         { id:'c1000', n:'Coin Chest',  d:'1,000 coins.', p:140, buy:function(){ return jpatch('dashcube-knight-v1', function(o){ o.coins = (o.coins || 0) + 1000; }, {}); } },
+        { id:'c5000', n:'Coin Vault',  d:'5,000 coins.', p:600, buy:function(){ return jpatch('dashcube-knight-v1', function(o){ o.coins = (o.coins || 0) + 5000; }, {}); } },
         { id:'x2',    n:'Coin Rush',   d:'Double the coins from your next cleared stage.', p:50, buy:function(){ return boost('cube', 'x2', 1); } },
+        { id:'x3',    n:'Triple Coin Rush', d:'Triple the coins from your next cleared stage (used before Coin Rush).', p:110, buy:function(){ return boost('cube', 'x3', 1); } },
         { id:'knight',n:'Mystery Knight', d:'A random knight you don\'t own yet joins your roster.', p:160,
           off:function(){ var l = (P.info.cube || {}).knightsLeft; return (l != null && l - pending('cube', 'knight') <= 0) ? 'You own every knight' : ''; },
           buy:function(){ return boost('cube', 'knight', 1); } },
         { id:'pppknight', n:'Press Play Paladin', x:1, d:'Press Play exclusive: violet armour, black and grey headphones and a pink cape. 4 in every stat, with a Storm Staff, Katana and Boomerang.', p:400,
-          off:ownedOff('cube', 'pppknight'), buy:exclusive('cube', 'pppknight', 'pppknight') }
+          off:ownedOff('cube', 'pppknight'), buy:exclusive('cube', 'pppknight', 'pppknight') },
+        { id:'pppknight2', n:'Press Play Phantom', x:1, d:'Press Play exclusive: a teal and violet knight in black and grey headphones. 3 Power, 5 Speed, 3 Health, 5 Dash, with Knives, Shuriken and Rapier.', p:450,
+          off:ownedOff('cube', 'pppknight2'), buy:exclusive('cube', 'pppknight2', 'pppknight2') }
       ]
     },
     kitchen: {
       have: function(){ var s = pending('kitchen', 'overtime'); return s ? '+' + s + ' s overtime waiting' : 'Boosts for your next shift'; },
       items: [
         { id:'ot20', n:'Overtime',      d:'+20 seconds on your next timed shift.', p:35, buy:function(){ return boost('kitchen', 'overtime', 20); } },
-        { id:'ot45', n:'Double Shift',  d:'+45 seconds on your next timed shift.', p:70, buy:function(){ return boost('kitchen', 'overtime', 45); } }
+        { id:'ot45', n:'Double Shift',  d:'+45 seconds on your next timed shift.', p:70, buy:function(){ return boost('kitchen', 'overtime', 45); } },
+        { id:'ot90', n:'Triple Shift',  d:'+90 seconds on your next timed shift.', p:130, buy:function(){ return boost('kitchen', 'overtime', 90); } },
+        { id:'hype', n:'Hype Hour',     d:'+25% points on every order in your next shift.', p:60, buy:function(){ return boost('kitchen', 'hype', 1); } },
+        { id:'jukebox', n:'Press Play Jukebox', x:1, d:'Press Play exclusive: a jukebox in the corner of every kitchen. Every order scores 15% more, in every shift for good.', p:200, off:ownedOff('kitchen', 'jukebox'), buy:exclusive('kitchen', 'jukebox') }
       ]
     },
     lastcard: {
@@ -544,13 +567,18 @@
         { id:'wild',  n:'Wild Card',    d:'An extra Wild in your opening hand next game (classic-style modes).', p:30, buy:function(){ return boost('lastcard', 'wild', 1); } },
         { id:'wild4', n:'Wild +4',      d:'An extra Wild +4 in your opening hand next game (classic-style modes).', p:45, buy:function(){ return boost('lastcard', 'wild4', 1); } },
         { id:'heavy', n:'Heavy Hands',  d:'Every bot starts your next game with 2 extra cards.', p:40, buy:function(){ return boost('lastcard', 'heavy', 2); } },
-        { id:'cardback', n:'Press Play Card Backs', x:1, d:'Press Play exclusive: every face-down card gets a violet back with a glowing play button.', p:150, off:ownedOff('lastcard', 'cardback'), buy:exclusive('lastcard', 'cardback') }
+        { id:'actions', n:'Action Pack', d:'An extra Skip, Reverse and Draw Two in your opening hand next game (classic-style modes).', p:40, buy:function(){ return boost('lastcard', 'actions', 1); } },
+        { id:'cardback', n:'Press Play Card Backs', x:1, d:'Press Play exclusive: every face-down card gets a violet back with a glowing play button.', p:150, off:ownedOff('lastcard', 'cardback'), buy:exclusive('lastcard', 'cardback') },
+        { id:'table', n:'Press Play Table', x:1, d:'Press Play exclusive: the table turns deep violet with a glowing play button under the cards.', p:140, off:ownedOff('lastcard', 'table'), buy:exclusive('lastcard', 'table') }
       ]
     },
     nebula: {
-      have: function(){ return owned('nebula', 'palette') ? 'Press Play palette unlocked' : 'Make your own palettes in Appearance'; },
+      have: function(){ var n = ['palette', 'palette2', 'palette3', 'palette4'].filter(function(k){ return owned('nebula', k); }).length; return n ? n + ' Press Play palette' + (n > 1 ? 's' : '') + ' unlocked' : 'Make your own palettes in Appearance'; },
       items: [
-        { id:'palette', n:'Press Play Palette', x:1, d:'Press Play exclusive palette: teal, violet and pink light on deep night.', p:80, off:ownedOff('nebula', 'palette'), buy:exclusive('nebula', 'palette') }
+        { id:'palette', n:'Press Play Palette', x:1, d:'Press Play exclusive palette: teal, violet and pink light on deep night.', p:80, off:ownedOff('nebula', 'palette'), buy:exclusive('nebula', 'palette') },
+        { id:'palette2', n:'Press Play Sunset', x:1, d:'Press Play exclusive palette: amber, coral and pink on a dark wine sky.', p:80, off:ownedOff('nebula', 'palette2'), buy:exclusive('nebula', 'palette2') },
+        { id:'palette3', n:'Press Play Frost', x:1, d:'Press Play exclusive palette: ice blue, mint and violet on a deep blue night.', p:80, off:ownedOff('nebula', 'palette3'), buy:exclusive('nebula', 'palette3') },
+        { id:'palette4', n:'Press Play Mono', x:1, d:'Press Play exclusive palette: white to charcoal, like the headphones.', p:60, off:ownedOff('nebula', 'palette4'), buy:exclusive('nebula', 'palette4') }
       ]
     },
     obby: {
@@ -563,7 +591,9 @@
         { id:'cret',  n:'Retro Box',       d:'A free Retro character box.', p:110, buy:function(){ return boost('obby', 'cb_retro', 1); } },
         { id:'cgold', n:'Gold Capsule',    d:'A free Gold capsule: stronger characters with their own tricks.', p:160, buy:function(){ return boost('obby', 'cb_gold', 1); } },
         { id:'prodigy', n:'Press Play Prodigy', x:1, d:'Press Play exclusive character: violet suit, black and grey headphones. Encore: 3 jumps, 3 dashes, 4 HP and top speed.', p:420, off:ownedOff('obby', 'prodigy'), buy:exclusive('obby', 'prodigy', 'prodigy') },
-        { id:'wave',  n:'Press Play Wave', x:1, d:'Press Play exclusive cosmetic: a teal-to-pink sound wave trail and orbiting music notes.', p:180, off:ownedOff('obby', 'wave'), buy:exclusive('obby', 'wave', 'wave') }
+        { id:'wave',  n:'Press Play Wave', x:1, d:'Press Play exclusive cosmetic: a teal-to-pink sound wave trail and orbiting music notes.', p:180, off:ownedOff('obby', 'wave'), buy:exclusive('obby', 'wave', 'wave') },
+        { id:'eq',   n:'Press Play Equalizer', x:1, d:'Press Play exclusive cosmetic: a little sound equalizer that dances around you in teal, violet and pink.', p:200, off:ownedOff('obby', 'eq'), buy:exclusive('obby', 'eq', 'eq') },
+        { id:'hype', n:'Hype Start',    d:'The next time you play as the Press Play Prodigy, your Hype meter starts full, ready for THE DROP.', p:55, buy:function(){ return boost('obby', 'hype', 1); } }
       ]
     },
     toque: {
@@ -571,29 +601,38 @@
       items: [
         { id:'trophies', n:'Trophy Cache', d:'3 random trophies in your Trophy Satchel next time your save loads.', p:50, off:function(){ return toqueSave() ? '' : 'Start a game first'; }, buy:function(){ return boost('toque', 'trophies', 3); } },
         { id:'rite',     n:'Ancestor\'s Rite', d:'Kanata gains 300 XP and his spirit 200 XP next time your save loads.', p:70, off:function(){ return toqueSave() ? '' : 'Start a game first'; }, buy:function(){ return boost('toque', 'rite', 1); } },
+        { id:'hoard',    n:'Trophy Hoard', d:'8 random trophies in your Trophy Satchel next time your save loads.', p:120, off:function(){ return toqueSave() ? '' : 'Start a game first'; }, buy:function(){ return boost('toque', 'trophies', 8); } },
+        { id:'grandrite', n:'Grand Rite',  d:'Three Ancestor\'s Rites at once: Kanata gains 900 XP and his spirit 600 XP next time your save loads.', p:180, off:function(){ return toqueSave() ? '' : 'Start a game first'; }, buy:function(){ return boost('toque', 'rite', 3); } },
         { id:'panther', n:'Press Play Panther', x:1, d:'Press Play exclusive spirit: a charcoal panther in black and grey headphones. Hits hard, its Encore stuns and heals, and it learns Drop the Beat and Replay.', p:400,
           off:function(){ return owned('toque', 'panther') ? 'Owned' : toqueSave() ? '' : 'Start a game first'; }, buy:exclusive('toque', 'panther', 'panther') },
         { id:'headphones', n:'Press Play Headphones', x:1, d:'Press Play exclusive gear: +2 spear damage, +12 max HP, and Focus restores +10 more Spirit.', p:220,
-          off:function(){ return owned('toque', 'headphones') ? 'Owned' : toqueSave() ? '' : 'Start a game first'; }, buy:exclusive('toque', 'headphones', 'headphones') }
+          off:function(){ return owned('toque', 'headphones') ? 'Owned' : toqueSave() ? '' : 'Start a game first'; }, buy:exclusive('toque', 'headphones', 'headphones') },
+        { id:'vinyl', n:'Press Play Vinyl', x:1, d:'Press Play exclusive gear: +1 spear damage, +30 max HP, and Focus restores +6 more Spirit.', p:260,
+          off:function(){ return owned('toque', 'vinyl') ? 'Owned' : toqueSave() ? '' : 'Start a game first'; }, buy:exclusive('toque', 'vinyl', 'vinyl') }
       ]
     },
     weaponball: {
       have: function(){ var t = pending('weaponball', 'tokens'); return t ? t + ' tokens waiting for your next run' : 'Boosts for Roguelite runs'; },
       items: [
         { id:'t30', n:'Token Pouch', d:'+30 tokens when your next Roguelite run starts.', p:40, buy:function(){ return boost('weaponball', 'tokens', 30); } },
-        { id:'t80', n:'Token Sack',  d:'+80 tokens when your next Roguelite run starts.', p:90, buy:function(){ return boost('weaponball', 'tokens', 80); } }
+        { id:'t80', n:'Token Sack',  d:'+80 tokens when your next Roguelite run starts.', p:90, buy:function(){ return boost('weaponball', 'tokens', 80); } },
+        { id:'t200', n:'Token Vault', d:'+200 tokens when your next Roguelite run starts.', p:210, buy:function(){ return boost('weaponball', 'tokens', 200); } },
+        { id:'charm', n:'Charm Crate', d:'A random charm in your pocket when your next Roguelite run starts.', p:90, buy:function(){ return boost('weaponball', 'charm', 1); } },
+        { id:'encore', n:'Press Play Encore', x:1, d:'Press Play exclusive charm: +50% Lite Tokens from every round, in every Roguelite run for good. Never shows up in the game\'s own shop.', p:260, off:ownedOff('weaponball', 'encore'), buy:exclusive('weaponball', 'encore') }
       ]
     }
   };
   // Lucky Dip: a random cheap game item
-  var DIP = [['cube','c250'],['obby','mepic'],['bastion','v1'],['anteup','cash10'],['kitchen','ot20'],['weaponball','t30'],['toque','trophies'],['cube','x2'],['blob','supply'],['lastcard','wild'],['obby','csil']];
+  var DIP = [['cube','c250'],['obby','mepic'],['bastion','v1'],['anteup','cash10'],['kitchen','ot20'],['weaponball','t30'],['toque','trophies'],['cube','x2'],['blob','supply'],['lastcard','wild'],['obby','csil'],['blob','medic'],['kitchen','hype'],['weaponball','charm'],['obby','hype'],['lastcard','actions'],['anteup','cash25']];
   function itemOf(g, id){ return ((SHOP[g] || {}).items || []).filter(function(x){ return x.id === id; })[0]; }
   function xpApi(){ var a = window.PPXpApi; return a && a.shopLevelPct ? a : null; }
   var APP = [
     { id:'lvl25', n:'Level Boost',      d:'Fill 25% of your current level bar.', p:60,  buy:function(){ return !!xpApi() && xpApi().shopLevelPct(0.25) > 0; } },
     { id:'lvl60', n:'Big Level Boost',  d:'Fill 60% of your current level bar.', p:130, buy:function(){ return !!xpApi() && xpApi().shopLevelPct(0.6) > 0; } },
     { id:'xp2',   n:'Double XP',        d:'2× XP from listening for 1 hour (shop boosts top out at 3× in total).', p:100, buy:function(){ return !!xpApi() && xpApi().shopTempBoost(2, 3600000); } },
-    { id:'xp15',  n:'XP Marathon',      d:'1.5× XP from listening for 6 hours.', p:120, buy:function(){ return !!xpApi() && xpApi().shopTempBoost(1.5, 6 * 3600000); } }
+    { id:'xp15',  n:'XP Marathon',      d:'1.5× XP from listening for 6 hours.', p:120, buy:function(){ return !!xpApi() && xpApi().shopTempBoost(1.5, 6 * 3600000); } },
+    { id:'lvl100', n:'Level Up',         d:'Fill your whole current level bar.', p:220, buy:function(){ return !!xpApi() && xpApi().shopLevelPct(1) > 0; } },
+    { id:'xp24',  n:'XP All Day',       d:'1.25× XP from listening for 24 hours.', p:150, buy:function(){ return !!xpApi() && xpApi().shopTempBoost(1.25, 24 * 3600000); } }
   ];
   var BG_PRICE = 150, EQ_PRICE = 200;
 

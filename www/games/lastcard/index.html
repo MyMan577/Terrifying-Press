@@ -1,5 +1,5 @@
 <!DOCTYPE html><html lang="en"><head>
-<meta charset="utf-8"><script src="../pp-hub.js"></script><script>addEventListener("DOMContentLoaded",function(){if(PPHub.has("cardback"))document.body.classList.add("ppp")})</script>
+<meta charset="utf-8"><script src="../pp-hub.js"></script><script>addEventListener("DOMContentLoaded",function(){if(PPHub.has("cardback"))document.body.classList.add("ppp");if(PPHub.has("table"))document.body.classList.add("ppt")})</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Last Card</title>
 <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;800&display=swap" rel="stylesheet">
@@ -186,7 +186,9 @@ select{font:inherit;font-size:15px;padding:8px 10px;border-radius:12px;backgroun
 body.ppp .back .face{background:radial-gradient(120% 90% at 30% 20%,#2a2050,#0f1020 70%)!important}
 body.ppp .back .oval{background:linear-gradient(135deg,#6ee7d0,#8b5cff 55%,#ff5fd8)!important;position:relative}
 body.ppp .back .oval::after{content:'';position:absolute;left:52%;top:50%;width:0;height:0;transform:translate(-40%,-50%);border-style:solid;border-width:calc(var(--cw,60px)*.12) 0 calc(var(--cw,60px)*.12) calc(var(--cw,60px)*.2);border-color:transparent transparent transparent #fff}
-body.ppp .back .oval *{display:none}</style>
+body.ppp .back .oval *{display:none}
+body.ppt #table{background:radial-gradient(ellipse at 50% 45%,#2b2160,#0a0818 75%)!important}
+body.ppt #table::before{content:'';position:absolute;left:50%;top:44%;width:0;height:0;transform:translate(-40%,-50%);border-style:solid;border-width:90px 0 90px 150px;border-color:transparent transparent transparent rgba(139,92,255,.12);pointer-events:none}</style>
 </head><body>
 <div id="table"><div id="ring"></div><div id="seats"></div>
 <div id="mid"><div id="deck"></div><div id="disc"><span id="pend" hidden></span><span id="claimb" hidden></span></div></div>
@@ -488,10 +490,10 @@ async function newGame(){if(G){G.over=1;clearTimeout(G.jt);G.jr=null;G.hr=null;G
   jobs.push(fly(card,!p.human,R($('#deck')),R(i?$('#s'+i):$('#hand')),340,k++*36).then(()=>{p.hand.push(card);AU.play('deal',pn(i));render()}))}
  try{await Promise.all(jobs);
   /* Press Play shop boosts */
-  {let ex=0;const plain=!['flip','nomercy','allwild','tri'].includes(S.mode),w1=plain?PPHub.take('wild'):0,w4=plain?PPHub.take('wild4'):0,hh=PPHub.take('heavy');
-   for(let k=0;k<w1;k++)G.p[0].hand.push({id:91000+k,c:'k',v:'w'});for(let k=0;k<w4;k++)G.p[0].hand.push({id:92000+k,c:'k',v:'f'});
+  {let ex=0;const plain=!['flip','nomercy','allwild','tri'].includes(S.mode),w1=plain?PPHub.take('wild'):0,w4=plain?PPHub.take('wild4'):0,hh=PPHub.take('heavy'),ap=plain?PPHub.take('actions'):0;
+   for(let k=0;k<w1;k++)G.p[0].hand.push({id:91000+k,c:'k',v:'w'});for(let k=0;k<w4;k++)G.p[0].hand.push({id:92000+k,c:'k',v:'f'});for(let k=0;k<ap;k++)G.p[0].hand.push({id:93000+k*3,c:'r',v:'s'},{id:93001+k*3,c:'b',v:'r'},{id:93002+k*3,c:'g',v:'d'});
    for(let k=0;k<hh;k++)for(let i=1;i<G.p.length;i++){const x=dpop();if(x){G.p[i].hand.push(x);ex++}}
-   if(w1||w4||hh)render()}
+   if(w1||w4||hh||ap)render()}
   G.dl=0;G.busy=0;loop()}catch(e){}}
 function render(){renderSeats();renderHand();renderMid()}
 function rackStyle(i,o,fan){const sp=14;return`position:absolute;margin:0;left:calc(50% + ${(o*sp).toFixed(1)}px - var(--cw)/2);bottom:0;--cw:calc(var(--mw)*1.5);--ch:calc(var(--mw)*2.22);transform-origin:50% 140%;transform:rotate(${fan?(o*5).toFixed(1):0}deg);filter:drop-shadow(0 4px 3px #0008)`}

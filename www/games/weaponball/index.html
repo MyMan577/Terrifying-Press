@@ -12873,6 +12873,9 @@ const RL_CHARMS = [
   },
 ];
 
+// Press Play Encore: Press Play exclusive charm (from the Press Play shop, never offered in the charm shop)
+RL_CHARMS.push({ id: 'pp_encore', icon: '🎧', name: 'Press Play Encore', desc: 'Press Play exclusive: +50% Lite Tokens from every round.', cost: 0, exclusive: true, tokenMult() { return 1.5; } });
+
 // Returns the combined token multiplier from all active charms
 function rlCharmTokenMult() {
   let mult = 1;
@@ -12895,8 +12898,8 @@ function rlOpenShop(onCloseFn) {
 
   // Roll the 5 charm slots (1 free + 4 paid), no duplicates across slots and
   // we never offer a charm the player already owns
-  const notOwned = RL_CHARMS.filter(c => !RL.charms.includes(c.id));
-  const pool     = notOwned.length > 0 ? notOwned : RL_CHARMS; // fallback if all owned
+  const notOwned = RL_CHARMS.filter(c => !c.exclusive && !RL.charms.includes(c.id));
+  const pool     = notOwned.length > 0 ? notOwned : RL_CHARMS.filter(c => !c.exclusive); // fallback if all owned
 
   // Shuffle pool and pick up to 7 unique charms (1 free + up to 6 paid for Stockpile)
   const shuffled = pool.slice().sort(() => Math.random() - 0.5);
@@ -13433,6 +13436,20 @@ function startRoguelite() {
   window._rlEchoQueue = [];
   window._blackHoleActive = null;
   RL.tokens += PPHub.take('tokens');   // Token Pouch bought in the Press Play shop
+  {   // Charm Crates and the Press Play Encore from the Press Play shop
+    let nc = PPHub.take('charm');
+    while (nc-- > 0) {
+      const free = RL_CHARMS.filter(c => !c.exclusive && !RL.charms.includes(c.id));
+      if (!free.length) break;
+      const c = free[Math.floor(Math.random() * free.length)];
+      RL.charms.push(c.id);
+      log(`🎁 Press Play shop: ${c.name}!`, 'sys');
+    }
+    if (PPHub.has('encore') && !RL.charms.includes('pp_encore')) {
+      RL.charms.push('pp_encore');
+      log('🎧 Press Play Encore: +50% Lite Tokens from every round.', 'sys');
+    }
+  }
   rlUpdateTokenDisplay();
   document.getElementById('rlOverlay').style.display = 'block';
   rlShowPickScreen();
