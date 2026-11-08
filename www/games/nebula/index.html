@@ -895,6 +895,9 @@ import * as THREE from 'three';
   const customPalettes = loadCustomPalettes();
   Object.keys(customPalettes).forEach((key) => { PALETTES[key] = customPalettes[key]; });
   if (PPHub.has('palette')) PALETTES.pressplay = { name: 'Press Play', bg: '#07060d', colors: ['#6ee7d0', '#8b5cff', '#ff5fd8', '#ffffff', '#a68bff'] };   // Press Play exclusive
+  if (PPHub.has('palette2')) PALETTES.pressplaysunset = { name: 'Press Play Sunset', bg: '#12060a', colors: ['#ffb36e', '#ff6a5c', '#ff5fd8', '#8b5cff', '#fff1d6'] };
+  if (PPHub.has('palette3')) PALETTES.pressplayfrost = { name: 'Press Play Frost', bg: '#040b14', colors: ['#a8f0ff', '#6ee7d0', '#6aa8ff', '#e9f6ff', '#8b5cff'] };
+  if (PPHub.has('palette4')) PALETTES.pressplaymono = { name: 'Press Play Mono', bg: '#08080a', colors: ['#ffffff', '#c9ccd4', '#8d919c', '#5c606b', '#3a3d46'] };
 
   function hexToRgbFloat(hex) {
     hex = hex.replace('#', '');

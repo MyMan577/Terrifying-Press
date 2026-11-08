@@ -14757,6 +14757,11 @@ function pppToqueRewards(){
     state.atkBonus += 2; state.hpBonus += 12; state.chargeBonus += 10;
     log('Press Play Headphones! +2 spear damage, +12 max HP, Focus restores +10 more Spirit.'); got = true;
   }
+  if (PPHub.take('vinyl') && !state.owned.ppp_vinyl) {
+    state.owned.ppp_vinyl = true;
+    state.atkBonus += 1; state.hpBonus += 30; state.chargeBonus += 6;
+    log('Press Play Vinyl! +1 spear damage, +30 max HP, Focus restores +6 more Spirit.'); got = true;
+  }
   if (got) { updateGoldDisplay(); updateHud(); saveGame(true); }
 }
 

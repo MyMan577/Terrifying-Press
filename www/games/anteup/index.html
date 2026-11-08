@@ -3212,6 +3212,10 @@ function startGame() {
     state.charms.push({ id: "ppp_encore", name: "Encore", desc: "Press Play exclusive: +4 Mult, then x1.2 Mult on every hand", price: 10,
       color: "#8b5cff", type: "charm", effect: { type: "pppEncore", add: 4, x: 1.2 }, uid: Math.random().toString(36).slice(2, 9) });
   }
+  if (PPHub.take('bass') && state.charms.length < state.charmSlots && !state.charms.some((c) => c.id === "ppp_bass")) {
+    state.charms.push({ id: "ppp_bass", name: "Bass Boost", desc: "Press Play exclusive: x1.5 Mult on every hand", price: 10,
+      color: "#6ee7d0", type: "charm", effect: { type: "pppEncore", add: 0, x: 1.5 }, uid: Math.random().toString(36).slice(2, 9) });
+  }
   state.usedCards = [];
   dealInitialHand(d);
   state.overlay = "playing";
