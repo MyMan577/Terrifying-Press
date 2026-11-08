@@ -39736,7 +39736,8 @@ window._claimLBro = function() {
       air:    { neutral: { name: 'Echo Shot', cd: 0.6 }, side: { name: 'Phase Shift', cd: 1.0 }, up: { name: 'Overtone Lift', cd: 0.9 }, down: { name: 'Shatter Dive', cd: 1.0 } },
     },
   };
-  const DROP_DMG = 20, DROP_BUILD = 0.55, DROP_FX = 0.9;
+  const DROP_DMG = 20;
+  const DROP_BUILDS = { cres: 0.6, titan: 0.85, deep: 0.7 }, DROP_FXLEN = { cres: 0.9, titan: 1.1, deep: 1.0 };
 
   let active = false, atkCD = 0, eqCD = 0, hype = 0, hypeFullSaid = false, streak = 0, lastBeatIdx = -99, dyn = 0;
   let beatClock = 0, beatPulse = 0, airUpUsed = false, lastPX = null, lastPY = null, fallTop = null, wasAir = false;
@@ -39799,7 +39800,7 @@ window._claimLBro = function() {
     tone(big ? 120 : 150, { type: 'sine', dur: big ? 0.6 : 0.28, slide: big ? 32 : 45, vol: big ? 0.9 : 0.65, delay: delay || 0 });
     noise({ dur: 0.03, cut: 3500, vol: 0.14, delay: delay || 0 });
   }
-  function bell(vol) { [1318.5, 1975.5, 2637].forEach((f, i) => tone(f, { type: 'sine', dur: 0.55, vol: (vol || 0.12) / (1 + i * 0.5), delay: i * 0.02 })); }
+  function bell(vol, delay) { [1318.5, 1975.5, 2637].forEach((f, i) => tone(f, { type: 'sine', dur: 0.55, vol: (vol || 0.12) / (1 + i * 0.5), delay: (delay || 0) + i * 0.02 })); }
   function nf(i) { return SCALE[Math.max(0, Math.min(SCALE.length - 1, i))]; }
 
   // ---- helpers ----
@@ -40173,25 +40174,46 @@ window._claimLBro = function() {
     const p = window._gamePlayer; if (!p || drop) return;
     if (hype < HYPE_MAX) { msg('🎚️ Hype ' + Math.floor(hype) + '/' + HYPE_MAX + ': hit on the beat to fill it for THE DROP'); return; }
     hype = 0; hypeFullSaid = false; dash = stomp = beam = null;
-    drop = { t: 0, x: pcx(p), y: pcy(p) };
-    // snare roll speeding up, with a saw riser underneath
-    for (let i = 0; i < 12; i++) noise({ delay: DROP_BUILD * Math.pow(i / 12, 0.75), dur: 0.05, cut: 1900, vol: 0.1 + i * 0.02, q: 0.8 });
-    tone(110, { type: 'sawtooth', dur: DROP_BUILD, slide: 440, cut: 400, cutEnd: 5000, vol: 0.2, att: 0.2 });
-    msg('🎚️ BUILD UP...');
+    const md = curMode(), B = DROP_BUILDS[md.id];
+    drop = { t: 0, x: pcx(p), y: pcy(p), fy: p.y + p.h, mode: md.id, build: B };
+    if (md.id === 'titan') {
+      // a heartbeat of sub kicks that speeds up under a growing rumble
+      [0, 0.3, 0.5, 0.65, 0.75, 0.81].forEach((d, i) => { kick(d); tone(45 + i * 4, { type: 'sine', dur: 0.2, vol: 0.4 + i * 0.08, delay: d }); });
+      tone(38, { type: 'sawtooth', dur: B, slide: 90, cut: 140, cutEnd: 600, q: 3, vol: 0.3, att: 0.3 });
+      noise({ dur: B, cut: 90, cutEnd: 700, swell: true, ftype: 'lowpass', vol: 0.35 });
+      msg('🔊 THE FLOOR TREMBLES...');
+    } else if (md.id === 'deep') {
+      // two slightly detuned sines beating as they rise, with shimmering bells
+      tone(200, { type: 'sine', dur: B, slide: 900, vol: 0.22, att: 0.15 });
+      tone(204, { type: 'sine', dur: B, slide: 918, vol: 0.22, att: 0.15 });
+      tone(100, { type: 'sine', dur: B, slide: 450, vol: 0.2, att: 0.2 });
+      noise({ dur: B, cut: 500, cutEnd: 5000, q: 16, swell: true, vol: 0.15 });
+      for (let i = 0; i < 6; i++) bell(0.05 + i * 0.012, B * Math.pow(i / 6, 0.8));
+      msg('🌊 RESONANCE RISING...');
+    } else {
+      // snare roll speeding up, a saw riser and a climbing arpeggio
+      for (let i = 0; i < 12; i++) noise({ delay: B * Math.pow(i / 12, 0.75), dur: 0.05, cut: 1900, vol: 0.1 + i * 0.02, q: 0.8 });
+      tone(110, { type: 'sawtooth', dur: B, slide: 440, cut: 400, cutEnd: 5000, vol: 0.2, att: 0.2 });
+      for (let i = 0; i < 8; i++) tone(nf(i), { type: 'triangle', dur: 0.1, vol: 0.14 + i * 0.02, delay: B * Math.pow(i / 8, 0.8) });
+      msg('🎼 CRESCENDO...');
+    }
   }
   function dropBlast(p) {
-    const md = curMode(), x = pcx(p), y = pcy(p);
+    const md = curMode(), x = pcx(p), y = pcy(p), T = window._TILE || 40;
     const R = md.id === 'titan' ? 5 : md.id === 'deep' ? 4.5 : 4;
     let hits = 0;
     for (const e of within(x, y, R)) {
       const kx = (ex(e) >= x ? 1 : -1) * 9;
-      if (md.id === 'deep') { hit(e, 14, { stun: 1.5, kx, ky: -7, c: '#ffffff' }); addRes(e, RES_MAX); }
-      else hit(e, DROP_DMG, { stun: 1.5, kx, ky: -7, c: PALETTE[2] });
+      if (md.id === 'deep') {
+        hit(e, 14, { stun: 1.5, kx, ky: -7, c: '#ffffff' }); addRes(e, RES_MAX);
+        fx.push({ k: 'link', x1: x, y1: y, x2: ex(e), y2: ey(e), t: 0, life: 0.5 });
+        fx.push({ k: 'shatter', x: ex(e), y: ey(e), t: 0, life: 0.5 });
+      } else hit(e, DROP_DMG, { stun: 1.5, kx, ky: -7, c: PALETTE[2] });
       hits++;
     }
     hype = 0; hypeFullSaid = false;
     const bars = []; for (let i = 0; i < 36; i++) bars.push(0.35 + Math.random() * 0.65);
-    fx.push({ k: 'drop', x, y, t: 0, life: DROP_FX, R, bars });
+    fx.push({ k: 'drop', mode: md.id, x, y, fy: p.y + p.h, t: 0, life: DROP_FXLEN[md.id], R, bars });
     if (!p.onGround) p.vy = Math.min(p.vy, -9);
     kick(0, true);
     if (md.id === 'titan') {
@@ -40199,11 +40221,20 @@ window._claimLBro = function() {
       fx.push({ k: 'floor', x, y: p.y + p.h, t: 0, life: 0.8, R: 6 });
       tone(45, { type: 'sine', dur: 1.2, slide: 28, vol: 0.95 });
       tone(55, { type: 'sawtooth', dur: 0.9, cut: 900, cutEnd: 80, q: 6, vol: 0.25 });
+      noise({ dur: 0.9, cut: 900, cutEnd: 90, q: 0.7, vol: 0.35 });
+      kick(0.18); kick(0.34);
+      const pt = window._gameParticles;   // rocks thrown up by the quake
+      if (pt) for (let i = 0; i < 26; i++) pt.push({ x: (x + (Math.random() - 0.5) * R * 1.6) * T, y: (p.y + p.h) * T - 4, vx: (Math.random() - 0.5) * 9, vy: -5 - Math.random() * 8, life: 0.9 + Math.random() * 0.4, color: ['#8a4a2a', '#b8442f', '#ffb020'][i % 3], size: 3 + Math.random() * 4 });
       shake(14);
+    } else if (md.id === 'deep') {
+      tone(55, { type: 'sine', dur: 1.0, slide: 38, vol: 0.7 });
+      [1, 1.5, 2, 3].forEach((m, i) => tone(440 * m, { type: 'sine', dur: 1.4, vol: 0.14 / (1 + i * 0.5), delay: i * 0.03 }));
+      bell(0.22); bell(0.14, 0.15);
+      shake(9);
     } else {
       tone(55, { type: 'sine', dur: 1.0, slide: 38, vol: 0.85 });
       [nf(0) / 2, nf(4) / 2, nf(5)].forEach((fq, i) => tone(fq, { type: 'sawtooth', dur: 0.75, cut: 5000, cutEnd: 200, q: 8, vol: 0.16, detune: i * 7 }));
-      if (md.id === 'deep') bell(0.2);
+      noise({ dur: 1.0, cut: 7000, ftype: 'highpass', vol: 0.18 });   // cymbal crash
       shake(10);
     }
     noise({ dur: 0.5, cut: 6000, cutEnd: 300, vol: 0.2, ftype: 'lowpass' });
@@ -40542,8 +40573,8 @@ window._claimLBro = function() {
       drop.t += dt;
       p.vy = 0; p.vx *= 0.8;
       p.dashInvuln = Math.max(p.dashInvuln || 0, 0.25);
-      drop.x = pcx(p); drop.y = pcy(p);
-      if (drop.t >= DROP_BUILD) { drop = null; dropBlast(p); p.dashInvuln = Math.max(p.dashInvuln || 0, 0.5); }
+      drop.x = pcx(p); drop.y = pcy(p); drop.fy = p.y + p.h;
+      if (drop.t >= drop.build) { drop = null; dropBlast(p); p.dashInvuln = Math.max(p.dashInvuln || 0, 0.5); }
     }
 
     for (let i = fx.length - 1; i >= 0; i--) { fx[i].t += dt; if (fx[i].t >= fx[i].life) fx.splice(i, 1); }
@@ -40629,6 +40660,167 @@ window._claimLBro = function() {
     if (mode === 'titan') return 1 / (1 + Math.exp((u + 0.15) * 7));
     if (mode === 'deep') return Math.exp(-Math.pow((u + 0.25) / 0.09, 2)) + 0.08;
     return (u + 1) / 2;
+  }
+
+  // ---- THE DROP animations: every EQ mode has its own build-up and its own blast ----
+  // Crescendo: a musical staff unrolls, notes stream in, a < hairpin opens up to fff, then the staff waves out.
+  // Titan Bass: the screen darkens, the floor cracks and cone rings pump on a heartbeat, then pillars of bass erupt.
+  // Deep Resonance: a cymatic pattern forms with more lobes, wave links lock on to every foe, then a mandala blooms.
+  function dropBuildFx(ctx, SX, SY, T, clk) {
+    const d = drop, k = Math.min(1, d.t / d.build), x = SX(d.x), y = SY(d.y), fy = SY(d.fy);
+    const VW = window._gameViewW || 1280, VH = window._gameViewH || 720;
+    if (d.mode === 'cres') {
+      const half = Math.min(VW, 900) * 0.5 * Math.min(1, k * 2.2), gap = 9;
+      for (let l = 0; l < 5; l++) {
+        ctx.beginPath(); ctx.moveTo(x - half, y + (l - 2) * gap); ctx.lineTo(x + half, y + (l - 2) * gap);
+        neon(ctx, PALETTE[l % 3], 1.3, 0.35 + 0.4 * k);
+      }
+      for (let i = 0; i < 10; i++) {   // notes stream in along the staff toward you
+        const side = i % 2 ? 1 : -1, u = (k * 1.6 + i * 0.137) % 1;
+        ctx.globalAlpha = Math.min(1, u * 4) * 0.9;
+        drawNote(ctx, x + side * half * (1 - u), y + ((i * 7) % 9 - 4) * gap / 2, 0.9, PALETTE[i % 3]);
+      }
+      const L = 30 + k * T * 3.5, hh = 3 + k * 20, ox = x - 20, oy = y - 46;   // the < hairpin opens up
+      ctx.beginPath(); ctx.moveTo(ox + L, oy - hh); ctx.lineTo(ox, oy); ctx.lineTo(ox + L, oy + hh);
+      neon(ctx, PALETTE[2], 2.4, 0.9);
+      ripplePath(ctx, x, y, T * (2.2 - 1.6 * k), 0.75, 10, 3, clk * 20);
+      neon(ctx, PALETTE[1], 2, 0.3 + 0.5 * k);
+      const mk = DYN[Math.min(5, 1 + Math.floor(k * 5))];
+      ctx.save(); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      ctx.font = 'italic bold ' + Math.round(16 + k * 22) + 'px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(20,10,40,0.85)'; ctx.strokeText(mk, ox + L + 18, oy + 8);
+      ctx.fillStyle = PALETTE[0]; ctx.fillText(mk, ox + L + 18, oy + 8);
+      ctx.restore();
+    } else if (d.mode === 'titan') {
+      ctx.save(); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      const g = ctx.createRadialGradient(x, y, T * 1.2, x, y, Math.max(VW, VH) * 0.42);
+      g.addColorStop(0, 'rgba(25,6,0,0)'); g.addColorStop(1, 'rgba(25,6,0,' + (0.75 * k).toFixed(2) + ')');
+      ctx.fillStyle = g; ctx.fillRect(-60, -60, VW + 120, VH + 120);
+      ctx.restore();
+      const bt = [0, 0.3, 0.5, 0.65, 0.75, 0.81];   // matches the heartbeat kicks
+      let pump = 0; for (const b of bt) if (d.t >= b) pump = Math.max(pump, Math.exp(-(d.t - b) * 12));
+      for (const side of [1, -1]) {   // cracks spread along the floor
+        const L = k * T * 5.5;
+        ctx.beginPath(); ctx.moveTo(x, fy - 1);
+        for (let u = 6; u < L; u += 6) ctx.lineTo(x + side * u, fy - 1 - Math.abs(Math.sin(u * 12.9898 + side * 4.1)) * (4 + 6 * k));
+        neon(ctx, PALETTE[0], 2.6, 0.9);
+        for (let b = 1; b <= 3; b++) {
+          const u0 = L * b / 4;
+          ctx.beginPath(); ctx.moveTo(x + side * u0, fy - 2); ctx.lineTo(x + side * (u0 + 12), fy - 9 - b * 3); ctx.lineTo(x + side * (u0 + 22), fy - 11 - b * 2);
+          neon(ctx, PALETTE[1], 1.4, 0.7);
+        }
+      }
+      for (let i = 0; i < 4; i++) {   // speaker-cone rings pumping in toward you
+        const r = T * (2.6 - 2.0 * ((k * 3 + i / 4) % 1));
+        ctx.beginPath(); ctx.ellipse(x, fy - 4, r, r * 0.22, 0, 0, Math.PI * 2);
+        neon(ctx, PALETTE[i % 3], 3, 0.35 + 0.6 * pump);
+      }
+      ctx.globalAlpha = 0.6 + 0.4 * pump; ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(x, y, 5 + pump * 10, 0, Math.PI * 2); ctx.fill();
+    } else {
+      const n0 = 3 + Math.min(4, Math.floor(k * 5)), fr = k * 5 - Math.floor(k * 5);
+      [[n0, 1 - fr * 0.6], [n0 + 1, 0.4 + fr * 0.6]].forEach(([n, a], j) => {   // cymatic pattern gaining lobes
+        ctx.beginPath();
+        for (let i = 0; i <= 120; i++) {
+          const th = i / 120 * Math.PI * 2, r = T * 1.5 * (0.55 + (0.15 + 0.3 * k) * Math.cos(n * th + clk * 3));
+          const px = x + Math.cos(th) * r, py = y + Math.sin(th) * r * 0.8;
+          if (!i) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        neon(ctx, RES_COLS[j], 2.2, a * (0.4 + 0.5 * k));
+      });
+      for (let i = 0; i < 3; i++) {
+        ripplePath(ctx, x, y, T * 4.5 * (1 - ((k * 1.5 + i / 3) % 1)), 0.8, 12, 3, clk * 15 + i);
+        neon(ctx, RES_COLS[i], 1.6, 0.2 + 0.5 * k);
+      }
+      for (const e of within(d.x, d.y, 4.5)) {   // wave links lock on to every foe in range
+        const fx2 = SX(ex(e)), fy2 = SY(ey(e));
+        wavyLine(ctx, x, y, fx2, fy2, 4 + 4 * k, 0.3, clk * 40);
+        neon(ctx, RES_COLS[1], 1.5, 0.2 + 0.6 * k);
+        ripplePath(ctx, fx2, fy2, T * (0.9 - 0.4 * k), 1, 8, 2, clk * 30);
+        neon(ctx, RES_COLS[0], 1.5, 0.4 + 0.5 * k);
+      }
+    }
+  }
+  function dropBlastFx(ctx, f, SX, SY, T, clk) {
+    const k = f.t / f.life, fade = 1 - k, x = SX(f.x), y = SY(f.y), fy = SY(f.fy), ease = 1 - Math.pow(1 - k, 3);
+    if (f.mode === 'cres') {
+      const half = (f.R * T + 260) * ease;
+      for (let l = 0; l < 5; l++) {   // the staff rolls out as five sine waves
+        const yy = y + (l - 2) * 9;
+        ctx.beginPath();
+        for (let u = -half; u <= half; u += 4) {
+          const env = Math.max(0, 1 - Math.abs(u) / (half + 1));
+          const yv = yy + Math.sin(u * 0.05 - f.t * 30 + l) * (4 + 20 * fade) * env;
+          if (u === -half) ctx.moveTo(x + u, yv); else ctx.lineTo(x + u, yv);
+        }
+        neon(ctx, PALETTE[l % 3], 2, fade * 0.8);
+      }
+      for (let i = 0; i < 8; i++) {   // notes ride the middle line outward
+        const u = (i % 2 ? 1 : -1) * half * (0.12 + 0.11 * i), env = Math.max(0, 1 - Math.abs(u) / (half + 1));
+        ctx.globalAlpha = fade;
+        drawNote(ctx, x + u, y + Math.sin(u * 0.05 - f.t * 30 + 2) * (4 + 20 * fade) * env + 4, 1.1, PALETTE[i % 3]);
+      }
+      synthWave(ctx, x, y, f.t, f.life, f.R * T);
+      const r0 = T * 0.7 + ease * f.R * T * 0.3;
+      ctx.lineWidth = 4;
+      for (let i = 0; i < f.bars.length; i++) {
+        const a = i / f.bars.length * Math.PI * 2, len = f.bars[i] * (0.5 + 0.5 * Math.abs(Math.sin(f.t * 22 + i * 1.3))) * 46 * fade;
+        ctx.globalAlpha = 0.9 * fade; ctx.strokeStyle = PALETTE[Math.floor(i / f.bars.length * 3)];
+        ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * r0, y + Math.sin(a) * r0 * 0.75); ctx.lineTo(x + Math.cos(a) * (r0 + len), y + Math.sin(a) * (r0 + len) * 0.75); ctx.stroke();
+      }
+      ctx.save(); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = Math.min(1, fade * 2);
+      ctx.font = 'italic bold ' + Math.round(30 + ease * 26) + 'px Georgia, serif'; ctx.textAlign = 'center';
+      ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(20,10,40,0.85)'; ctx.strokeText('fff', x, y - T * 1.9 - ease * 18);
+      ctx.fillStyle = PALETTE[2]; ctx.fillText('fff', x, y - T * 1.9 - ease * 18);
+      ctx.restore();
+    } else if (f.mode === 'titan') {
+      ctx.save(); ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = Math.max(0, 1 - k * 6) * 0.55; ctx.fillStyle = '#ffb040';
+      ctx.fillRect(-60, -60, (window._gameViewW || 1280) + 120, (window._gameViewH || 720) + 120);
+      ctx.restore();
+      for (let i = 0; i < 3; i++) {   // thick cone shockwaves along the floor
+        const r = f.R * T * ease * (1 - i * 0.16) + 8;
+        ctx.beginPath(); ctx.ellipse(x, fy - 3, r, r * 0.18, 0, 0, Math.PI * 2);
+        neon(ctx, PALETTE[i], 6 - i * 1.5, fade);
+      }
+      for (let n = -7; n <= 7; n++) {   // pillars of bass erupt outward from you, one after another
+        const local = (f.t - Math.abs(n) * 0.045) / 0.5;
+        if (local <= 0 || local >= 1) continue;
+        const h = Math.sin(local * Math.PI) * T * (3.4 - Math.abs(n) * 0.2), cx2 = x + n * 0.7 * T;
+        ctx.beginPath();
+        for (let v = 0; v <= h; v += 3) { const xx = cx2 + Math.sin(v * 0.15 + f.t * 40 + n) * 5; if (!v) ctx.moveTo(xx, fy); else ctx.lineTo(xx, fy - v); }
+        neon(ctx, PALETTE[Math.abs(n) % 3], 3.5, fade);
+      }
+      for (const side of [1, -1]) {   // the long fault the quake leaves behind
+        const L = f.R * T * 1.5 * ease;
+        ctx.beginPath(); ctx.moveTo(x, fy - 1);
+        for (let u = 6; u < L; u += 6) ctx.lineTo(x + side * u, fy - 1 - Math.abs(Math.sin(u * 12.9898 + side * 4.1)) * 9);
+        neon(ctx, PALETTE[0], 3, Math.min(1, fade * 1.6));
+      }
+    } else {
+      const Rm = T * 0.8 + ease * f.R * T * 0.75;
+      [[6, 0, 1], [8, 1, -1], [12, 2, 1]].forEach(([n, j, sg]) => {   // a cymatic mandala blooming outward
+        ctx.beginPath();
+        for (let i = 0; i <= 160; i++) {
+          const th = i / 160 * Math.PI * 2, r = Rm * (0.35 + 0.65 * Math.abs(Math.cos(n * th / 2 + sg * f.t * 2)));
+          const px = x + Math.cos(th) * r, py = y + Math.sin(th) * r * 0.8;
+          if (!i) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        neon(ctx, RES_COLS[j], 2.4 - j * 0.4, fade);
+      });
+      for (let i = 0; i < 3; i++) {
+        ripplePath(ctx, x, y, f.R * T * Math.max(0, ease - i * 0.12), 0.8, 12, 6 * fade, f.t * 25 + i);
+        neon(ctx, RES_COLS[i], 2, fade * 0.8);
+      }
+      const half = f.R * T * 1.2 * ease;   // one pure sine tone sweeping out both sides
+      ctx.beginPath();
+      for (let u = -half; u <= half; u += 3) {
+        const env = Math.max(0, 1 - Math.abs(u) / (half + 1));
+        const yv = y + Math.sin(u * 0.15 - f.t * 50) * 18 * env * (0.3 + 0.7 * fade);
+        if (u === -half) ctx.moveTo(x + u, yv); else ctx.lineTo(x + u, yv);
+      }
+      neon(ctx, '#ffffff', 1.5, fade);
+    }
   }
 
   function drawWorld(ctx, cam) {
@@ -40860,21 +41052,8 @@ window._claimLBro = function() {
       }
     }
 
-    // THE DROP build-up: rings and spectrum bars pulled in toward you
-    if (drop) {
-      const k = drop.t / DROP_BUILD, x = SX(drop.x), y = SY(drop.y);
-      for (let i = 0; i < 4; i++) {
-        const r = T * 4 * (1 - ((k * 2 + i / 4) % 1));
-        ripplePath(ctx, x, y, r, 0.75, 10, 4, clk * 20 + i);
-        neon(ctx, PALETTE[i % 3], 2, 0.25 + 0.6 * k);
-      }
-      ctx.globalAlpha = 0.5 + 0.5 * k; ctx.lineWidth = 2;
-      for (let i = 0; i < 24; i++) {
-        const a = i / 24 * Math.PI * 2, r0 = T * (1.6 - 1.0 * k), r1 = r0 + 6 + Math.abs(Math.sin(clk * 25 + i * 1.7)) * 16 * k;
-        ctx.strokeStyle = PALETTE[i % 3];
-        ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * r0, y + Math.sin(a) * r0 * 0.75); ctx.lineTo(x + Math.cos(a) * r1, y + Math.sin(a) * r1 * 0.75); ctx.stroke();
-      }
-    }
+    // THE DROP build-up (each EQ mode has its own)
+    if (drop) dropBuildFx(ctx, SX, SY, T, clk);
 
     // effects
     for (const f of fx) {
@@ -41003,15 +41182,7 @@ window._claimLBro = function() {
         for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + 0.3; ctx.moveTo(x + Math.cos(a) * r * 0.5, y + Math.sin(a) * r * 0.5); ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); }
         neon(ctx, f.c, 1.6, fade);
       } else if (f.k === 'drop') {
-        const x = SX(f.x), y = SY(f.y);
-        synthWave(ctx, x, y, f.t, f.life, f.R * T);
-        const ease = 1 - Math.pow(1 - k, 3), r0 = T * 0.7 + ease * f.R * T * 0.3;
-        ctx.lineWidth = 4;
-        for (let i = 0; i < f.bars.length; i++) {
-          const a = i / f.bars.length * Math.PI * 2, len = f.bars[i] * (0.5 + 0.5 * Math.abs(Math.sin(f.t * 22 + i * 1.3))) * 46 * fade;
-          ctx.globalAlpha = 0.9 * fade; ctx.strokeStyle = PALETTE[Math.floor(i / f.bars.length * 3)];
-          ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * r0, y + Math.sin(a) * r0 * 0.75); ctx.lineTo(x + Math.cos(a) * (r0 + len), y + Math.sin(a) * (r0 + len) * 0.75); ctx.stroke();
-        }
+        dropBlastFx(ctx, f, SX, SY, T, clk);
       }
     }
 
