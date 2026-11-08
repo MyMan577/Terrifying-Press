@@ -1431,7 +1431,7 @@ function update(dt){
 
   // player physics
   // a dash holds the cube up: no falling while it lasts, for up to half a second per jump
-  if(p.grounded||p.hoverLeft==null)p.hoverLeft=HOVER;
+  if(p.hoverLeft==null)p.hoverLeft=HOVER;   // refilled on every landing, below
   p.hover=p.thrust>0&&p.hoverLeft>0&&!p.dead&&!g.wait;
   var fx=p.x,fy=p.y,was=p.grounded,pox=p.x,land=stepY(g,p,dt);
   p.x+=p.vx*dt;p.invul-=dt;p.wallCd-=dt;
@@ -1457,7 +1457,7 @@ function update(dt){
   if(land){
     var fo=onE?null:floorAt.o;
     if(!was&&p.vy<-5)puff(g,p.x,p.y,'#ffffff',5);
-    p.vy=0;p.grounded=true;
+    p.vy=0;p.grounded=true;p.hoverLeft=HOVER;   // refill here: the cube hops again this same frame, so it is never seen standing at the next one
     if(fo){g.floorY=fo.y1;if(fo.kind==='isle'&&!p.dead&&p.x>fo.x0+0.8&&p.x<fo.x1-0.8)p.lastSafe={x:p.x,y:p.y};}
     g.onIce=!!(fo&&fo.ice);
   }else p.grounded=false;
