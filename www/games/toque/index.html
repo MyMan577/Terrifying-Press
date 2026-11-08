@@ -14744,7 +14744,7 @@ function pppToqueRewards(){
   n = PPHub.take('rite');
   for (let i = 0; i < n; i++) { grantKanataXp(300); grantSpiritXp(state.spiritBond, 200); }
   if (n > 0) { log('Press Play shop: an Ancestor\'s Rite. Kanata gains XP, and so does his spirit.'); got = true; }
-  if (PPHub.take('panther') && !state.unlockedSpirits.ppp_panther) {
+  if ((PPHub.take('panther') || PPHub.has('panther')) && !state.unlockedSpirits.ppp_panther) {
     state.unlockedSpirits.ppp_panther = true;
     if (!state.discoveredSpirits) state.discoveredSpirits = {};
     state.discoveredSpirits.ppp_panther = true;
@@ -14752,12 +14752,12 @@ function pppToqueRewards(){
     if (!state.spiritData.ppp_panther) state.spiritData.ppp_panther = { level: 1, xp: 0, xpNext: 80 };
     log('The Press Play Panther has bonded with you! Choose it in the Spirit Den.'); got = true;
   }
-  if (PPHub.take('headphones') && !state.owned.ppp_headphones) {
+  if ((PPHub.take('headphones') || PPHub.has('headphones')) && !state.owned.ppp_headphones) {
     state.owned.ppp_headphones = true;
     state.atkBonus += 2; state.hpBonus += 12; state.chargeBonus += 10;
     log('Press Play Headphones! +2 spear damage, +12 max HP, Focus restores +10 more Spirit.'); got = true;
   }
-  if (PPHub.take('vinyl') && !state.owned.ppp_vinyl) {
+  if ((PPHub.take('vinyl') || PPHub.has('vinyl')) && !state.owned.ppp_vinyl) {
     state.owned.ppp_vinyl = true;
     state.atkBonus += 1; state.hpBonus += 30; state.chargeBonus += 6;
     log('Press Play Vinyl! +1 spear damage, +30 max HP, Focus restores +6 more Spirit.'); got = true;
