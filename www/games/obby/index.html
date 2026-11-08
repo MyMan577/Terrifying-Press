@@ -40906,6 +40906,15 @@ window._claimLBro = function() {
     { id: 'comeon',   icon: '🫴', name: 'Come On',    len: 2.0 },
     { id: 'robot',    icon: '🤖', name: 'Robot',      len: 0, beat: true, shop: 'emrobot' },
     { id: 'dj',       icon: '🎧', name: 'DJ Scratch', len: 0, beat: true, shop: 'emdj' },
+    // dances: they keep going, on the beat, until you move
+    { id: 'floss',    icon: '🕺', name: 'Floss',       len: 0, beat: true },
+    { id: 'twist',    icon: '🕺', name: 'Twist',       len: 0, beat: true },
+    { id: 'disco',    icon: '🕺', name: 'Disco',       len: 0, beat: true },
+    { id: 'runman',   icon: '🕺', name: 'Running Man', len: 0, beat: true },
+    { id: 'shuffle',  icon: '🕺', name: 'Shuffle',     len: 0, beat: true },
+    { id: 'sway',     icon: '🕺', name: 'Slow Sway',   len: 0, beat: true },
+    { id: 'breakdance', icon: '🕺', name: 'Breakdance', len: 0, beat: true, shop: 'embreak' },
+    { id: 'moonwalk', icon: '🕺', name: 'Moonwalk',    len: 0, beat: true, shop: 'emmoon' },
   ];
   // shop emotes bought in the Press Play shop
   function owned() { try { return JSON.parse(localStorage.getItem(OWN_KEY) || '[]'); } catch (e) { return []; } }
@@ -41009,6 +41018,39 @@ window._claimLBro = function() {
         return { pose: { lean: 0.12 * sides[0] * snap, oy: -0.04 * snap * (step % 2), sx: 1, sy: 1 },
           hands: [{ x: 1.15, y: sides[1] }, { x: -0.15, y: sides[2] }], robot: true };
       }
+      case 'floss': {   // hips one way, both arms swinging the other, twice a beat
+        const f = Math.sin(Math.PI * 2 * beat), g = Math.cos(Math.PI * 2 * beat);
+        return { pose: { ox: 0.1 * f, lean: -0.08 * f, oy: -0.02 * Math.abs(g) }, hands: [{ x: 0.5 - 0.75 * f, y: 0.6 + 0.05 * g }, { x: 0.5 - 0.55 * f, y: 0.75 - 0.05 * g }] };
+      }
+      case 'twist': {   // twisting down low and back up over two bars
+        const low = 0.5 - 0.5 * Math.cos(Math.PI * beat / 4), tw = Math.sin(Math.PI * 2 * beat);
+        return { pose: { sy: 1 - 0.22 * low, sx: 1 + 0.12 * low, lean: 0.14 * tw, oy: 0 }, hands: [{ x: 1.05 + 0.12 * tw, y: 0.48 + 0.15 * low }, { x: -0.05 + 0.12 * tw, y: 0.52 + 0.15 * low }] };
+      }
+      case 'disco': {   // point up across, then down to the hip, hips swaying
+        const up = n % 2 === 0, k = Math.min(1, b * 4);
+        return { pose: { ox: (n % 2 ? -1 : 1) * 0.06 * Math.sin(Math.PI * b), lean: (up ? -0.12 : 0.1) * k, oy: -0.03 * hop },
+          hands: up ? [{ x: 1.25, y: -0.35 * k + 0.4 * (1 - k) }, { x: 0.2, y: 0.62 }] : [{ x: 1.1, y: 0.95 * k + 0.4 * (1 - k) }, { x: 0.2, y: 0.62 }] };
+      }
+      case 'runman': {  // knees up in turn, sliding back, arms pumping
+        const s2 = n % 2 ? 1 : -1, k = Math.sin(Math.PI * b);
+        return { pose: { oy: -0.1 * k, ox: -0.08 * b + 0.04, sy: 1 + 0.04 * k, lean: 0.06 * s2 * k }, hands: [{ x: 0.95, y: 0.35 + 0.25 * s2 * k }, { x: 0.05, y: 0.35 - 0.25 * s2 * k }] };
+      }
+      case 'shuffle': { // quick side steps on every half beat, hands low and loose
+        const half = Math.floor(beat * 2), ph = (beat * 2) % 1, sd = half % 2 ? 1 : -1, k = Math.sin(Math.PI * ph);
+        return { pose: { ox: sd * 0.12 * k, oy: -0.08 * k, sy: 1 - 0.05 * (1 - k), lean: sd * 0.08 * k }, hands: [{ x: 1.0 + 0.1 * sd * k, y: 0.7 }, { x: 0.0 + 0.1 * sd * k, y: 0.7 }] };
+      }
+      case 'sway': {    // a slow sway over two beats, arms up and swaying
+        const sw = Math.sin(Math.PI * beat / 2);
+        return { pose: { lean: 0.16 * sw, ox: 0.05 * sw }, hands: [{ x: 1.0 + 0.15 * sw, y: -0.15 }, { x: 0.0 + 0.15 * sw, y: -0.15 }], notes: true };
+      }
+      case 'breakdance': {   // a windmill spin on the floor, one full turn every two beats
+        const turn = Math.PI * beat;
+        return { pose: { spin: turn, oy: -0.05, sy: 0.92 }, hands: [{ x: 1.3, y: 0.5 }, { x: -0.3, y: 0.5 }] };
+      }
+      case 'moonwalk': {     // gliding back and forth on the spot, leaning back
+        const gl = Math.sin(Math.PI * beat / 2), step = Math.abs(Math.sin(Math.PI * beat));
+        return { pose: { ox: -0.3 * gl, lean: -0.12, oy: -0.03 * step }, hands: [{ x: 0.95, y: 0.55 + 0.05 * step }, { x: 0.05, y: 0.62 }] };
+      }
       case 'dj': {   // scratching a record to the beat, other hand on the headphones
         const sc = Math.sin(Math.PI * 2 * beat * 2);
         return { pose: { oy: 0.03 * hop, lean: 0.06 * Math.sin(Math.PI * beat) }, decks: true, deckSpin: beat * 2,
@@ -41091,6 +41133,10 @@ window._claimLBro = function() {
       const st = stateNow(remote || cur); if (!st || !st.pose) return;
       const d = remote ? ((remote.dir || 1) >= 0 ? 1 : -1) : ((P() && P().dashDir) || 1) >= 0 ? 1 : -1;
       const q = Object.assign({ lean: 0, sx: 1, sy: 1, ox: 0, oy: 0 }, st.pose);
+      if (q.spin != null) {   // a spin turns around the middle of the body, not the feet
+        ctx.translate(W / 2 + q.ox * W * d, H / 2 + q.oy * H); ctx.rotate(q.spin * d); ctx.scale(q.sx, q.sy); ctx.translate(-W / 2, -H / 2);
+        return;
+      }
       ctx.translate(W / 2 + q.ox * W * d, H + q.oy * H); ctx.rotate(q.lean * d); ctx.scale(q.sx, q.sy); ctx.translate(-W / 2, -H);
     },
     // hands and props, drawn after the body (the drawing is already mirrored to the way the character faces)
