@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="../pp-hub.js"></script>
 <!-- River-Root Chronicle offline edition: all artwork is embedded as data URIs. -->
 
 <meta charset="UTF-8">
@@ -12267,6 +12268,7 @@ function grantKanataXp(amount){
   while (state.xp >= state.xpNext && state.level < MAX_LEVEL) {
     state.xp -= state.xpNext;
     state.level++;
+    PPHub.best('level', state.level);
     state.xpNext = getXpForLevel(state.level, 100);
     // Stat Growth: +8 max HP per level (base 5 + 3 level-scaling bonus) and +1 attack.
     state.heroMax += 8;
@@ -12446,6 +12448,7 @@ async function playEvolutionCinematic(fromId, toId){
 
 function checkEnd(){
   if(state.enemyHp<=0){
+    if(!state.over) PPHub.event('win');
     state.over = true;
     state.justSpared = false;
     if(state.enemyType === 'surveyor'){ state.chapter2Done = true; state.fightNumber = 4; }
@@ -12456,6 +12459,7 @@ function checkEnd(){
     if(state.enemyType === 'crane'){ state.chapter7Done = true; state.fightNumber = 9; }
     if(state.enemyType === 'warden'){ state.chapter8Done = true; state.fightNumber = 10; }
     if(state.enemyType === 'subterranean_baron'){ state.chapter9Done = true; state.fightNumber = 11; }
+    PPHub.best('chapter', [2,3,4,5,6,7,8,9].filter(n => state['chapter' + n + 'Done']).length);
     if(state.enemyType === 'stormcaller'){ state.chapter10Done = true; state.fightNumber = 12; }
     // Animals met on the side-fight trail (wolf/bear) can be spared to bond
     // with their spirit instead of finished off - the Sergeant, Ranger, and

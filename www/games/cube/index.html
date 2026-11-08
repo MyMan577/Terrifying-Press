@@ -1,4 +1,5 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html><head>
+<meta charset=utf8><script src="../pp-hub.js"></script><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>Dashcube Knight</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -416,6 +417,9 @@ function upl(k){return Math.min(2,save.up[k]||0);}
 function wi(){var a=CHARS[save.char].weapons;return Math.min(save.wsel[save.char]||0,a.length-1);}
 function wkey(){return CHARS[save.char].weapons[wi()];}
 function persist(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(save));}catch(e){}}
+// knights bought in the Press Play shop join the roster the next time the game opens
+(function(){var n=PPHub.take('knight');while(n-->0){var free=Object.keys(CHARS).filter(function(k){return save.chars.indexOf(k)<0;});if(!free.length)break;var k=free[Math.floor(Math.random()*free.length)];save.chars.push(k);setTimeout(function(k){return function(){toast('⚔️ '+(CHARS[k].name||k)+' joined from the Press Play shop');};}(k),900);}persist();
+PPHub.info('knightsLeft',Object.keys(CHARS).filter(function(k){return save.chars.indexOf(k)<0;}).length);})();
 /* ---------- stats and accessories ---------- */
 function slotsOf(k){var a=save.gear[k];if(!Array.isArray(a))a=save.gear[k]=[null,null,null];while(a.length<3)a.push(null);return a;}
 function gearOf(k){return slotsOf(k).filter(function(id){return id&&ACCM[id]&&save.acc.indexOf(id)>=0;});}
@@ -1383,8 +1387,10 @@ function totalStars(){var t=0;for(var k in save.stars)t+=starCount(save.stars[k]
 function endRun(kind){
   var g=G;
   mode=kind;
+  if(kind==='clear'&&g.coins>0&&PPHub.take('x2')){g.coins*=2;toast('💰 Coin Rush: coins doubled');}
   save.coins+=g.coins;save.life+=g.coins;
   $('#coach').hidden=true;
+  if(kind==='clear'){PPHub.event('clear');PPHub.best('stage',g.n);}
   if(kind==='clear'){save.best=Math.max(save.best,g.n);save.stage=Math.max(save.stage,g.n+1);}
   var got=0;
   if(kind==='clear'&&!g.fromCp){
@@ -1545,7 +1551,7 @@ $('#chAct').addEventListener('click',function(){
   var k=SH.k,d=CHARS[k];
   if(save.chars.indexOf(k)<0){
     if(save.coins<d.cost){sheetSay('Need '+(d.cost-save.coins)+' more coins.');beep(160,.12,'square',.04,.8);return;}
-    save.coins-=d.cost;save.chars.push(k);save.wsel[k]=SH.w;checkAch();
+    save.coins-=d.cost;save.chars.push(k);save.wsel[k]=SH.w;checkAch();PPHub.info('knightsLeft',Object.keys(CHARS).length-save.chars.length);
     beep(660,.1,'triangle',.06,1.5);
   }else if(save.char===k){closeSheet();return;}
   save.char=k;persist();applyLoadout();$('#tCoins').textContent=save.coins;renderSheet();
@@ -1686,6 +1692,7 @@ var ACH=[
   {id:'gear3',icon:'🧰',name:'Fully kitted',desc:'Wear 3 accessories on one knight',r:40,ok:function(){return gearOf(save.char).length>=3;}},
   {id:'bank',icon:'💰',name:'Treasure hoard',desc:'Bank 1,000 coins in total',r:80,ok:function(){return save.life>=1000;}}
 ];
+PPHub.native(ACH.map(function(a){return {id:a.id,name:a.name,desc:a.desc,icon:a.icon,p:Math.max(5,Math.min(50,Math.round(a.r/4))),done:!!save.ach[a.id]};}));
 var toastQ=[];
 function toast(t){toastQ.push(t);if(toastQ.length===1)nextToast();}
 function nextToast(){
@@ -1696,7 +1703,7 @@ function nextToast(){
 function unlockAch(id){
   if(save.ach[id])return;
   var a=ACH.filter(function(x){return x.id===id;})[0];if(!a)return;
-  save.ach[id]=1;save.coins+=a.r;persist();
+  save.ach[id]=1;save.coins+=a.r;persist();PPHub.ach(id);
   toast('🏆 '+a.name+' · +'+a.r+' coins');beep(880,.12,'triangle',.06,1.5);
   $('#tCoins').textContent=save.coins;
 }

@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="../pp-hub.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Bastion Brawl</title>
@@ -25160,6 +25161,8 @@ function endGame(result, msg) {
   SFX.play(result === 'win' ? 'win' : result === 'lose' ? 'lose' : null);
   SFX.resetDoubleElixir();
   if (result === 'win') addGachaVoucher(1);
+  PPHub.event('battle');
+  if (result === 'win') PPHub.event('win');
   const ov=document.getElementById('overlay');
   ov.style.display='flex'; ov.className=result;
   document.getElementById('oTitle').textContent={win:'🏆 VICTORY!',lose:'💀 DEFEAT',draw:'🤝 DRAW'}[result];
