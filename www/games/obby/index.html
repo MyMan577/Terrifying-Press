@@ -11194,7 +11194,7 @@ function resetPlayer() {
     phantomace() {
       if (aceSlashCooldown > 0.08) return null;
       const burst = hasUpgrade('pa3') && (aceSlashCount + 1) % 5 === 0;
-      return { fd: burst ? ACE_FD.burst : ACE_FD.slash, dir: player.dashDir || player.lastMoveDir || 1, color: '#ffe566' };
+      return { fd: burst ? ACE_FD.burst : ACE_FD.slash, dir: player.dashDir || player.lastMoveDir || 1, color: '#ffe566', aim: _strikeDirs().d };
     },
     archmage() {
       if (archmageSpellEndlag > 0) return null;
@@ -11827,7 +11827,7 @@ function resetPlayer() {
         if (selectedCharacter !== ch || mode !== 'play') return null;
         const pk = STRIKE_PICK[ch](); if (!pk) return null;
         return { fd: pk.fd, dir: pk.dir, color: pk.color, aim: pk.aim, variant: pk.variant, fire: () => { _strikeViaFire = true; try { performAttackAction(); } finally { _strikeViaFire = false; } } };
-      }, !!STRIKE_CHARGE[ch]);
+      }, true);   // every fighter can hold S for a charged special
       return;
     }
     if (window._trackSlash) _trackSlash(); window.performSlash(); performPunch(); performUniversalPunch(); performArchmageSpell(); performFormSwitcherAttack(); performConduitAttack(); if (window.performDrifterAtk) window.performDrifterAtk(); if (window.performPrestigeAtk) window.performPrestigeAtk(); if (window.performSluggerAtk) window.performSluggerAtk(); } 
@@ -38246,7 +38246,7 @@ window._claimLBro = function() {
         if (!move) return null;
         const pDir = (k.has('arrowright') || k.has('d') || mk.right) ? 1 : (k.has('arrowleft') || k.has('a') || mk.left) ? -1 : (p.dashDir || p.lastMoveDir || 1);
         return { fd: chamFD(move), dir: pDir, color: curForm().color, aim: aimDir, fire: () => { _chFiring = true; try { window.performSlash(); } finally { _chFiring = false; } } };
-      }, false);
+      }, true);
       return;
     }
     const p = window._gamePlayer || window.player;
@@ -39994,7 +39994,7 @@ window._claimLBro = function() {
     shake(sweet ? (fd.sweetShake || 9) : (fd.shake || 2) + 4 * pw);
     if (sweet) {
       fx.push({ k: 'star', x: ex(e), y: ey(e), t: 0, life: 0.35, c: cur.col });
-      fx.push({ k: 'label', x: ex(e), y: e.y - 0.2, t: 0, life: 0.7, text: 'SWEET SPOT!', c: '#ffe066' });
+      if (!cur.labelled && !fd.quiet) { cur.labelled = true; fx.push({ k: 'label', x: ex(e), y: e.y - 0.2, t: 0, life: 0.7, text: 'SWEET SPOT!', c: '#ffe066' }); }   // one label per strike
     } else if (pw > 0.2) fx.push({ k: 'star', x: ex(e), y: ey(e), t: 0, life: 0.3, c: cur.col });
     if (e.hp <= 0 && !e.dead && window._killEnemy) window._killEnemy(e);
   }
@@ -40285,6 +40285,269 @@ window._claimLBro = function() {
     },
   };
 
+  // ===== CHARGED SPECIALS: hold S, then let go for the fighter's own big move =====
+  // A tap still does the normal move. Held past CHARGE_MIN, the release becomes a special picked by direction
+  // (side, up, down; neutral counts as side), each built from a shape: a beam, a dash-through, a launching
+  // pillar, a ground shockwave (a dive first, if you're in the air), a meteor, a vortex, lightning strikes or a
+  // volley. Charge power adds damage, reach and knockback. Each fighter has its own names, colours and style.
+  const SOLID = new Set(['solid', 'ice', 'crumble', 'mover', 'half']);
+  function blockedAt(x, y, w, h) {
+    const wd = window._gameWorld; if (!wd || !wd.tiles) return false;
+    for (let tx = Math.floor(x); tx <= Math.floor(x + w - 1e-3); tx++) for (let ty = Math.floor(y); ty <= Math.floor(y + h - 1e-3); ty++) { const t = wd.tiles.get(tx + ',' + ty); if (t && SOLID.has(t.type)) return true; }
+    return false;
+  }
+  const THEMES = {
+    fist: ['#ffcf40', '#ef4444'], slug: ['#ff4d4d', '#ffcf40'], sound: ['#8b5cff', '#6ee7d0'], tape: ['#ff5fd8', '#ffb020'],
+    star: ['#ffe566', '#7cdbff'], arcane: ['#a78bfa', '#fef3c7'], bolt: ['#7cdbff', '#ffffff'], fire: ['#ff6b35', '#ffd166'],
+    ice: ['#bae6fd', '#ffffff'], storm: ['#ffe066', '#a5b4fc'], stone: ['#b8a68f', '#6b5a48'], prism: ['#ff4d6d', '#4dd9ff'],
+  };
+  const sfx = [], timers = [], sprojs = [], vortexes = [];
+  let teleported = false;
+  function zap(e, dmg, o) {
+    if (!e || e.dead) return;
+    e.hp = Math.max(0, (e.hp || 1) - dmg); e.hitFlash = 0.5;
+    if (!e._noKnockback) { if (o.kx != null) e.vx = o.kx; if (o.ky != null) e.vy = o.ky; }
+    if (o.stun) e.stunTimer = Math.max(e.stunTimer || 0, o.stun);
+    if (o.slow) e.slowTimer = Math.max(e.slowTimer || 0, o.slow);
+    if (o.burn) e._ppBurn = Math.max(e._ppBurn || 0, o.burn);
+    if (o.freeze) { e.stunTimer = Math.max(e.stunTimer || 0, o.freeze); e._ppFrozen = Math.max(e._ppFrozen || 0, o.freeze); }
+    if (e.hp <= 0 && window._killEnemy) window._killEnemy(e);
+  }
+  const fx_o = o => ({ stun: o.stun, slow: o.slow, burn: o.burn, freeze: o.freeze });
+  const SHAPES = {
+    // a beam straight ahead (stops at walls); chain: arcs on to nearby foes
+    beam(p, d, pw, o, th, dmg) {
+      const L = o.len * (0.8 + 0.4 * pw), w = o.w || 0.8, x0 = pcx(p), y0 = pcy(p);
+      let len = L; for (let s = 0.3; s <= L; s += 0.25) if (blockedAt(x0 + d * s - 0.05, y0 - 0.05, 0.1, 0.1)) { len = s; break; }
+      const got = [];
+      for (const e of foes()) { const al = (ex(e) - x0) * d; if (al > -0.3 && al < len && Math.abs(ey(e) - y0) < w + (e.h || 0.9) / 2) { zap(e, dmg, Object.assign({ kx: d * (o.kx || 10) * (1 + 0.4 * pw), ky: o.ky != null ? o.ky : -4, stun: o.stun || 0.6 }, fx_o(o), { stun: o.stun || 0.6 })); got.push(e); } }
+      sfx.push({ k: 'beam', x: x0, y: y0, d, len, w, t: 0, life: 0.45, th, style: o.style });
+      if (o.chain) for (const e of got.slice(0, 3)) {
+        let best = null, bd = 3.2; for (const f of foes()) { if (got.includes(f)) continue; const dd = Math.hypot(ex(f) - ex(e), ey(f) - ey(e)); if (dd < bd) { bd = dd; best = f; } }
+        if (best) { zap(best, Math.ceil(dmg / 2), { stun: 0.9 }); got.push(best); sfx.push({ k: 'bolt', x1: ex(e), y1: ey(e), x2: ex(best), y2: ey(best), t: 0, life: 0.35, th }); }
+      }
+    },
+    // dash through everything in front; rewind: snap back through them again
+    dash(p, d, pw, o, th, dmg) {
+      const L = o.len * (0.8 + 0.4 * pw), x0 = p.x; let moved = 0;
+      for (let s = 0.2; s <= L; s += 0.2) { if (blockedAt(x0 + d * s, p.y + 0.02, p.w, p.h - 0.04)) break; moved = s; }
+      const hitPath = (xa, xb, cy, kd, dm) => { for (const e of foes()) if (ex(e) > xa - 0.35 && ex(e) < xb + 0.35 && Math.abs(ey(e) - cy) < 1.1) zap(e, dm, Object.assign({ kx: kd * (o.kx || 8), ky: o.ky != null ? o.ky : -6, stun: o.stun || 0.8 }, fx_o(o), { stun: o.stun || 0.8 })); };
+      hitPath(Math.min(x0, x0 + d * moved), Math.max(x0, x0 + d * moved) + p.w, pcy(p), d, dmg);
+      sfx.push({ k: 'dash', x1: x0 + p.w / 2, x2: x0 + d * moved + p.w / 2, y: pcy(p), t: 0, life: 0.45, th, d, style: o.style });
+      p.x = x0 + d * moved; p.vx = d * 4; p.dashInvuln = Math.max(p.dashInvuln || 0, 0.45); teleported = true;
+      if (o.rewind) timers.push({ at: nowS() + 0.4, run: () => {
+        const q = P(); if (!q || blockedAt(x0, q.y, q.w, q.h)) return;
+        sfx.push({ k: 'dash', x1: q.x + q.w / 2, x2: x0 + q.w / 2, y: pcy(q), t: 0, life: 0.45, th, d: -d, style: 'rewind' });
+        hitPath(Math.min(q.x, x0), Math.max(q.x, x0) + q.w, pcy(q), -d, Math.ceil(dmg * 0.7));
+        q.x = x0; teleported = true; shake(6);
+      } });
+    },
+    // a column that launches everything in it upward; rise: you go up with it
+    pillar(p, d, pw, o, th, dmg) {
+      const cx = pcx(p) + d * (o.off != null ? o.off : 0.6), w = (o.w || 1.6) * (0.85 + 0.3 * pw), hgt = (o.h || 4) * (0.8 + 0.4 * pw), fy = p.y + p.h;
+      for (const e of foes()) if (Math.abs(ex(e) - cx) < w / 2 + 0.3 && ey(e) < fy + 0.3 && ey(e) > fy - hgt) zap(e, dmg, Object.assign({ kx: d * 2, ky: -(o.launch || 14) * (1 + 0.3 * pw), stun: o.stun || 1 }, fx_o(o), { stun: o.stun || 1 }));
+      if (o.rise) p.vy = Math.min(p.vy, -o.rise * (1 + 0.2 * pw));
+      sfx.push({ k: 'pillar', x: cx, fy, w, h: hgt, t: 0, life: 0.55, th, style: o.style });
+    },
+    // shockwaves along the ground (waves: several in a row); in the air you dive first and it hits on landing
+    ring(p, d, pw, o, th, dmg) {
+      const go = () => {
+        const q = P(); if (!q) return;
+        const x0 = pcx(q), fy = q.y + q.h, R = o.r * (0.85 + 0.35 * pw);
+        for (let wv = 0; wv < (o.waves || 1); wv++) timers.push({ at: nowS() + wv * 0.2, run: () => {
+          const R2 = R * (1 + wv * 0.35);
+          for (const e of foes()) { const dx = ex(e) - x0; if (Math.abs(dx) < R2 && Math.abs(ey(e) - (fy - 0.5)) < 1.6) zap(e, wv ? Math.ceil(dmg * 0.6) : dmg, Object.assign({ kx: Math.sign(dx || d) * (o.kx || 8), ky: o.ky != null ? o.ky : -8, stun: o.stun || 0.8 }, fx_o(o), { stun: o.stun || 0.8 })); }
+          sfx.push({ k: 'ring', x: x0, fy, R: R2, t: 0, life: 0.5, th, style: o.style }); shake(6 + 3 * pw);
+        } });
+      };
+      if (!p.onGround) { p.vy = 25; const until = nowS() + 1.5; timers.push({ poll: () => { const q = P(); return !q || q.onGround || nowS() > until; }, run: go }); }
+      else go();
+    },
+    // a meteor falls a few tiles ahead
+    meteor(p, d, pw, o, th, dmg) {
+      const tx = pcx(p) + d * (o.dist || 4) * (0.85 + 0.3 * pw); let gy = p.y + p.h;
+      for (let yy = Math.floor(p.y); yy < Math.floor(p.y) + 14; yy++) if (blockedAt(tx - 0.1, yy, 0.2, 1)) { gy = yy; break; }
+      const R = (o.r || 2.2) * (0.85 + 0.35 * pw);
+      sfx.push({ k: 'meteor', x: tx, gy, t: 0, life: 0.42, th });
+      timers.push({ at: nowS() + 0.42, run: () => {
+        for (const e of foes()) if (Math.hypot(ex(e) - tx, ey(e) - (gy - 0.5)) < R) zap(e, dmg, Object.assign({ kx: Math.sign(ex(e) - tx || d) * 9, ky: -10, stun: 1.2 }, fx_o(o), { stun: 1.2 }));
+        sfx.push({ k: 'ring', x: tx, fy: gy, R, t: 0, life: 0.55, th, style: 'fire' }); shake(10); hitstop(0.08);
+      } });
+    },
+    // a vortex just ahead that pulls foes in, then flings them up
+    vortex(p, d, pw, o, th, dmg) {
+      vortexes.push({ x: pcx(p) + d * 1.6, y: pcy(p) - 0.2, R: (o.r || 2.8) * (0.85 + 0.3 * pw), t: 0, life: 0.85, dmg, th, tick: 0, o });
+    },
+    // lightning drops on the nearest foes, one after another
+    strikes(p, d, pw, o, th, dmg) {
+      const list = foes().map(e => [e, Math.hypot(ex(e) - pcx(p), ey(e) - pcy(p))]).filter(a => a[1] < (o.r || 7)).sort((a, b) => a[1] - b[1]).slice(0, (o.n || 3) + Math.round(pw));
+      list.forEach(([e], i) => timers.push({ at: nowS() + 0.08 + i * 0.12, run: () => {
+        if (e.dead) return; zap(e, dmg, Object.assign({ ky: -6, kx: 0, stun: 1.2 }, fx_o(o), { stun: 1.2 }));
+        sfx.push({ k: 'strike', x: ex(e), y: ey(e), t: 0, life: 0.35, th }); shake(5); hitstop(0.05);
+      } }));
+      if (!list.length) sfx.push({ k: 'strike', x: pcx(p) + d * 2, y: p.y + p.h - 0.5, t: 0, life: 0.35, th });
+    },
+    // projectiles: a fan ahead, all around (radial), or a boulder rolling along the ground (roll)
+    volley(p, d, pw, o, th, dmg) {
+      const n = (o.n || 5) + (o.radial ? 0 : Math.round(pw * 2));
+      for (let i = 0; i < n; i++) {
+        const ang = o.radial ? i * Math.PI * 2 / n : (d > 0 ? 0 : Math.PI) + (i - (n - 1) / 2) * (o.spread || 0.16);
+        sprojs.push({ x: pcx(p) + Math.cos(ang) * 0.4, y: pcy(p) + Math.sin(ang) * 0.4, vx: Math.cos(ang) * (o.speed || 16), vy: Math.sin(ang) * (o.speed || 16), life: o.life || 0.6, dmg, th, r: o.size || 0.35, hit: new Set(), roll: !!o.roll, pierce: o.pierce || 1, style: o.style, o });
+      }
+    },
+  };
+  // each fighter's three specials: [name, shape, options, theme]
+  const SPECIALS = {
+    brawler:       { side: ['METEOR FIST', 'dash', { len: 4.5, dmg: 4, kx: 14, ky: -7, stun: 1 }, 'fist'], up: ['RISING DRAGON', 'pillar', { dmg: 4, launch: 16, rise: 14, w: 1.6, h: 4.5 }, 'fist'], down: ['EARTHQUAKE', 'ring', { dmg: 4, r: 3.4, kx: 9, ky: -9 }, 'fist'] },
+    cb_slugger:    { side: ['HOME RUN', 'beam', { len: 2.8, w: 1.2, dmg: 6, kx: 22, ky: -11, stun: 1.2, style: 'swing' }, 'slug'], up: ['SKYLINE UPPERCUT', 'pillar', { dmg: 4, launch: 18, w: 1.4, h: 5 }, 'slug'], down: ['POUND TOWN', 'ring', { dmg: 3, r: 2.6, waves: 3, kx: 6 }, 'slug'] },
+    cb_pressplay:  { side: ['BASS CANNON', 'beam', { len: 7, w: 0.9, dmg: 4, kx: 12, stun: 0.8, style: 'sound' }, 'sound'], up: ['RISER BLAST', 'pillar', { dmg: 4, launch: 15, w: 1.8, h: 5, style: 'sound' }, 'sound'], down: ['SUB DROP', 'ring', { dmg: 4, r: 3.2, waves: 2, style: 'sound' }, 'sound'] },
+    cb_pp_mixtape: { side: ['REWIND RUSH', 'dash', { len: 4.5, dmg: 3, rewind: true, kx: 6, style: 'tape' }, 'tape'], up: ['TAPE TORNADO', 'vortex', { dmg: 5, r: 3 }, 'tape'], down: ['SPOOL SNARE', 'ring', { dmg: 2, r: 3.2, kx: 0, ky: -2, stun: 2.5, style: 'tape' }, 'tape'] },
+    phantomace:    { side: ['PHANTOM BLITZ', 'dash', { len: 5.5, dmg: 4, kx: 10, style: 'star' }, 'star'], up: ['ASCENDING STAR', 'pillar', { dmg: 4, launch: 15, rise: 12, w: 1.2, h: 4.5, style: 'star' }, 'star'], down: ['STARBURST', 'volley', { dmg: 3, n: 8, radial: true, speed: 14, life: 0.5, style: 'star' }, 'star'] },
+    archmage:      { side: ['ARCANE LANCE', 'beam', { len: 8, w: 0.55, dmg: 5, kx: 9, stun: 0.9, style: 'arcane' }, 'arcane'], up: ['METEOR CALL', 'meteor', { dmg: 6, dist: 4, r: 2.4, burn: 3 }, 'arcane'], down: ['RUNE PRISON', 'ring', { dmg: 2, r: 3.4, kx: 0, ky: -1, stun: 2.6, style: 'arcane' }, 'arcane'] },
+    conduit:       { side: ['RAILGUN', 'beam', { len: 8, w: 0.5, dmg: 5, kx: 8, chain: true, style: 'bolt' }, 'bolt'], up: ['THUNDERHEAD', 'strikes', { dmg: 5, n: 3, r: 7 }, 'bolt'], down: ['OVERLOAD NOVA', 'ring', { dmg: 4, r: 3.2, slow: 3, style: 'bolt' }, 'bolt'] },
+    cb_chameleon:  { side: ['PRISM BEAM', 'beam', { len: 6.5, w: 0.8, dmg: 4, kx: 10, style: 'prism' }, 'prism'], up: ['COLOUR GEYSER', 'pillar', { dmg: 4, launch: 15, w: 1.8, h: 4.5, style: 'prism' }, 'prism'], down: ['PAINT BOMB', 'ring', { dmg: 3, r: 3.2, slow: 3, style: 'prism' }, 'prism'] },
+    formSwitcher: {
+      flame: { side: ['INFERNO WAVE', 'beam', { len: 4, w: 1.3, dmg: 4, kx: 9, burn: 3, style: 'fire' }, 'fire'], up: ['FIRE GEYSER', 'pillar', { dmg: 4, launch: 15, burn: 3, style: 'fire' }, 'fire'], down: ['INFERNO RING', 'ring', { dmg: 3, r: 3.2, burn: 3, style: 'fire' }, 'fire'] },
+      frost: { side: ['GLACIER SPIKE', 'beam', { len: 6, w: 0.7, dmg: 3, kx: 4, freeze: 2, style: 'ice' }, 'ice'], up: ['ICE SPIRE', 'pillar', { dmg: 3, launch: 12, freeze: 1.6, style: 'ice' }, 'ice'], down: ['DEEP FREEZE', 'ring', { dmg: 2, r: 3.4, kx: 1, ky: -2, freeze: 2.2, style: 'ice' }, 'ice'] },
+      storm: { side: ['THUNDER DASH', 'dash', { len: 5, dmg: 4, kx: 9, stun: 1.2, style: 'bolt' }, 'storm'], up: ['STORM CALL', 'strikes', { dmg: 4, n: 3, r: 7 }, 'storm'], down: ['THUNDERCLAP', 'ring', { dmg: 4, r: 3, stun: 1.4, style: 'bolt' }, 'storm'] },
+      stone: { side: ['BOULDER ROLL', 'volley', { dmg: 6, n: 1, roll: true, speed: 11, life: 1.6, size: 0.6, pierce: 4, style: 'rock' }, 'stone'], up: ['STONE SPIRE', 'pillar', { dmg: 5, launch: 17, w: 1.4, style: 'rock' }, 'stone'], down: ['TECTONIC SLAM', 'ring', { dmg: 5, r: 3.6, waves: 2, kx: 10, style: 'rock' }, 'stone'] },
+    },
+  };
+  function specialFor(ch, s) {
+    let set = SPECIALS[ch]; if (!set) return null;
+    if (ch === 'formSwitcher') set = set[s.variant] || set.flame;
+    const def = set[s.aim === 'up' ? 'up' : s.aim === 'down' ? 'down' : 'side']; if (!def) return null;
+    const [name, shape, o, theme] = def, th = THEMES[theme] || THEMES.fist;
+    return {
+      fd: { windup: 0, sweet: 0.1, active: 0.45, endlag: shape === 'dash' ? 0.3 : 0.42, sweetDmg: 1, sweetKb: 1.2, sweetStop: 0.1, sweetShake: 12, chargeDmg: 0, root: shape !== 'ring', quiet: true },
+      dir: s.dir, color: th[0], aim: s.aim, variant: s.variant,
+      fire: pw => {
+        const p = P(); if (!p) return;
+        const d = (s.dir || 1) >= 0 ? 1 : -1, dmg = o.dmg + Math.round(3 * pw);
+        SHAPES[shape](p, d, pw, o, th, dmg);
+        fx.push({ k: 'label', x: pcx(p), y: p.y - 0.6, t: 0, life: 0.9, text: name, c: th[0] });
+        if (window._setMessage) window._setMessage('💥 ' + name + '! (charged ' + Math.round(pw * 100) + '%)');
+        shake(5 + 5 * pw);
+      },
+    };
+  }
+  // per frame: delayed hits, projectiles, vortexes, burning and frozen foes
+  function tickSpecials(dt) {
+    const now = nowS();
+    for (let i = timers.length - 1; i >= 0; i--) { const tm = timers[i]; if (tm.poll ? tm.poll() : now >= tm.at) { timers.splice(i, 1); try { tm.run(); } catch (e) {} } }
+    for (let i = sprojs.length - 1; i >= 0; i--) {
+      const q = sprojs[i]; q.life -= dt;
+      if (q.roll) { q.vy = Math.min(q.vy + 30 * dt, 20); }
+      const nx = q.x + q.vx * dt, ny = q.y + q.vy * dt;
+      if (blockedAt(nx - q.r * 0.5, ny - q.r * 0.5, q.r, q.r)) {
+        if (q.roll && q.vy > 0 && !blockedAt(nx - q.r * 0.5, q.y - q.r * 0.5, q.r, q.r)) { q.vy = 0; q.x = nx; }   // rolls along the floor
+        else { sfx.push({ k: 'ring', x: q.x, fy: q.y + q.r, R: 0.8, t: 0, life: 0.3, th: q.th, style: q.style }); sprojs.splice(i, 1); continue; }
+      } else { q.x = nx; q.y = ny; }
+      q.spin = (q.spin || 0) + q.vx * dt * 2;
+      for (const e of foes()) {
+        if (q.hit.has(e)) continue;
+        if (Math.abs(ex(e) - q.x) < (e.w || 0.9) / 2 + q.r && Math.abs(ey(e) - q.y) < (e.h || 0.9) / 2 + q.r) {
+          q.hit.add(e); const L = Math.hypot(q.vx, q.vy) || 1;
+          zap(e, q.dmg, Object.assign({ kx: q.vx / L * 9, ky: -5, stun: 0.8 }, fx_o(q.o)));
+          if (--q.pierce <= 0) { q.life = 0; break; }
+        }
+      }
+      if (q.life <= 0) sprojs.splice(i, 1);
+    }
+    for (let i = vortexes.length - 1; i >= 0; i--) {
+      const v = vortexes[i]; v.t += dt; v.tick -= dt;
+      for (const e of foes()) {
+        const dx = v.x - ex(e), dy = v.y - ey(e), dd = Math.hypot(dx, dy);
+        if (dd < v.R && dd > 0.2) { const k = Math.min(1, dt * 6); e.x += dx * k * 0.5; e.y += dy * k * 0.5; e.vx = 0; e.vy = 0; }
+      }
+      if (v.tick <= 0) { v.tick = 0.25; for (const e of foes()) if (Math.hypot(v.x - ex(e), v.y - ey(e)) < v.R) zap(e, Math.max(1, Math.round(v.dmg / 3)), { stun: 0.5 }); }
+      if (v.t >= v.life) {
+        for (const e of foes()) if (Math.hypot(v.x - ex(e), v.y - ey(e)) < v.R) zap(e, v.dmg, { ky: -15, kx: 0, stun: 1.2 });
+        sfx.push({ k: 'pillar', x: v.x, fy: v.y + 1, w: 1.6, h: 3.5, t: 0, life: 0.45, th: v.th, style: 'tape' }); shake(8);
+        vortexes.splice(i, 1);
+      }
+    }
+    for (const e of foes()) {
+      if (e._ppBurn > 0) { e._ppBurn -= dt; e._ppBurnT = (e._ppBurnT || 0) - dt; if (e._ppBurnT <= 0) { e._ppBurnT = 0.5; zap(e, 1, {}); } }
+      if (e._ppFrozen > 0) { e._ppFrozen -= dt; e.vx = 0; }
+    }
+    for (let i = sfx.length - 1; i >= 0; i--) { sfx[i].t += dt; if (sfx[i].t >= sfx[i].life) sfx.splice(i, 1); }
+  }
+  // drawing the specials (screen space; called from the engine's draw hook)
+  function drawSpecials(ctx, SX, SY, T) {
+    const lit = (c, a) => { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a; ctx.strokeStyle = c; ctx.fillStyle = c; };
+    const rainbow = (i, t) => 'hsl(' + ((i * 60 + t * 400) % 360) + ',90%,60%)';
+    for (const f of sfx) {
+      const u = f.t / f.life, a = 1 - u, c1 = f.th[0], c2 = f.th[1];
+      if (f.k === 'beam') {
+        const x0 = SX(f.x), y0 = SY(f.y), x1 = SX(f.x + f.d * f.len), w = f.w * T * (1 - u * 0.6);
+        if (f.style === 'sound') { for (let i = 0; i < 6; i++) { const xx = x0 + (x1 - x0) * (i / 6 + u * 0.15); lit(i % 2 ? c1 : c2, a); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(xx, y0, w * 0.9, f.d > 0 ? -0.9 : Math.PI - 0.9, f.d > 0 ? 0.9 : Math.PI + 0.9); ctx.stroke(); } continue; }
+        if (f.style === 'swing') { lit(c1, a); ctx.lineWidth = T * 0.3; ctx.beginPath(); ctx.arc(x0, y0, Math.abs(x1 - x0) * 0.6, f.d > 0 ? -1.2 : Math.PI - 0.2, f.d > 0 ? 0.2 + u : Math.PI + 1.2 - u, f.d < 0); ctx.stroke(); continue; }
+        const g = ctx.createLinearGradient(x0, 0, x1, 0);
+        if (f.style === 'prism') { for (let i = 0; i <= 6; i++) g.addColorStop(i / 6, rainbow(i, f.t)); } else { g.addColorStop(0, c2); g.addColorStop(1, c1); }
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35 * a; ctx.fillStyle = g; ctx.fillRect(Math.min(x0, x1), y0 - w, Math.abs(x1 - x0), w * 2);
+        ctx.globalAlpha = a; ctx.fillRect(Math.min(x0, x1), y0 - w * 0.35, Math.abs(x1 - x0), w * 0.7);
+        if (f.style === 'bolt' || f.style === 'ice' || f.style === 'fire') { lit('#ffffff', a); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x0, y0); for (let s2 = 1; s2 <= 10; s2++) ctx.lineTo(x0 + (x1 - x0) * s2 / 10, y0 + (Math.random() - 0.5) * w * (f.style === 'bolt' ? 1.6 : 0.6)); ctx.stroke(); }
+      } else if (f.k === 'dash') {
+        const x1 = SX(f.x1), x2 = SX(f.x2), y = SY(f.y);
+        for (let i = 0; i < 4; i++) { const xx = x1 + (x2 - x1) * (i / 4); lit(f.style === 'rewind' ? c2 : c1, 0.3 * a * (i + 1) / 4); ctx.beginPath(); ctx.roundRect(xx - T * 0.3, y - T * 0.45, T * 0.6, T * 0.9, T * 0.2); ctx.fill(); }
+        lit(c1, a); ctx.lineWidth = T * 0.18 * a; ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke();
+        lit('#ffffff', a); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke();
+        if (f.style === 'rewind') { lit(c2, a); for (const o2 of [0, 12]) { const xx = (x1 + x2) / 2 + o2 * f.d; ctx.beginPath(); ctx.moveTo(xx, y - 14); ctx.lineTo(xx + 12 * f.d, y - 22); ctx.lineTo(xx + 12 * f.d, y - 6); ctx.closePath(); ctx.fill(); } }
+      } else if (f.k === 'pillar') {
+        const x = SX(f.x), fy = SY(f.fy), w = f.w * T, h = f.h * T * Math.min(1, u * 4);
+        const g = ctx.createLinearGradient(0, fy, 0, fy - h);
+        if (f.style === 'prism') { for (let i = 0; i <= 6; i++) g.addColorStop(i / 6, rainbow(i, f.t)); } else { g.addColorStop(0, c1); g.addColorStop(1, 'rgba(0,0,0,0)'); }
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.7 * a; ctx.fillStyle = g; ctx.fillRect(x - w / 2, fy - h, w, h);
+        lit(c2, a); ctx.lineWidth = 2; for (let i = 0; i < 4; i++) { const xx = x - w / 2 + w * (i + 0.5) / 4, yy = fy - h * ((u * 2 + i * 0.27) % 1); ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx, yy - T * 0.4); ctx.stroke(); }
+        if (f.style === 'rock') { ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = a; ctx.fillStyle = c2; ctx.beginPath(); ctx.moveTo(x - w / 2, fy); ctx.lineTo(x, fy - h); ctx.lineTo(x + w / 2, fy); ctx.closePath(); ctx.fill(); }
+        if (f.style === 'ice') { lit('#ffffff', a); ctx.beginPath(); ctx.moveTo(x - w * 0.3, fy); ctx.lineTo(x, fy - h); ctx.lineTo(x + w * 0.3, fy); ctx.closePath(); ctx.stroke(); }
+      } else if (f.k === 'ring') {
+        const x = SX(f.x), fy = SY(f.fy) - 2, R = f.R * T * (0.25 + 0.75 * Math.min(1, u * 2.5));
+        if (f.style === 'arcane') { lit(c1, a); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(x, fy, R, R * 0.3, 0, 0, Math.PI * 2); ctx.stroke(); for (let i = 0; i < 10; i++) { const an = f.t * 3 + i * Math.PI / 5; ctx.beginPath(); ctx.moveTo(x + Math.cos(an) * R * 0.75, fy + Math.sin(an) * R * 0.22); ctx.lineTo(x + Math.cos(an) * R, fy + Math.sin(an) * R * 0.3); ctx.stroke(); } continue; }
+        if (f.style === 'tape') { ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = a; ctx.strokeStyle = '#3b2a22'; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(x, fy - T * 0.3, R, R * 0.35, 0, 0, Math.PI * 2); ctx.stroke(); lit(c1, a); ctx.lineWidth = 1.5; ctx.stroke(); continue; }
+        lit(f.style === 'prism' ? rainbow(0, f.t) : c1, a); ctx.lineWidth = 4 * a + 1; ctx.beginPath(); ctx.ellipse(x, fy, R, R * 0.28, 0, 0, Math.PI * 2); ctx.stroke();
+        lit(c2, a * 0.8); ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, fy, R * 0.7, R * 0.2, 0, 0, Math.PI * 2); ctx.stroke();
+        if (f.style === 'rock' || !f.style) { ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = f.style === 'rock' ? c2 : '#b8b0a4'; for (let i = 0; i < 8; i++) { const sx2 = x + (i - 3.5) / 3.5 * R, h2 = Math.sin(u * Math.PI) * T * 0.5 * (0.5 + (i * 7 % 5) / 8); ctx.globalAlpha = a; ctx.fillRect(sx2 - 3, fy - h2 - 6, 6, 6); } }
+        if (f.style === 'ice') { lit('#ffffff', a); for (let i = 0; i < 7; i++) { const sx2 = x + (i - 3) / 3 * R * 0.9; ctx.beginPath(); ctx.moveTo(sx2 - 4, fy); ctx.lineTo(sx2, fy - T * 0.6 * a); ctx.lineTo(sx2 + 4, fy); ctx.closePath(); ctx.fill(); } }
+        if (f.style === 'fire') { for (let i = 0; i < 8; i++) { const sx2 = x + (i - 3.5) / 3.5 * R; lit(i % 2 ? c1 : c2, a); ctx.beginPath(); ctx.ellipse(sx2, fy - T * 0.3, 4, T * 0.4 * a, 0, 0, Math.PI * 2); ctx.fill(); } }
+      } else if (f.k === 'bolt') {
+        lit('#ffffff', a); ctx.lineWidth = 2.5; zig(ctx, SX(f.x1), SY(f.y1), SX(f.x2), SY(f.y2), 6, T * 0.2);
+        lit(c1, a); ctx.lineWidth = 5; ctx.globalAlpha = 0.4 * a; zig(ctx, SX(f.x1), SY(f.y1), SX(f.x2), SY(f.y2), 6, T * 0.2);
+      } else if (f.k === 'strike') {
+        const x = SX(f.x), y = SY(f.y);
+        lit('#ffffff', a); ctx.lineWidth = 3; zig(ctx, x + (Math.random() - 0.5) * 10, y - T * 7, x, y, 9, T * 0.35);
+        lit(c1, a); ctx.lineWidth = 7; ctx.globalAlpha = 0.35 * a; zig(ctx, x, y - T * 7, x, y, 9, T * 0.35);
+        lit(c1, a); ctx.beginPath(); ctx.arc(x, y, T * (0.3 + u), 0, Math.PI * 2); ctx.stroke();
+      } else if (f.k === 'meteor') {
+        const x = SX(f.x), gy = SY(f.gy), my = gy - T * 7 * (1 - u), mx = x + T * 3 * (1 - u);
+        lit(c1, 0.5); ctx.lineWidth = T * 0.35; ctx.beginPath(); ctx.moveTo(mx + T * 1.5, my - T * 3.5); ctx.lineTo(mx, my); ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.fillStyle = '#ff8a3d'; ctx.beginPath(); ctx.arc(mx, my, T * 0.45, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#5b3a2a'; ctx.beginPath(); ctx.arc(mx - T * 0.1, my + T * 0.05, T * 0.3, 0, Math.PI * 2); ctx.fill();
+        lit(c1, 0.6); ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, gy - 2, T * 1.5 * u, T * 0.35 * u, 0, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    for (const v of vortexes) {
+      const x = SX(v.x), y = SY(v.y), R = v.R * T;
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.9; ctx.strokeStyle = '#3b2a22'; ctx.lineWidth = 3;
+      ctx.beginPath(); for (let a2 = 0; a2 < Math.PI * 6; a2 += 0.2) { const r = R * (1 - a2 / (Math.PI * 6)); ctx.lineTo(x + Math.cos(a2 + v.t * 12) * r, y + Math.sin(a2 + v.t * 12) * r * 0.6); } ctx.stroke();
+      lit(v.th[0], 0.9); ctx.lineWidth = 1.5; ctx.stroke();
+    }
+    for (const q of sprojs) {
+      const x = SX(q.x), y = SY(q.y), r = q.r * T;
+      if (q.style === 'rock') { ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.save(); ctx.translate(x, y); ctx.rotate(q.spin); ctx.fillStyle = q.th[0]; ctx.beginPath(); for (let i = 0; i < 7; i++) { const an = i * Math.PI * 2 / 7, rr = r * (0.85 + 0.15 * ((i * 5) % 3)); ctx.lineTo(Math.cos(an) * rr, Math.sin(an) * rr); } ctx.closePath(); ctx.fill(); ctx.fillStyle = q.th[1]; ctx.fillRect(-r * 0.3, -r * 0.2, r * 0.3, r * 0.3); ctx.restore(); continue; }
+      lit(q.th[0], 1); ctx.beginPath();
+      if (q.style === 'star') { for (let i = 0; i < 10; i++) { const an = i * Math.PI / 5 + (q.spin || 0), rr = i % 2 ? r * 0.45 : r; ctx.lineTo(x + Math.cos(an) * rr, y + Math.sin(an) * rr); } ctx.closePath(); ctx.fill(); }
+      else { ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+      lit('#ffffff', 0.8); ctx.beginPath(); ctx.arc(x, y, r * 0.35, 0, Math.PI * 2); ctx.fill();
+    }
+    // burning and frozen foes
+    for (const e of foes()) {
+      if (e._ppBurn > 0) { for (let i = 0; i < 3; i++) { lit(i % 2 ? '#ffd166' : '#ff6b35', 0.85); const ph = (nowS() * 2 + i / 3) % 1; ctx.beginPath(); ctx.arc(SX(ex(e) + (i - 1) * 0.2), SY(e.y) - ph * T * 0.6, 3 * (1 - ph) + 1, 0, Math.PI * 2); ctx.fill(); } }
+      if (e._ppFrozen > 0) { ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.45; ctx.fillStyle = '#bae6fd'; ctx.fillRect(SX(e.x) - 2, SY(e.y) - 2, (e.w || 0.9) * T + 4, (e.h || 0.9) * T + 4); ctx.globalAlpha = 0.9; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.strokeRect(SX(e.x) - 2, SY(e.y) - 2, (e.w || 0.9) * T + 4, (e.h || 0.9) * T + 4); }
+    }
+  }
+
   const API = {
     busy() { return !!cur || !!charge; },
     canQueue() { return !charge && (!cur || bufferable()); },
@@ -40315,8 +40578,9 @@ window._claimLBro = function() {
       if (!playing()) return;
       const held = nowS() - c.start;
       const s = c.resolve(); if (!s) return;
-      if (held < CHARGE_MIN) begin(s, 0);
-      else begin(s, Math.min(1, (held - CHARGE_MIN) / (CHARGE_FULL - CHARGE_MIN)));
+      if (held < CHARGE_MIN) { begin(s, 0); return; }
+      const pw = Math.min(1, (held - CHARGE_MIN) / (CHARGE_FULL - CHARGE_MIN));
+      begin(specialFor(window.selectedCharacter, s) || s, pw);   // a held S lets loose the fighter's charged special
     },
     // the body's pose for the current phase, applied around the feet before the player is drawn:
     // windup leans back, crouches and draws back (heavier moves further, with a tremble at the end),
@@ -40340,9 +40604,11 @@ window._claimLBro = function() {
 
   (window._rafHubTickers = window._rafHubTickers || []).push(function _ppStrikeTick(dt) {
     const p = P();
-    if (!p || !playing() || window.selectedCharacter !== lastChar) { lastChar = window.selectedCharacter; API.cancel(); lastPX = null; fx.length = 0; return; }
+    if (!p || !playing() || window.selectedCharacter !== lastChar) { lastChar = window.selectedCharacter; API.cancel(); lastPX = null; fx.length = 0; sfx.length = 0; timers.length = 0; sprojs.length = 0; vortexes.length = 0; return; }
     // respawned or teleported
-    if (lastPX != null && (Math.abs(p.x - lastPX) > 4 || Math.abs(p.y - lastPY) > 4)) API.cancel();
+    if (!teleported && lastPX != null && (Math.abs(p.x - lastPX) > 4 || Math.abs(p.y - lastPY) > 4)) API.cancel();
+    teleported = false;
+    tickSpecials(dt);
     lastPX = p.x; lastPY = p.y;
     for (let i = fx.length - 1; i >= 0; i--) { fx[i].t += dt; if (fx[i].t >= fx[i].life) fx.splice(i, 1); }
 
@@ -40392,11 +40658,12 @@ window._claimLBro = function() {
   window.drifterDrawHook = function (ctx, now2, cam) {
     if (_prevDraw) _prevDraw(ctx, now2, cam);
     const p = P(); if (!p || !playing()) return;
-    if (!cur && !charge && !fx.length) return;
+    if (!cur && !charge && !fx.length && !sfx.length && !sprojs.length && !vortexes.length && !foes().some(e => e._ppBurn > 0 || e._ppFrozen > 0)) return;
     try {
       const T = window._TILE || 40, SX = x => x * T - (cam ? cam.x : 0), SY = y => y * T - (cam ? cam.y : 0);
       ctx.save(); ctx.lineCap = 'round';
       const x = SX(pcx(p)), y = SY(pcy(p));
+      ctx.save(); try { drawSpecials(ctx, SX, SY, T); } catch (e) {} ctx.restore();
       // the fighter's own windup / strike / recovery effects
       { const st = styleState(); if (st) { const sty = STYLES[st.ch] || STYLES._default; if (sty.fx) { ctx.save(); try { sty.fx(ctx, st, { x, y, fy: SY(p.y + p.h), T }); } catch (e) {} ctx.restore(); } } }
       if (charge) {
@@ -41457,7 +41724,8 @@ window._claimLBro = function() {
       if (on) fx.push({ k: 'label', x: pcx(q), y: q.y - 0.5, t: 0, life: 0.7, text: lbl });
       msg(text);
     };
-    if (window.PPStrike) window.PPStrike.start({ fd: PFD[key], dir: face, color: md.pal[1], aim: dir, variant: md.id, fire: go }); else go();
+    // the beat was judged on the press above; holding S instead lets loose a charged special
+    if (window.PPStrike) window.PPStrike.press(() => ({ fd: PFD[key], dir: face, color: md.pal[1], aim: dir, variant: md.id, fire: go }), true); else go();
   };
 
   // ---- EQ switch (G / 🎛️) ----
