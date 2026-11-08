@@ -108,7 +108,7 @@
     var g = G();
     if (m.t === 's') {
       prev = remote ? { x: shown().x, y: shown().y } : null;
-      remote = m;
+      remote = m; m._at = performance.now();
       var now = performance.now();
       if (lastAt) gap = Math.min(200, Math.max(20, gap * 0.85 + (now - lastAt) * 0.15));
       lastAt = now;
@@ -156,7 +156,8 @@
       conn.send({ t: 's', x: r2(p.x), y: r2(p.y), vx: r2(p.vx), vy: r2(p.vy), w: p.w, h: p.h,
         onGround: p.onGround, dashDir: p.dashDir, isDashing: p.isDashing, gravityFlipped: p.gravityFlipped,
         isWallSliding: p.isWallSliding, onWall: p.onWall, wallSide: p.wallSide, slashTimer: r2(p.slashTimer || 0),
-        swordMode: p.swordMode, char: g.char, mode: g.mode, won: !!g.won });
+        swordMode: p.swordMode, char: g.char, mode: g.mode, won: !!g.won,
+        em: window.PPEmote ? window.PPEmote.netState() : null });
     }
 
     // draw the other player only while you're both playing
@@ -167,6 +168,8 @@
     blendX = fx + (remote.x - fx) * a; blendY = fy + (remote.y - fy) * a;
     var s = {}; for (var k in remote) s[k] = remote[k];
     s.x = blendX; s.y = blendY;
+    // their emote, played forward from when it was sent
+    s.em = remote.em && remote.em.id ? { id: remote.em.id, t: remote.em.t + (now - (remote._at || now)) / 1000 } : null;
     g.drawAs(s, role === 'host' ? 'Friend' : 'Host');
   }
   function r2(v){ return Math.round((v || 0) * 100) / 100; }

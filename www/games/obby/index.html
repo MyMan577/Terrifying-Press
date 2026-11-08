@@ -5172,6 +5172,27 @@ let srEchoFrames = [];
     exportLevel: () => exportLevel(), importLevel: j => importLevel(j),
     resetPlayer: () => resetPlayer(),
     setMessage: t => setMessage(t),
+    // Draw the player into another canvas, standing at its centre, performing an emote (em = { id, t }).
+    // Used by the emote wheel's live previews. Everything it touches is put back afterwards.
+    drawPreview(c2d, w, h, em, scale) {
+      const keepCtx = ctx, kcx = cam.x, kcy = cam.y;
+      const F = ['x','y','vx','vy','dashDir','onGround','isDashing','hpInvuln','enemyKnockbackInvuln','isWallSliding','slashTimer','punchTimer'];
+      const keep = {}; for (const k of F) keep[k] = player[k];
+      c2d.save();
+      try {
+        ctx = c2d; c2d.scale(scale, scale);
+        player.x = 0; player.y = 0; player.vx = 0; player.vy = 0; player.dashDir = 1; player.onGround = true; player.isDashing = false;
+        player.hpInvuln = 0; player.enemyKnockbackInvuln = 0; player.isWallSliding = false; player.slashTimer = 0; player.punchTimer = 0;
+        cam.x = -(w / scale / 2 - player.w * TILE / 2); cam.y = -(h / scale * 0.88 - player.h * TILE);
+        window.__ppRemoteDraw = { em, dashDir: 1 };
+        drawPlayer();
+      } catch (e) {}
+      finally {
+        window.__ppRemoteDraw = null;
+        for (const k of F) player[k] = keep[k];
+        cam.x = kcx; cam.y = kcy; ctx = keepCtx; c2d.restore();
+      }
+    },
     // Draw the other player: borrow `player` and the character for one drawPlayer() call.
     drawAs(s, label) {
       const F = ['x','y','vx','vy','w','h','onGround','dashDir','isDashing','gravityFlipped','hpInvuln','enemyKnockbackInvuln','isWallSliding','onWall','wallSide','slashTimer','swordMode'];
@@ -5180,9 +5201,11 @@ let srEchoFrames = [];
       try {
         for (const k of F) if (s[k] !== undefined) player[k] = s[k];
         if (s.char) selectedCharacter = s.char;
+        window.__ppRemoteDraw = s;
         drawPlayer();
       } catch (e) { /* a character we can't draw: the name tag still shows */ }
       finally {
+        window.__ppRemoteDraw = null;
         for (const k of F) player[k] = keep[k];
         selectedCharacter = keepChar; ctx = keepCtx;
       }
@@ -20359,8 +20382,10 @@ function resolveCollisions(axis, dt) {
       ctx.save();
     }
     ctx.translate(x, y + bodyBob);
-    // strike engine: the body winds up, lunges and recovers (see PPStrike.pose)
-    if (window.PPStrike && player === window._gamePlayer) window.PPStrike.pose(ctx, W, H);
+    // strike engine and emotes pose the body; the other phone's player (online) shows its own emote
+    const _ppRem = window.__ppRemoteDraw;
+    if (_ppRem) { if (window.PPEmote && _ppRem.em) window.PPEmote.pose(ctx, W, H, Object.assign({ dir: _ppRem.dashDir }, _ppRem.em)); }
+    else { if (window.PPStrike) window.PPStrike.pose(ctx, W, H); if (window.PPEmote) window.PPEmote.pose(ctx, W, H); }
 
     
     if (lookDir === -1) {
@@ -22422,6 +22447,8 @@ function resolveCollisions(axis, dt) {
 
     
     if (window.drawCosmeticAura) drawCosmeticAura(cx, H/2, Date.now()*0.001);
+    // emotes: two floating hands (or the character's own gloves) and props
+    if (window.PPEmote) window.PPEmote.hands(ctx, W, H, id, _ppRem ? (_ppRem.em ? Object.assign({ dir: _ppRem.dashDir }, _ppRem.em) : {}) : null);
 
     
     
@@ -40400,6 +40427,328 @@ window._claimLBro = function() {
 })();
 </script>
 <script>
+// ===== Emotes: wave, dance, laugh, flex, bow (+ Press Play shop: air guitar, headbang, mic drop) =====
+// Z or the 😀 button opens the emote wheel (1-8 pick on a keyboard). The character performs the move with
+// its whole body, and gets two floating hands for it: characters that already have hands get matching ones
+// (boxing gloves, gold gauntlets...), everyone else gets two balls. Dances move on the beat of the song
+// playing in Press Play (or a steady 128 BPM). Moving, jumping, attacking or getting hit stops an emote.
+// In online play the other phone sees your emote too.
+(function () {
+  'use strict';
+  const OWN_KEY = 'obby_emotes_owned';
+  const EMOTES = [
+    { id: 'wave',     icon: '👋', name: 'Wave',       len: 2.2 },
+    { id: 'dance',    icon: '🕺', name: 'Dance',      len: 0, beat: true },
+    { id: 'laugh',    icon: '😂', name: 'Laugh',      len: 2.0 },
+    { id: 'flex',     icon: '💪', name: 'Flex',       len: 2.2 },
+    { id: 'bow',      icon: '🙇', name: 'Bow',        len: 1.8 },
+    { id: 'guitar',   icon: '🎸', name: 'Air Guitar', len: 0, beat: true, shop: 'emguitar' },
+    { id: 'headbang', icon: '🤘', name: 'Headbang',   len: 0, beat: true, shop: 'emheadbang' },
+    { id: 'mic',      icon: '🎤', name: 'Mic Drop',   len: 2.8, shop: 'emmic' },
+  ];
+  // shop emotes bought in the Press Play shop
+  function owned() { try { return JSON.parse(localStorage.getItem(OWN_KEY) || '[]'); } catch (e) { return []; } }
+  if (window.PPHub) {
+    const have = owned(); let changed = false;
+    for (const em of EMOTES) if (em.shop && PPHub.take(em.shop) && !have.includes(em.id)) { have.push(em.id); changed = true; }
+    if (changed) try { localStorage.setItem(OWN_KEY, JSON.stringify(have)); } catch (e) {}
+  }
+  function unlocked(em) { return !em.shop || owned().includes(em.id); }
+
+  let cur = null;   // { id, t }
+  let lastHp = null, lastPX = null;
+  const P = () => window._gamePlayer;
+  const playing = () => !window._gameMode || window._gameMode() === 'play';
+  const ease = u => 1 - Math.pow(1 - Math.max(0, Math.min(1, u)), 3);
+  const nowS = () => performance.now() / 1000;
+
+  // the beat: the Prodigy's beat clock (which follows the song in Press Play), else a steady 128 BPM
+  function beatAt(t) {
+    const b = window.PPBeat && window.PPBeat.info && window.PPBeat.info();
+    if (b && isFinite(b.beat)) return b.beat;
+    return nowS() * 128 / 60;
+  }
+
+  // ---- the moves: body pose (lean, sx, sy, ox, oy in fractions of the body) and two hands ----
+  // Hand positions are in body units (0..1 across, 0 = top of head, 1 = feet), facing right.
+  // A hand: { x, y, s (size), horns, mic, open }
+  function moveOf(id, t, beat) {
+    const b = beat % 1, n = Math.floor(beat), hop = Math.abs(Math.sin(Math.PI * b));
+    switch (id) {
+      case 'wave': {
+        const w = Math.sin(t * 13), up = ease(t / 0.25) * (1 - ease((t - 1.9) / 0.3));
+        return { pose: { lean: -0.06 * up, oy: -0.02 * Math.abs(Math.sin(t * 6.5)) },
+          hands: [{ x: 1.0 + 0.18 * w * up, y: 0.45 - 0.62 * up, open: true }, { x: 0.02, y: 0.66 }] };
+      }
+      case 'dance': {
+        const side = n % 2 ? 1 : -1, land = Math.max(0, 1 - b * 5);
+        const disco = n % 4 === 3;
+        return { pose: { oy: -0.2 * hop, ox: side * 0.12 * Math.sin(Math.PI * b), lean: side * 0.16 * Math.sin(Math.PI * b), sx: 1 + 0.12 * land, sy: 1 - 0.14 * land },
+          hands: disco ? [{ x: 1.15, y: -0.25 }, { x: -0.1, y: 0.85 }]
+            : [{ x: 1.02, y: n % 2 ? -0.18 + 0.1 * b : 0.5 - 0.1 * b }, { x: -0.02, y: n % 2 ? 0.5 - 0.1 * b : -0.18 + 0.1 * b }] };
+      }
+      case 'laugh': {
+        const sh = Math.sin(t * 38), k = ease(t / 0.2) * (1 - ease((t - 1.75) / 0.25));
+        return { pose: { lean: -0.2 * k, oy: 0.03 * sh * k, sy: 1 + 0.03 * sh * k }, hands: [{ x: 0.78, y: 0.66 + 0.04 * sh * k }, { x: 0.24, y: 0.7 - 0.04 * sh * k }], text: k > 0.2 };
+      }
+      case 'flex': {
+        const crouch = t < 0.35 ? ease(t / 0.35) : 0, rise = ease((t - 0.35) / 0.25) * (1 - ease((t - 1.95) / 0.25));
+        const pump = 1 + 0.12 * Math.max(0, Math.sin(t * 9)) * rise;
+        return { pose: { sx: 1 + 0.1 * crouch + 0.06 * rise, sy: 1 - 0.18 * crouch + 0.1 * rise },
+          hands: [{ x: 1.0 + 0.32 * rise, y: 0.6 - 0.55 * rise, s: pump }, { x: 0.0 - 0.32 * rise, y: 0.6 - 0.55 * rise, s: pump }], sparkle: rise > 0.6 };
+      }
+      case 'bow': {
+        const k = Math.sin(Math.min(1, t / 1.6) * Math.PI);
+        return { pose: { lean: 0.55 * k, oy: 0.02 * k }, hands: [{ x: 0.62, y: 0.42 + 0.06 * k }, { x: 0.05 - 0.15 * k, y: 0.6 }] };
+      }
+      case 'guitar': {
+        const strum = Math.sin(Math.PI * 2 * beat * 2);
+        return { pose: { lean: -0.22 - 0.06 * hop, sy: 1 - 0.08 * hop, oy: 0.02 * hop }, guitar: true,
+          hands: [{ x: 0.78, y: 0.66 + 0.12 * strum }, { x: -0.18, y: 0.3 }] };
+      }
+      case 'headbang': {
+        const nod = Math.pow(Math.sin(Math.PI * b), 3);
+        return { pose: { lean: 0.38 * nod - 0.08, sy: 1 - 0.05 * nod }, hands: [{ x: 1.12, y: -0.32 + 0.08 * nod, horns: true }, { x: -0.12, y: -0.32 + 0.08 * nod, horns: true }] };
+      }
+      case 'mic': {
+        if (t < 1.3) {   // singing into the mic
+          const sway = Math.sin(t * 6);
+          return { pose: { lean: -0.08 * sway, oy: -0.02 * Math.abs(sway) }, hands: [{ x: 0.95, y: 0.18, mic: 'held' }, { x: 0.0, y: 0.25 + 0.05 * sway, open: true }], notes: true };
+        }
+        const u = (t - 1.3);
+        return { pose: { lean: -0.18 * ease(u / 0.3) }, hands: [{ x: 1.25, y: 0.3, open: true }, { x: 0.3, y: 0.55 }], dropT: u };
+      }
+    }
+    return null;
+  }
+  function emoteDef(id) { return EMOTES.find(e => e.id === id); }
+  function stateNow(src) {
+    // src: the local emote, or the other phone's { id, t }
+    if (!src || !src.id) return null;
+    const m = moveOf(src.id, src.t, beatAt(src.t));
+    return m && Object.assign(m, { id: src.id, t: src.t });
+  }
+
+  // ---- hands: two floating balls, or the character's own gloves ----
+  const HANDS = {
+    brawler: { c: '#ef4444', glove: true, cuff: '#ffffff' }, cb_slugger: { c: '#e23b3b', glove: true, cuff: '#f4e3c3' },
+    cb_pressplay: { c: '#18191f', hi: '#6b6f7a', dark: true }, cb_pp_mixtape: { c: '#18191f', hi: '#6b6f7a', dark: true },
+    phantomace: { c: '#ffcf33', glove: true, cuff: '#7cdbff' }, archmage: { c: '#f3e3b5' }, conduit: { c: '#7cdbff', glow: true },
+    formSwitcher: { c: '#ff8a4c' }, cb_chameleon: { c: '#ff6b81' }, cb_protagonist: { c: '#e7c39b' },
+  };
+  function handStyle(id) {
+    if (HANDS[id]) return HANDS[id];
+    let col = '#ffffff';
+    try { const ch = window._getChar && window._getChar(); if (ch && ch.color) col = ch.color; } catch (e) {}
+    const m = /^#?([0-9a-f]{6})$/i.exec(col);
+    if (!m) return { c: '#f4f4f4' };
+    const v = parseInt(m[1], 16), r = v >> 16, g = (v >> 8) & 255, bl = v & 255, lum = (0.299 * r + 0.587 * g + 0.114 * bl) / 255;
+    if (lum < 0.3 || lum > 0.92) return { c: '#f4f4f4' };   // too dark or white: classic white gloves
+    const mix = x => Math.round(x + (255 - x) * 0.25);
+    return { c: 'rgb(' + mix(r) + ',' + mix(g) + ',' + mix(bl) + ')' };
+  }
+  function drawHand(ctx, x, y, r, sty, h) {
+    ctx.save();
+    if (sty.glow) { ctx.shadowBlur = 10; ctx.shadowColor = sty.c; }
+    if (sty.glove) {   // a cuff, then a rounder fist
+      ctx.fillStyle = sty.cuff; ctx.beginPath(); ctx.ellipse(x - r * 0.15, y + r * 0.85, r * 0.62, r * 0.32, 0, 0, Math.PI * 2); ctx.fill();
+      r *= 1.15;
+    }
+    ctx.fillStyle = sty.c; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = Math.max(1, r * 0.18); ctx.strokeStyle = sty.dark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.35)'; ctx.stroke();
+    ctx.fillStyle = sty.hi || 'rgba(255,255,255,0.55)'; ctx.beginPath(); ctx.arc(x - r * 0.32, y - r * 0.32, r * 0.3, 0, Math.PI * 2); ctx.fill();
+    if (h.open) {   // spread fingers
+      ctx.strokeStyle = sty.c; ctx.lineCap = 'round'; ctx.lineWidth = r * 0.42;
+      for (let i = -1; i <= 1; i++) { const a = -Math.PI / 2 + i * 0.5; ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * r * 0.6, y + Math.sin(a) * r * 0.6); ctx.lineTo(x + Math.cos(a) * r * 1.35, y + Math.sin(a) * r * 1.35); ctx.stroke(); }
+    }
+    if (h.horns) {   // 🤘
+      ctx.strokeStyle = sty.c; ctx.lineCap = 'round'; ctx.lineWidth = r * 0.45;
+      for (const a of [-Math.PI / 2 - 0.45, -Math.PI / 2 + 0.45]) { ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * r * 0.6, y + Math.sin(a) * r * 0.6); ctx.lineTo(x + Math.cos(a) * r * 1.7, y + Math.sin(a) * r * 1.7); ctx.stroke(); }
+    }
+    if (h.mic === 'held') {
+      ctx.fillStyle = '#2b2d34'; ctx.fillRect(x - r * 0.25, y - r * 2.1, r * 0.5, r * 1.6);
+      ctx.fillStyle = '#c9ccd4'; ctx.beginPath(); ctx.arc(x, y - r * 2.2, r * 0.6, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  const API = {
+    list: EMOTES,
+    active() { return cur ? cur.id : null; },
+    // for online play: what to send to the other phone
+    netState() { return cur ? { id: cur.id, t: Math.round(cur.t * 100) / 100 } : null; },
+    wantsBeat() { return !!(cur && emoteDef(cur.id).beat); },
+    play(id) {
+      const em = emoteDef(id), p = P();
+      if (!em || !p || !playing()) return false;
+      if (!unlocked(em)) { if (window._setMessage) window._setMessage(em.icon + ' ' + em.name + ' is a Press Play exclusive: get it in the Press Play shop'); return false; }
+      if (window.PPStrike && window.PPStrike.busy()) return false;
+      if (!p.onGround) { if (window._setMessage) window._setMessage('😀 Land first to emote'); return false; }
+      cur = { id, t: 0 }; lastHp = null; lastPX = p.x;
+      p.vx = 0;
+      return true;
+    },
+    stop() { cur = null; },
+    // body pose, applied around the feet before the character is drawn (remote: the other phone's emote)
+    pose(ctx, W, H, remote) {
+      const st = stateNow(remote || cur); if (!st || !st.pose) return;
+      const d = remote ? ((remote.dir || 1) >= 0 ? 1 : -1) : ((P() && P().dashDir) || 1) >= 0 ? 1 : -1;
+      const q = Object.assign({ lean: 0, sx: 1, sy: 1, ox: 0, oy: 0 }, st.pose);
+      ctx.translate(W / 2 + q.ox * W * d, H + q.oy * H); ctx.rotate(q.lean * d); ctx.scale(q.sx, q.sy); ctx.translate(-W / 2, -H);
+    },
+    // hands and props, drawn after the body (the drawing is already mirrored to the way the character faces)
+    hands(ctx, W, H, charId, remote) {
+      const st = stateNow(remote || cur); if (!st || !st.hands) return;
+      const sty = handStyle(charId), r = Math.max(3, W * 0.17);
+      ctx.save();
+      if (st.guitar) {   // a little red electric guitar across the body
+        ctx.save(); ctx.translate(W * 0.62, H * 0.66); ctx.rotate(-0.55);
+        ctx.fillStyle = '#d6303d'; ctx.strokeStyle = '#2a1015'; ctx.lineWidth = Math.max(1.5, W * 0.06);
+        ctx.beginPath(); ctx.ellipse(0, 0, W * 0.34, W * 0.24, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#5a3a22'; ctx.fillRect(-W * 1.05, -W * 0.05, W * 0.85, W * 0.1);
+        ctx.fillStyle = '#1b1b1b'; ctx.fillRect(-W * 1.15, -W * 0.09, W * 0.14, W * 0.18);
+        ctx.fillStyle = '#f2f2f2'; ctx.beginPath(); ctx.arc(W * 0.05, 0, W * 0.07, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+      for (const h of st.hands) drawHand(ctx, h.x * W, h.y * H, r * (h.s || 1), sty, h);
+      // extras: laughing "HA", flex sparkles, music notes, the dropped mic
+      ctx.textAlign = 'center';
+      if (st.text) { ctx.font = 'bold ' + Math.round(W * 0.42) + 'px sans-serif'; ctx.fillStyle = '#ffe066'; for (let i = 0; i < 2; i++) { const ph = (st.t * 1.6 + i * 0.5) % 1; ctx.globalAlpha = 1 - ph; ctx.fillText('HA', W * (0.9 + i * 0.4), -H * (0.1 + ph * 0.6)); } ctx.globalAlpha = 1; }
+      if (st.sparkle) { ctx.fillStyle = '#ffffff'; for (let i = 0; i < 4; i++) { const a = st.t * 4 + i * 1.6; ctx.globalAlpha = 0.5 + 0.5 * Math.sin(st.t * 12 + i); ctx.beginPath(); ctx.arc(W / 2 + Math.cos(a) * W * 0.9, H * 0.3 + Math.sin(a) * H * 0.5, 1.8, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1; }
+      if (st.notes || st.guitar) { ctx.font = Math.round(W * 0.45) + 'px sans-serif'; ctx.fillStyle = '#b79bff'; for (let i = 0; i < 2; i++) { const ph = (st.t * 0.9 + i * 0.5) % 1; ctx.globalAlpha = 1 - ph; ctx.fillText('♪', W * (1.1 + 0.3 * i) , H * (0.1 - ph * 0.8)); } ctx.globalAlpha = 1; }
+      if (st.dropT != null) {   // the mic falls from the open hand, bounces once, and lands with a BOOM
+        const u = st.dropT, g = 9 * H;
+        let my = H * 0.3 + 0.5 * g * u * u, mx = W * 1.3; let boom = 0;
+        const land = Math.sqrt(2 * (H * 0.95 - H * 0.3) / g);
+        if (u > land) { const v = u - land; my = H * 0.95 - Math.max(0, 0.6 * H * Math.sin(Math.min(1, v / 0.35) * Math.PI)) ; mx = W * 1.3 + v * W * 0.6; boom = Math.max(0, 1 - v / 0.5); }
+        ctx.save(); ctx.translate(mx, my); ctx.rotate(u * 9);
+        ctx.fillStyle = '#2b2d34'; ctx.fillRect(-r * 0.25, -r * 0.2, r * 0.5, r * 1.6);
+        ctx.fillStyle = '#c9ccd4'; ctx.beginPath(); ctx.arc(0, -r * 0.3, r * 0.6, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+        if (boom > 0) { ctx.globalAlpha = boom; ctx.strokeStyle = '#ffe066'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(W * 1.3, H * 0.98, W * (1.4 - boom), H * 0.12, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.font = 'bold ' + Math.round(W * 0.38) + 'px sans-serif'; ctx.fillStyle = '#ffe066'; ctx.fillText('BOOM', W * 1.9, H * 0.45 - (1 - boom) * H * 0.3); ctx.globalAlpha = 1; }
+      }
+      ctx.restore();
+    },
+  };
+  window.PPEmote = API;
+
+  // ---- the emote runs; moving, jumping, attacking or getting hit stops it ----
+  (window._rafHubTickers = window._rafHubTickers || []).push(function _ppEmoteTick(dt) {
+    const p = P();
+    if (wheelOpen && !playing()) closeWheel();
+    if (!cur) { if (btn) btn.style.display = playing() && p ? 'flex' : 'none'; return; }
+    if (btn) btn.style.display = 'flex';
+    if (!p || !playing()) { cur = null; return; }
+    cur.t += dt;
+    const em = emoteDef(cur.id);
+    const k = window._gameKeys || new Set(), mk = window.mobileKeys || {};
+    const moving = k.has('arrowleft') || k.has('arrowright') || k.has('a') || k.has('d') || k.has(' ') || k.has('w') || k.has('arrowup') || mk.left || mk.right || mk.jump;
+    const hit = (p.hpInvuln || 0) > 0 && lastHp === 0;
+    lastHp = (p.hpInvuln || 0) > 0 ? 1 : 0;
+    if (moving || hit || p.isDashing || !p.onGround || (window.PPStrike && window.PPStrike.busy()) || (em.len && cur.t >= em.len) || Math.abs(p.x - lastPX) > 3) { cur = null; return; }
+    p.vx = 0; lastPX = p.x;
+  });
+
+  // ---- the emote button and wheel: each shows your own character performing the emote, live ----
+  if (!document.getElementById('ppEmoteStyle')) {
+    const sty = document.createElement('style'); sty.id = 'ppEmoteStyle';
+    sty.textContent = `
+      #ppEmoteBtn { position:absolute; right:80px; top:136px; z-index:100; width:52px; height:52px; border-radius:50%; display:none;
+        align-items:center; justify-content:center; padding:0; overflow:hidden; cursor:pointer; touch-action:none;
+        border:2px solid rgba(255,255,255,.75); background:radial-gradient(circle at 35% 30%, #4a3d7a, #1d1733); box-shadow:0 0 12px rgba(139,92,255,.5); }
+      #ppEmoteBtn canvas, #ppEmoteWheel canvas { width:100%; height:100%; display:block; pointer-events:none; }
+      #ppEmoteBtn:active { transform:scale(.9); }
+      #ppEmoteWheel { position:fixed; inset:0; z-index:100000; display:none; background:rgba(8,6,20,.5); touch-action:none; }
+      #ppEmoteWheel .ring { position:absolute; left:50%; top:50%; width:0; height:0; }
+      #ppEmoteWheel .em { position:absolute; width:84px; height:96px; margin:-48px 0 0 -42px; border-radius:18px; border:2px solid rgba(255,255,255,.75);
+        background:radial-gradient(circle at 50% 35%, #3d3270, #17122b); color:#fff; padding:0; overflow:hidden; cursor:pointer;
+        box-shadow:0 0 14px rgba(139,92,255,.5); }
+      #ppEmoteWheel .em .pv { position:absolute; left:0; top:0; width:84px; height:76px; }
+      #ppEmoteWheel .em .nm { position:absolute; left:0; right:0; bottom:3px; font:800 10px sans-serif; text-align:center; letter-spacing:.02em; text-shadow:0 1px 2px #000; }
+      #ppEmoteWheel .em .key { position:absolute; left:6px; top:4px; font:800 10px sans-serif; opacity:.7; }
+      #ppEmoteWheel .em.locked { border-color:rgba(255,255,255,.3); }
+      #ppEmoteWheel .em.locked .pv { opacity:.4; filter:grayscale(.7); }
+      #ppEmoteWheel .em .shop { position:absolute; right:5px; top:4px; font:800 8px sans-serif; padding:1px 4px; border-radius:6px; background:#8b5cff; }
+      #ppEmoteWheel .mid { position:absolute; width:90px; margin:-14px 0 0 -45px; text-align:center; color:#fff; font:800 12px sans-serif; text-shadow:0 1px 3px #000; }
+      #ppEmoteWheel .mid span { display:block; font-weight:400; font-size:10px; opacity:.75; margin-top:2px; }
+      @media (max-height: 500px) { #ppEmoteBtn { top:98px; right:72px; transform:scale(.85); } }
+    `;
+    document.head.appendChild(sty);
+  }
+  let btn = null, btnCanvas = null, wheel = null, wheelOpen = false, previews = [], openedAt = 0, raf = 0;
+  const DPR = Math.min(3, window.devicePixelRatio || 1);
+  function sized(cv, w, h) { cv.width = Math.round(w * DPR); cv.height = Math.round(h * DPR); cv.style.width = w + 'px'; cv.style.height = h + 'px'; return cv; }
+  // draw the character doing emote `id`, `t` seconds in, into a canvas of w x h CSS pixels
+  function preview(cv, w, h, id, t, scale) {
+    const c2 = cv.getContext('2d'); c2.setTransform(1, 0, 0, 1, 0, 0); c2.clearRect(0, 0, cv.width, cv.height);
+    if (!window.__obby || !window.__obby.drawPreview) return;
+    c2.scale(DPR, DPR);
+    window.__obby.drawPreview(c2, w, h, { id, t }, scale);
+  }
+  function loopLen(em) { return em.len || 2.4; }
+  function tickPreviews() {
+    raf = 0;
+    if (!wheelOpen) return;
+    const t = performance.now() / 1000 - openedAt;
+    for (const pv of previews) preview(pv.cv, 84, 76, pv.em.id, (t + 0.3) % loopLen(pv.em), 1.0);
+    raf = requestAnimationFrame(tickPreviews);
+  }
+  function openWheel() {
+    if (!playing() || !P()) return;
+    if (!wheel) {
+      wheel = document.createElement('div'); wheel.id = 'ppEmoteWheel';
+      wheel.innerHTML = '<div class="ring"></div>';
+      const close = ev => { if (ev.target === wheel) { ev.preventDefault(); closeWheel(); } };
+      wheel.addEventListener('touchstart', close, { passive: false }); wheel.addEventListener('mousedown', close);
+      document.body.appendChild(wheel);
+    }
+    const ring = wheel.querySelector('.ring'), R = Math.min(132, Math.min(innerWidth, innerHeight) * 0.36);
+    ring.innerHTML = '<div class="mid">EMOTES<span>tap one, or 1-8</span></div>';
+    previews = [];
+    EMOTES.forEach((em, i) => {
+      const a = -Math.PI / 2 + i * Math.PI * 2 / EMOTES.length, b = document.createElement('button');
+      const lock = !unlocked(em);
+      b.className = 'em' + (lock ? ' locked' : '');
+      b.style.left = Math.cos(a) * R + 'px'; b.style.top = Math.sin(a) * R + 'px';
+      b.innerHTML = '<span class="key">' + (i + 1) + '</span>' + (lock ? '<span class="shop">SHOP</span>' : '') + '<span class="nm">' + em.name + '</span>';
+      const cv = sized(document.createElement('canvas'), 84, 76); cv.className = 'pv'; b.insertBefore(cv, b.firstChild);
+      previews.push({ cv, em });
+      const go = ev => { ev.preventDefault(); ev.stopPropagation(); closeWheel(); API.play(em.id); };
+      b.addEventListener('touchstart', go, { passive: false }); b.addEventListener('mousedown', go);
+      ring.appendChild(b);
+    });
+    wheel.style.display = 'block'; wheelOpen = true; openedAt = performance.now() / 1000;
+    if (!raf) raf = requestAnimationFrame(tickPreviews);
+  }
+  function closeWheel() { if (wheel) wheel.style.display = 'none'; wheelOpen = false; previews = []; }
+  function ensureBtn() {
+    if (btn) return;
+    btn = document.createElement('button'); btn.id = 'ppEmoteBtn'; btn.title = 'Emotes (Z)';
+    btnCanvas = sized(document.createElement('canvas'), 52, 52); btn.appendChild(btnCanvas);
+    const tog = ev => { ev.preventDefault(); ev.stopPropagation(); if (wheelOpen) closeWheel(); else openWheel(); };
+    btn.addEventListener('touchstart', tog, { passive: false }); btn.addEventListener('mousedown', tog);
+    document.body.appendChild(btn);
+  }
+  ensureBtn();
+  // the button shows your character waving (redrawn a few times a second)
+  let btnT = 0;
+  (window._rafHubTickers = window._rafHubTickers || []).push(function _ppEmoteBtnTick(dt) {
+    if (!btn || btn.style.display === 'none') return;
+    btnT += dt; if (btnT < 1 / 20) return;
+    preview(btnCanvas, 52, 52, 'wave', (performance.now() / 1000) % 2.2, 0.9);
+    btnT = 0;
+  });
+  window.addEventListener('keydown', e => {
+    if (e.repeat || !e.key) return;
+    const k = e.key.toLowerCase();
+    if (k === 'z' && playing()) { if (wheelOpen) closeWheel(); else openWheel(); }
+    else if (k === 'escape' && wheelOpen) closeWheel();
+    else if (wheelOpen && /^[1-8]$/.test(k)) { closeWheel(); API.play(EMOTES[+k - 1].id); }
+  });
+})();
+</script>
+<script>
 // ===== Press Play Prodigy: Press Play exclusive character (only from the Press Play shop) =====
 // Registered the same way as the other add-on capsule characters. Its tier ('pressplay')
 // is in no capsule pool, so it can never be rolled; it is given straight to you.
@@ -41553,12 +41902,15 @@ window._claimLBro = function() {
     updateBtns();
   });
 
-  // song sync runs while you play as the Prodigy, or while the Settings panel is open (for tap-along)
+  // the beat clock for anyone who wants it (emote dances): beats since start, following the song when locked
+  window.PPBeat = { info: () => ({ beat: beatClock / BEAT, bpm: 60 / BEAT, locked: SYNC.locked && SYNC.bpm > 0 }) };
+  // song sync runs while you play as the Prodigy, while someone dances, or while the Settings panel is open (for tap-along)
   let statusT = 0;
   (window._rafHubTickers = window._rafHubTickers || []).push(function _ppSongSyncTick(dt) {
     const panel = document.getElementById('ppBeatSync'), shown = !!(panel && panel.offsetParent);
     const asProdigy = window.selectedCharacter === ID && (!window._gameMode || window._gameMode() === 'play');
-    if (!asProdigy && !shown && !SYNC.taps) return;
+    const dancing = window.PPEmote && window.PPEmote.wantsBeat();
+    if (!asProdigy && !shown && !SYNC.taps && !dancing) return;
     if (!asProdigy) beatClock += dt;   // keep the clock running for tap-along
     songSync(dt);
     if (shown && (statusT -= dt) <= 0) {
