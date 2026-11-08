@@ -25,7 +25,13 @@
     native: function(list){ call('native', [list]); },
     // a fact the shop needs, such as how many knights are still locked
     info: function(key, value){ call('info', [key, value]); },
+    // a Press Play exclusive the player owns for good (cosmetics and the like)
+    has: function(kind){ return !!call('has', [kind], false); },
     // take every pending boost of this kind; returns the amount (0 if none)
-    take: function(kind){ return +call('take', [kind], 0) || 0; }
+    take: function(kind){ return +call('take', [kind], 0) || 0; },
+    // how many of a boost are waiting, without using them
+    peek: function(kind){ return +call('peek', [kind], 0) || 0; },
+    // take just one of a pending boost (for rewards that each need a tap, like crates)
+    takeOne: function(kind){ return +call('takeOne', [kind], 0) || 0; }
   };
 })();

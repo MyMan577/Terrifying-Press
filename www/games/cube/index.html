@@ -330,8 +330,13 @@ var CHARS={
   jester:{name:'Jester',color:'#e04a8a',weapons:['boomerang','knives','bomb'],cost:260,st:[2,5,2,5]},
   witch:{name:'Witch',color:'#2f8f5a',weapons:['icestaff','firestaff'],cost:280,st:[2,3,4,4]},
   druid:{name:'Druid',color:'#5a8f3a',weapons:['whip','boomerang'],cost:300,st:[3,4,3,4]},
-  stormsage:{name:'Storm Sage',color:'#3a6fd9',weapons:['zapstaff','icestaff'],cost:340,st:[2,3,5,3]}
+  stormsage:{name:'Storm Sage',color:'#3a6fd9',weapons:['zapstaff','icestaff'],cost:340,st:[2,3,5,3]},
+  // Press Play exclusive: only from the Press Play shop, never sold for coins
+  pressplay:{name:'Press Play Paladin',color:'#8b5cff',weapons:['zapstaff','katana','boomerang'],cost:0,ppp:true,st:[4,4,4,4]}
 };
+// knights that show in the roster: Press Play exclusives only once you own them
+function ckeys(){return Object.keys(CHARS).filter(function(k){return !CHARS[k].ppp||save.chars.indexOf(k)>=0;});}
+function buyableLeft(){return Object.keys(CHARS).filter(function(k){return !CHARS[k].ppp&&save.chars.indexOf(k)<0;}).length;}
 /* Accessories: one is earned the first time you clear each stage, in this order. Each knight wears up to three. */
 var ACC=[
   {id:'clover',icon:'🍀',name:'Lucky Clover',desc:'+1 Luck',b:{luck:1}},
@@ -418,8 +423,9 @@ function wi(){var a=CHARS[save.char].weapons;return Math.min(save.wsel[save.char
 function wkey(){return CHARS[save.char].weapons[wi()];}
 function persist(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(save));}catch(e){}}
 // knights bought in the Press Play shop join the roster the next time the game opens
-(function(){var n=PPHub.take('knight');while(n-->0){var free=Object.keys(CHARS).filter(function(k){return save.chars.indexOf(k)<0;});if(!free.length)break;var k=free[Math.floor(Math.random()*free.length)];save.chars.push(k);setTimeout(function(k){return function(){toast('⚔️ '+(CHARS[k].name||k)+' joined from the Press Play shop');};}(k),900);}persist();
-PPHub.info('knightsLeft',Object.keys(CHARS).filter(function(k){return save.chars.indexOf(k)<0;}).length);})();
+(function(){if(PPHub.take('pppknight')&&save.chars.indexOf('pressplay')<0){save.chars.push('pressplay');setTimeout(function(){toast('▶️ The Press Play Paladin joined your roster');},900);}
+var n=PPHub.take('knight');while(n-->0){var free=Object.keys(CHARS).filter(function(k){return !CHARS[k].ppp&&save.chars.indexOf(k)<0;});if(!free.length)break;var k=free[Math.floor(Math.random()*free.length)];save.chars.push(k);setTimeout(function(k){return function(){toast('⚔️ '+(CHARS[k].name||k)+' joined from the Press Play shop');};}(k),900);}persist();
+PPHub.info('knightsLeft',buyableLeft());})();
 /* ---------- stats and accessories ---------- */
 function slotsOf(k){var a=save.gear[k];if(!Array.isArray(a))a=save.gear[k]=[null,null,null];while(a.length<3)a.push(null);return a;}
 function gearOf(k){return slotsOf(k).filter(function(id){return id&&ACCM[id]&&save.acc.indexOf(id)>=0;});}
@@ -1467,7 +1473,7 @@ function say(t){var m=$('#msg');m.textContent=t;clearTimeout(say.t);say.t=setTim
 function renderShop(){
   $('#tCoins').textContent=save.coins;
   var box=$('#shopC'),sl=box.scrollLeft;box.innerHTML='';
-  Object.keys(CHARS).forEach(function(key){
+  ckeys().forEach(function(key){
     var d=CHARS[key],owned=save.chars.indexOf(key)>=0,eq=save.char===key;
     var b=document.createElement('button');
     b.type='button';b.className='item'+(eq?' on':'');
@@ -1491,7 +1497,7 @@ function openSheet(k){
   $('#sChar').hidden=false;$('#chMsg').textContent='';
   sizeSheet();renderSheet();beep(520,.05,'triangle',.04,1.3);
 }
-function stepSheet(d){var ks=Object.keys(CHARS),i=(ks.indexOf(SH.k)+d+ks.length)%ks.length;openSheet(ks[i]);}
+function stepSheet(d){var ks=ckeys(),i=(ks.indexOf(SH.k)+d+ks.length)%ks.length;openSheet(ks[i]);}
 function closeSheet(){SH.open=false;$('#sChar').hidden=true;renderShop();renderSwitch();}
 function sizeSheet(){
   var c=$('#chCv'),r=c.getBoundingClientRect(),d=Math.min(window.devicePixelRatio||1,2);
@@ -1570,7 +1576,7 @@ $('#chAct').addEventListener('click',function(){
   var k=SH.k,d=CHARS[k];
   if(save.chars.indexOf(k)<0){
     if(save.coins<d.cost){sheetSay('Need '+(d.cost-save.coins)+' more coins.');beep(160,.12,'square',.04,.8);return;}
-    save.coins-=d.cost;save.chars.push(k);save.wsel[k]=SH.w;checkAch();PPHub.info('knightsLeft',Object.keys(CHARS).length-save.chars.length);
+    save.coins-=d.cost;save.chars.push(k);save.wsel[k]=SH.w;checkAch();PPHub.info('knightsLeft',buyableLeft());
     beep(660,.1,'triangle',.06,1.5);
   }else if(save.char===k){closeSheet();return;}
   save.char=k;persist();applyLoadout();$('#tCoins').textContent=save.coins;renderSheet();
@@ -1706,7 +1712,7 @@ var ACH=[
   {id:'boss',icon:'🛡️',name:'Untouchable',desc:'Beat a boss without getting hit',r:60},
   {id:'knights5',icon:'⚔️',name:'Round table',desc:'Own 5 knights',r:60,ok:function(){return save.chars.length>=5;}},
   {id:'maxup',icon:'🔨',name:'Fully forged',desc:'Max out an upgrade',r:50,ok:function(){return Object.keys(UPG).some(function(k){return upl(k)>=2;});}},
-  {id:'knights20',icon:'🎪',name:'Full roster',desc:'Own every knight',r:300,ok:function(){return save.chars.length>=Object.keys(CHARS).length;}},
+  {id:'knights20',icon:'🎪',name:'Full roster',desc:'Own every knight',r:300,ok:function(){return buyableLeft()===0;}},
   {id:'acc6',icon:'🎒',name:'Treasure bag',desc:'Find 6 accessories',r:60,ok:function(){return save.acc.length>=6;}},
   {id:'gear3',icon:'🧰',name:'Fully kitted',desc:'Wear 3 accessories on one knight',r:40,ok:function(){return gearOf(save.char).length>=3;}},
   {id:'bank',icon:'💰',name:'Treasure hoard',desc:'Bank 1,000 coins in total',r:80,ok:function(){return save.life>=1000;}}
@@ -1904,6 +1910,22 @@ function knightDraw(k,x0,y0,pw,ph,o){
     R('#5a3a1e',0,0.74,1,0.1);R(GOLD,0.42,0.72,0.16,0.14);
     ctx.lineWidth=lw*1.3;ctx.beginPath();ctx.moveTo(X(0.05),Y(0.62));ctx.lineTo(X(0.95),Y(0.97));ctx.stroke();ctx.lineWidth=lw;
     R('#c99a62',0.7,0.78,0.26,0.2);
+  }else if(k==='pressplay'){
+    // Press Play Paladin: violet armour, a teal-to-pink chest band with a play button, headphones and a pink cape
+    P('#ff5fd8',[[0.05,0.1],[-(0.3+0.5*run),0.32+fl],[-(0.25+0.45*run),0.95+fl],[0.05,0.9]]);
+    base('#5b3fd0');
+    var pg=ctx.createLinearGradient(X(0),0,X(1),0);pg.addColorStop(0,'#6ee7d0');pg.addColorStop(0.55,'#8b5cff');pg.addColorStop(1,'#ff5fd8');
+    ctx.fillStyle=pg;ctx.fillRect(X(0),Y(0.6),pw,ph*0.2);ctx.strokeRect(X(0),Y(0.6),pw,ph*0.2);
+    P('#fff',[[0.43,0.63],[0.43,0.77],[0.6,0.7]]);
+    R(INK,0.1,0.22,0.8,0.24);
+    E(0.22,0.29,0.16,0.1,true);E(0.62,0.29,0.16,0.1,true);
+    // black and grey headphones, in Press Play's own colours
+    ctx.lineWidth=lw*2.2;ctx.strokeStyle='#15161b';ctx.beginPath();ctx.arc(X(0.5),Y(0.24),pw*0.6,Math.PI*1.1,Math.PI*1.9);ctx.stroke();
+    ctx.lineWidth=lw*0.8;ctx.strokeStyle='#5c606b';ctx.beginPath();ctx.arc(X(0.5),Y(0.24),pw*0.6,Math.PI*1.22,Math.PI*1.78);ctx.stroke();
+    ctx.lineWidth=lw;ctx.strokeStyle=INK;
+    R('#15161b',-0.14,0.12,0.2,0.36);R('#15161b',0.94,0.12,0.2,0.36);
+    R('#3a3d46',-0.1,0.18,0.12,0.24);R('#3a3d46',0.98,0.18,0.12,0.24);
+    rivet(0.5,0.09);
   }else if(k==='knight'){
     P('#b8312a',[[0,0.1],[-(0.3+0.5*run),0.3+fl],[-(0.27+0.45*run),0.95+fl],[0,0.9]]);
     base('#b8c4d0');

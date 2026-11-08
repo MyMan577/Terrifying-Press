@@ -26031,11 +26031,18 @@ function resolveCollisions(axis, dt) {
     { id:'cs19', name:'Coin Magnet',        icon:'🧲', cost:30, desc:'Nearby coins are auto-collected (2 tile range)',category:'util'  },
     { id:'cs20', name:'Double Coin Glow',   icon:'💛', cost:30, desc:'Coins on the map glow brighter and pulse',     category:'util'  },
     { id:'cs21', name:'Cosmic Coin Trail',  icon:'✨', cost:0,  desc:'A shimmering cosmic trail - proof of a secret found', category:'trail', _secret: true },
+    { id:'cs22', name:'Press Play Wave',    icon:'▶️', cost:0,  desc:'Press Play exclusive: a teal-to-pink sound wave trail and orbiting music notes', category:'aura', _ppp: true },
   ];
   window._WARDROBE_COSMETICS = COSMETICS;
 
   let unlockedCosmetics = new Set(JSON.parse(localStorage.getItem('obby_cosmetics') || '[]'));
   let activeCosmetics   = new Set(JSON.parse(localStorage.getItem('obby_cosm_active') || '[]'));
+  // the Press Play Wave comes from the Press Play shop
+  if (PPHub.take('wave') && !unlockedCosmetics.has('cs22')) {
+    unlockedCosmetics.add('cs22'); activeCosmetics.add('cs22');
+    localStorage.setItem('obby_cosmetics', JSON.stringify([...unlockedCosmetics]));
+    localStorage.setItem('obby_cosm_active', JSON.stringify([...activeCosmetics]));
+  }
 
   function saveCosmetics() {
     localStorage.setItem('obby_cosmetics', JSON.stringify([...unlockedCosmetics]));
@@ -26053,6 +26060,7 @@ function resolveCollisions(axis, dt) {
     for (const c of COSMETICS) {
       
       if (c._secret && !hasCosmetic(c.id) && localStorage.getItem('obby_egg_unlocked') !== '1') continue;
+      if (c._ppp && !hasCosmetic(c.id)) continue;
       const owned  = hasCosmetic(c.id);
       const active = cosmeticActive(c.id);
       const canAfford = totalCoins >= c.cost;
@@ -26116,6 +26124,10 @@ function resolveCollisions(axis, dt) {
       const hue = (Date.now()/8)%360;
       for (let i=0;i<5;i++) particles.push({x:px+(Math.random()-.5)*10,y:py+(Math.random()-.5)*10,vx:(Math.random()-.5)*3,vy:(Math.random()-.5)*3,life:.4,color:`hsl(${(hue+i*30)%360},100%,60%)`,size:3+Math.random()*3});
     }
+    if (cosmeticActive('cs22')) {
+      const t22 = Date.now() / 120;
+      for (let i=0;i<6;i++) { const k=i/5; particles.push({x:px-i*3,y:py+Math.sin(t22+i*0.9)*7,vx:-1-Math.random(),vy:(Math.random()-.5)*0.6,life:.55,color:['#6ee7d0','#8b5cff','#ff5fd8'][Math.floor(k*2.99)],size:3+Math.random()*2}); }
+    }
     if (cosmeticActive('cs21')) { 
       const cols21=['#e040fb','#ce93d8','#ffffff','#9c27b0','#7c4dff'];
       for (let i=0;i<6;i++) particles.push({x:px+(Math.random()-.5)*12,y:py+(Math.random()-.5)*12,vx:(Math.random()-.5)*4,vy:(Math.random()-.5)*4-1.5,life:.5,color:cols21[Math.floor(Math.random()*cols21.length)],size:3+Math.random()*4});
@@ -26134,6 +26146,9 @@ function resolveCollisions(axis, dt) {
       const hue = (Date.now()/10)%360;
       if (Math.random() < 0.6)
         particles.push({x:px+(Math.random()-.5)*8,y:py+8+(Math.random()-.5)*4,vx:(Math.random()-.5)*1.5,vy:-(Math.random())*1,life:.3,color:`hsl(${(hue+Math.random()*60)%360},100%,60%)`,size:2+Math.random()*2});
+    }
+    if (cosmeticActive('cs22') && Math.random() < 0.5) {
+      particles.push({x:px+(Math.random()-.5)*8,y:py+6+Math.sin(Date.now()/90)*3,vx:(Math.random()-.5)*0.8,vy:-0.4-Math.random(),life:.45,color:['#6ee7d0','#8b5cff','#ff5fd8'][Math.floor(Math.random()*3)],size:2+Math.random()*2});
     }
     if (cosmeticActive('cs21')) { 
       if (Math.random() < 0.55) {
@@ -26200,6 +26215,10 @@ function resolveCollisions(axis, dt) {
     if (cosmeticActive('cs15')) { 
       for (let i=0;i<5;i++) { const a=i/5*Math.PI*2; const fx=cx+Math.cos(a)*8+Math.sin(now2*3+i)*2, fy=cy-22-Math.abs(Math.sin(now2*4+i))*6;
         ctx.save(); ctx.globalAlpha=0.9; ctx.fillStyle=['#ff4500','#ff8c00','#ffd700'][i%3]; ctx.beginPath(); ctx.arc(fx,fy,3+Math.random(),0,Math.PI*2); ctx.fill(); ctx.restore(); }
+    }
+    if (cosmeticActive('cs22')) {
+      for (let i=0;i<3;i++) { const a=now2*1.8+i*Math.PI*2/3, nx=cx+Math.cos(a)*20, ny=cy-4+Math.sin(a)*9;
+        ctx.save(); ctx.globalAlpha=0.9; ctx.fillStyle=['#6ee7d0','#8b5cff','#ff5fd8'][i]; ctx.font='bold 12px sans-serif'; ctx.fillText(i===1?'♫':'♪',nx-4,ny+4); ctx.restore(); }
     }
     if (cosmeticActive('cs16')) { 
       if (Math.random()<0.08) { ctx.save(); ctx.globalAlpha=0.3; ctx.fillStyle=`rgba(${Math.random()>0.5?255:0},0,${Math.random()>0.5?255:0},0.5)`;
@@ -28015,13 +28034,13 @@ function resolveCollisions(axis, dt) {
   };
 
   
-  window.openMysteryBox = function(tierId) {
+  window.openMysteryBox = function(tierId, free) {
     const tier = MBOX_TIERS.find(t => t.id === tierId);
     if (!tier) return;
     const coins = window._mboxGetCoins ? window._mboxGetCoins() : 0;
-    if (coins < tier.cost) { if (window._mboxSetMsg) window._mboxSetMsg('❌ Not enough coins!'); return; }
+    if (!free && coins < tier.cost) { if (window._mboxSetMsg) window._mboxSetMsg('❌ Not enough coins!'); return; }
 
-    if (window._mboxSpendCoins) window._mboxSpendCoins(tier.cost);
+    if (!free && window._mboxSpendCoins) window._mboxSpendCoins(tier.cost);
     mboxOpened[tier.id] = (mboxOpened[tier.id] || 0) + 1;
     saveMbox();
 
@@ -28752,12 +28771,12 @@ function resolveCollisions(axis, dt) {
   }
 
   
-  window.openCharBox = function(tierId) {
+  window.openCharBox = function(tierId, free) {
     const tier = CBOX_TIERS.find(t=>t.id===tierId);
     if (!tier) return;
     const coins = window._mboxGetCoins ? window._mboxGetCoins() : 0;
-    if (coins < tier.cost) { if (window._mboxSetMsg) window._mboxSetMsg('❌ Not enough coins!'); return; }
-    if (window._mboxSpendCoins) window._mboxSpendCoins(tier.cost);
+    if (!free && coins < tier.cost) { if (window._mboxSetMsg) window._mboxSetMsg('❌ Not enough coins!'); return; }
+    if (!free && window._mboxSpendCoins) window._mboxSpendCoins(tier.cost);
     cboxOpened[tier.id] = (cboxOpened[tier.id]||0) + 1;
 
     
@@ -39590,5 +39609,29 @@ window._claimLBro = function() {
 </script>
 <script src="../qrlink/qrlink.js"></script>
 <script src="online.js"></script>
+<script>
+// Free mystery boxes and character capsules bought in the Press Play shop open one after another.
+// Each is taken from the shop only as it opens, so leaving mid-way keeps the rest for next time.
+(function(){
+  const KINDS = [['mbox_common','common',0],['mbox_rare','rare',0],['mbox_epic','epic',0],['mbox_legendary','legendary',0],['mbox_mythic','mythic',0],
+                 ['cb_silver','cb_silver',1],['cb_gold','cb_gold',1],['cb_retro','cb_retro',1]];
+  let k = 0;
+  function next(){
+    const ov = document.getElementById('mboxOpenOverlay');
+    if (ov && ov.classList.contains('active')) { setTimeout(next, 400); return; }
+    while (k < KINDS.length) {
+      const [kind, tier, isChar] = KINDS[k];
+      if (PPHub.takeOne(kind)) {
+        if (isChar) { if (window.openCharBox) window.openCharBox(tier, true); }
+        else if (window.openMysteryBox) window.openMysteryBox(tier, true);
+        setTimeout(next, 700);
+        return;
+      }
+      k++;
+    }
+  }
+  setTimeout(next, 1500);
+})();
+</script>
 </body>
 </html>
