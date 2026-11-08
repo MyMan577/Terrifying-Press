@@ -150,7 +150,14 @@
     ],
     cube: [
       { id:'cl10', n:'Dash Machine',  d:'Clear 10 stages (replays count)', p:20, k:'ev', e:'clear', v:10 },
-      { id:'cl50', n:'Stage Hopper',  d:'Clear 50 stages (replays count)', p:50, k:'ev', e:'clear', v:50 }
+      { id:'cl50', n:'Stage Hopper',  d:'Clear 50 stages (replays count)', p:50, k:'ev', e:'clear', v:50 },
+      { id:'k100', n:'Foe Smasher',   d:'Defeat 100 foes',                 p:20, k:'ev', e:'kill', v:100 },
+      { id:'k1k',  n:'Army of One',   d:'Defeat 1,000 foes',               p:70, k:'ev', e:'kill', v:1000 },
+      { id:'bs1',  n:'Boss Slayer',   d:'Beat a boss',                     p:15, k:'ev', e:'boss', v:1 },
+      { id:'bs20', n:'Boss Hunter',   d:'Beat 20 bosses',                  p:80, k:'ev', e:'boss', v:20 },
+      { id:'fl10', n:'Not a Scratch', d:'Clear 10 stages without getting hit', p:40, k:'ev', e:'flawless', v:10 },
+      { id:'st15', n:'Deep Runner',   d:'Reach stage 15',                  p:35, k:'bt', e:'stage', v:15 },
+      { id:'st30', n:'Endless Knight',d:'Reach stage 30',                  p:90, k:'bt', e:'stage', v:30 }
     ],
     kitchen: [
       { id:'sv200', n:'Rush Regular', d:'Serve 200 orders',  p:30, k:'ev', e:'serve', v:200 }
@@ -275,6 +282,9 @@
     ['ev', 'blob', 'win', 2, 40, 'Beat the CPU twice in Blob Barrage'],
     ['ev', 'cube', 'clear', 2, 15, 'Clear 2 stages in Dashcube Knight'],
     ['ev', 'cube', 'clear', 5, 35, 'Clear 5 stages in Dashcube Knight'],
+    ['ev', 'cube', 'kill', 40, 20, 'Defeat 40 foes in Dashcube Knight'],
+    ['ev', 'cube', 'boss', 1, 25, 'Beat a boss in Dashcube Knight'],
+    ['ev', 'cube', 'flawless', 2, 30, 'Clear 2 Dashcube Knight stages without getting hit'],
     ['ev', 'kitchen', 'serve', 15, 20, 'Serve 15 orders in Kitchen Rush'],
     ['ev', 'kitchen', 'serve', 40, 40, 'Serve 40 orders in Kitchen Rush'],
     ['ev', 'lastcard', 'game', 3, 15, 'Finish 3 games of Last Card'],
@@ -306,6 +316,8 @@
     ['buy', '', '', 3, 60, 'Buy 3 things in the Shop this week'],
     ['ev', 'kitchen', 'serve', 150, 100, 'Serve 150 orders in Kitchen Rush'],
     ['ev', 'cube', 'clear', 20, 100, 'Clear 20 stages in Dashcube Knight'],
+    ['ev', 'cube', 'boss', 5, 100, 'Beat 5 bosses in Dashcube Knight'],
+    ['ev', 'cube', 'kill', 300, 90, 'Defeat 300 foes in Dashcube Knight'],
     ['ev', 'toque', 'win', 30, 100, 'Win 30 fights in Toque & Spear'],
     ['ev', 'bastion', 'win', 10, 100, 'Win 10 battles in Bastion Brawl'],
     ['ev', 'lastcard', 'win', 10, 90, 'Win 10 games of Last Card'],
@@ -578,9 +590,15 @@
           off:ownedOff('cube', 'pppknight'), buy:exclusive('cube', 'pppknight', 'pppknight') },
         { id:'pppknight2', n:'Press Play Phantom', x:1, d:'Press Play exclusive: a teal and violet knight in black and grey headphones. 3 Power, 5 Speed, 3 Health, 5 Dash, with Knives, Shuriken and Rapier.', p:450,
           off:ownedOff('cube', 'pppknight2'), buy:exclusive('cube', 'pppknight2', 'pppknight2') },
+        { id:'pppknight3', n:'Press Play Virtuoso', x:1, d:'Press Play exclusive: a pink-and-gold crowned knight in black and grey headphones. 5 Health, 5 Power, 4 Speed, 4 Luck, with all four kinds of always-on weapon: Blade Ring, Tempest Aura, Wisp Lantern and Morning Star.', p:500,
+          off:ownedOff('cube', 'pppknight3'), buy:exclusive('cube', 'pppknight3', 'pppknight3') },
+        { id:'heart', t:'Boost', n:'Heart Potion', d:'Start your next stage with an extra heart.', p:30, buy:function(){ return boost('cube', 'heart', 1); } },
+        { id:'guard', t:'Boost', n:'Guard Scroll', d:'The first hit in your next stage is blocked.', p:35, buy:function(){ return boost('cube', 'guard', 1); } },
+        { id:'fury', t:'Boost', n:'Fury Tonic', d:'Double damage for your whole next stage.', p:60, buy:function(){ return boost('cube', 'fury', 1); } },
         { id:'magnet', t:'Perk', n:'Coin Magnet', d:'Permanent perk: +10% coins from every cleared stage.', p:240, off:ownedOff('cube', 'magnet'), buy:exclusive('cube', 'magnet') },
         { id:'combo', t:'Bundle', n:'Coin Combo', d:'A Coin Chest and a Triple Coin Rush together.', p:190, buy:combo('cube', ['c1000', 'x3']) },
-        { id:'mystery', t:'Mystery', n:'Mystery Pack', d:'One random Dashcube Knight reward: coins, from a pouch up to a vault.', p:140, buy:mystery('cube', ['c250', 'c1000', 'c5000', 'x2', 'x3']) }
+        { id:'battle', t:'Bundle', n:'Battle Kit', d:'A Heart Potion, a Guard Scroll and a Fury Tonic together.', p:105, buy:combo('cube', ['heart', 'guard', 'fury']) },
+        { id:'mystery', t:'Mystery', n:'Mystery Pack', d:'One random Dashcube Knight reward: coins, from a pouch up to a vault, or a battle boost.', p:140, buy:mystery('cube', ['c250', 'c1000', 'c5000', 'x2', 'x3', 'fury']) }
       ]
     },
     kitchen: {
