@@ -19,8 +19,9 @@
 
   /* ------------------------------------------------------------------ saved state */
   function fresh(){
-    return { v:1, stars:0, total:0, spins:0, lastSpin:'', slots:3,
+    return { v:1, stars:0, total:0, spins:0, lastSpin:'', slots:3, tickets:0, trials:{},
       charms:{ own:{}, eq:[] }, orders:{ list:[], streak:0, done:0, seq:0 },
+      wheel:{ view:'daily', meter:0, golden:0, streak:0, lastDay:'', hist:[] }, drip:{ day:'', got:{} },
       stats:{}, opts:{ fab:true, sfx:true }, storm:{ until:0, mult:2 }, gameStarMs:0 };
   }
   function load(){
@@ -28,7 +29,7 @@
     try { o = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch(e){}
     if (!o || typeof o !== 'object') return f;
     Object.keys(f).forEach(function(k){ if (!(k in o)) o[k] = f[k]; });
-    ['charms', 'orders', 'opts', 'storm'].forEach(function(k){
+    ['charms', 'orders', 'opts', 'storm', 'wheel', 'drip'].forEach(function(k){
       if (!o[k] || typeof o[k] !== 'object') o[k] = f[k];
       Object.keys(f[k]).forEach(function(j){ if (!(j in o[k])) o[k][j] = f[k][j]; });
     });
@@ -72,12 +73,36 @@
   PP.mult = function(kind){
     if (!on()) return 1;
     var m = 1;
-    S.charms.eq.forEach(function(id){ var c = charmById(id); if (c && c.fx && c.fx[kind]) m *= c.fx[kind]; });
+    activeIds().forEach(function(id){ var c = charmById(id); if (c && c.fx && c.fx[kind]) m *= c.fx[kind]; });
     if (stormActive() && (kind === 'click' || kind === 'ps')) m *= S.storm.mult;
     if (kind === 'xp') m *= 1.25;   // the mode's own bonus: 25% more EXP
     multFns.forEach(function(fn){ try { m *= (fn(kind) || 1); } catch(e){} });
     return m;
   };
+
+  // charms in effect: the equipped ones plus any on a timed trial
+  function activeIds(){
+    var ids = S.charms.eq.slice(), now = Date.now();
+    Object.keys(S.trials).forEach(function(id){
+      if (S.trials[id] > now){ if (ids.indexOf(id) < 0) ids.push(id); } else delete S.trials[id];
+    });
+    return ids;
+  }
+  PP.activeCharms = activeIds;
+  // what the charms do inside a game: score and coins multiply (default 1), everything else adds (default 0)
+  PP.gameFx = function(g, kind){
+    var mul = (kind === 'score' || kind === 'coins'), v = mul ? 1 : 0;
+    if (!on()) return v;
+    activeIds().forEach(function(id){
+      var c = charmById(id), x = c && c.gfx && c.gfx[g] && c.gfx[g][kind];
+      if (x){ if (mul) v *= x; else v += x; }
+    });
+    return v;
+  };
+  PP.addOrderKind = function(def){ if (!orderKind(def.id)) ORDER_KINDS.push(def); };
+  PP.tickets = function(){ return S.tickets; };
+  PP.spendTickets = function(n){ if (S.tickets < n) return false; S.tickets -= n; save(); refreshBalance(); return true; };
+  PP.addTickets = function(n){ S.tickets += n; save(); refreshBalance(); };
 
   /* ------------------------------------------------------------------ sound (small synth blips) */
   var AC = null;
@@ -98,21 +123,52 @@
   PP.chime = chime;
 
   /* ------------------------------------------------------------------ charms (Ante Up) */
+  /* small helpers the daily-drip charms use to hand things to the games */
+  function bastionVoucher(n){
+    try {
+      var o = JSON.parse(localStorage.getItem('ccGachaState') || 'null') || {};
+      var d = { vouchers:0, owned:{}, dupProgress:0, pullsSinceNew:0, crownCards:0, crownPlusCards:0, crownCoins:0, shopUnlocked:{} };
+      Object.keys(d).forEach(function(k){ if (!(k in o)) o[k] = d[k]; });
+      o.vouchers = (o.vouchers || 0) + n; localStorage.setItem('ccGachaState', JSON.stringify(o)); return true;
+    } catch(e){ return false; }
+  }
+  function cubeCoins(n){
+    try {
+      var o = JSON.parse(localStorage.getItem('dashcube-knight-v1') || 'null') || {};
+      o.coins = (o.coins || 0) + n; localStorage.setItem('dashcube-knight-v1', JSON.stringify(o)); return true;
+    } catch(e){ return false; }
+  }
+  function giveBoost(g, k, n){ try { if (window.__ppPoints && window.__ppPoints.give){ window.__ppPoints.give(g, k, n); return true; } } catch(e){} return false; }
   var CHARMS = [
-    { id:'magnet',  icon:'🧲', n:'Coin Magnet',     rar:'Common',    p:30,   fx:{ click:1.25 },            d:'Disc clicks give 25% more.' },
-    { id:'metro',   icon:'⏱️', n:'Metronome',       rar:'Common',    p:35,   fx:{ ps:1.15 },               d:'Groove production +15%.' },
-    { id:'clover',  icon:'🍀', n:'Lucky Clover',    rar:'Common',    p:40,   fx:{ spin:1.25 },             d:'Wheel rewards are 25% bigger.' },
-    { id:'halo',    icon:'🎧', n:'Headphone Halo',  rar:'Rare',      p:90,   fx:{ points:1.1 },            d:'Press Play Points earned +10%.' },
-    { id:'mic',     icon:'🎤', n:'Encore Mic',      rar:'Rare',      p:110,  fx:{ order:1.25 },            d:'Order rewards are 25% bigger.' },
-    { id:'study',   icon:'📚', n:'Study Buddy',     rar:'Rare',      p:120,  fx:{ xp:1.15 },               d:'App EXP +15% on top of the mode bonus.' },
-    { id:'bass',    icon:'🔊', n:'Bass Boost',      rar:'Rare',      p:140,  fx:{ click:1.5 },             d:'Disc clicks give 50% more.' },
-    { id:'vinyl',   icon:'💿', n:'Vinyl Spinner',   rar:'Rare',      p:170,  fx:{ ps:1.3 },                d:'Groove production +30%.' },
-    { id:'crown',   icon:'👑', n:'Crown',           rar:'Epic',      p:400,  fx:{ click:1.2, ps:1.2 },     d:'Clicks and production +20%.' },
-    { id:'storm',   icon:'🌩️', n:'Storm Caller',    rar:'Legendary', p:900,  fx:{},                        d:'Groove Storms last twice as long and give ×3.' },
-    { id:'infinity',icon:'♾️', n:'Infinity Mix',    rar:'Legendary', p:1500, fx:{ ps:2 },                  d:'Groove production ×2.' }
+    // the app: the clicker, the wheel, orders, Points and EXP
+    { id:'magnet',  cat:'app',   icon:'🧲', n:'Coin Magnet',     rar:'Common',    p:30,   fx:{ click:1.25 },        d:'Disc clicks give 25% more.' },
+    { id:'metro',   cat:'app',   icon:'⏱️', n:'Metronome',       rar:'Common',    p:35,   fx:{ ps:1.15 },           d:'Groove production +15%.' },
+    { id:'clover',  cat:'app',   icon:'🍀', n:'Lucky Clover',    rar:'Common',    p:40,   fx:{ spin:1.25 },         d:'Wheel rewards are 25% bigger.' },
+    { id:'halo',    cat:'app',   icon:'🎧', n:'Headphone Halo',  rar:'Rare',      p:90,   fx:{ points:1.1 },        d:'Press Play Points earned +10%.' },
+    { id:'mic',     cat:'app',   icon:'🎤', n:'Encore Mic',      rar:'Rare',      p:110,  fx:{ order:1.25 },        d:'Order rewards are 25% bigger.' },
+    { id:'study',   cat:'app',   icon:'📚', n:'Study Buddy',     rar:'Rare',      p:120,  fx:{ xp:1.15 },           d:'App EXP +15% on top of the mode bonus.' },
+    { id:'bass',    cat:'app',   icon:'🔊', n:'Bass Boost',      rar:'Rare',      p:140,  fx:{ click:1.5 },         d:'Disc clicks give 50% more.' },
+    { id:'vinyl',   cat:'app',   icon:'💿', n:'Vinyl Spinner',   rar:'Rare',      p:170,  fx:{ ps:1.3 },            d:'Groove production +30%.' },
+    { id:'wild',    cat:'app',   icon:'🃏', n:'Wild Card',       rar:'Epic',      p:300,  fx:{ pull:0.75 },         d:'Album pulls cost 25% less.' },
+    { id:'crown',   cat:'app',   icon:'👑', n:'Crown',           rar:'Epic',      p:400,  fx:{ click:1.2, ps:1.2 }, d:'Clicks and production +20%.' },
+    { id:'storm',   cat:'app',   icon:'🌩️', n:'Storm Caller',    rar:'Legendary', p:900,  fx:{},                    d:'Groove Storms last twice as long and give ×3.' },
+    { id:'infinity',cat:'app',   icon:'♾️', n:'Infinity Mix',    rar:'Legendary', p:1500, fx:{ ps:2 },              d:'Groove production ×2.' },
+    // inside the minigames: the game reads these while you play
+    { id:'spatula', cat:'game',  g:'Kitchen Rush',     icon:'🍳', n:'Golden Spatula',  rar:'Rare',   p:130, gfx:{ kitchen:{ score:1.2 } },            d:'Kitchen Rush: every order scores 20% more.' },
+    { id:'stopwatch',cat:'game', g:'Kitchen Rush',     icon:'⏲️', n:'Stopwatch',       rar:'Rare',   p:110, gfx:{ kitchen:{ time:15 } },              d:'Kitchen Rush: +15 seconds on every timed shift.' },
+    { id:'ace',     cat:'game',  g:'Ante Up',          icon:'♠️', n:'Ace Up the Sleeve', rar:'Rare', p:150, gfx:{ anteup:{ cash:4, discard:1 } },     d:'Ante Up: start every run with +$4 and +1 discard in round one.' },
+    { id:'medic',   cat:'game',  g:'Blob Barrage',     icon:'⛑️', n:'Field Medic',     rar:'Rare',   p:140, gfx:{ blob:{ shield:1, aid:1 } },         d:'Blob Barrage: each of your blobs starts a CPU match with +1 Shield and +1 First aid kit.' },
+    { id:'map',     cat:'game',  g:'Dashcube Knight',  icon:'🗺️', n:'Treasure Map',    rar:'Rare',   p:160, gfx:{ cube:{ coins:1.2 } },               d:'Dashcube Knight: 20% more coins from every cleared stage.' },
+    { id:'dealer',  cat:'game',  g:'Last Card',        icon:'🎴', n:"Dealer's Edge",   rar:'Rare',   p:120, gfx:{ lastcard:{ wild:1 } },              d:'Last Card: an extra Wild in your opening hand (classic-style modes).' },
+    { id:'token',   cat:'game',  g:'Weapon Ball',      icon:'🪙', n:'Lucky Token',     rar:'Common', p:60,  gfx:{ weaponball:{ tokens:40 } },         d:'Weapon Ball: every Roguelite run starts with +40 tokens.' },
+    { id:'pulse',   cat:'game',  g:'Obby Builder',     icon:'⚡', n:"Prodigy's Pulse", rar:'Epic',   p:350, fx:{ rush:1.25 }, gfx:{ obby:{ hype:1 } }, d:'Obby Builder: the Prodigy starts with a full Hype meter. Rhythm Rush scores ×1.25.' },
+    // a little gift each day while equipped
+    { id:'lantern', cat:'daily', g:'Bastion Brawl',    icon:'🏮', n:'Voucher Lantern', rar:'Epic',   p:320, drip:function(){ return bastionVoucher(1) ? '+1 gacha voucher in Bastion Brawl' : ''; },        d:'Daily: +1 gacha voucher in Bastion Brawl.' },
+    { id:'totem',   cat:'daily', g:'Toque & Spear',    icon:'🗿', n:'Ancestor Totem',  rar:'Rare',   p:150, drip:function(){ return giveBoost('toque', 'trophies', 2) ? '+2 trophies waiting in Toque & Spear' : ''; }, d:'Daily: 2 trophies for your Toque & Spear satchel.' },
+    { id:'purse',   cat:'daily', g:'Dashcube Knight',  icon:'👛', n:"Knight's Purse",  rar:'Common', p:70,  drip:function(){ return cubeCoins(150) ? '+150 coins in Dashcube Knight' : ''; },                 d:'Daily: +150 coins in Dashcube Knight.' }
   ];
   function charmById(id){ for (var i = 0; i < CHARMS.length; i++) if (CHARMS[i].id === id) return CHARMS[i]; return null; }
-  PP.CHARMS = CHARMS; PP.charmEquipped = function(id){ return S.charms.eq.indexOf(id) >= 0; };
+  PP.CHARMS = CHARMS; PP.charmEquipped = function(id){ return activeIds().indexOf(id) >= 0; };
   var RAR = { Common:'#9aa3b2', Rare:'#6ea8ff', Epic:'#b05cff', Legendary:'#ffb36e' };
 
   /* ------------------------------------------------------------------ the Groove Storm */
@@ -124,82 +180,191 @@
     try { if (window.PPClicker) window.PPClicker.show(); } catch(e){}
   }
 
-  /* ------------------------------------------------------------------ the daily wheel */
-  var SEGS = [
-    { k:'g1',   t:'🎵', l:'Grooves',     c:'#6ee7d0', w:24 },
-    { k:'s5',   t:'+5',  l:'+5 Stars',   c:'#8b5cff', w:22 },
-    { k:'g2',   t:'🎶', l:'Big Grooves', c:'#ff5fd8', w:10 },
-    { k:'s15',  t:'+15', l:'+15 Stars',  c:'#ffb36e', w:12 },
-    { k:'free', t:'🎟️', l:'Free Spin',  c:'#39d5ff', w:9 },
-    { k:'storm',t:'🌩️', l:'Groove Storm',c:'#b79bff', w:9 },
-    { k:'s25',  t:'+25', l:'+25 Stars',  c:'#3ddc84', w:10 },
-    { k:'jack', t:'💎', l:'JACKPOT +60', c:'#ff6a3d', w:4 }
-  ];
-  var wheelAngle = 0, spinning = false;
+  /* ------------------------------------------------------------------ the wheels: a daily wheel and a golden one */
+  var WCOL = ['#6ee7d0', '#8b5cff', '#ff5fd8', '#ffb36e', '#39d5ff', '#3ddc84'];
+  var WHEELS = {
+    daily: { name:'Daily Wheel', segs:[
+      { k:'g1',   t:'🎵', l:'Grooves',       w:18 }, { k:'s5',   t:'+5',  l:'+5 Stars',    w:16 },
+      { k:'g2',   t:'🎶', l:'More Grooves',  w:14 }, { k:'s15',  t:'+15', l:'+15 Stars',   w:10 },
+      { k:'tick', t:'🎴', l:'Pull Ticket',   w:7  }, { k:'free', t:'🎟️', l:'Free Spin',  w:7  },
+      { k:'storm',t:'🌩️', l:'Groove Storm',  w:6  }, { k:'g3',   t:'💿', l:'Groove Hoard',w:5  },
+      { k:'s30',  t:'+30', l:'+30 Stars',    w:5  }, { k:'trial',t:'🧿', l:'Charm Trial (1h)', w:4 },
+      { k:'pts',  t:'▶️', l:'+25 Points',    w:4  }, { k:'jack', t:'💎', l:'JACKPOT (+100 Stars and a storm)', w:2 }
+    ] },
+    golden: { name:'Golden Wheel', segs:[
+      { k:'gg1',  t:'🎶', l:'Mega Grooves',  w:16 }, { k:'gs60', t:'+60', l:'+60 Stars',   w:18 },
+      { k:'gtick',t:'🎴', l:'3 Pull Tickets',w:14 }, { k:'gtrial',t:'🧿', l:'Charm Trial (24h)', w:12 },
+      { k:'gstorm',t:'🌩️', l:'Mega Storm (30 min)', w:12 }, { k:'gpts', t:'▶️', l:'+100 Points', w:10 },
+      { k:'gs120',t:'+120', l:'+120 Stars',  w:8  }, { k:'gcharm',t:'🎁', l:'FREE CHARM (kept for good)', w:10 }
+    ] }
+  };
+  var wheelAngle = { daily:0, golden:0 }, spinning = false;
   function spinReady(){ return S.lastSpin !== dayKey() || S.spins > 0; }
   PP.spinReady = spinReady;
-  function pickSeg(){
-    var tot = 0; SEGS.forEach(function(s){ tot += s.w; });
+  function yesterdayKey(){ var d = new Date(Date.now() - 864e5); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+  function streakMult(){ return 1 + Math.min(1, Math.max(0, S.wheel.streak - 1) * 0.1); }
+  function pickSeg(wid){
+    var segs = WHEELS[wid].segs, tot = 0; segs.forEach(function(s){ tot += s.w; });
     var r = Math.random() * tot, i = 0;
-    for (; i < SEGS.length; i++){ r -= SEGS[i].w; if (r < 0) break; }
-    return Math.min(i, SEGS.length - 1);
+    for (; i < segs.length; i++){ r -= segs[i].w; if (r < 0) break; }
+    return Math.min(i, segs.length - 1);
   }
-  function drawWheel(cv, ang){
-    var ctx = cv.getContext('2d'), W = cv.width, R = W / 2 - 8, cx = W / 2, cy = W / 2, n = SEGS.length, sg = Math.PI * 2 / n;
+  function drawWheel(cv, wid, ang){
+    var segs = WHEELS[wid].segs, ctx = cv.getContext('2d'), W = cv.width, R = W / 2 - 14, cx = W / 2, cy = W / 2, n = segs.length, sg = Math.PI * 2 / n, gold = wid === 'golden', i;
     ctx.clearRect(0, 0, W, W);
-    ctx.save(); ctx.shadowColor = 'rgba(139,92,255,.55)'; ctx.shadowBlur = 16;
-    ctx.beginPath(); ctx.arc(cx, cy, R + 4, 0, 7); ctx.fillStyle = '#16171b'; ctx.fill(); ctx.restore();
-    for (var i = 0; i < n; i++){
+    ctx.save(); ctx.shadowColor = gold ? 'rgba(255,196,80,.75)' : 'rgba(139,92,255,.6)'; ctx.shadowBlur = 26;
+    ctx.beginPath(); ctx.arc(cx, cy, R + 10, 0, 7); ctx.fillStyle = gold ? '#3a2a06' : '#16171b'; ctx.fill(); ctx.restore();
+    for (i = 0; i < n; i++){
       var a0 = ang + i * sg - Math.PI / 2;
       ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, R, a0, a0 + sg); ctx.closePath();
-      ctx.fillStyle = SEGS[i].c; ctx.globalAlpha = 0.9; ctx.fill(); ctx.globalAlpha = 1;
-      ctx.strokeStyle = 'rgba(12,13,16,.8)'; ctx.lineWidth = 2; ctx.stroke();
-      ctx.save(); ctx.translate(cx, cy); ctx.rotate(a0 + sg / 2); ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#0c0d10'; ctx.font = 'bold 36px sans-serif'; ctx.fillText(SEGS[i].t, R - 16, 0);
-      ctx.restore();
+      ctx.fillStyle = gold ? ['#ffd66e', '#ffb020'][i % 2] : WCOL[i % WCOL.length]; ctx.globalAlpha = (!gold && i % 2) ? 0.82 : 0.96; ctx.fill(); ctx.globalAlpha = 1;
+      ctx.strokeStyle = 'rgba(12,13,16,.85)'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(a0 + sg / 2); ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#0c0d10';
+      ctx.font = 'bold ' + (n > 10 ? 46 : 54) + 'px sans-serif'; ctx.fillText(segs[i].t, R - 20, 0); ctx.restore();
     }
-    ctx.beginPath(); ctx.arc(cx, cy, 20, 0, 7); ctx.fillStyle = '#0c0d10'; ctx.fill();
-    ctx.lineWidth = 3; ctx.strokeStyle = '#6ee7d0'; ctx.stroke();
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(cx - 5, cy - 8); ctx.lineTo(cx - 5, cy + 8); ctx.lineTo(cx + 9, cy); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(cx - 12, 2); ctx.lineTo(cx + 12, 2); ctx.lineTo(cx, 26); ctx.closePath();   // pointer
-    ctx.fillStyle = '#fff'; ctx.shadowColor = '#000'; ctx.shadowBlur = 4; ctx.fill(); ctx.shadowBlur = 0;
+    for (i = 0; i < n * 2; i++){   // blinking bulbs around the rim
+      var ba = ang + i * sg / 2 - Math.PI / 2;
+      ctx.beginPath(); ctx.arc(cx + Math.cos(ba) * (R + 4), cy + Math.sin(ba) * (R + 4), 5, 0, 7);
+      ctx.fillStyle = (Math.floor(Date.now() / 250) + i) % 2 ? '#fff' : (gold ? '#ffd66e' : '#6ee7d0'); ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(cx, cy, 26, 0, 7); ctx.fillStyle = '#0c0d10'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = gold ? '#ffd66e' : '#6ee7d0'; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(cx - 7, cy - 11); ctx.lineTo(cx - 7, cy + 11); ctx.lineTo(cx + 12, cy); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx - 15, 2); ctx.lineTo(cx + 15, 2); ctx.lineTo(cx, 34); ctx.closePath();   // pointer
+    ctx.fillStyle = '#fff'; ctx.shadowColor = '#000'; ctx.shadowBlur = 6; ctx.fill(); ctx.shadowBlur = 0;
   }
-  function reward(seg){
-    var sm = PP.mult('spin'), ps = PP.ps(), msg = '';
+  function confetti(){
+    var wrap = document.getElementById('pgr-wheelwrap'); if (!wrap) return;
+    var cv = document.createElement('canvas'); cv.width = wrap.clientWidth * 2; cv.height = wrap.clientHeight * 2;
+    cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
+    wrap.style.position = 'relative'; wrap.appendChild(cv);
+    var ctx = cv.getContext('2d'), ps = [], i;
+    for (i = 0; i < 70; i++) ps.push({ x:cv.width / 2, y:cv.height * 0.42, vx:(Math.random() - 0.5) * 16, vy:-Math.random() * 15 - 4, c:COL[i % 4], s:7 + Math.random() * 9, r:Math.random() * 6 });
+    var t0 = performance.now();
+    (function f(now){
+      var k = (now - t0) / 1500; ctx.clearRect(0, 0, cv.width, cv.height);
+      ps.forEach(function(p){ p.vy += 0.5; p.x += p.vx; p.y += p.vy; p.r += 0.3; ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.globalAlpha = Math.max(0, 1 - k); ctx.fillStyle = p.c; ctx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); ctx.restore(); });
+      if (k < 1) requestAnimationFrame(f); else cv.remove();
+    })(t0);
+  }
+  function giveTrial(hours){
+    var pool = CHARMS.filter(function(c){ return !S.charms.own[c.id]; });
+    if (!pool.length){ PP.addStars(20, '', true); return '+20 ⭐ (you own every charm)'; }
+    var c = pick(pool); S.trials[c.id] = Math.max(Date.now(), S.trials[c.id] || 0) + hours * 3600000;
+    return c.icon + ' ' + c.n + ' on trial for ' + hours + 'h (it works without a slot)';
+  }
+  function freeCharm(){
+    var pool = CHARMS.filter(function(c){ return !S.charms.own[c.id]; });
+    if (!pool.length){ PP.addStars(250, '', true); return '+250 ⭐ (you own every charm)'; }
+    var c = pick(pool); S.charms.own[c.id] = 1; return c.icon + ' ' + c.n + ' is yours for good';
+  }
+  function reward(wid, seg){
+    var sm = PP.mult('spin') * (wid === 'daily' ? streakMult() : 1), ps = PP.ps();
+    function gr(base){ var g = Math.round(base * sm); PP.addGrooves(g); return '+' + fmt(g) + ' grooves'; }
+    function st(n){ var v = Math.round(n * sm); PP.addStars(v, '', true); return '+' + v + ' ⭐'; }
+    function pts(n){ try { if (window.__ppPoints && window.__ppPoints.earn){ window.__ppPoints.earn(n, 'Playground wheel', true); return '+' + n + ' Press Play Points'; } } catch(e){} return st(n / 5); }
     switch (seg.k){
-      case 'g1': { var g = Math.round(Math.max(500, ps * 600) * sm); PP.addGrooves(g); msg = '+' + fmt(g) + ' grooves'; break; }
-      case 'g2': { var g2 = Math.round(Math.max(4000, ps * 3600) * sm); PP.addGrooves(g2); msg = '+' + fmt(g2) + ' grooves'; break; }
-      case 's5': PP.addStars(5 * sm, '', true); msg = '+' + Math.round(5 * sm) + ' ⭐'; break;
-      case 's15': PP.addStars(15 * sm, '', true); msg = '+' + Math.round(15 * sm) + ' ⭐'; break;
-      case 's25': PP.addStars(25 * sm, '', true); msg = '+' + Math.round(25 * sm) + ' ⭐'; break;
-      case 'jack': PP.addStars(60 * sm, '', true); msg = 'JACKPOT! +' + Math.round(60 * sm) + ' ⭐'; break;
-      case 'free': S.spins++; msg = 'a free spin'; break;
-      case 'storm': startStorm(10 * 60000); msg = 'a Groove Storm'; break;
+      case 'g1': return gr(Math.max(500, ps * 600));
+      case 'g2': return gr(Math.max(2500, ps * 1800));
+      case 'g3': return gr(Math.max(8000, ps * 5400));
+      case 'gg1': return gr(Math.max(25000, ps * 18000));
+      case 's5': return st(5); case 's15': return st(15); case 's30': return st(30);
+      case 'gs60': return st(60); case 'gs120': return st(120);
+      case 'jack': startStorm(10 * 60000); return st(100) + ' and a storm';
+      case 'free': S.spins++; return 'a free spin';
+      case 'tick': S.tickets++; return '1 pull ticket';
+      case 'gtick': S.tickets += 3; return '3 pull tickets';
+      case 'storm': startStorm(10 * 60000); return 'a Groove Storm';
+      case 'gstorm': startStorm(30 * 60000); return 'a Mega Storm';
+      case 'trial': return giveTrial(1);
+      case 'gtrial': return giveTrial(24);
+      case 'pts': return pts(25);
+      case 'gpts': return pts(100);
+      case 'gcharm': return freeCharm();
     }
-    return msg;
+    return '';
   }
+  PP._reward = function(wid, key){ var seg = null; WHEELS[wid].segs.forEach(function(s){ if (s.k === key) seg = s; }); return seg ? reward(wid, seg) : null; };   // for testing
   function doSpin(){
-    if (spinning || !spinReady()) return;
-    var free = S.lastSpin !== dayKey();
-    if (free) S.lastSpin = dayKey(); else S.spins--;
-    var idx = pickSeg(), n = SEGS.length, sg = Math.PI * 2 / n;
+    var wid = S.wheel.view; if (spinning) return;
+    if (wid === 'golden'){ if (S.wheel.golden < 1) return; S.wheel.golden--; }
+    else {
+      if (!spinReady()) return;
+      if (S.lastSpin !== dayKey()){
+        S.wheel.streak = (S.wheel.lastDay === yesterdayKey()) ? S.wheel.streak + 1 : 1;
+        S.wheel.lastDay = dayKey(); S.lastSpin = dayKey();
+      } else S.spins--;
+    }
+    var segs = WHEELS[wid].segs, idx = pickSeg(wid), n = segs.length, sg = Math.PI * 2 / n;
     var target = -((idx + 0.5) * sg) + Math.PI * 2 * (5 + Math.floor(Math.random() * 2));
-    var start = wheelAngle % (Math.PI * 2), t0 = performance.now(), dur = 3400, cv = document.getElementById('pgr-wheel');
-    spinning = true; PP.stat('spins', 1); save(true); updateSpinBtn();
+    var start = wheelAngle[wid] % (Math.PI * 2); if (start < 0) start += Math.PI * 2;
+    var t0 = performance.now(), dur = wid === 'golden' ? 4200 : 3400;
+    spinning = true; PP.stat('spins', 1); if (wid === 'golden') PP.stat('golden', 1); save(true); updateWheelInfo();
     var last = -1;
     (function frame(now){
       var k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
-      wheelAngle = start + (target - start) * e;
-      var tick = Math.floor(((wheelAngle % (Math.PI * 2)) + Math.PI * 2) / sg);
+      wheelAngle[wid] = start + (target - start) * e;
+      var tick = Math.floor((((wheelAngle[wid] % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) / sg);
       if (tick !== last){ last = tick; if (k < 1) blip(900 + (tick % 4) * 90, 0.03, 'square', 0.04); }
-      cv = document.getElementById('pgr-wheel'); if (cv) drawWheel(cv, wheelAngle);
+      var cv = document.getElementById('pgr-wheel'); if (cv && S.wheel.view === wid) drawWheel(cv, wid, wheelAngle[wid]);
       if (k < 1) return requestAnimationFrame(frame);
       spinning = false;
-      var msg = reward(SEGS[idx]);
-      chime(); toast('🎡 ' + SEGS[idx].l + ': ' + msg);
-      var r = document.getElementById('pgr-spin-res'); if (r) r.textContent = SEGS[idx].l + ' → ' + msg;
-      updateSpinBtn(); refreshBalance(); checkAch(); save(true);
+      var seg = segs[idx], msg = reward(wid, seg);
+      if (wid === 'daily'){ S.wheel.meter++; if (S.wheel.meter >= 7){ S.wheel.meter = 0; S.wheel.golden++; setTimeout(function(){ toast('✨ The lucky meter is full: a Golden Spin is ready!'); }, 1400); } }
+      S.wheel.hist.unshift({ t: Date.now(), w: wid, l: seg.l, m: msg }); if (S.wheel.hist.length > 10) S.wheel.hist.pop();
+      chime(); toast('🎡 ' + seg.l + ': ' + msg);
+      if (wid === 'golden' || /^(jack|gcharm|gs120)$/.test(seg.k)) confetti();
+      var r = document.getElementById('pgr-spin-res'); if (r) r.textContent = seg.l + ' → ' + msg;
+      refreshBalance(); checkAch(); save(true);
+      var hd = document.getElementById('pgr-hist'); if (hd) hd.innerHTML = histHTML();
+      updateWheelInfo();
     })(t0);
+  }
+  function histHTML(){
+    if (!S.wheel.hist.length) return '<div class="pgr-meta">No spins yet.</div>';
+    return S.wheel.hist.map(function(h){ return '<div class="pgr-meta" style="padding:3px 0">' + (h.w === 'golden' ? '✨ ' : '') + esc(h.l) + ' → ' + esc(h.m) + '</div>'; }).join('');
+  }
+  function prizesHTML(wid){
+    var segs = WHEELS[wid].segs, tot = 0; segs.forEach(function(s){ tot += s.w; });
+    return segs.map(function(s){ return '<div class="pgr-meta" style="display:flex;justify-content:space-between;padding:3px 0"><span>' + s.t + ' ' + esc(s.l) + '</span><b>' + (Math.round(s.w / tot * 1000) / 10) + '%</b></div>'; }).join('');
+  }
+  function renderWheelCard(){
+    var el = document.getElementById('pgr-wheelcard'); if (!el) return;
+    var wid = S.wheel.view;
+    el.innerHTML = '<h3>Wheels</h3><div class="pgr-seg"><button type="button" data-wheel="daily" class="' + (wid === 'daily' ? 'on' : '') + '">Daily Wheel</button>' +
+      '<button type="button" data-wheel="golden" class="' + (wid === 'golden' ? 'on' : '') + '">✨ Golden Wheel<span id="pgr-gcount"></span></button></div>' +
+      '<div class="pgr-chips" id="pgr-wchips" style="margin:0 0 6px"></div>' +
+      '<div class="pgr-meta" id="pgr-wnote" style="margin-bottom:4px"></div><div class="pgr-bar"><i id="pgr-meter" style="width:0"></i></div>' +
+      '<div class="pgr-wheelwrap" id="pgr-wheelwrap"><canvas id="pgr-wheel" width="640" height="640"></canvas><div class="pgr-meta" id="pgr-spin-res">&nbsp;</div>' +
+      '<button type="button" class="pgr-btn" id="pgr-spin"></button></div>' +
+      '<details class="pgr-det"><summary>Prizes and odds</summary>' + prizesHTML(wid) + '</details>' +
+      '<details class="pgr-det"><summary>Recent spins</summary><div id="pgr-hist">' + histHTML() + '</div></details>';
+    var cv = el.querySelector('#pgr-wheel'); if (cv) drawWheel(cv, wid, wheelAngle[wid]);
+    updateWheelInfo();
+  }
+  function updateWheelInfo(){
+    var wid = S.wheel.view, b = document.getElementById('pgr-spin'); if (!b) return;
+    var free = S.lastSpin !== dayKey(), bonus = Math.round((streakMult() - 1) * 100);
+    b.disabled = spinning || (wid === 'golden' ? S.wheel.golden < 1 : !spinReady());
+    b.textContent = spinning ? 'Spinning…' : wid === 'golden' ? (S.wheel.golden > 0 ? '✨ Golden Spin (' + S.wheel.golden + ')' : 'Fill the lucky meter') : free ? '🎡 Spin (free today)' : S.spins > 0 ? '🎟️ Spin (' + S.spins + ' left)' : 'Back tomorrow';
+    var chips = document.getElementById('pgr-wchips');
+    if (chips){
+      var html = '<span class="pgr-chip">🔥 ' + S.wheel.streak + '-day streak' + (bonus ? ' (+' + bonus + '% rewards)' : '') + '</span>' + (S.tickets ? '<span class="pgr-chip">🎴 ' + S.tickets + ' pull ticket' + (S.tickets > 1 ? 's' : '') + '</span>' : '') + (S.spins ? '<span class="pgr-chip">🎟️ ' + S.spins + ' spare spin' + (S.spins > 1 ? 's' : '') + '</span>' : '');
+      if (chips.__h !== html){ chips.innerHTML = html; chips.__h = html; }
+    }
+    var note = document.getElementById('pgr-wnote'); if (note) note.textContent = 'Lucky meter ' + S.wheel.meter + '/7: every Daily spin fills it, and a full meter earns a Golden Spin.';
+    var m = document.getElementById('pgr-meter'); if (m) m.style.width = Math.round(S.wheel.meter / 7 * 100) + '%';
+    var gc = document.getElementById('pgr-gcount'); if (gc) gc.innerHTML = S.wheel.golden ? ' <span class="pgr-dot2">' + S.wheel.golden + '</span>' : '';
+  }
+
+  /* ------------------------------------------------------------------ daily gifts from charms */
+  function runDrips(){
+    if (!on()) return;
+    var d = dayKey(); if (S.drip.day !== d) S.drip = { day: d, got: {} };
+    activeIds().forEach(function(id){
+      var c = charmById(id); if (!c || !c.drip || S.drip.got[id]) return;
+      var msg = ''; try { msg = c.drip(); } catch(e){}
+      if (msg){ S.drip.got[id] = 1; save(true); toast(c.icon + ' ' + c.n + ': ' + msg); }
+    });
   }
 
   /* ------------------------------------------------------------------ orders (Kitchen Rush) */
@@ -240,10 +405,10 @@
     if (!o || !orderReady(o)) return;
     var streak = S.orders.streak + 1, bonus = 1 + Math.min(0.5, S.orders.streak * 0.1), om = PP.mult('order');
     var stars = Math.round(ORDER_STARS[o.tier] * bonus * om), grooves = Math.round(Math.max([300, 900, 2400][o.tier], PP.ps() * ORDER_MIN[o.tier] * 60) * om);
-    PP.addStars(stars, '', true); PP.addGrooves(grooves);
+    PP.addStars(stars, '', true); PP.addGrooves(grooves); if (o.tier === 2) S.tickets++;
     S.orders.streak = streak; S.orders.done++; PP.stat('orders', 1);
     L.splice(L.indexOf(o), 1); fillOrders(); save(true);
-    chime(); toast('🧾 Order up! +' + stars + ' ⭐ and +' + fmt(grooves) + ' grooves' + (streak > 1 ? ' (streak ×' + streak + ')' : ''));
+    chime(); toast('🧾 Order up! +' + stars + ' ⭐ and +' + fmt(grooves) + ' grooves' + (o.tier === 2 ? ' and a 🎴 pull ticket' : '') + (streak > 1 ? ' (streak ×' + streak + ')' : ''));
     renderActive(); refreshBalance(); checkAch();
   }
   function timeLeft(ms){ var m = Math.max(0, Math.ceil(ms / 60000)); return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm'; }
@@ -317,6 +482,11 @@
     '.pgr-sb{flex:0 0 auto;display:flex;align-items:center;gap:6px;padding:9px 13px;border-radius:14px;border:1px solid transparent;color:var(--text,#e8e8ea);font:700 12.5px inherit;font-family:inherit;cursor:pointer;position:relative;',
     ' background:linear-gradient(var(--bg-elev,#16171b),var(--bg-elev,#16171b)) padding-box,linear-gradient(120deg,#6ee7d0,#8b5cff 60%,#ff5fd8) border-box;-webkit-tap-highlight-color:transparent}',
     '.pgr-sb .pgr-dot{position:absolute;top:-5px;right:-3px;min-width:17px;height:17px;border-radius:9px;background:#ff5f7a;color:#fff;font:700 10px/17px system-ui,sans-serif;text-align:center;padding:0 3px;box-sizing:border-box}',
+    '.pgr-seg{display:flex;gap:6px;margin:6px 0 10px}.pgr-seg button{flex:1;padding:9px 6px;border-radius:12px;border:1px solid var(--line,#232429);background:var(--bg,#0c0d10);color:var(--text-dim,#8b8c93);font:700 13px inherit;font-family:inherit;cursor:pointer}',
+    '.pgr-seg button.on{color:#0c0d10;border-color:transparent;background:linear-gradient(90deg,#6ee7d0,#b79bff)}.pgr-seg button.on:nth-child(2){background:linear-gradient(90deg,#ffd66e,#ffb020)}',
+    '.pgr-dot2{display:inline-block;min-width:17px;height:17px;border-radius:9px;background:#ff5f7a;color:#fff;font:700 10px/17px system-ui,sans-serif;text-align:center;padding:0 3px;box-sizing:border-box;margin-left:4px;vertical-align:1px}',
+    '.pgr-det{margin-top:10px;border-top:1px solid var(--line,#232429);padding-top:8px}.pgr-det summary{font-size:12.5px;font-weight:700;cursor:pointer;color:var(--text-dim,#8b8c93)}',
+    '.pgr-gtag{font-size:9.5px;font-weight:800;letter-spacing:.04em;margin-left:6px;padding:1px 6px;border-radius:6px;background:rgba(110,231,208,.18);color:#6ee7d0}',
     '.pgr-note{font-size:11.5px;color:var(--text-dim,#8b8c93);line-height:1.5;margin:8px 2px}',
     '#pgr-settings-section .pgr-set-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0}',
     '@media (prefers-reduced-motion:reduce){.pgr-rb,.title-mode[data-ed="playground"]{animation:none}}'
@@ -326,7 +496,7 @@
   var hub = document.createElement('div');
   hub.id = 'pgr-hub'; hub.setAttribute('role', 'dialog'); hub.setAttribute('aria-label', 'Press Play Playground');
   hub.innerHTML = '<div class="pgr-head"><button type="button" class="pgr-back" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>' +
-    '<h1 class="pgr-title">Press Play <span class="pgr-rb">Playground</span></h1><div class="pgr-bal"><span id="pgr-bal-stars">⭐ 0</span></div></div>' +
+    '<h1 class="pgr-title">Press Play <span class="pgr-rb">Playground</span></h1><div class="pgr-bal"><span id="pgr-bal-tix" style="display:none">🎴 0</span><span id="pgr-bal-stars">⭐ 0</span></div></div>' +
     '<div class="pgr-tabs" id="pgr-tabs"></div><div class="pgr-body" id="pgr-body"></div>';
   document.body.appendChild(hub);
   var tabsEl = hub.querySelector('#pgr-tabs'), bodyEl = hub.querySelector('#pgr-body'), curTab = 'stage', activeDef = null;
@@ -334,6 +504,7 @@
   function hubOpen(){ return hub.classList.contains('open'); }
   function refreshBalance(){
     var e = document.getElementById('pgr-bal-stars'); if (e) e.textContent = '⭐ ' + fmt(S.stars);
+    var tx = document.getElementById('pgr-bal-tix'); if (tx){ tx.style.display = S.tickets ? '' : 'none'; tx.textContent = '🎴 ' + S.tickets; }
     updateFab(); updateSpinBtn();
   }
 
@@ -369,6 +540,7 @@
     if (activeDef && activeDef.onHide){ try { activeDef.onHide(); } catch(e){} }
     curTab = id; activeDef = null; bodyEl.scrollTop = 0; renderActive();
   }
+  PP.reflow = function(id){ if (hubOpen() && curTab === id) renderActive(); };
   PP.open = function(tab){
     if (!on()){ toast('Turn on Press Play Playground in Settings → App mode.'); return; }
     fillOrders(); refreshBalance();
@@ -377,7 +549,7 @@
       hub.classList.add('open'); activeDef = null; renderActive();
       requestAnimationFrame(function(){ hub.classList.add('shown'); });
       try { history.pushState({ ppPg: 1 }, ''); } catch(e){}
-    } else if (tab){ setTab(tab); }
+    } else if (tab){ if (tab === curTab) renderActive(); else setTab(tab); }
     updateFab();
   };
   function hideHub(){
@@ -404,9 +576,7 @@
       '<div class="pgr-card pgr-hero"><h3>Welcome to the Playground</h3>' +
       '<p class="pgr-sub" style="margin:0">Everything in the app is unlocked, the clicker stays out, and every game exclusive is free. Earn <b>⭐ Stars</b> from orders, the wheel and playing games, then spend them on charms. Your EXP grows 25% faster here.</p>' +
       '<div class="pgr-chips" id="pgr-chips"></div></div>' +
-      '<div class="pgr-card"><h3>Daily Spin</h3><p class="pgr-sub">One free spin a day. Grooves, Stars, free spins and Groove Storms.</p>' +
-      '<div class="pgr-wheelwrap"><canvas id="pgr-wheel" width="520" height="520"></canvas><div class="pgr-meta" id="pgr-spin-res">&nbsp;</div>' +
-      '<button type="button" class="pgr-btn" id="pgr-spin"></button></div></div>' +
+      '<div class="pgr-card" id="pgr-wheelcard"></div>' +
       '<div class="pgr-card"><h3>Sound &amp; look</h3><p class="pgr-sub">One tap sets your real equalizer. Playground adds six presets named after the game exclusives.</p>' +
       '<div class="pgr-row" id="pgr-eq">' + EQ_LINKS.map(function(p){ return '<button type="button" class="pgr-pre" data-eq="' + p[0] + '">' + esc(p[1]) + '</button>'; }).join('') + '</div>' +
       '<p class="pgr-sub" style="margin:12px 0 8px">Backdrops (they apply to the tab you have open in Settings → Appearance, or the app by default):</p>' +
@@ -415,15 +585,10 @@
       '<div class="pgr-games">' + games.map(function(g){ return '<button type="button" class="pgr-g" data-game="' + esc(g.id) + '"><span class="pgr-free">FREE PLAY</span><div class="a" style="background:' + esc(g.bg) + '">' + (window.__ppGames && window.__ppGames.art ? window.__ppGames.art(g) : '') + '</div><b>' + esc(g.name) + '</b></button>'; }).join('') + '</div></div>' +
       '<div class="pgr-card"><h3>Your Playground</h3><div class="pgr-stats" id="pgr-stats"></div></div>' +
       '<p class="pgr-note">Perks you get in this mode: EXP +25%, every level unlock and Press Play shop perk, six Playground EQ presets and six Playground backdrops.</p>';
-    var cv = el.querySelector('#pgr-wheel'); if (cv) drawWheel(cv, wheelAngle);
+    renderWheelCard();
     liveStage();
   }
-  function updateSpinBtn(){
-    var b = document.getElementById('pgr-spin'); if (!b) return;
-    var free = S.lastSpin !== dayKey();
-    b.disabled = spinning || !spinReady();
-    b.textContent = spinning ? 'Spinning…' : free ? '🎡 Spin (free today)' : S.spins > 0 ? '🎟️ Spin (' + S.spins + ' left)' : 'Back tomorrow';
-  }
+  function updateSpinBtn(){ updateWheelInfo(); }
   function liveStage(){
     var c = document.getElementById('pgr-chips');
     if (c){
@@ -442,6 +607,8 @@
   bodyEl.addEventListener('click', function(e){
     var b;
     if ((b = e.target.closest('#pgr-spin'))){ doSpin(); return; }
+    if ((b = e.target.closest('[data-wheel]'))){ if (!spinning){ S.wheel.view = b.getAttribute('data-wheel'); save(); renderWheelCard(); } return; }
+    if ((b = e.target.closest('[data-cfilter]'))){ charmFilter = b.getAttribute('data-cfilter'); renderActive(); return; }
     if ((b = e.target.closest('[data-eq]'))){
       var key = b.getAttribute('data-eq'), btn = document.querySelector('.ppxp-eq-pro-btn[data-eq-preset="' + key + '"]');
       if (btn){ btn.click(); PP.stat('eq', 1); blip(440, 0.1, 'sawtooth', 0.06); toast('🎚️ EQ: ' + b.textContent); checkAch(); }
@@ -472,7 +639,7 @@
       var shownProg = k.unit === 'ms' ? Math.floor(prog / 60000) : prog, shownTgt = k.unit === 'ms' ? o.target : o.target;
       var tc = ['#9aa3b2', '#6ea8ff', '#ffb36e'][o.tier], tn = ['Easy', 'Medium', 'Hard'][o.tier];
       return '<div class="pgr-order' + (ready ? ' ready' : '') + '"><div class="m"><b>' + esc(k.t(o.target)) + '<span class="pgr-tier" style="background:' + tc + '">' + tn + '</span></b>' +
-        '<div class="pgr-bar"><i style="width:' + pct + '%"></i></div><div class="pgr-meta">' + shownProg + ' / ' + shownTgt + ' · ⭐ ' + ORDER_STARS[o.tier] + ' + grooves · <span data-left="' + o.id + '">' + timeLeft(o.until - Date.now()) + '</span> left</div></div>' +
+        '<div class="pgr-bar"><i style="width:' + pct + '%"></i></div><div class="pgr-meta">' + shownProg + ' / ' + shownTgt + ' · ⭐ ' + ORDER_STARS[o.tier] + ' + grooves' + (o.tier === 2 ? ' + 🎴' : '') + ' · <span data-left="' + o.id + '">' + timeLeft(o.until - Date.now()) + '</span> left</div></div>' +
         (ready ? '<button type="button" class="pgr-btn sm" data-claim="' + o.id + '">Claim</button>' : '') + '</div>';
     }).join('');
     var bonus = Math.round(Math.min(0.5, S.orders.streak * 0.1) * 100);
@@ -488,6 +655,7 @@
   }
 
   /* ------------------------------------------------------------------ Charms tab */
+  var charmFilter = 'all';
   function renderCharms(el){
     var slots = '';
     for (var i = 0; i < 5; i++){
@@ -495,15 +663,17 @@
       if (i >= S.slots) slots += '<div class="pgr-slot lock" data-slot="' + i + '">🔒<small>' + (i === 3 ? '150 ⭐' : '600 ⭐') + '</small></div>';
       else slots += c ? '<div class="pgr-slot full" data-slot="' + i + '">' + c.icon + '<small>' + esc(c.n) + '</small></div>' : '<div class="pgr-slot" data-slot="' + i + '">＋<small>Empty</small></div>';
     }
-    var list = CHARMS.map(function(c){
-      var own = !!S.charms.own[c.id], eq = S.charms.eq.indexOf(c.id) >= 0;
+    var now = Date.now();
+    var list = CHARMS.filter(function(c){ return charmFilter === 'all' || c.cat === charmFilter; }).map(function(c){
+      var own = !!S.charms.own[c.id], eq = S.charms.eq.indexOf(c.id) >= 0, trial = S.trials[c.id] > now;
       var btn = !own ? '<button type="button" class="pgr-btn sm" data-charm="' + c.id + '" data-do="buy"' + (S.stars < c.p ? ' style="opacity:.55"' : '') + '>⭐ ' + c.p + '</button>'
         : eq ? '<button type="button" class="pgr-btn sm alt" data-charm="' + c.id + '" data-do="unequip">Unequip</button>'
         : '<button type="button" class="pgr-btn sm" data-charm="' + c.id + '" data-do="equip">Equip</button>';
-      return '<div class="pgr-charm"><div class="i">' + c.icon + '</div><div class="m"><b>' + esc(c.n) + '</b><span class="pgr-rar" style="color:' + RAR[c.rar] + '">' + c.rar + '</span><div class="pgr-meta">' + esc(c.d) + '</div></div>' + btn + '</div>';
+      return '<div class="pgr-charm"><div class="i">' + c.icon + '</div><div class="m"><b>' + esc(c.n) + '</b><span class="pgr-rar" style="color:' + RAR[c.rar] + '">' + c.rar + '</span>' + (c.g ? '<span class="pgr-gtag">' + esc(c.g) + '</span>' : '') + '<div class="pgr-meta">' + esc(c.d) + '</div>' + (trial ? '<div class="pgr-meta" style="color:#b79bff">🧪 On trial: ' + timeLeft(S.trials[c.id] - now) + ' left, no slot needed</div>' : '') + '</div>' + btn + '</div>';
     }).join('');
-    el.innerHTML = '<div class="pgr-card pgr-hero"><h3>Charms</h3><p class="pgr-sub" style="margin:0">Buy charms with ⭐ Stars and equip up to ' + S.slots + ' (more slots can be unlocked). Their effects stack and reach the Disc Clicker, the wheel, orders, Points and your EXP.</p></div>' +
-      '<div class="pgr-slots">' + slots + '</div>' + list;
+    el.innerHTML = '<div class="pgr-card pgr-hero"><h3>Charms</h3><p class="pgr-sub" style="margin:0">Buy charms with ⭐ Stars and equip up to ' + S.slots + ' (more slots can be unlocked). Their effects stack and reach the Disc Clicker, the wheel, orders, Points and EXP, and some work inside the games while you play. Wheel trials work without a slot.</p></div>' +
+      '<div class="pgr-slots">' + slots + '</div>' +
+      '<div class="pgr-row" style="margin-bottom:10px">' + [['all', 'All'], ['app', 'App'], ['game', 'In the games'], ['daily', 'Daily gifts']].map(function(f){ return '<button type="button" class="pgr-pre" data-cfilter="' + f[0] + '" style="' + (charmFilter === f[0] ? 'background:linear-gradient(90deg,#6ee7d0,#b79bff);color:#0c0d10;border-color:transparent' : '') + '">' + f[1] + '</button>'; }).join('') + '</div>' + list;
   }
   function charmAction(id, act){
     var c = charmById(id); if (!c) return;
@@ -588,6 +758,9 @@
     ['pg_star2k', 'Star Hoarder',              'Earn 2,000 Stars',                   150, function(){ return S.total; }, 2000],
     ['pg_game30', 'Free Player',               'Play games for 30 minutes in Playground', 40, function(){ return PP.get('gameMs') / 60000; }, 30],
     ['pg_click1k','Disc Jockey',               'Click the disc 1,000 times in Playground', 40, function(){ return PP.get('clicks'); }, 1000],
+    ['pg_gold1',  'Golden Touch',              'Spin the Golden Wheel',              40,  function(){ return PP.get('golden'); }, 1],
+    ['pg_streak7','Seven Days of Spin',        'Reach a 7-day wheel streak',         60,  function(){ return S.wheel.streak; }, 7],
+    ['pg_charm10','Collector',                 'Own 10 charms',                      80,  function(){ return Object.keys(S.charms.own).length; }, 10],
     ['pg_eq10',   'Well Tuned',                'Set the equalizer from the Stage 10 times', 25, function(){ return PP.get('eq'); }, 10]
   ];
   PP.registerAch = function(list){
@@ -614,7 +787,7 @@
       S.stats.gameMs = (S.stats.gameMs || 0) + dt; S.gameStarMs += dt;
       while (S.gameStarMs >= 60000){ S.gameStarMs -= 60000; PP.addStars(1, 'for playing', true); }
     }
-    if (beat % 5 === 0){ decorateGrid(); buildSettings(); checkAch(); save(); }
+    if (beat % 5 === 0){ decorateGrid(); buildSettings(); runDrips(); checkAch(); save(); }
     if (hubOpen()){
       refreshBalance();
       if (activeDef && activeDef.live) { try { activeDef.live(); } catch(e){} }
@@ -628,7 +801,7 @@
     var now = on();
     if (now !== lastOn){
       lastOn = now;
-      if (now){ fillOrders(); chime(); setTimeout(function(){ toast('🎪 Playground is on. Tap the 🎪 button to open it.'); }, 900); }
+      if (now){ fillOrders(); runDrips(); chime(); setTimeout(function(){ toast('🎪 Playground is on. Tap the 🎪 button to open it.'); }, 900); }
       else if (hubOpen()) hideHub();
       decorateGrid(); updateFab();
     }

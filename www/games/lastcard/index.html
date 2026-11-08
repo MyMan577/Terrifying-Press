@@ -490,7 +490,7 @@ async function newGame(){if(G){G.over=1;clearTimeout(G.jt);G.jr=null;G.hr=null;G
   jobs.push(fly(card,!p.human,R($('#deck')),R(i?$('#s'+i):$('#hand')),340,k++*36).then(()=>{p.hand.push(card);AU.play('deal',pn(i));render()}))}
  try{await Promise.all(jobs);
   /* Press Play shop boosts */
-  {let ex=0;const plain=!['flip','nomercy','allwild','tri'].includes(S.mode),w1=(plain?PPHub.take('wild'):0)+(plain&&PPHub.has('pocket')?1:0),hs=plain?PPHub.take('headstart'):0,w4=plain?PPHub.take('wild4'):0,hh=PPHub.take('heavy'),ap=plain?PPHub.take('actions'):0;
+  {let ex=0;const plain=!['flip','nomercy','allwild','tri'].includes(S.mode),w1=(plain?PPHub.take('wild'):0)+(plain&&PPHub.has('pocket')?1:0)+(plain?PPHub.charm('wild'):0),hs=plain?PPHub.take('headstart'):0,w4=plain?PPHub.take('wild4'):0,hh=PPHub.take('heavy'),ap=plain?PPHub.take('actions'):0;
    for(let k=0;k<hs*2;k++)if(G.p[0].hand.length>3)G.p[0].hand.pop();
    for(let k=0;k<w1;k++)G.p[0].hand.push({id:91000+k,c:'k',v:'w'});for(let k=0;k<w4;k++)G.p[0].hand.push({id:92000+k,c:'k',v:'f'});for(let k=0;k<ap;k++)G.p[0].hand.push({id:93000+k*3,c:'r',v:'s'},{id:93001+k*3,c:'b',v:'r'},{id:93002+k*3,c:'g',v:'d'});
    for(let k=0;k<hh;k++)for(let i=1;i<G.p.length;i++){const x=dpop();if(x){G.p[i].hand.push(x);ex++}}

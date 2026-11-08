@@ -3207,8 +3207,8 @@ function startGame() {
   state.handOrder = [];
   state.playsLeft = 4 + getExtraPlays(state.items);
   state.discardsLeft = 4 + getExtraDiscards(state.items);
-  state.money = 4 + PPHub.take('cash') + (PPHub.has('purse') ? 2 : 0);   // Pocket Money and the Starter Purse from the Press Play shop
-  { const sp = PPHub.take('spare'); if (sp) { state.playsLeft += sp; state.discardsLeft += sp; } }   // Spare Hand: first round only
+  state.money = 4 + PPHub.take('cash') + (PPHub.has('purse') ? 2 : 0) + PPHub.charm('cash');   // Pocket Money and the Starter Purse from the Press Play shop
+  { const sp = PPHub.take('spare'); if (sp) { state.playsLeft += sp; state.discardsLeft += sp; } state.discardsLeft += PPHub.charm('discard'); }   // Spare Hand: first round only
   if (PPHub.take('encore') && state.charms.length < state.charmSlots && !state.charms.some((c) => c.id === "ppp_encore")) {
     state.charms.push({ id: "ppp_encore", name: "Encore", desc: "Press Play exclusive: +4 Mult, then x1.2 Mult on every hand", price: 10,
       color: "#8b5cff", type: "charm", effect: { type: "pppEncore", add: 4, x: 1.2 }, uid: Math.random().toString(36).slice(2, 9) });

@@ -1415,6 +1415,7 @@ function endRun(kind){
   var g=G;
   mode=kind;
   if(kind==='clear'&&g.coins>0&&PPHub.has('magnet'))g.coins=Math.round(g.coins*1.1);   // Coin Magnet perk
+  if(kind==='clear'&&g.coins>0&&PPHub.charm('coins')>1)g.coins=Math.round(g.coins*PPHub.charm('coins'));   // Treasure Map charm
   if(kind==='clear'&&g.coins>0&&PPHub.peek('x3')){PPHub.take('x3');g.coins*=3;toast('💰 Triple Coin Rush: coins tripled');}
   else if(kind==='clear'&&g.coins>0&&PPHub.take('x2')){g.coins*=2;toast('💰 Coin Rush: coins doubled');}
   save.coins+=g.coins;save.life+=g.coins;
