@@ -4,6 +4,32 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Bastion Brawl</title>
+<script>
+/* Bastion Brawl was tuned at 60 frames a second, and a lot of its logic runs once per
+   frame (unit collision pushes, particle chances, emote and glow timers). On a 120 Hz
+   screen that all ran twice as fast. Animation frames are paced to 60 a second here, so
+   every screen plays the game the way it was made. */
+(function(){
+  var raf = window.requestAnimationFrame.bind(window), caf = window.cancelAnimationFrame.bind(window);
+  var STEP = 1000 / 60, next = 0, queue = new Map(), nextId = 1, pending = 0;
+  function pump(ts){
+    pending = 0;
+    if (ts < next - 2) { pending = raf(pump); return; }   // too soon on a fast screen: wait a frame
+    next = Math.max(next + STEP, ts + STEP - 4);          // keeps a steady 60, and catches up after a stall
+    var cbs = Array.from(queue.values()); queue.clear();
+    cbs.forEach(function(cb){ try { cb(ts); } catch(e){ setTimeout(function(){ throw e; }); } });
+  }
+  window.requestAnimationFrame = function(cb){
+    var id = nextId++; queue.set(id, cb);
+    if (!pending) pending = raf(pump);
+    return id;
+  };
+  window.cancelAnimationFrame = function(id){
+    queue.delete(id);
+    if (!queue.size && pending){ caf(pending); pending = 0; }
+  };
+})();
+</script>
 <script src="../qrlink/qrlink.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Exo+2:wght@400;600;800&display=swap');
