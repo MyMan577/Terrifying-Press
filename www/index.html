@@ -23176,7 +23176,7 @@ async function ppMp4Chapters(blob){
         return true;
       },
       shopLocked: () => ({
-        bg: BG_PRESETS.filter(p => !presetUnlocked(p)).sort((a, b) => a.level - b.level)
+        bg: BG_PRESETS.filter(p => !presetUnlocked(p)).sort((a, b) => (a.unlock ? 1e4 : a.level) - (b.unlock ? 1e4 : b.level))
           .map(p => ({ id: p.id, name: p.name, level: p.level, marathon: p.unlock === 'marathon', c1: p.color1, c2: p.color2, angle: p.angle })),
         eq: Object.keys(EQ_PRO_PRESETS).filter(k => !eqProUnlocked(k)).sort((a, b) => EQ_PRO_PRESETS[a].level - EQ_PRO_PRESETS[b].level)
           .map(k => ({ id: k, name: EQ_PRO_PRESETS[k].label, level: EQ_PRO_PRESETS[k].level }))
@@ -26471,7 +26471,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   .ppg-load.done{ opacity:0; pointer-events:none; }
 
   /* While a game is open, the app underneath stops drawing. Playback keeps going. */
-  body.pp-gaming > *:not(#pp-game):not(#ppp-toast):not(script):not(style){ display:none !important; }
+  body.pp-gaming > *:not(#pp-game):not(#ppx-toast):not(script):not(style){ display:none !important; }
 </style>
 <script id="pp-games-js">
 (function(){
@@ -26658,6 +26658,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   }
 })();
 </script>
+<script src="./pp-points.js?v=20261108a"></script>   <!-- Press Play Points: quests, achievements and shop on the Games page. Bump v= when it changes -->
 <script src="./vocal-separator.js?v=20261030a" defer></script>   <!-- bump v= each time vocal-separator.js changes so phones fetch the new copy -->
 </body>
 </html>
