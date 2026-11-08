@@ -477,6 +477,7 @@
     },
     info: function(g, key, v){ (P.info[g] = P.info[g] || {})[key] = v; save(); },
     has: function(g, kind){ return pgFree() || !!P.own[g + ':' + kind]; },
+    charm: function(g, kind){ var Q = window.PPPlayground; if (!Q || !Q.gameFx) return (kind === 'score' || kind === 'coins') ? 1 : 0; return Q.gameFx(g, kind); },
     take: function(g, kind){
       var k = g + ':' + kind, n = P.bo[k] || 0;
       if (n){ delete P.bo[k]; save(true); changed(); }
@@ -1072,5 +1073,5 @@
 
   // ---- start ----
   qd(); qw(); checkMeta(); save(); renderStrip();
-  window.__ppPoints = { state:P, open:openHub, earn:earn, META:META, check:checkMeta, td:td };   // handy for debugging from the console
+  window.__ppPoints = { state:P, open:openHub, earn:earn, META:META, check:checkMeta, td:td, give:function(g, k, n){ boost(g, k, n); save(true); changed(); return true; } };   // handy for debugging from the console
 })();

@@ -40360,7 +40360,7 @@ window._claimLBro = function() {
     const p = window._gamePlayer; if (!p) return;
     if (!active) {
       applyMode();
-      if (window.PPHub && PPHub.take('hype')) { hype = HYPE_MAX; hypeFullSaid = true; msg('🎚️ Hype Start: your meter is full! K / 🎚️ for THE DROP'); }   // Hype Start bought in the Press Play shop
+      if (window.PPHub && (PPHub.take('hype') || PPHub.charm('hype'))) { hype = HYPE_MAX; hypeFullSaid = true; msg('🎚️ Hype Start: your meter is full! K / 🎚️ for THE DROP'); }   // Hype Start bought in the Press Play shop
     }
     active = true; btn.style.display = 'flex'; eqBtn.style.display = 'flex';
     const md = curMode();

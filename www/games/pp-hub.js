@@ -29,6 +29,8 @@
     has: function(kind){ return !!call('has', [kind], false); },
     // take every pending boost of this kind; returns the amount (0 if none)
     take: function(kind){ return +call('take', [kind], 0) || 0; },
+    // what the player's equipped Playground charms do in this game: 'score' and 'coins' multiply (1 if none), everything else adds (0 if none)
+    charm: function(kind){ var d = (kind === 'score' || kind === 'coins') ? 1 : 0, v = +call('charm', [kind], d); return isFinite(v) ? v : d; },
     // how many of a boost are waiting, without using them
     peek: function(kind){ return +call('peek', [kind], 0) || 0; },
     // take just one of a pending boost (for rewards that each need a tap, like crates)

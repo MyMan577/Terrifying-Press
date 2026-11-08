@@ -4363,10 +4363,11 @@
   function startGame(){
     resetGame();
     // Overtime bought in the Press Play shop: extra seconds on a timed shift
-    if (gameMode !== 'tutorial' && gameMode !== 'endless' && gameMode !== 'tickets') { timeLeft += PPHub.take('overtime'); if (PPHub.has('early')) timeLeft += 10; }
+    if (gameMode !== 'tutorial' && gameMode !== 'endless' && gameMode !== 'tickets') { timeLeft += PPHub.take('overtime'); if (PPHub.has('early')) timeLeft += 10; timeLeft += PPHub.charm('time'); }
     // Press Play shop: the Jukebox (always) and Hype Hour (next shift) raise what every order scores
     if (gameMode !== 'tutorial') {
       if (PPHub.take('patient')) orderTimeMult *= 1.3;   // Patient Crowd
+      scoreMult *= PPHub.charm('score');   // Golden Spatula charm
       if (PPHub.has('jukebox')) scoreMult *= 1.15;
       const hh = PPHub.take('hype');
       if (hh) scoreMult *= Math.pow(1.25, Math.min(hh, 2));
