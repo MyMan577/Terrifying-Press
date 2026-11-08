@@ -20359,6 +20359,8 @@ function resolveCollisions(axis, dt) {
       ctx.save();
     }
     ctx.translate(x, y + bodyBob);
+    // strike engine: the body winds up, lunges and recovers (see PPStrike.pose)
+    if (window.PPStrike && player === window._gamePlayer) window.PPStrike.pose(ctx, W, H);
 
     
     if (lookDir === -1) {
@@ -39928,6 +39930,11 @@ window._claimLBro = function() {
     const fd = cur.fd, pw = cur.power;
     try { cur.fire(pw); } catch (e) { (window.__ppStrikeErr = window.__ppStrikeErr || []).push(String(e && e.stack || e)); }
     if (fd.push) p.vx = cur.dir * fd.push * (1 + 0.5 * pw);
+    // a kick of dust behind your feet as you drive forward
+    if (p.onGround && (fd.push || 0) + (cur.windup >= 0.1 ? 4 : 0) >= 4) {
+      const pt = window._gameParticles, T = window._TILE || 40;
+      if (pt) for (let i = 0; i < 7 + Math.round(4 * pw); i++) pt.push({ x: (pcx(p) - cur.dir * p.w * 0.4) * T, y: (p.y + p.h) * T - 2, vx: -cur.dir * (2 + Math.random() * 5), vy: -Math.random() * 3, life: 0.3 + Math.random() * 0.15, color: '#c8c2b8', size: 2 + Math.random() * 3 });
+    }
     if (fd.pushUp) p.vy = Math.min(p.vy, -fd.pushUp * (1 + 0.3 * pw));
     if (fd.armor) p.dashInvuln = Math.max(p.dashInvuln || 0, cur.sweet + 0.05);
     if (pw >= 0.99) { shake(6); fx.push({ k: 'burst', x: pcx(p), y: pcy(p), t: 0, life: 0.3, c: cur.col }); }
@@ -39990,6 +39997,35 @@ window._claimLBro = function() {
       const s = c.resolve(); if (!s) return;
       if (held < CHARGE_MIN) begin(s, 0);
       else begin(s, Math.min(1, (held - CHARGE_MIN) / (CHARGE_FULL - CHARGE_MIN)));
+    },
+    // the body's pose for the current phase, applied around the feet before the player is drawn:
+    // windup leans back, crouches and draws back (heavier moves further, with a tremble at the end),
+    // the strike stretches forward and leans into it, end lag settles back down. Charging crouches deeper.
+    pose(ctx, W, H) {
+      const p = P(); if (!p || !playing()) return;
+      const ease = u => 1 - Math.pow(1 - Math.max(0, Math.min(1, u)), 3);
+      let lean = 0, sx = 1, sy = 1, ox = 0, oy = 0;
+      if (charge) {
+        const u = API.chargePower(), d = (p.lastMoveDir || p.dashDir || 1) >= 0 ? 1 : -1, held = nowS() - charge.start;
+        if (held < CHARGE_MIN * 0.6) return;
+        lean = -d * (0.08 + 0.16 * u); sx = 1 + 0.08 + 0.06 * u; sy = 1 - 0.08 - 0.10 * u; ox = -d * W * (0.06 + 0.1 * u);
+        if (u >= 1) ox += Math.sin(nowS() * 70) * 1.6;
+      } else if (cur) {
+        const d = cur.dir >= 0 ? 1 : -1, hv = Math.max(0.35, Math.min(1.25, (cur.fd.windup || 0.06) / 0.15)) * (1 + 0.4 * cur.power);
+        if (cur.phase === 'windup') {
+          const u = ease(cur.windup > 0 ? cur.t / cur.windup : 1);
+          lean = -d * 0.34 * hv * u; sx = 1 + 0.14 * hv * u; sy = Math.max(0.74, 1 - 0.2 * hv * u); ox = -d * W * 0.2 * hv * u;
+          if (u > 0.75 && cur.windup >= 0.1) ox += Math.sin(cur.t * 90) * 1.2 * hv;   // straining at the end of a big windup
+        } else if (cur.phase === 'live') {
+          const L = Math.max(0.05, cur.sweet + cur.active), u = Math.min(1, cur.t / L), snap = Math.min(1, cur.t / 0.04);
+          const k = snap * (1 - u * 0.6);
+          lean = d * 0.26 * hv * k; sx = 1 + 0.3 * hv * k; sy = 1 - 0.12 * hv * k; ox = d * W * 0.26 * hv * k;
+        } else if (cur.phase === 'endlag') {
+          const u = cur.endlag > 0 ? Math.min(1, cur.t / cur.endlag) : 1, k = 1 - ease(u);
+          lean = d * 0.10 * hv * k; sx = 1 + 0.06 * hv * k; sy = 1 - 0.09 * hv * Math.sin(Math.min(1, u * 1.4) * Math.PI) - 0.03 * hv * k; ox = d * W * 0.12 * hv * k;
+        } else return;
+      } else return;
+      ctx.translate(W / 2 + ox, H + oy); ctx.rotate(lean); ctx.scale(sx, sy); ctx.translate(-W / 2, -H);
     },
     cancel() { cur = null; buffered = null; charge = null; },
     // some fighters (the Brawler) may jump out of their recovery
@@ -40065,6 +40101,16 @@ window._claimLBro = function() {
         ctx.strokeStyle = cur.col; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(hx, y, T * (0.7 - 0.5 * u), 0, Math.PI * 2); ctx.stroke();
         ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(hx, y, 2 + 3 * u, 0, Math.PI * 2); ctx.fill();
+      }
+      if (cur && cur.phase === 'live' && cur.t < cur.sweet + 0.1) {
+        const u = cur.t / (cur.sweet + 0.1), hv = Math.max(0.35, Math.min(1.25, (cur.fd.windup || 0.06) / 0.15));
+        const len = T * (0.6 + 0.9 * hv + 0.04 * (cur.fd.push || 0)), bx = x - cur.dir * T * 0.35;
+        ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+        for (let i = 0; i < 4; i++) {
+          const yy = y + (i - 1.5) * T * 0.2, l = len * (0.6 + 0.4 * ((i * 37) % 10) / 10) * (1 - u);
+          ctx.globalAlpha = 0.55 * (1 - u); ctx.strokeStyle = i % 2 ? '#ffffff' : cur.col; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.moveTo(bx, yy); ctx.lineTo(bx - cur.dir * l, yy); ctx.stroke();
+        }
       }
       if (charge) {
         const pw = API.chargePower(), held = nowS() - charge.start;
