@@ -41304,6 +41304,971 @@ window._claimLBro = function() {
 })();
 </script>
 <script>
+// ===== Press Play Mixtape: Press Play exclusive character (only from the Press Play shop) =====
+// Registered like the Press Play Prodigy: its tier ('pressplay') is in no capsule pool, so it is never rolled.
+// TAPE DECK: G / 📼 flips between two forms, each with its own moves on S / ⚔️:
+//   SIDE A - a tape-whip fighter: S plus a direction gives 8 moves, on the ground or in the air.
+//   RIBBON - a grappling ribbon: S plus any of the 8 directions (or drag the 🎀 button to aim anywhere)
+//            shoots it. It latches onto blocks so you can swing. A foe it hits is pulled in and held at
+//            your side (like Chroma's tongue); S plus any direction (or 🎀) then throws it that way, into
+//            walls, other foes or spikes. Jump lets go of a swing with a fling, ↓ reels you in, and a fast
+//            swing kicks whatever you run into.
+// Hits, yanks and fast swings fill the Tape meter; a full meter unlocks FAST FORWARD (K / ⏩).
+(function () {
+  'use strict';
+  const ID = 'cb_pp_mixtape';
+  const DEF = {
+    id: ID, name: 'Press Play Mixtape', icon: '📼', tier: 'pressplay',
+    ability: 'Tape Deck: SIDE A / RIBBON forms (G / 📼) + FAST FORWARD (K / ⏩)',
+    desc: 'Press Play exclusive. A cassette chest, black and grey headphones and a tape that does everything. G / 📼 flips the tape: SIDE A is a tape-whip fighter with 8 moves (S / ⚔️ plus a direction, ground or air). RIBBON turns S into a grappling ribbon you can shoot in all 8 directions (or drag 🎀 to aim anywhere): it swings off blocks, and a foe it hits is pulled in and held so you can throw it in any direction. Jump lets go with a fling, ↓ reels in, and fast swings kick foes. Fill the Tape meter for FAST FORWARD (K / ⏩).',
+    color: '#ff5fd8'
+  };
+  const STATS = { speed: 1.25, jump: 1.25, maxJumps: 2, maxDashes: 2, hp: 4 };
+
+  // a Mixtape bought in the Press Play shop joins your saved roster
+  if (window.PPHub && PPHub.take('mixtape')) {
+    try {
+      const owned = JSON.parse(localStorage.getItem('obby_cbox_owned') || '[]');
+      if (!owned.includes(ID)) { owned.push(ID); localStorage.setItem('obby_cbox_owned', JSON.stringify(owned)); }
+    } catch (e) {}
+  }
+  function isOwned() {
+    try { return JSON.parse(localStorage.getItem('obby_cbox_owned') || '[]').includes(ID); } catch (e) { return false; }
+  }
+  function register() {
+    if (window.CBOX_CHARS_DEF && !window.CBOX_CHARS_DEF.find(c => c.id === ID)) window.CBOX_CHARS_DEF.push(DEF);
+    if (window.cboxOwnedChars) window.cboxOwnedChars.add(ID);
+    window._gtCharStatCache = window._gtCharStatCache || {};
+    window._gtCharStatCache[ID] = formStats();
+  }
+
+  // ---- forms ----
+  const C_PINK = '#ff5fd8', C_TEAL = '#6ee7d0', C_AMBER = '#ffb020', C_VIOLET = '#8b5cff', C_TAPE = '#3b2a22';
+  const FORMS = [
+    { id: 'a', name: 'Side A', short: 'SIDE A', icon: '📼', pal: [C_PINK, C_AMBER, C_TEAL], glow: 'rgba(255,95,216,0.7)',
+      body: '#3a2350', head: '#4a2d66', leg: '#24163a', stats: { speed: 1.25, jump: 1.25 },
+      tip: 'tape-whip fighter: S + a direction for 8 moves, on the ground or in the air' },
+    { id: 'r', name: 'Ribbon', short: 'RIBBON', icon: '🎀', pal: [C_TEAL, C_VIOLET, C_PINK], glow: 'rgba(110,231,208,0.7)',
+      body: '#1d3346', head: '#24425a', leg: '#13212e', stats: { speed: 1.2, jump: 1.3 },
+      tip: 'S + any direction shoots the ribbon (or drag 🎀): swing off blocks, or grab a foe and throw it any way you aim. Jump lets go, ↓ reels in' },
+  ];
+  let formIdx = 0;
+  try { formIdx = Math.max(0, Math.min(FORMS.length - 1, parseInt(localStorage.getItem('obby_pp_mixform') || '0', 10) || 0)); } catch (e) {}
+  let PALETTE = FORMS[formIdx].pal.slice();
+  function curForm() { return FORMS[formIdx]; }
+  function formStats() {
+    const s = Object.assign({}, STATS, curForm().stats);
+    if (ff) s.speed += 0.35;
+    return s;
+  }
+  const MOVES = {
+    ground: { neutral: { name: 'Tape Whip', cd: 0.45 }, side: { name: 'Fast-Forward Dash', cd: 0.9 }, up: { name: 'Spool Launch', cd: 1.0 }, down: { name: 'Tangle', cd: 1.4 } },
+    air:    { neutral: { name: 'Ribbon Lash', cd: 0.6 }, side: { name: 'Tape Zip', cd: 0.9 }, up: { name: 'Rewind Climb', cd: 0.8 }, down: { name: 'Eject Slam', cd: 1.0 } },
+  };
+  const TAPE_MAX = 10, FF_LEN = 6;
+  const RIBBON_RANGE = 8, RIBBON_SPEED = 38, ZIP_RANGE = 6;
+  const SWING_G = 36, SWING_PUMP = 16, SWING_MAX = 21, REEL_SPEED = 8, MIN_LEN = 1.0;
+
+  let active = false, atkCD = 0, formCD = 0, tape = 0, tapeFullSaid = false, airUpUsed = false;
+  let lastPX = null, lastPY = null, prevJump = false, ff = null, aim = null;
+  let dash = null, stomp = null, cast = null, rope = null, fling = null, held = null, spinT = 0;
+  const HOLD_MAX = 4, THROW_SPEED = 17;
+  const yanks = [], fx = [];
+  if (window.UNIVERSAL_PUNCH_EXCLUDED_CHARS) window.UNIVERSAL_PUNCH_EXCLUDED_CHARS.add(ID);
+
+  // ---- sound: tape clicks, whooshes and wow-and-flutter (its own AudioContext) ----
+  let AC = null, out = null, noiseBuf = null;
+  function ac() {
+    if (AC) { if (AC.state === 'suspended') { try { AC.resume(); } catch (e) {} } return AC; }
+    try {
+      const Ctor = window.AudioContext || window.webkitAudioContext; if (!Ctor) return null;
+      AC = new Ctor(); out = AC.createGain(); out.gain.value = 0.22;
+      const comp = AC.createDynamicsCompressor(); out.connect(comp); comp.connect(AC.destination);
+    } catch (e) { AC = null; }
+    return AC;
+  }
+  function tone(freq, o) {
+    const a = ac(); if (!a) return; o = o || {};
+    const t = a.currentTime + (o.delay || 0), dur = o.dur || 0.15, v = o.vol == null ? 0.4 : o.vol;
+    const osc = a.createOscillator(), g = a.createGain();
+    osc.type = o.type || 'square';
+    osc.frequency.setValueAtTime(freq, t);
+    if (o.slide) osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.slide), t + dur);
+    if (o.wow) {   // tape wobble
+      const lfo = a.createOscillator(), lg = a.createGain();
+      lfo.frequency.value = o.wow; lg.gain.value = freq * 0.03;
+      lfo.connect(lg); lg.connect(osc.frequency); lfo.start(t); lfo.stop(t + dur + 0.05);
+    }
+    let node = osc;
+    if (o.cut) {
+      const fl = a.createBiquadFilter(); fl.type = 'lowpass'; fl.Q.value = o.q || 6;
+      fl.frequency.setValueAtTime(o.cut, t);
+      if (o.cutEnd) fl.frequency.exponentialRampToValueAtTime(o.cutEnd, t + dur);
+      osc.connect(fl); node = fl;
+    }
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(v, t + (o.att || 0.006));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    node.connect(g); g.connect(out);
+    osc.start(t); osc.stop(t + dur + 0.05);
+  }
+  function noise(o) {
+    const a = ac(); if (!a) return; o = o || {};
+    if (!noiseBuf) {
+      noiseBuf = a.createBuffer(1, a.sampleRate, a.sampleRate);
+      const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const t = a.currentTime + (o.delay || 0), dur = o.dur || 0.2, v = o.vol == null ? 0.3 : o.vol;
+    const src = a.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const fl = a.createBiquadFilter(); fl.type = o.ftype || 'bandpass'; fl.Q.value = o.q || 1.2;
+    fl.frequency.setValueAtTime(o.cut || 2000, t);
+    if (o.cutEnd) fl.frequency.exponentialRampToValueAtTime(o.cutEnd, t + dur);
+    const g = a.createGain();
+    g.gain.setValueAtTime(v, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(fl); fl.connect(g); g.connect(out);
+    src.start(t); src.stop(t + dur + 0.05);
+  }
+  function click(vol) { noise({ dur: 0.025, cut: 4200, q: 3, vol: vol || 0.18 }); tone(1800, { type: 'square', dur: 0.02, vol: (vol || 0.18) * 0.5 }); }
+  function whoosh(up) { noise({ dur: 0.18, cut: up ? 600 : 3500, cutEnd: up ? 3500 : 600, q: 4, vol: 0.16 }); }
+  function crack() { noise({ dur: 0.06, cut: 5000, ftype: 'highpass', vol: 0.2 }); tone(900, { type: 'sawtooth', dur: 0.06, slide: 300, vol: 0.12 }); }
+  function thud(big) { tone(big ? 110 : 140, { type: 'sine', dur: big ? 0.45 : 0.25, slide: 40, vol: big ? 0.8 : 0.55 }); noise({ dur: 0.04, cut: 2500, vol: 0.12 }); }
+
+  // ---- helpers ----
+  const BLOCK = new Set(['solid', 'ice', 'crumble', 'mover', 'half']);
+  // what the ribbon can latch onto
+  const ANCHOR = new Set(['solid', 'ice', 'crumble', 'half', 'sand', 'sticky', 'oily', 'hookBlock', 'breakable', 'drillable', 'frozen', 'bridge', 'mirror', 'oneWayL', 'oneWayR', 'oneWayD', 'slopeUp', 'slopeDown']);
+  function tileAt(x, y) { const wd = window._gameWorld; if (!wd || !wd.tiles) return null; return wd.tiles.get(Math.floor(x) + ',' + Math.floor(y)) || null; }
+  function tileHit(set, x, y, w, h) {
+    const wd = window._gameWorld; if (!wd || !wd.tiles) return false;
+    for (let tx = Math.floor(x); tx <= Math.floor(x + w - 1e-3); tx++)
+      for (let ty = Math.floor(y); ty <= Math.floor(y + h - 1e-3); ty++) {
+        const tl = wd.tiles.get(tx + ',' + ty);
+        if (tl && set.has(tl.type)) return true;
+      }
+    return false;
+  }
+  function blocked(x, y, w, h) { return tileHit(BLOCK, x, y, w, h); }
+  function ex(e) { return e.x + (e.w || 0.9) / 2; }
+  function ey(e) { return e.y + (e.h || 0.9) / 2; }
+  function foes() { return (window._gameEnemies || []).filter(e => e && !e.dead); }
+  function within(x, y, r) { return foes().filter(e => { const dx = ex(e) - x, dy = ey(e) - y; return dx * dx + dy * dy <= r * r; }); }
+  function msg(s) { if (window._setMessage) window._setMessage(s); }
+  function shake(n) { if (window._getScreenShake && window._setScreenShake) window._setScreenShake(Math.max(window._getScreenShake() || 0, n)); }
+  function pcx(p) { return p.x + p.w / 2; }
+  function pcy(p) { return p.y + p.h / 2; }
+  function dmgM() { return ff ? 1.6 : 1; }
+  function addTape(n) {
+    tape = Math.min(TAPE_MAX, tape + n);
+    if (tape >= TAPE_MAX && !tapeFullSaid) {
+      tapeFullSaid = true;
+      msg('⏩ TAPE FULL! Press K / ⏩ for FAST FORWARD!');
+      [0, 1, 2, 3].forEach(i => tone(660 * Math.pow(1.26, i), { type: 'triangle', dur: 0.1, vol: 0.2, delay: i * 0.05 }));
+    }
+  }
+  function hit(e, dmg, o) {
+    o = o || {};
+    e.hp = Math.max(0, (e.hp || 1) - Math.max(1, Math.round(dmg * dmgM())));
+    e.hitFlash = 0.5;
+    if (o.stun) e.stunTimer = Math.max(e.stunTimer || 0, o.stun);
+    if (o.slow) e.slowTimer = Math.max(e.slowTimer || 0, o.slow);
+    if (o.kx != null) e.vx = o.kx;
+    if (o.ky != null) e.vy = o.ky;
+    fx.push({ k: 'hit', x: ex(e), y: ey(e), t: 0, life: 0.3, c: o.c || PALETTE[0] });
+    if (e.hp <= 0 && !e.dead && window._killEnemy) window._killEnemy(e);
+    addTape(o.tape == null ? 0.5 : o.tape);
+  }
+  function keyDirs() {
+    const keys = window._gameKeys || new Set(), mk = window.mobileKeys || {};
+    return {
+      up: keys.has('arrowup') || keys.has('w') || keys.has(' ') || !!mk.up,
+      down: keys.has('arrowdown') || !!mk.down,
+      right: keys.has('arrowright') || keys.has('d') || !!mk.right,
+      left: keys.has('arrowleft') || keys.has('a') || !!mk.left,
+      jump: keys.has(' ') || keys.has('w') || keys.has('arrowup') || !!mk.jump,
+    };
+  }
+  function facing(p, k) { return k.right ? 1 : k.left ? -1 : ((p.dashDir || p.lastMoveDir || 1) >= 0 ? 1 : -1); }
+  function freeFoes() {
+    for (const y of yanks) if (y.grab && y.e) y.e._held = false;
+    if (held && held.e) { held.e._held = false; held.e.stunTimer = Math.max(held.e.stunTimer || 0, 0.6); }
+    yanks.length = 0; held = null;
+  }
+  function resetKit() {
+    freeFoes(); fx.length = 0;
+    dash = stomp = cast = rope = fling = ff = aim = null;
+    atkCD = 0; formCD = 0; airUpUsed = false; spinT = 0;
+    lastPX = lastPY = null;
+  }
+  function dropRope(silent) {
+    if (!rope) return;
+    if (!silent) fx.push({ k: 'snap', x1: rope.ax, y1: rope.ay, t: 0, life: 0.25 });
+    rope = null;
+  }
+
+  // ---- the ribbon: a cast flies out, then latches onto a block (swing) or a foe (yank) ----
+  function shootRibbon(p, dx, dy, purpose) {
+    const L = Math.hypot(dx, dy) || 1;
+    const sm = ff ? 1.5 : 1;
+    // the tip flies on a fixed line from where you shot it, even if you move meanwhile
+    cast = { ox: pcx(p), oy: pcy(p), x: pcx(p), y: pcy(p), dx: dx / L, dy: dy / L, dist: 0, purpose: purpose || 'grapple',
+      max: (purpose === 'zip' ? ZIP_RANGE : RIBBON_RANGE) * sm, speed: RIBBON_SPEED * sm, back: 0 };
+    whoosh(dy < 0);
+  }
+  function aimFromKeys(p) {
+    const k = keyDirs(), f = facing(p, k);
+    let dx = (k.right ? 1 : 0) - (k.left ? 1 : 0), dy = (k.down ? 1 : 0) - (k.up ? 1 : 0);
+    if (!dx && !dy) { dx = f; dy = -1; }   // no direction: up and forward
+    return { dx, dy };
+  }
+  function attach(p, x, y, key) {
+    if (rope) fx.push({ k: 'snap', x1: rope.ax, y1: rope.ay, t: 0, life: 0.25 });
+    const len = Math.max(MIN_LEN, Math.hypot(pcx(p) - x, pcy(p) - y));
+    rope = { ax: x, ay: y, key, len, sw: false, ang: 0, om: 0, t: 0 };
+    fling = null;
+    fx.push({ k: 'clip', x, y, t: 0, life: 0.35 });
+    tone(1400, { type: 'triangle', dur: 0.07, slide: 2200, vol: 0.2 }); click(0.14);
+  }
+  function heavy(e) { return (e.w || 0.9) > 1.6 || (e.h || 0.9) > 1.6; }
+  // pull a foe in; with grab it is then held at your side, ready to throw
+  function yank(p, e, dmg, grab) {
+    if (yanks.some(y => y.e === e) || (held && held.e === e)) return;
+    grab = !!grab && !held && !yanks.some(y => y.grab) && !heavy(e);
+    // big foes are too heavy to pull: they just get tied up
+    if (!heavy(e)) {
+      yanks.push({ e, t: 0, dur: 0.22, x0: e.x, y0: e.y, grab });
+      if (grab) { e._held = true; e._thrown = false; }
+    }
+    hit(e, dmg || 2, { stun: 1.1, c: C_TEAL, tape: 1 });
+    tone(500, { type: 'sawtooth', dur: 0.18, slide: 1400, cut: 2500, vol: 0.16 }); crack();
+  }
+  // throw the held foe: the game's own thrown-foe physics smash it into walls, other foes and kill blocks
+  function throwHeld(p, dx, dy) {
+    if (!held) return false;
+    const e = held.e; held = null;
+    if (!e || e.dead) return true;
+    const L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, v = THROW_SPEED * (ff ? 1.3 : 1);
+    const w = e.w || 0.9, h = e.h || 0.9;
+    const nx = pcx(p) + ux * (p.w / 2 + w / 2 + 0.2) - w / 2, ny = pcy(p) + uy * (p.h / 2 + h / 2 + 0.2) - h / 2;
+    if (!blocked(nx, ny, w, h)) { e.x = nx; e.y = ny; }
+    e._held = false; e._thrown = true; e._thrownTimer = 3.0; e.stunTimer = 0;
+    e.vx = ux * v + (p.vx || 0) * 0.5;
+    e.vy = uy * v + Math.min(0, p.vy || 0) * 0.5 - (Math.abs(uy) < 0.3 ? 4 : 0);
+    hit(e, 2, { c: C_PINK, tape: 1 });
+    fx.push({ k: 'thrown', e, t: 0, life: 0.6 });
+    fx.push({ k: 'label', x: ex(e), y: e.y - 0.3, t: 0, life: 0.6, text: 'THROWN!' });
+    crack(); whoosh(uy < 0); shake(4);
+    msg('🎀 THROWN!');
+    return true;
+  }
+  function throwAim(p) {   // keys for a throw: no direction throws straight ahead
+    const k = keyDirs(), f = facing(p, k);
+    let dx = (k.right ? 1 : 0) - (k.left ? 1 : 0), dy = (k.down ? 1 : 0) - (k.up ? 1 : 0);
+    if (!dx && !dy) { dx = f; dy = -0.15; }
+    return { dx, dy };
+  }
+  function stepHeld(p, dt) {
+    if (!held) return;
+    const e = held.e;
+    if (!e || e.dead) { held = null; return; }
+    held.t += dt;
+    if (held.t > HOLD_MAX) {
+      e._held = false; e.stunTimer = Math.max(e.stunTimer || 0, 0.6);
+      held = null; msg('🎀 It wriggled free'); return;
+    }
+    // it dangles at your side on the ribbon, bobbing a little
+    const f = (p.dashDir || p.lastMoveDir || 1) >= 0 ? 1 : -1, w = e.w || 0.9, h = e.h || 0.9;
+    const bob = Math.sin(held.t * 8) * 0.06;
+    for (const side of [f, -f]) {
+      const nx = pcx(p) + side * (p.w / 2 + w / 2 + 0.1) - w / 2, ny = p.y + p.h * 0.15 - h / 2 + bob;
+      if (!blocked(nx, ny, w, h)) { e.x = nx; e.y = ny; break; }
+    }
+    e.vx = 0; e.vy = 0; e._held = true;
+  }
+  function stepCast(p, dt) {
+    if (!cast) return;
+    if (cast.back > 0) { cast.back -= dt; if (cast.back <= 0) cast = null; return; }
+    const step = cast.speed * dt, n = Math.max(1, Math.ceil(step / 0.2)), enemies = foes();
+    for (let i = 0; i < n; i++) {
+      cast.dist += step / n;
+      const x = cast.ox + cast.dx * cast.dist, y = cast.oy + cast.dy * cast.dist;
+      cast.x = x; cast.y = y;
+      for (const e of enemies) {
+        if (Math.abs(ex(e) - x) < (e.w || 0.9) / 2 + 0.25 && Math.abs(ey(e) - y) < (e.h || 0.9) / 2 + 0.25) {
+          const grab = cast.purpose === 'grapple' && !held && !heavy(e);
+          yank(p, e, 2, grab);
+          if (cast.purpose === 'zip') msg('📼 TAPE ZIP! Got one!');
+          else msg(grab ? '🎀 GOT ONE! S + a direction (or drag 🎀) throws it' : '🎀 RIBBON YANK!');
+          cast.back = 0.12; return;
+        }
+      }
+      const tl = tileAt(x, y);
+      if (tl && cast.purpose !== 'zip' && ANCHOR.has(tl.type)) {
+        // latch on the near edge of the block, not inside it
+        attach(p, x - cast.dx * 0.12, y - cast.dy * 0.12, Math.floor(x) + ',' + Math.floor(y));
+        cast = null; return;
+      }
+      if (tl && BLOCK.has(tl.type)) { cast.back = 0.12; tone(300, { type: 'square', dur: 0.05, vol: 0.08 }); return; }
+      if (cast.dist >= cast.max) { cast.back = 0.15; return; }
+    }
+  }
+
+  // ---- SIDE A: the 8 moves ----
+  const ACT = {
+    // Tape Whip: a long crack of tape straight ahead
+    ground_neutral(p, f) {
+      const x = pcx(p), y = pcy(p);
+      for (const e of foes()) { const al = (ex(e) - x) * f; if (al > -0.2 && al < 2.9 && Math.abs(ey(e) - y) < 0.85) hit(e, 2, { kx: f * 6, ky: -3, stun: 0.35 }); }
+      fx.push({ k: 'whip', x, y, f, len: 2.9, t: 0, life: 0.22 });
+      crack();
+    },
+    // Fast-Forward Dash: a quick dash that cuts through everything in the way
+    ground_side(p, f) {
+      dash = { t: 0, dur: 0.2, f, speed: 16, hitSet: new Set(), x0: pcx(p), y: pcy(p) };
+      p.dashInvuln = Math.max(p.dashInvuln || 0, 0.3);
+      tone(300, { type: 'sawtooth', dur: 0.22, slide: 1200, cut: 4000, vol: 0.18, wow: 18 });
+    },
+    // Spool Launch: the tape winds up and flings foes overhead, and you with them a little
+    ground_up(p, f) {
+      const x = pcx(p) + f * 0.5, y = pcy(p) - 0.6;
+      for (const e of within(x, y, 1.7)) hit(e, 3, { ky: -11, kx: f * 2, stun: 0.6 });
+      p.vy = Math.min(p.vy, -9);
+      fx.push({ k: 'spool', x, y, t: 0, life: 0.35 });
+      whoosh(true); tone(420, { type: 'triangle', dur: 0.2, slide: 900, vol: 0.2 });
+    },
+    // Tangle: tape snakes along the floor both ways and roots anything it catches
+    ground_down(p) {
+      const x = pcx(p), fy = p.y + p.h;
+      for (const e of foes()) if (Math.abs(ex(e) - x) < 3.2 && Math.abs(ey(e) - (fy - 0.5)) < 1.2) hit(e, 1, { stun: 1.6, slow: 2.5, kx: 0, c: C_AMBER });
+      fx.push({ k: 'tangle', x, y: fy, t: 0, life: 0.6 });
+      noise({ dur: 0.3, cut: 900, cutEnd: 2500, q: 2, vol: 0.18 });
+    },
+    // Ribbon Lash: a full circle of tape around you
+    air_neutral(p) {
+      const x = pcx(p), y = pcy(p);
+      for (const e of within(x, y, 1.8)) hit(e, 2, { kx: (ex(e) >= x ? 1 : -1) * 6, ky: -4, stun: 0.4 });
+      fx.push({ k: 'lash', x, y, t: 0, life: 0.3 });
+      spinT = 0.3; crack(); whoosh(false);
+    },
+    // Tape Zip: shoot the tape forward; the first foe it touches is pulled straight to you
+    air_side(p, f) {
+      shootRibbon(p, f, 0, 'zip');
+      p.vy = Math.min(p.vy, 1);
+    },
+    // Rewind Climb: rewind upward, hitting anything above (once per jump)
+    air_up(p) {
+      airUpUsed = true;
+      p.vy = Math.min(p.vy, -13);
+      for (const e of within(pcx(p), pcy(p) - 0.9, 1.3)) hit(e, 2, { ky: -8, stun: 0.4 });
+      fx.push({ k: 'rewind', x: pcx(p), y: p.y + p.h, t: 0, life: 0.45 });
+      tone(900, { type: 'sawtooth', dur: 0.25, slide: 260, cut: 3000, vol: 0.15, wow: 22 });
+    },
+    // Eject Slam: the tape ejects you straight down; a shockwave where you land
+    air_down(p) {
+      stomp = { t: 0 };
+      tone(700, { type: 'square', dur: 0.12, slide: 200, vol: 0.14 });
+    },
+  };
+  function slamImpact(x, y) {
+    for (const e of within(x, y - 0.4, 1.9)) hit(e, 3, { kx: (ex(e) >= x ? 1 : -1) * 7, ky: -7, stun: 0.6, c: C_AMBER });
+    fx.push({ k: 'ring', x, y, t: 0, life: 0.4, R: 1.9, flat: 0.4, c: C_AMBER });
+    thud(true); shake(5);
+  }
+
+  const _prevSlash = window.performSlash;
+  window.performSlash = function () {
+    if (window.selectedCharacter !== ID) { if (_prevSlash) return _prevSlash.apply(this, arguments); return; }
+    const p = window._gamePlayer;
+    if (!p || atkCD > 0) return;
+    const fm = curForm(), cdM = ff ? 0.5 : 1;
+    if (fm.id === 'r') {
+      if (held) { const a = throwAim(p); throwHeld(p, a.dx, a.dy); atkCD = 0.3 * cdM; return; }
+      if (yanks.some(y => y.grab)) return;   // still reeling one in
+      if (cast && !cast.back) return;
+      const a = aimFromKeys(p);
+      shootRibbon(p, a.dx, a.dy, 'grapple');
+      atkCD = 0.22 * cdM;
+      return;
+    }
+    const k = keyDirs();
+    const stance = p.onGround ? 'ground' : 'air';
+    const dir = (k.down && !k.up) ? 'down' : (k.up && !k.down) ? 'up' : (k.left || k.right) ? 'side' : 'neutral';
+    const mv = MOVES[stance][dir];
+    if (stance === 'air' && dir === 'up' && airUpUsed) { msg('📼 ' + mv.name + ' is used up until you land'); return; }
+    if (rope) dropRope();
+    atkCD = mv.cd * cdM;
+    ACT[stance + '_' + dir](p, facing(p, k));
+    msg('📼 ' + mv.name.toUpperCase() + '!');
+  };
+
+  // ---- flip the tape (G / 📼) ----
+  function applyForm() {
+    PALETTE = curForm().pal.slice();
+    if (window._gtCharStatCache && window._gtCharStatCache[ID]) window._gtCharStatCache[ID] = formStats();
+  }
+  function pressForm() {
+    if (window.selectedCharacter !== ID || (window._gameMode && window._gameMode() !== 'play')) return;
+    const p = window._gamePlayer; if (!p || formCD > 0) return;
+    formCD = 0.7;
+    formIdx = (formIdx + 1) % FORMS.length;
+    try { localStorage.setItem('obby_pp_mixform', String(formIdx)); } catch (e) {}
+    applyForm();
+    dash = stomp = null; if (cast) cast = null;
+    freeFoes();
+    const fm = curForm(), x = pcx(p), y = pcy(p);
+    // flipping the tape spins it around you: a little shove
+    for (const e of within(x, y, 1.6)) hit(e, 1, { kx: (ex(e) >= x ? 1 : -1) * 5, ky: -3, stun: 0.3, tape: 0.2 });
+    fx.push({ k: 'flip', x, y, t: 0, life: 0.6 });
+    click(0.25); tone(fm.id === 'r' ? 520 : 330, { type: 'triangle', dur: 0.3, slide: fm.id === 'r' ? 880 : 520, vol: 0.2, wow: 7, delay: 0.04 });
+    msg('📼 ' + fm.icon + ' ' + fm.name.toUpperCase() + ': ' + fm.tip);
+  }
+  window.addEventListener('keydown', e => {
+    if (e.repeat || !e.key) return;
+    const k = e.key.toLowerCase();
+    if (k === 'k') pressSuper();
+    else if (k === 'g') pressForm();
+  });
+
+  // ---- FAST FORWARD (K / ⏩): needs a full Tape meter ----
+  function pressSuper() {
+    if (window.selectedCharacter !== ID || (window._gameMode && window._gameMode() !== 'play')) return;
+    const p = window._gamePlayer; if (!p) return;
+    if (ff) return;
+    if (tape < TAPE_MAX) { msg('⏩ Tape ' + Math.floor(tape) + '/' + TAPE_MAX + ': hit, yank and swing to fill it for FAST FORWARD'); return; }
+    tape = 0; tapeFullSaid = false;
+    ff = { t: FF_LEN };
+    applyForm();
+    // the tape bursts out in 8 directions and drags every foe nearby to you
+    const x = pcx(p), y = pcy(p);
+    let hits = 0;
+    for (const e of within(x, y, 5)) { yank(p, e, 4); hits++; }
+    const rays = []; for (let i = 0; i < 8; i++) rays.push(i * Math.PI / 4);
+    fx.push({ k: 'burst', x, y, rays, t: 0, life: 0.5, R: 5 });
+    tone(220, { type: 'sawtooth', dur: 0.6, slide: 1760, cut: 6000, vol: 0.2, wow: 30 });
+    noise({ dur: 0.5, cut: 800, cutEnd: 7000, q: 3, vol: 0.2 });
+    click(0.3); shake(8);
+    msg('⏩ FAST FORWARD!' + (hits ? ' ' + hits + ' pulled in!' : '') + ' Faster, harder and longer ribbons for ' + FF_LEN + 's');
+  }
+
+  // ---- buttons: ⏩ FAST FORWARD (shows the Tape meter), 📼 form flip, 🎀 aim pad (Ribbon form) ----
+  if (!document.getElementById('ppmxStyle')) {
+    const sty = document.createElement('style');
+    sty.id = 'ppmxStyle';
+    sty.textContent = `
+      #ppmxSuperBtn, #ppmxFormBtn, #ppmxAimBtn { position:absolute; right:16px; z-index:100; width:54px; height:54px; border-radius:50%;
+        display:none; align-items:center; justify-content:center; cursor:pointer;
+        font-size:22px; color:#fff; padding:0; touch-action:none; transition:transform .12s; }
+      #ppmxSuperBtn { top:136px; border:2px solid #ff5fd8; }
+      #ppmxFormBtn { top:198px; border:2px solid rgba(255,255,255,.85); flex-direction:column; line-height:1; }
+      #ppmxFormBtn small { font-size:8px; font-weight:800; letter-spacing:.04em; margin-top:2px; text-shadow:0 1px 2px #000; }
+      #ppmxAimBtn { top:260px; border:2px dashed #6ee7d0; background:radial-gradient(circle, rgba(16,30,44,.95) 55%, rgba(110,231,208,.35)); }
+      #ppmxAimBtn.aiming { border-style:solid; box-shadow:0 0 18px #6ee7d0; }
+      #ppmxSuperBtn:active, #ppmxFormBtn:active { transform:scale(.9); }
+      #ppmxFormBtn.cooling { opacity:.55; }
+      #ppmxSuperBtn.ready { border-color:#fff; animation: ppmxReady .5s infinite; }
+      #ppmxSuperBtn.on { border-color:#fff; box-shadow:0 0 22px #6ee7d0; }
+      @keyframes ppmxReady { 0%,100% { box-shadow:0 0 10px #ff5fd8; } 50% { box-shadow:0 0 28px #ff5fd8, 0 0 8px #ffb020; } }
+      @media (max-width: 480px) { #ppmxSuperBtn, #ppmxFormBtn, #ppmxAimBtn { transform: scale(0.85); } }
+      @media (max-height: 500px) { #ppmxSuperBtn { top:98px; transform: scale(0.8); } #ppmxFormBtn { top:150px; transform: scale(0.8); } #ppmxAimBtn { top:202px; transform: scale(0.8); } }
+    `;
+    document.head.appendChild(sty);
+  }
+  let btn = null, formBtn = null, aimBtn = null, btnKey = '', formKey = '';
+  function makeBtn(id, title, html, fn) {
+    const b = document.createElement('button');
+    b.id = id; b.title = title; b.innerHTML = html;
+    if (fn) {
+      const fire = ev => { ev.preventDefault(); ev.stopPropagation(); fn(); };
+      b.addEventListener('touchstart', fire, { passive: false });
+      b.addEventListener('mousedown', fire);
+    }
+    document.body.appendChild(b);
+    return b;
+  }
+  // 🎀: press and drag to aim in any direction, let go to shoot. A tap shoots up and forward.
+  function bindAim(b) {
+    let sx = 0, sy = 0, id = null;
+    const pt = ev => ev.changedTouches ? ev.changedTouches[0] : ev;
+    const start = ev => {
+      ev.preventDefault(); ev.stopPropagation();
+      const t = pt(ev); sx = t.clientX; sy = t.clientY; id = t.identifier;
+      aim = { dx: 0, dy: 0 }; b.classList.add('aiming');
+    };
+    const move = ev => {
+      if (!aim) return;
+      let t = pt(ev);
+      if (ev.changedTouches) { t = null; for (const c of ev.changedTouches) if (c.identifier === id) t = c; if (!t) return; }
+      ev.preventDefault();
+      aim.dx = t.clientX - sx; aim.dy = t.clientY - sy;
+    };
+    const end = ev => {
+      if (!aim) return;
+      if (ev.changedTouches) { let mine = false; for (const c of ev.changedTouches) if (c.identifier === id) mine = true; if (!mine) return; }
+      ev.preventDefault();
+      const a = aim; aim = null; b.classList.remove('aiming');
+      const p = window._gamePlayer;
+      if (!p || window.selectedCharacter !== ID || curForm().id !== 'r') return;
+      if (held) {
+        if (Math.hypot(a.dx, a.dy) < 14) { const k = throwAim(p); throwHeld(p, k.dx, k.dy); } else throwHeld(p, a.dx, a.dy);
+        return;
+      }
+      if (yanks.some(y => y.grab) || (cast && !cast.back)) return;
+      if (Math.hypot(a.dx, a.dy) < 14) { const k = aimFromKeys(p); shootRibbon(p, k.dx, k.dy, 'grapple'); }
+      else shootRibbon(p, a.dx, a.dy, 'grapple');
+    };
+    b.addEventListener('touchstart', start, { passive: false });
+    b.addEventListener('touchmove', move, { passive: false });
+    b.addEventListener('touchend', end, { passive: false });
+    b.addEventListener('touchcancel', () => { aim = null; b.classList.remove('aiming'); });
+    b.addEventListener('mousedown', start);
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', end);
+  }
+  function ensureBtns() {
+    if (!btn) btn = makeBtn('ppmxSuperBtn', 'FAST FORWARD (K)', '⏩', pressSuper);
+    if (!formBtn) formBtn = makeBtn('ppmxFormBtn', 'Flip the tape (G)', '', pressForm);
+    if (!aimBtn) { aimBtn = makeBtn('ppmxAimBtn', 'Drag to aim the ribbon', '🎀', null); bindAim(aimBtn); }
+  }
+  function updateBtns() {
+    const fm = curForm(), pal = fm.pal;
+    const pct = ff ? Math.round(ff.t / FF_LEN * 100) : Math.round(tape / TAPE_MAX * 100);
+    const key = fm.id + '|' + pct + '|' + !!ff;
+    if (key !== btnKey) {
+      btnKey = key;
+      btn.style.background = 'radial-gradient(circle, rgba(30,16,36,.95) 52%, transparent 54%), conic-gradient(' + pal[0] + ' 0%, ' + pal[1] + ' ' + (pct / 2) + '%, ' + pal[2] + ' ' + pct + '%, rgba(60,30,60,.85) ' + pct + '% 100%)';
+      btn.classList.toggle('ready', !ff && tape >= TAPE_MAX);
+      btn.classList.toggle('on', !!ff);
+    }
+    const fk = fm.id + '|' + (formCD > 0);
+    if (fk !== formKey) {
+      formKey = fk;
+      formBtn.innerHTML = fm.icon + '<small>' + fm.short + '</small>';
+      formBtn.style.background = 'linear-gradient(135deg, ' + pal[0] + ', ' + pal[1] + ' 55%, ' + pal[2] + ')';
+      formBtn.style.boxShadow = '0 0 14px ' + pal[1];
+      formBtn.classList.toggle('cooling', formCD > 0);
+    }
+    aimBtn.style.display = fm.id === 'r' ? 'flex' : 'none';
+  }
+
+  // ---- per-frame update (runs after the game has moved the player) ----
+  function stepRope(p, dt, k) {
+    if (!rope) return;
+    rope.t += dt;
+    // the block it was clipped to is gone (crumbled, broken): the ribbon lets go
+    const wd = window._gameWorld, clip = wd && wd.tiles && wd.tiles.get(rope.key);
+    if (!clip || !ANCHOR.has(clip.type)) { dropRope(); msg('🎀 The ribbon lost its grip'); return; }
+    // jump lets go with a fling; a dash breaks free too
+    const jumpEdge = k.jump && !prevJump;
+    if ((jumpEdge && rope.t > 0.1) || p.isDashing) {
+      if (rope.sw) {
+        const vx = p.vx * 1.25, vy = Math.min(p.vy * 1.1, -7);
+        p.vx = vx; p.vy = vy;
+        fling = { vx, t: 0.7 };
+        if (window._setJumpCount) window._setJumpCount(1);   // a jump is left after letting go
+        whoosh(true);
+        msg('🎀 FLING!');
+      }
+      dropRope(true);
+      return;
+    }
+    const cx = pcx(p), cy = pcy(p);
+    let dx = cx - rope.ax, dy = cy - rope.ay, d = Math.hypot(dx, dy) || 1e-4;
+    // ↓ reels you in (faster swings as the ribbon gets shorter)
+    if (k.down && rope.len > MIN_LEN) {
+      const nl = Math.max(MIN_LEN, rope.len - REEL_SPEED * dt);
+      if (rope.sw) rope.om *= rope.len / nl;
+      rope.len = nl;
+      if (Math.random() < dt * 30) click(0.05);
+    }
+    if (!rope.sw) {
+      if (p.onGround) {
+        if (k.down && d > rope.len) {
+          // reeling in while standing lifts you toward the clip
+          const nx = rope.ax + dx / d * rope.len - p.w / 2, ny = rope.ay + dy / d * rope.len - p.h / 2;
+          if (!blocked(nx, ny, p.w, p.h)) { p.x = nx; p.y = ny; p.vy = Math.min(p.vy, 0); }
+        } else {
+          // walking lets tape out (up to a point) and the spool winds it back in
+          if (d > RIBBON_RANGE * 1.5) { dropRope(); return; }
+          rope.len = Math.max(MIN_LEN, d);
+        }
+        return;
+      }
+      // in the air the spool winds in any slack, so the ribbon is always taut and you swing at once
+      rope.len = Math.max(MIN_LEN, Math.min(rope.len, d));
+      rope.sw = true;
+      rope.ang = Math.atan2(dx, dy);
+      rope.om = (p.vx * Math.cos(rope.ang) - p.vy * Math.sin(rope.ang)) / rope.len;
+      return;
+    }
+    // swinging: a pendulum around the clip
+    if (p.onGround) { rope.sw = false; return; }
+    const inX = (k.right ? 1 : 0) - (k.left ? 1 : 0);
+    let ang = rope.ang, om = rope.om;
+    om += (inX * SWING_PUMP * Math.cos(ang)) / rope.len * dt;
+    om += -(SWING_G / rope.len) * Math.sin(ang) * dt;
+    om *= Math.pow(0.997, dt * 60);
+    const vmax = SWING_MAX * (ff ? 1.25 : 1);
+    if (Math.abs(om * rope.len) > vmax) om = Math.sign(om) * vmax / rope.len;
+    // over the top with too little speed: the ribbon goes slack and you fall freely
+    if (Math.cos(ang) < 0 && om * om * rope.len + SWING_G * Math.cos(ang) < 0) {
+      rope.sw = false;
+      p.vx = om * rope.len * Math.cos(ang); p.vy = -om * rope.len * Math.sin(ang);
+      return;
+    }
+    const na = ang + om * dt;
+    const nx = rope.ax + rope.len * Math.sin(na) - p.w / 2, ny = rope.ay + rope.len * Math.cos(na) - p.h / 2;
+    if (blocked(nx, ny, p.w, p.h)) {
+      om = -om * 0.3;   // bump off the wall
+      p.vx = 0; p.vy = 0;
+    } else {
+      p.x = nx; p.y = ny; ang = na;
+      p.vx = om * rope.len * Math.cos(ang);
+      p.vy = -om * rope.len * Math.sin(ang);
+    }
+    rope.ang = ang; rope.om = om;
+    p.onGround = false;
+    // a fast swing kicks whatever you run into, and fills the Tape meter
+    const speed = Math.abs(om * rope.len);
+    addTape(speed * 0.02 * dt);
+    if (speed > 9) {
+      for (const e of foes()) {
+        if ((e._ppmxKick || 0) > 0) continue;
+        if (ex(e) > p.x - 0.35 && ex(e) < p.x + p.w + 0.35 && ey(e) > p.y - 0.35 && ey(e) < p.y + p.h + 0.35) {
+          e._ppmxKick = 0.5;
+          hit(e, speed > 15 ? 3 : 2, { kx: Math.sign(p.vx || 1) * 9, ky: -5, stun: 0.6, c: C_PINK, tape: 0.8 });
+          fx.push({ k: 'label', x: ex(e), y: e.y - 0.3, t: 0, life: 0.6, text: 'SWING KICK' });
+          thud(false); shake(3);
+        }
+      }
+    }
+  }
+
+  (window._rafHubTickers = window._rafHubTickers || []).push(function _ppMixtapeTick(dt) {
+    ensureBtns();
+    const playing = window.selectedCharacter === ID && (!window._gameMode || window._gameMode() === 'play');
+    if (!playing) {
+      btn.style.display = 'none'; formBtn.style.display = 'none'; aimBtn.style.display = 'none';
+      if (active) { resetKit(); applyForm(); }
+      active = false; return;
+    }
+    const p = window._gamePlayer; if (!p) return;
+    if (!active) applyForm();
+    active = true; btn.style.display = 'flex'; formBtn.style.display = 'flex';
+    const k = keyDirs();
+
+    // respawned or teleported: let go of everything
+    if (lastPX != null && (Math.abs(p.x - lastPX) > 4 || Math.abs(p.y - lastPY) > 4)) { dash = stomp = cast = rope = fling = null; freeFoes(); }
+
+    if (atkCD > 0) atkCD = Math.max(0, atkCD - dt);
+    if (formCD > 0) formCD = Math.max(0, formCD - dt);
+    if (p.onGround) airUpUsed = false;
+    if (spinT > 0) spinT -= dt;
+    if (!ff) addTape(0.12 * dt);   // a trickle while you play
+    if (ff) { ff.t -= dt; if (ff.t <= 0) { ff = null; applyForm(); msg('⏩ Back to normal speed'); click(0.2); } }
+    const enemies = foes();
+    for (const e of enemies) if (e._ppmxKick > 0) e._ppmxKick -= dt;
+
+    stepCast(p, dt);
+    stepRope(p, dt, k);
+
+    // a fling keeps your swing speed for a moment after you let go (air friction would eat it)
+    if (fling) {
+      fling.t -= dt;
+      const s = Math.sign(fling.vx);
+      fling.vx -= s * 12 * dt;
+      if (fling.t <= 0 || p.onGround || Math.sign(fling.vx) !== s || Math.abs(p.vx) < 0.5 || Math.sign(p.vx) !== s) fling = null;
+      else if (Math.abs(p.vx) < Math.abs(fling.vx)) p.vx = fling.vx;
+    }
+
+    // yanked foes fly to you
+    for (let i = yanks.length - 1; i >= 0; i--) {
+      const y = yanks[i], e = y.e;
+      y.t += dt;
+      if (e.dead) { yanks.splice(i, 1); continue; }
+      if (y.grab) e._held = true;
+      const u = Math.min(1, y.t / y.dur), f = (ex(e) >= pcx(p)) ? 1 : -1;
+      const tx = pcx(p) + f * (p.w / 2 + 0.55) - (e.w || 0.9) / 2, ty = p.y + p.h - (e.h || 0.9);
+      const nx = y.x0 + (tx - y.x0) * u, ny = y.y0 + (ty - y.y0) * u;
+      if (!blocked(nx, ny, e.w || 0.9, e.h || 0.9)) { e.x = nx; e.y = ny; }
+      e.vx = 0; e.vy = 0;
+      if (u >= 1) {
+        yanks.splice(i, 1);
+        if (y.grab) { if (!held) { held = { e, t: 0 }; tone(700, { type: 'triangle', dur: 0.1, slide: 1100, vol: 0.18 }); } else e._held = false; }
+      }
+    }
+
+    stepHeld(p, dt);
+
+    // Fast-Forward Dash
+    if (dash) {
+      const prevT = dash.t; dash.t = Math.min(dash.dur, dash.t + dt);
+      const step = dash.f * dash.speed * (dash.t - prevT);
+      if (!blocked(p.x + step, p.y + 0.02, p.w, p.h - 0.04)) p.x += step; else dash.t = dash.dur;
+      p.vy = Math.min(p.vy, 0.5);
+      p.dashInvuln = Math.max(p.dashInvuln || 0, 0.12);
+      for (const e of enemies) {
+        if (dash.hitSet.has(e)) continue;
+        if (ex(e) > p.x - 0.35 && ex(e) < p.x + p.w + 0.35 && ey(e) > p.y - 0.3 && ey(e) < p.y + p.h + 0.3) {
+          dash.hitSet.add(e);
+          hit(e, 3, { kx: dash.f * 7, ky: -4, stun: 0.5, c: C_PINK });
+        }
+      }
+      if (dash.t >= dash.dur) { fx.push({ k: 'ffdash', x0: dash.x0, x1: pcx(p), y: dash.y, t: 0, life: 0.35 }); p.vx = dash.f * 7; dash = null; }
+    }
+
+    // Eject Slam
+    if (stomp) {
+      stomp.t += dt;
+      p.vy = Math.max(p.vy, 26);
+      p.dashInvuln = Math.max(p.dashInvuln || 0, 0.15);
+      let landed = null;
+      for (const e of enemies) if (ex(e) > p.x - 0.2 && ex(e) < p.x + p.w + 0.2 && e.y < p.y + p.h + 0.25 && e.y + (e.h || 0.9) > p.y + p.h * 0.5) { landed = e; break; }
+      if (landed) { stomp = null; p.vy = -11; slamImpact(pcx(p), p.y + p.h); }
+      else if (p.onGround && stomp.t > 0.03) { stomp = null; slamImpact(pcx(p), p.y + p.h); }
+      else if (stomp.t > 1.2) stomp = null;
+    }
+
+    for (let i = fx.length - 1; i >= 0; i--) { fx[i].t += dt; if (fx[i].t >= fx[i].life) fx.splice(i, 1); }
+    prevJump = k.jump;
+    lastPX = p.x; lastPY = p.y;
+    updateBtns();
+  });
+
+  // ---- drawing ----
+  // the player: cassette chest with turning spools, headphones, a tape scarf
+  const _origDraw = window.cboxCharDraw;
+  window.cboxCharDraw = function (charId, ctx, px, py, pw, ph, now2) {
+    if (charId !== ID) { if (_origDraw) return _origDraw(charId, ctx, px, py, pw, ph, now2); return; }
+    if (!isFinite(px) || !isFinite(py) || !isFinite(pw) || !isFinite(ph) || pw <= 0 || ph <= 0) return;
+    const t = now2 || Date.now() / 1000;
+    const cx = px + pw / 2, s = pw / 20;
+    const fm = curForm(), pal = fm.pal;
+    const spin = t * (ff ? 22 : rope && rope.sw ? 14 : 5);
+    ctx.save();
+    // tape scarf trailing behind
+    ctx.strokeStyle = C_TAPE; ctx.lineWidth = s * 2.2; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(cx - pw * 0.05, py + ph * 0.44);
+    for (let i = 1; i <= 4; i++) ctx.lineTo(cx - pw * (0.05 + i * 0.1), py + ph * (0.44 + i * 0.03) + Math.sin(t * 9 + i) * s * 1.4);
+    ctx.stroke();
+    ctx.strokeStyle = pal[0]; ctx.lineWidth = s * 0.6; ctx.stroke();
+    ctx.shadowBlur = 8; ctx.shadowColor = fm.glow;
+    // body
+    ctx.fillStyle = fm.body;
+    ctx.beginPath(); ctx.roundRect(px + pw * 0.16, py + ph * 0.4, pw * 0.68, ph * 0.42, s * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    // cassette on the chest: shell, label strip, two turning spools
+    const kx = px + pw * 0.22, ky = py + ph * 0.46, kw = pw * 0.56, kh = ph * 0.28;
+    ctx.fillStyle = '#16131c'; ctx.beginPath(); ctx.roundRect(kx, ky, kw, kh, s * 1.2); ctx.fill();
+    const g = ctx.createLinearGradient(kx, 0, kx + kw, 0);
+    g.addColorStop(0, pal[0]); g.addColorStop(0.55, pal[1]); g.addColorStop(1, pal[2]);
+    ctx.fillStyle = g; ctx.fillRect(kx + s, ky + s * 0.8, kw - s * 2, kh * 0.28);
+    for (const sx of [kx + kw * 0.3, kx + kw * 0.7]) {
+      const sy = ky + kh * 0.66, r = kh * 0.24;
+      ctx.fillStyle = '#e8e4f0'; ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#16131c'; ctx.lineWidth = s * 0.7;
+      for (let i = 0; i < 3; i++) { const a = spin + i * Math.PI * 2 / 3; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + Math.cos(a) * r, sy + Math.sin(a) * r); ctx.stroke(); }
+    }
+    // legs
+    ctx.fillStyle = fm.leg;
+    ctx.fillRect(px + pw * 0.26, py + ph * 0.8, pw * 0.16, ph * 0.12);
+    ctx.fillRect(px + pw * 0.58, py + ph * 0.8, pw * 0.16, ph * 0.12);
+    // head
+    ctx.fillStyle = fm.head;
+    ctx.beginPath(); ctx.arc(cx, py + ph * 0.26, pw * 0.27, 0, Math.PI * 2); ctx.fill();
+    // eyes, looking forward (the game mirrors the drawing when facing left)
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(cx + pw * 0.04, py + ph * 0.25, s * 1.5, 0, Math.PI * 2); ctx.arc(cx + pw * 0.16, py + ph * 0.25, s * 1.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#16121f';
+    ctx.beginPath(); ctx.arc(cx + pw * 0.06, py + ph * 0.255, s * 0.75, 0, Math.PI * 2); ctx.arc(cx + pw * 0.18, py + ph * 0.255, s * 0.75, 0, Math.PI * 2); ctx.fill();
+    // black and grey headphones
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#15161b'; ctx.lineWidth = s * 1.8;
+    ctx.beginPath(); ctx.arc(cx, py + ph * 0.27, pw * 0.31, Math.PI * 1.12, Math.PI * 1.88); ctx.stroke();
+    ctx.strokeStyle = '#5c606b'; ctx.lineWidth = s * 0.6;
+    ctx.beginPath(); ctx.arc(cx, py + ph * 0.27, pw * 0.34, Math.PI * 1.25, Math.PI * 1.75); ctx.stroke();
+    const hx = cx - pw * 0.1, hy = py + ph * 0.28;
+    ctx.fillStyle = '#15161b'; ctx.beginPath(); ctx.ellipse(hx, hy, s * 2.4, s * 3.1, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#3a3d46'; ctx.beginPath(); ctx.ellipse(hx, hy, s * 1.4, s * 2, 0, 0, Math.PI * 2); ctx.fill();
+    // a little play triangle on the ear cup, in the form's colour
+    ctx.fillStyle = pal[0];
+    ctx.beginPath(); ctx.moveTo(hx - s * 0.6, hy - s * 0.9); ctx.lineTo(hx - s * 0.6, hy + s * 0.9); ctx.lineTo(hx + s * 0.9, hy); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  };
+
+  // the world: ribbons, clips, whips and the rest (drawn after the player)
+  function neon(ctx, col, w, a) {
+    ctx.globalAlpha = 0.28 * a; ctx.strokeStyle = col; ctx.lineWidth = w * 3.2; ctx.stroke();
+    ctx.globalAlpha = a; ctx.lineWidth = w; ctx.stroke();
+  }
+  // a tape ribbon between two screen points: dark tape with a coloured shine, a little wave when slack
+  function ribbonPath(ctx, x1, y1, x2, y2, wave, ph) {
+    const L = Math.hypot(x2 - x1, y2 - y1) || 1, nx = -(y2 - y1) / L, ny = (x2 - x1) / L;
+    const n = Math.max(2, Math.ceil(L / 8));
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const u = i / n, w = Math.sin(u * Math.PI) * Math.sin(u * 10 + ph) * wave;
+      const x = x1 + (x2 - x1) * u + nx * w, y = y1 + (y2 - y1) * u + ny * w;
+      if (!i) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+  }
+  function drawTape(ctx, x1, y1, x2, y2, wave, ph, a, col) {
+    ctx.globalCompositeOperation = 'source-over';
+    ribbonPath(ctx, x1, y1, x2, y2, wave, ph);
+    ctx.globalAlpha = a; ctx.strokeStyle = C_TAPE; ctx.lineWidth = 4.5; ctx.stroke();
+    ctx.globalCompositeOperation = 'lighter';
+    ribbonPath(ctx, x1, y1, x2, y2, wave, ph);
+    neon(ctx, col || PALETTE[0], 1.4, a * 0.85);
+  }
+  function drawWorld(ctx, cam) {
+    const p = window._gamePlayer; if (!p || !active) return;
+    const T = window._TILE || 40, cx0 = cam ? cam.x : 0, cy0 = cam ? cam.y : 0;
+    const SX = x => x * T - cx0, SY = y => y * T - cy0;
+    const now = performance.now() / 1000;
+    const hxp = SX(pcx(p)), hyp = SY(pcy(p));
+    ctx.save();
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.shadowBlur = 0;
+
+    // Fast Forward: speed streaks behind you
+    if (ff) {
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 4; i++) {
+        const yy = hyp + (i - 1.5) * T * 0.22, len = T * (0.8 + ((now * 7 + i * 0.37) % 1) * 0.9), d = (p.vx || 0) >= 0 ? -1 : 1;
+        ctx.beginPath(); ctx.moveTo(hxp + d * T * 0.4, yy); ctx.lineTo(hxp + d * (T * 0.4 + len), yy);
+        neon(ctx, PALETTE[i % 3], 1.2, 0.5);
+      }
+    }
+
+    // the ribbon on its clip
+    if (rope) {
+      const ax = SX(rope.ax), ay = SY(rope.ay);
+      const d = Math.hypot(pcx(p) - rope.ax, pcy(p) - rope.ay);
+      const slack = rope.sw ? 0 : Math.max(0, Math.min(6, (rope.len - d) * 6));
+      drawTape(ctx, hxp, hyp, ax, ay, slack + 1, now * 8, 0.95);
+      // the clip: a little spool stuck to the block
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      ctx.fillStyle = '#16131c'; ctx.beginPath(); ctx.arc(ax, ay, T * 0.16, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = PALETTE[1]; ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) { const a = now * 6 + i * 2.1; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax + Math.cos(a) * T * 0.14, ay + Math.sin(a) * T * 0.14); ctx.stroke(); }
+    }
+    // a foe being reeled in, or held on the ribbon at your side
+    for (const y of yanks) if (!y.e.dead) drawTape(ctx, hxp, hyp, SX(ex(y.e)), SY(ey(y.e)), 2, now * 30, 0.9);
+    if (held && !held.e.dead) {
+      const e = held.e, x2 = SX(ex(e)), y2 = SY(ey(e));
+      drawTape(ctx, hxp, hyp, x2, y2, 2, now * 10, 0.9);
+      // ribbon wrapped round it, and a ring that shrinks as it gets ready to wriggle free
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.ellipse(x2, y2 - T * 0.15 + i * T * 0.15, T * 0.5, T * 0.12, 0.25, 0, Math.PI * 2); neon(ctx, PALETTE[i % 3], 1.3, 0.75); }
+      const left = 1 - held.t / HOLD_MAX;
+      ctx.beginPath(); ctx.arc(x2, y2, T * 0.75, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left); neon(ctx, left < 0.3 ? '#ff4d6d' : '#ffffff', 1.2, 0.6);
+    }
+    // a ribbon in flight
+    if (cast) {
+      const tx = SX(cast.x), ty = SY(cast.y), a = cast.back > 0 ? Math.max(0, cast.back / 0.15) : 1;
+      drawTape(ctx, hxp, hyp, tx, ty, 3, now * 30, a, cast.purpose === 'zip' ? C_AMBER : PALETTE[0]);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.beginPath(); ctx.arc(tx, ty, 3.5, 0, Math.PI * 2); neon(ctx, '#ffffff', 1.5, a);
+    }
+    // aiming with 🎀: a dotted line where the ribbon will go
+    if (aim && curForm().id === 'r') {
+      let dx = aim.dx, dy = aim.dy;
+      if (Math.hypot(dx, dy) < 14) { const k = aimFromKeys(p); dx = k.dx; dy = k.dy; }
+      const L = Math.hypot(dx, dy) || 1, R = RIBBON_RANGE * (ff ? 1.5 : 1) * T;
+      ctx.globalCompositeOperation = 'lighter'; ctx.setLineDash([6, 8]); ctx.lineDashOffset = -now * 40;
+      ctx.beginPath(); ctx.moveTo(hxp, hyp); ctx.lineTo(hxp + dx / L * R, hyp + dy / L * R);
+      neon(ctx, C_TEAL, 1.4, 0.7);
+      ctx.setLineDash([]);
+    }
+
+    ctx.globalCompositeOperation = 'lighter';
+    for (const f of fx) {
+      const u = f.t / f.life, a = 1 - u;
+      if (f.k === 'hit') {
+        ctx.beginPath(); ctx.arc(SX(f.x), SY(f.y), T * (0.2 + u * 0.4), 0, Math.PI * 2); neon(ctx, f.c, 2, a);
+      } else if (f.k === 'whip') {
+        // the whip unrolls forward then snaps
+        const x1 = SX(f.x), y1 = SY(f.y), L = f.len * T * Math.min(1, u * 2.5);
+        drawTape(ctx, x1, y1, x1 + f.f * L, y1 - Math.sin(u * Math.PI) * T * 0.3, 7 * (1 - u), u * 20, a);
+        ctx.globalCompositeOperation = 'lighter';
+        if (u > 0.35) { ctx.beginPath(); ctx.arc(x1 + f.f * f.len * T, y1, T * 0.25 * (u + 0.2), 0, Math.PI * 2); neon(ctx, '#ffffff', 1.5, a); }
+      } else if (f.k === 'lash') {
+        ctx.beginPath(); ctx.arc(SX(f.x), SY(f.y), T * 1.8 * (0.5 + u * 0.5), u * 10, u * 10 + Math.PI * 1.7);
+        ctx.strokeStyle = C_TAPE; ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = a; ctx.lineWidth = 5; ctx.stroke();
+        ctx.globalCompositeOperation = 'lighter'; neon(ctx, PALETTE[0], 1.5, a);
+      } else if (f.k === 'tangle') {
+        for (const d of [1, -1]) {
+          ctx.beginPath();
+          for (let i = 0; i <= 24; i++) { const v = i / 24, x = SX(f.x) + d * v * 3.2 * T * Math.min(1, u * 3), y = SY(f.y) - 3 - Math.abs(Math.sin(v * 14 + f.t * 12)) * T * 0.4 * (1 - v * 0.5); if (!i) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+          neon(ctx, C_AMBER, 1.6, a);
+        }
+      } else if (f.k === 'spool') {
+        for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(SX(f.x), SY(f.y) - u * T, T * (0.3 + i * 0.25) * (0.6 + u), f.t * 14 + i, f.t * 14 + i + Math.PI * 1.2); neon(ctx, PALETTE[i % 3], 1.5, a); }
+      } else if (f.k === 'rewind') {
+        // the rewind symbol left where you took off
+        const x = SX(f.x), y = SY(f.y) + u * T * 0.5;
+        for (const o of [0, 9]) { ctx.beginPath(); ctx.moveTo(x + o, y - 7); ctx.lineTo(x + o - 9, y); ctx.lineTo(x + o, y + 7); ctx.closePath(); neon(ctx, C_TEAL, 1.4, a); }
+      } else if (f.k === 'ring') {
+        ctx.beginPath(); ctx.ellipse(SX(f.x), SY(f.y), f.R * T * (0.3 + u * 0.7), f.R * T * (0.3 + u * 0.7) * f.flat, 0, 0, Math.PI * 2); neon(ctx, f.c, 2, a);
+      } else if (f.k === 'ffdash') {
+        // a fast-forward ⏩ streak along the dash
+        const y = SY(f.y), d = f.x1 >= f.x0 ? 1 : -1;
+        ctx.beginPath(); ctx.moveTo(SX(f.x0), y); ctx.lineTo(SX(f.x1), y); neon(ctx, C_PINK, 3, a);
+        for (let i = 0; i < 2; i++) { const x = SX(f.x1) - d * (i * 12 + 6); ctx.beginPath(); ctx.moveTo(x - d * 8, y - 8); ctx.lineTo(x, y); ctx.lineTo(x - d * 8, y + 8); neon(ctx, '#ffffff', 1.5, a); }
+      } else if (f.k === 'flip') {
+        // flipping the tape: a cassette turning over
+        const x = SX(f.x), y = SY(f.y), w = T * 0.9 * Math.abs(Math.cos(u * Math.PI)), h = T * 0.55;
+        ctx.beginPath(); ctx.roundRect(x - w / 2, y - h / 2 - u * T * 0.8, Math.max(1, w), h, 4); neon(ctx, PALETTE[1], 2, a);
+        ctx.beginPath(); ctx.arc(x, y, T * (0.5 + u * 1.2), 0, Math.PI * 2); neon(ctx, PALETTE[0], 1.2, a * 0.7);
+      } else if (f.k === 'clip') {
+        ctx.beginPath(); ctx.arc(SX(f.x), SY(f.y), T * (0.15 + u * 0.4), 0, Math.PI * 2); neon(ctx, '#ffffff', 1.5, a);
+      } else if (f.k === 'snap') {
+        // the clip pops off the block
+        for (let i = 0; i < 5; i++) { const ang = i * 1.26 + 0.4, r = T * (0.1 + u * 0.5); ctx.beginPath(); ctx.moveTo(SX(f.x1) + Math.cos(ang) * r * 0.4, SY(f.y1) + Math.sin(ang) * r * 0.4); ctx.lineTo(SX(f.x1) + Math.cos(ang) * r, SY(f.y1) + Math.sin(ang) * r); neon(ctx, PALETTE[1], 1.2, a); }
+      } else if (f.k === 'burst') {
+        // FAST FORWARD: tape shoots out in 8 directions and reels back
+        const L = f.R * T * Math.sin(Math.min(1, u * 1.4) * Math.PI);
+        for (const r of f.rays) drawTape(ctx, SX(f.x), SY(f.y), SX(f.x) + Math.cos(r) * L, SY(f.y) + Math.sin(r) * L, 4, u * 30 + r, a, PALETTE[Math.round(r * 2) % 3]);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.beginPath(); ctx.arc(SX(f.x), SY(f.y), T * (0.4 + u * 2), 0, Math.PI * 2); neon(ctx, '#ffffff', 2, a);
+      } else if (f.k === 'thrown') {
+        // a ribbon streak trailing the thrown foe
+        const e = f.e; if (!e || e.dead) continue;
+        const x = SX(ex(e)), y = SY(ey(e)), vx = e.vx || 0, vy = e.vy || 0, L = Math.hypot(vx, vy) || 1;
+        drawTape(ctx, x, y, x - vx / L * T * 1.6, y - vy / L * T * 1.6, 3, now * 30, a, C_PINK);
+        ctx.globalCompositeOperation = 'lighter';
+      } else if (f.k === 'label') {
+        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = a;
+        ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = '#16131c';
+        const x = SX(f.x), y = SY(f.y) - f.t * 30 - 12;
+        ctx.strokeText(f.text, x, y); ctx.fillStyle = PALETTE[0]; ctx.fillText(f.text, x, y);
+        ctx.globalCompositeOperation = 'lighter';
+      }
+    }
+    // Ribbon Lash spins the tape scarf around you for a moment
+    if (spinT > 0) { ctx.beginPath(); ctx.arc(hxp, hyp, T * 0.9, now * 20, now * 20 + Math.PI); neon(ctx, PALETTE[2], 1.5, spinT / 0.3); }
+    ctx.restore();
+  }
+  const _prevDrawHook = window.drifterDrawHook;
+  window.drifterDrawHook = function (ctx, now2, cam) {
+    if (_prevDrawHook) _prevDrawHook(ctx, now2, cam);
+    if (window.selectedCharacter !== ID) return;
+    try { drawWorld(ctx, cam); } catch (e) {}
+  };
+
+  // join the character list once the capsule system is ready
+  let tries = 0;
+  function hook() {
+    if (!window.injectCboxCharButtons || !window.CBOX_CHARS_DEF) { if (++tries < 80) setTimeout(hook, 100); return; }
+    if (!window.injectCboxCharButtons._ppmxPatch) {
+      const orig = window.injectCboxCharButtons;
+      window.injectCboxCharButtons = function () { if (isOwned()) register(); orig(); };
+      window.injectCboxCharButtons._ppmxPatch = true;
+    }
+    if (isOwned()) { register(); window.injectCboxCharButtons(); }
+  }
+  setTimeout(hook, 250);
+})();
+</script>
+<script>
 // Free mystery boxes and character capsules bought in the Press Play shop open one after another.
 // Each is taken from the shop only as it opens, so leaving mid-way keeps the rest for next time.
 (function(){
