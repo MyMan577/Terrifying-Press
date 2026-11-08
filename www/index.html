@@ -15830,6 +15830,24 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     Object.values(graphs).forEach(g => { if (g && g.trackGain) rampParam(g.trackGain.gain, v); });
   }
 
+  // For games (the Obby Prodigy's beat lock): how loud the low end (kick, bass) of the playing song is
+  // right now. It reads the analyser's raw waveform, which keeps no state, so the visualizer is unaffected,
+  // and it never builds a graph that isn't there. -1 when there is nothing to read.
+  let _bassBuf = null;
+  window.__ppBassLevel = function(){
+    try {
+      const kind = (bgAudioActive && bgEl === bgFxEl) ? 'bg' : (currentIndex !== -1 && tracks[currentIndex] && tracks[currentIndex].kind === 'video') ? 'video' : 'audio';
+      const g = graphs[kind]; if (!g || !g.analyser) return -1;
+      const an = g.analyser, n = an.fftSize;
+      if (!_bassBuf || _bassBuf.length !== n) _bassBuf = new Uint8Array(n);
+      an.getByteTimeDomainData(_bassBuf);
+      const sr = (audioCtx && audioCtx.sampleRate) || 48000, k = 1 - Math.exp(-2 * Math.PI * 150 / sr);   // one-pole low-pass at 150 Hz
+      let lp = (_bassBuf[0] - 128) / 128, e = 0;
+      for (let i = 1; i < n; i++) { lp += k * ((_bassBuf[i] - 128) / 128 - lp); e += lp * lp; }
+      return Math.sqrt(e / n);
+    } catch (e) { return -1; }
+  };
+
   function currentGraph(){
     if (bgAudioActive && bgEl === bgFxEl) return getGraphFor('bg');
     const kind = (currentIndex !== -1 && tracks[currentIndex] && tracks[currentIndex].kind === 'video') ? 'video' : 'audio';
