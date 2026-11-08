@@ -143,7 +143,7 @@ The Games tab holds ten games that play offline, right inside the app. Your musi
 - The Press Play Prodigy fights to a beat that follows the song playing in Press Play, reading its tempo from the song's tags or working it out from the kick drum. There is a headphone delay slider for Bluetooth headphones, with a tap-along button to set it.
 - The Press Play Mixtape has two forms: a tape-whip fighter, and a grappling ribbon you can shoot in any direction to swing from blocks or grab foes and throw them.
 - Build together: two phones linked by QR code edit the same course at the same time, then play it together. Your own course is saved as you build and comes back when you reopen the game, and nothing that happens while playing (broken walls, spawned blocks) changes it.
-- Emotes: wave, dance, laugh, flex, bow, cheer, clap, facepalm, shrug, sleep and come on, plus Air Guitar, Headbang, Mic Drop, Robot and DJ Scratch from the shop. Your character performs them with a pair of floating hands, dances move on the beat of your song, and the emote wheel shows a live preview of your own character. In two-phone play, the other phone sees your emotes too.
+- Emotes: wave, dance, laugh, flex, bow, cheer, clap, facepalm, shrug, sleep and come on, and dances that keep going until you move (floss, twist, disco, running man, shuffle, slow sway), plus Air Guitar, Headbang, Mic Drop, Robot, DJ Scratch, Breakdance and Moonwalk from the shop. Your character performs them with a pair of floating hands, dances move on the beat of your song, and the emote wheel shows a live preview of your own character. In two-phone play, the other phone sees your emotes too.
 
 ## Install
 
