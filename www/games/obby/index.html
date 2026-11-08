@@ -40068,8 +40068,10 @@ window._claimLBro = function() {
   //   Crescendo      - on-beat streaks raise your dynamics (p .. fff): louder moves are bigger and hit harder.
   //   Titan Bass     - heavy and unshakable (armour during moves); on-beat moves echo as an aftershock on the next beat.
   //   Deep Resonance - moves stack resonance on foes; 5 stacks shatters a foe and spreads resonance to its neighbours.
-  // All modes share the 128 BPM beat and the Hype meter; a full meter unlocks THE DROP (K / 🎚️), flavoured by the mode.
-  const BPM = 128, BEAT = 60 / BPM, BEAT_WIN = 0.11, HYPE_MAX = 10, RES_MAX = 5;
+  // All modes share the beat and the Hype meter; a full meter unlocks THE DROP (K / 🎚️), flavoured by the mode.
+  // The beat is 128 BPM, or follows the song playing in Press Play (see SONG SYNC below).
+  const BPM = 128, HYPE_MAX = 10, RES_MAX = 5;
+  let BEAT = 60 / BPM, BEAT_WIN = 0.11;
   const C_TEAL = '#6ee7d0', C_VIOLET = '#8b5cff', C_PINK = '#ff5fd8', C_LILAC = '#b79bff';
   const RES_COLS = ['#39d5ff', '#3d7bff', '#9b7bff'];
   const MODES = [
@@ -40199,7 +40201,145 @@ window._claimLBro = function() {
     noise({ dur: 0.03, cut: 3500, vol: 0.14, delay: delay || 0 });
   }
   function bell(vol, delay) { [1318.5, 1975.5, 2637].forEach((f, i) => tone(f, { type: 'sine', dur: 0.55, vol: (vol || 0.12) / (1 + i * 0.5), delay: (delay || 0) + i * 0.02 })); }
-  function nf(i) { return SCALE[Math.max(0, Math.min(SCALE.length - 1, i))]; }
+  function nf(i) { return SCALE[Math.max(0, Math.min(SCALE.length - 1, i))] * keyMul; }
+
+  // ===== SONG SYNC: the beat follows the song playing in Press Play =====
+  // Tempo: the song's saved BPM (from the app's song tagger), or worked out live from its kick drum.
+  // It is folded into 90-180 BPM so slow and very fast songs stay playable.
+  // Timing: every kick is added to a histogram of where in the beat it fell; the strongest spot is where
+  // the song's beats land, and the beat clock eases onto it. The headphone delay shifts it later, because
+  // Bluetooth headphones play the sound after the app has sent it. The synth also plays in the song's key.
+  const SYNC_KEY_ON = 'obby_pp_songsync', SYNC_KEY_DELAY = 'obby_pp_beatdelay';
+  const NOTE_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+  const SYNC = { on: true, delay: 0, bpm: 0, src: '', locked: false, id: null, title: '', prevBass: 0, est: 0, estAt: 0, conf: 0, beatPh: 0, flux: 0, saidOff: true, taps: null };
+  try { SYNC.on = localStorage.getItem(SYNC_KEY_ON) !== '0'; SYNC.delay = Math.max(0, Math.min(400, parseInt(localStorage.getItem(SYNC_KEY_DELAY) || '0', 10) || 0)); } catch (e) {}
+  const HIST_N = 48, hist = new Float32Array(HIST_N), env = [];
+  let keyMul = 1;
+  function setTempo(bpm) {
+    const nb = 60 / bpm;
+    beatClock = (beatClock / BEAT) * nb;   // keep the place in the bar
+    BEAT = nb; BEAT_WIN = 0.11 * nb / (60 / 128);
+  }
+  function foldBpm(b) { if (!(b > 0)) return 0; while (b < 90) b *= 2; while (b >= 180) b /= 2; return b; }
+  function keyShift(key) {
+    const m = /^([A-G][b#]?)\s*(minor|major)?/i.exec(key || ''); if (!m) return 0;
+    let root = NOTE_NAMES.indexOf(m[1].replace('A#', 'Bb').replace('C#', 'Db').replace('D#', 'Eb').replace('G#', 'Ab').replace('Gb', 'F#'));
+    if (root < 0) return 0;
+    if (!/minor/i.test(m[2] || '')) root = (root + 9) % 12;   // a major key plays its relative minor's pentatonic
+    let sh = (root - 9 + 12) % 12; if (sh > 5) sh -= 12;      // the scale is A minor pentatonic
+    return sh;
+  }
+  // tempo from the kick envelope: autocorrelation over the last 8 seconds, at 100 samples a second
+  function estimateBpm(now) {
+    const W = 8, R = 100, n = W * R, x = new Float32Array(n);
+    for (const [t, f] of env) { const i = Math.floor((t - (now - W)) * R); if (i >= 0 && i < n) x[i] += f; }
+    let mean = 0; for (let i = 0; i < n; i++) mean += x[i]; mean /= n;
+    for (let i = 0; i < n; i++) x[i] -= mean;
+    const ac = lag => { const l0 = Math.floor(lag), fr = lag - l0; let s = 0; for (let i = 0; i + l0 + 1 < n; i++) s += x[i] * (x[i + l0] * (1 - fr) + x[i + l0 + 1] * fr); return s; };
+    let best = 0, bestV = 0, sum = 0, cnt = 0;
+    for (let b = 90; b < 180; b += 0.5) { const lag = 60 * R / b, v = ac(lag) + 0.5 * ac(lag * 2); sum += Math.max(0, v); cnt++; if (v > bestV) { bestV = v; best = b; } }
+    return bestV > 0 && bestV > 2.2 * (sum / cnt) ? best : 0;
+  }
+  function songSync(dt) {
+    const now = performance.now() / 1000;
+    const s = SYNC.on && window.PPHub && PPHub.song ? PPHub.song() : null;
+    if (!s || !s.playing) {
+      SYNC.id = null;   // a song that starts again is listened to afresh
+      if (SYNC.bpm) { SYNC.bpm = 0; SYNC.locked = false; setTempo(BPM); keyMul = 1; if (active) msg('🎵 No song playing: back to the Prodigy\'s own 128 BPM'); }
+      return;
+    }
+    if (s.id !== SYNC.id) {
+      SYNC.id = s.id; SYNC.title = s.title || 'your song'; SYNC.locked = false; SYNC.est = 0; SYNC.estAt = now;
+      hist.fill(0); env.length = 0;
+      const sh = keyShift(s.key); keyMul = Math.pow(2, sh / 12);
+    }
+    // a kick is a jump in the low end's level
+    let flux = 0;
+    if (s.bass >= 0) { flux = Math.max(0, s.bass - SYNC.prevBass); SYNC.prevBass = s.bass; }
+    SYNC.flux = flux;
+    if (flux > 0) env.push([now, flux]);
+    while (env.length && env[0][0] < now - 10) env.shift();
+    let bpm = s.bpm || 0;
+    SYNC.src = bpm ? 'saved' : 'heard';
+    if (!bpm) {
+      if (now - SYNC.estAt > 1 && env.length && env[env.length - 1][0] - env[0][0] > 5) { SYNC.est = estimateBpm(now) || SYNC.est; SYNC.estAt = now; }
+      bpm = SYNC.est;
+    }
+    bpm = foldBpm(bpm);
+    if (!bpm) return;
+    if (Math.abs(bpm - SYNC.bpm) > 0.25) { if (Math.abs(bpm - SYNC.bpm) > 3) { hist.fill(0); SYNC.locked = false; } setTempo(bpm); SYNC.bpm = bpm; }
+    const P = 60 / bpm;
+    const k = Math.exp(-dt / 4); for (let i = 0; i < HIST_N; i++) hist[i] *= k;
+    if (flux > 0) hist[Math.floor(((now / P) % 1) * HIST_N) % HIST_N] += flux;
+    // the strongest spot (smoothed over its neighbours)
+    let pk = 0, pv = -1, tot = 0;
+    for (let i = 0; i < HIST_N; i++) { const v = hist[(i + HIST_N - 1) % HIST_N] * 0.5 + hist[i] + hist[(i + 1) % HIST_N] * 0.5; tot += v; if (v > pv) { pv = v; pk = i; } }
+    SYNC.conf = tot > 0 ? pv / (tot / HIST_N) : 0;
+    if (SYNC.conf < 2.2 || pv < 0.02) return;
+    const a = hist[(pk + HIST_N - 1) % HIST_N], b = hist[pk], c = hist[(pk + 1) % HIST_N], den = a - 2 * b + c;
+    SYNC.beatPh = ((pk + 0.5 + (den < 0 ? 0.5 * (a - c) / den : 0)) / HIST_N + 1) % 1;
+    // where in the beat we are now, as heard through the headphones
+    const target = (((now - SYNC.delay / 1000) / P - SYNC.beatPh) % 1 + 1) % 1;
+    const curF = (beatClock % BEAT) / BEAT;
+    let d = target - curF; if (d > 0.5) d -= 1; if (d < -0.5) d += 1;
+    beatClock += d * BEAT * Math.min(1, dt * (SYNC.locked ? 3 : 12));
+    if (!SYNC.locked) {
+      SYNC.locked = true;
+      if (active) msg('🎵 Beat locked to ' + SYNC.title + ': ' + Math.round(bpm) + ' BPM' + (SYNC.src === 'heard' ? ' (worked out by ear)' : ''));
+    }
+  }
+  // tap along to the song to measure the headphone delay
+  function tapBeat() {
+    if (!SYNC.locked || !SYNC.bpm) { syncStatus('Play a song in Press Play and wait for the beat to lock first.'); return; }
+    const now = performance.now() / 1000, P = 60 / SYNC.bpm;
+    let e = (((now / P - SYNC.beatPh) % 1) + 1) % 1; if (e > 0.5) e -= 1;   // how late the tap is after the beat, in beats
+    const t = SYNC.taps = SYNC.taps || [];
+    t.push(e * P);
+    if (t.length < 8) { syncStatus('Tap ' + t.length + '/8 - keep tapping on the beat you hear'); return; }
+    // ignore the first two (getting into it); average the rest
+    const use = t.slice(2), mean = use.reduce((a, b) => a + b, 0) / use.length;
+    SYNC.taps = null;
+    setDelay(Math.round(Math.max(0, Math.min(0.4, mean)) * 100) * 10);
+    syncStatus('Done: your headphones are about ' + SYNC.delay + ' ms behind.');
+  }
+  function setDelay(ms) {
+    SYNC.delay = Math.max(0, Math.min(400, ms));
+    try { localStorage.setItem(SYNC_KEY_DELAY, String(SYNC.delay)); } catch (e) {}
+    const r = document.getElementById('ppBeatDelay'), v = document.getElementById('ppBeatDelayVal');
+    if (r && +r.value !== SYNC.delay) r.value = SYNC.delay;
+    if (v) v.textContent = SYNC.delay + ' ms';
+  }
+  let statusHold = 0;
+  function syncStatus(text) { const el = document.getElementById('ppBeatStatus'); if (el) el.textContent = text; statusHold = 3; }
+  // settings: Follow my song, the headphone delay slider and the tap-along button
+  function buildSyncSettings() {
+    const panel = document.getElementById('settingsPanel'); if (!panel || document.getElementById('ppBeatSync')) return;
+    const box = document.createElement('div'); box.id = 'ppBeatSync';
+    const row = 'padding:10px 12px;background:rgba(0,0,0,0.2);border-radius:12px;border:1px solid rgba(255,255,255,0.07);margin-top:8px;';
+    box.innerHTML =
+      '<div class="label" style="margin-top:10px;font-size:11px">🎧 Press Play Prodigy beat</div>' +
+      '<label style="display:flex;align-items:center;justify-content:space-between;gap:10px;' + row + 'cursor:pointer">' +
+        '<div><div style="font-size:13px;font-weight:700">🎵 Follow my song</div><div class="small" style="margin-top:2px">The Prodigy\'s beat follows the song playing in Press Play.</div></div>' +
+        '<input type="checkbox" id="ppBeatFollow" style="width:20px;height:20px;accent-color:#8b5cff;flex-shrink:0"></label>' +
+      '<div style="' + row + '">' +
+        '<div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:13px;font-weight:700">🎧 Headphone delay</div><b id="ppBeatDelayVal" style="color:#b79bff;font-variant-numeric:tabular-nums">0 ms</b></div>' +
+        '<div class="small" style="margin-top:2px">Bluetooth headphones play a little late. Raise this until on-beat hits feel right, or tap along to set it.</div>' +
+        '<input type="range" id="ppBeatDelay" min="0" max="400" step="10" style="width:100%;margin-top:8px;accent-color:#8b5cff">' +
+        '<button id="ppBeatTap" style="width:100%;margin-top:8px;padding:12px;border-radius:10px;border:1px solid rgba(183,155,255,.5);background:rgba(139,92,255,.18);color:#fff;font-weight:700;font-size:13px;touch-action:manipulation">🥁 Tap along to set it (8 taps)</button>' +
+        '<div class="small" id="ppBeatStatus" style="margin-top:6px;min-height:1.2em"></div>' +
+      '</div>';
+    const hint = panel.querySelector('.hint');
+    if (hint && hint.nextSibling) panel.insertBefore(box, hint.nextSibling); else panel.appendChild(box);
+    const fol = box.querySelector('#ppBeatFollow'), rng = box.querySelector('#ppBeatDelay'), tap = box.querySelector('#ppBeatTap');
+    fol.checked = SYNC.on;
+    fol.addEventListener('change', () => { SYNC.on = fol.checked; try { localStorage.setItem(SYNC_KEY_ON, SYNC.on ? '1' : '0'); } catch (e) {} if (!SYNC.on) songSync(0); });
+    rng.value = SYNC.delay; box.querySelector('#ppBeatDelayVal').textContent = SYNC.delay + ' ms';
+    rng.addEventListener('input', () => setDelay(+rng.value));
+    const doTap = ev => { ev.preventDefault(); tapBeat(); tap.style.transform = 'scale(.96)'; setTimeout(() => tap.style.transform = '', 80); };
+    tap.addEventListener('touchstart', doTap, { passive: false });
+    tap.addEventListener('mousedown', doTap);
+  }
+  setTimeout(buildSyncSettings, 600);
 
   // ---- helpers ----
   const BLOCK = new Set(['solid', 'ice', 'crumble', 'mover', 'half']);
@@ -40990,6 +41130,24 @@ window._claimLBro = function() {
     for (let i = fx.length - 1; i >= 0; i--) { fx[i].t += dt; if (fx[i].t >= fx[i].life) fx.splice(i, 1); }
     lastPX = p.x; lastPY = p.y;
     updateBtns();
+  });
+
+  // song sync runs while you play as the Prodigy, or while the Settings panel is open (for tap-along)
+  let statusT = 0;
+  (window._rafHubTickers = window._rafHubTickers || []).push(function _ppSongSyncTick(dt) {
+    const panel = document.getElementById('ppBeatSync'), shown = !!(panel && panel.offsetParent);
+    const asProdigy = window.selectedCharacter === ID && (!window._gameMode || window._gameMode() === 'play');
+    if (!asProdigy && !shown && !SYNC.taps) return;
+    if (!asProdigy) beatClock += dt;   // keep the clock running for tap-along
+    songSync(dt);
+    if (shown && (statusT -= dt) <= 0) {
+      statusT = 0.5;
+      if (statusHold > 0) { statusHold -= 0.5; return; }
+      const el = document.getElementById('ppBeatStatus'); if (!el) return;
+      el.textContent = !SYNC.on ? 'Off: the Prodigy keeps its own 128 BPM beat.'
+        : !SYNC.bpm ? (SYNC.id ? 'Listening to ' + SYNC.title + '...' : 'No song playing: the Prodigy keeps its own 128 BPM beat.')
+        : (SYNC.locked ? 'Locked to ' : 'Finding the beat of ') + SYNC.title + ': ' + Math.round(SYNC.bpm) + ' BPM' + (SYNC.src === 'heard' ? ' (worked out by ear)' : '');
+    }
   });
 
   // ---- drawing (world space; drawn after the player) ----

@@ -442,7 +442,24 @@
   }
   setInterval(tick, 5000);
   var listenAcc = 0;
+  // the song playing in the app, for games that follow its beat: its saved tempo and key (from the
+  // song tagger, if it has been tagged) and how loud its low end is right now
+  var songTags = { id:null, bpm:0, key:'', at:0 };
   var hub = window.__ppHub = {
+    song: function(g){
+      var a = window.__ppApi, t = null;
+      try { t = a && a.tracks && a.tracks()[a.currentIndex()]; } catch(e){}
+      var pb = document.getElementById('play-btn');
+      var playing = !!(t && pb && pb.classList.contains('is-playing'));
+      if (!t) return { playing:false };
+      var now = Date.now();
+      if (t.dbId !== songTags.id || now - songTags.at > 10000){   // re-read now and then: the song may get tagged meanwhile
+        var c = null; try { c = (JSON.parse(localStorage.getItem('ppTagsV2')) || {})[t.dbId]; } catch(e){}
+        songTags = { id:t.dbId, bpm:(c && c.bpm) || 0, key:(c && c.key) || '', at:now };
+      }
+      var bass = window.__ppBassLevel ? window.__ppBassLevel() : -1;
+      return { playing:playing, id:t.dbId, title:t.title || '', bpm:songTags.bpm, key:songTags.key, bass:bass };
+    },
     sessionStart: function(g){
       if (sess) hub.sessionEnd();
       sess = { g:g, t:Date.now() };
