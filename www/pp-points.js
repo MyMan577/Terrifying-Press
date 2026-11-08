@@ -157,7 +157,10 @@
       { id:'bs20', n:'Boss Hunter',   d:'Beat 20 bosses',                  p:80, k:'ev', e:'boss', v:20 },
       { id:'fl10', n:'Not a Scratch', d:'Clear 10 stages without getting hit', p:40, k:'ev', e:'flawless', v:10 },
       { id:'st15', n:'Deep Runner',   d:'Reach stage 15',                  p:35, k:'bt', e:'stage', v:15 },
-      { id:'st30', n:'Endless Knight',d:'Reach stage 30',                  p:90, k:'bt', e:'stage', v:30 }
+      { id:'st30', n:'Stage Thirty',  d:'Reach stage 30',                  p:90, k:'bt', e:'stage', v:30 },
+      { id:'en300',n:'Long Road',     d:'Go 300 m in Endless',             p:30, k:'bt', e:'endless', v:300 },
+      { id:'en1k', n:'Endless Knight',d:'Go 1,000 m in Endless',           p:100,k:'bt', e:'endless', v:1000 },
+      { id:'en20', n:'One More Run',  d:'Play 20 Endless runs',            p:30, k:'ev', e:'endless', v:20 }
     ],
     kitchen: [
       { id:'sv200', n:'Rush Regular', d:'Serve 200 orders',  p:30, k:'ev', e:'serve', v:200 }
@@ -285,6 +288,7 @@
     ['ev', 'cube', 'kill', 40, 20, 'Defeat 40 foes in Dashcube Knight'],
     ['ev', 'cube', 'boss', 1, 25, 'Beat a boss in Dashcube Knight'],
     ['ev', 'cube', 'flawless', 2, 30, 'Clear 2 Dashcube Knight stages without getting hit'],
+    ['bt', 'cube', 'endless', 150, 25, 'Go 150 m in a Dashcube Knight Endless run'],
     ['ev', 'kitchen', 'serve', 15, 20, 'Serve 15 orders in Kitchen Rush'],
     ['ev', 'kitchen', 'serve', 40, 40, 'Serve 40 orders in Kitchen Rush'],
     ['ev', 'lastcard', 'game', 3, 15, 'Finish 3 games of Last Card'],

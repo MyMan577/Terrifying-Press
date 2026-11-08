@@ -22,6 +22,7 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
 .hud{position:absolute;top:0;left:0;right:0;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:8px 12px;padding:10px max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px));pointer-events:none}
 .hud-l,.hud-r{display:flex;align-items:center;gap:8px;min-width:0}
 .hud-c{order:3;flex:1 1 100%;display:flex;flex-direction:column;align-items:center;gap:6px}
+.edist{font-family:var(--display);font-size:20px;color:#fff;letter-spacing:.02em}
 .hearts{display:flex;gap:2px;font-size:30px;line-height:1;font-variant-emoji:text;color:var(--hurt);text-shadow:0 2px 0 var(--ink),2px 0 0 var(--ink),-2px 0 0 var(--ink),0 -2px 0 var(--ink)}
 .hearts .off{color:#fff;opacity:.35}
 .chip{display:flex;align-items:center;gap:6px;background:var(--card);border:3px solid var(--ink);border-radius:999px;padding:3px 12px;font-family:var(--display);font-size:18px;line-height:1.3;font-variant-numeric:tabular-nums}
@@ -189,6 +190,7 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
     </div>
     <div class="hud-c">
       <div class="track" id="prog"><i id="progFill"></i></div>
+      <div class="edist ol" id="eDist" hidden>0 m</div>
       <div class="bossbar" id="bossBar" hidden><span id="bossName">Boss</span><div class="track boss"><i id="bossFill"></i></div></div>
     </div>
   </div>
@@ -213,6 +215,7 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
         <button class="btn alt tab" id="bC" type="button">Knights</button>
         <button class="btn alt tab" id="bU" type="button">Shop</button>
         <button class="btn alt tab" id="bA" type="button" aria-label="Achievements">🏆</button>
+        <button class="btn alt tab" id="bE" type="button" aria-label="Endless mode">∞</button>
       </div>
     </div>
   </section>
@@ -532,40 +535,46 @@ function mkEnemy(type,x,y,rnd){
     state:'idle',st:0,hopT:rnd()*1.2,period:1+rnd()*0.8,power:6.5+rnd()*3.8,hitCd:0,chainCd:0,flash:0,
     fuse:-1,dying:false,dyT:0,rot:0,gone:false,phase:rnd()*6,axeCd:0,baseY:y};
 }
-function buildStage(n){
-  var rnd=mulberry32(4242+n*131),TH=4.2;
+var EL=75;   // endless: a new level every 75 units
+function buildStage(n,endless){
+  var rnd=mulberry32(endless?(Date.now()%2147483647):4242+n*131),TH=4.2;
   var st={n:n,islands:[],blocks:[],solids:[],spikes:[],crushers:[],axes:[],enemies:[],arenaX:0,arenaEnd:0,arenaTop:0,
     jets:[],drops:[],bars:[],coins:[],cp:null,coinTotal:0};
-  var diff=Math.min(n,10),WD=worldOf(n);
-  var kinds=['walker','walker','hopper','hopper','leaper'];
-  if(n>=2)kinds.push('shield','bomber','imp');
-  if(n>=3)kinds.push('brute');
-  if(n>=4)kinds.push('shield','leaper','hopper','imp');
-  if(WD.enemy)kinds.push(WD.enemy,WD.enemy);
-  if(n===1)kinds=['walker','walker','hopper'];   // stage 1 eases you in
+  var diff,WD,kinds,pats,sub,total,walls=0;
+  // what a level holds: foes, sections and hazards unlock as the level rises
+  var setLevel=function(lv){
+    n=lv;diff=Math.min(n,10);WD=worldOf(n);walls=0;
+    kinds=['walker','walker','hopper','hopper','leaper'];
+    if(n>=2)kinds.push('shield','bomber','imp');
+    if(n>=3)kinds.push('brute');
+    if(n>=4)kinds.push('shield','leaper','hopper','imp');
+    if(WD.enemy)kinds.push(WD.enemy,WD.enemy);
+    if(n===1)kinds=['walker','walker','hopper'];   // stage 1 eases you in
+    pats=[['cluster',4],['single',2],['steps',2],['spikes',2],['crusher',2],['swarm',2],['long',3]];
+    if(n>=2)pats.push(['axe',2],['bombs',2]);
+    if(n>=3)pats.push(['brutes',2],['wall',2]);
+    if(WD.hazard)pats.push(['whaz',4]);
+    if(WD.enemy)pats.push(['wfoe',3]);
+    if(WD.castle)pats.push(['axe',1],['crusher',1]);
+    if(n===1)pats=[['cluster',4],['single',2],['steps',3],['spikes',1],['long',2]];
+    sub=['cluster','swarm','spikes','crusher','single'];
+    if(n>=2)sub.push('axe','bombs','cluster');
+    if(n>=3)sub.push('brutes');
+    if(WD.hazard)sub.push('whaz','whaz');
+    if(WD.enemy)sub.push('wfoe');
+    if(n===1)sub=['cluster','single','spikes'];
+    total=0;pats.forEach(function(p){total+=p[1];});
+  };
+  setLevel(n);
   var pick=function(){return kinds[Math.floor(rnd()*kinds.length)];};
-  var pats=[['cluster',4],['single',2],['steps',2],['spikes',2],['crusher',2],['swarm',2],['long',3]];
-  if(n>=2)pats.push(['axe',2],['bombs',2]);
-  if(n>=3)pats.push(['brutes',2],['wall',2]);
-  if(WD.hazard)pats.push(['whaz',4]);
-  if(WD.enemy)pats.push(['wfoe',3]);
-  if(WD.castle)pats.push(['axe',1],['crusher',1]);
-  if(n===1)pats=[['cluster',4],['single',2],['steps',3],['spikes',1],['long',2]];
-  var sub=['cluster','swarm','spikes','crusher','single'];
-  if(n>=2)sub.push('axe','bombs','cluster');
-  if(n>=3)sub.push('brutes');
-  if(WD.hazard)sub.push('whaz','whaz');
-  if(WD.enemy)sub.push('wfoe');
-  if(n===1)sub=['cluster','single','spikes'];
-  var total=0;pats.forEach(function(p){total+=p[1];});
+
   var choose=function(){var r=rnd()*total;for(var i=0;i<pats.length;i++){r-=pats[i][1];if(r<=0)return pats[i][0];}return 'cluster';};
   var isle=function(x0,w,t){st.islands.push({x0:x0,x1:x0+w,y0:t-TH,y1:t,top:t,kind:'isle',ice:WD.hazard==='ice'&&st.islands.length>0&&rnd()<0.5});};
   // early stages get narrower gaps
-  var gf=clamp(0.62+0.08*(n-1),0.62,1);
-  var gap=function(){return Math.max(0.9,(1.2+Math.pow(rnd(),1.3)*2.6+Math.min(diff,6)*0.05)*gf);};
+  var gap=function(){var gf=clamp(0.62+0.08*(n-1),0.62,1);return Math.max(0.9,(1.2+Math.pow(rnd(),1.3)*2.6+Math.min(diff,6)*0.05)*gf);};
   var coin=function(cx,cy){st.coins.push({x:cx,y:cy,got:false});};
   var sn=function(v){return Math.round(v*2)/2;};
-  var L=62+Math.min(n,8)*7,x=9,top=0,prev='',pat,i,walls=0;
+  var L=62+Math.min(n,8)*7,x=9,top=0,prev='',pat,i;
   var put=function(pat,ix,top){
     var w=2,i;
     if(pat==='cluster'){
@@ -622,7 +631,9 @@ function buildStage(n){
     return w;
   };
   isle(-2,11,0);x+=gap();
-  while(x<L){
+  var gen=function(toX){
+  while(x<toX){
+    if(endless){var lv=Math.min(40,1+Math.floor(x/EL));if(lv!==n)setLevel(lv);}
     pat=choose();
     if(pat==='wall'&&(walls>=2||prev==='wall'))pat='cluster';   // big foes: two walls a stage at most
     if(pat==='wall')walls++;
@@ -636,7 +647,7 @@ function buildStage(n){
       }
       continue;
     }
-    if(!st.cp&&n>0&&x>L*0.45)st.cp={x:x+0.9,y:top};
+    if(!endless&&!st.cp&&n>0&&x>L*0.45)st.cp={x:x+0.9,y:top};
     var pad=1.8,ix=x+pad,w;
     if(pat==='long'){
       var segs=3+Math.floor(rnd()*2),cx=ix;
@@ -649,6 +660,15 @@ function buildStage(n){
     var gw=gap();x+=iw+gw;
     if(gw>1.6&&rnd()<0.6)coin(x-gw/2,top+1.6);
   }
+  };
+  if(endless){
+    // no end and no boss: the track is built ahead of you as you go
+    st.endless=true;st.arenaX=st.arenaEnd=1e9;st.arenaTop=0;
+    st.gen=function(toX){gen(toX);st.genX=x;st.solids=st.islands.concat(st.blocks);};
+    st.gen(90);st.coinTotal=0;
+    return st;
+  }
+  gen(L);
   top=sn(clamp(top+[-1,0,1][Math.floor(rnd()*3)],0,5));
   st.arenaX=x;st.arenaTop=top;st.arenaEnd=x+18;
   isle(x,21.6,top);
@@ -664,8 +684,8 @@ function mkBoss(n,stg){
     hp:hp,maxhp:hp,state:'idle',st:1.4,tx:0,flash:0,hitCd:0,dead:false,airborne:false,minions:false,phase:0,cx:0,dir:-1,n:0,t:0};
 }
 var G=null,mode='title',last=0;
-function startStage(n,paused,fromCp){
-  var stg=buildStage(n),mh=maxHearts(),x0=2,y0=0;
+function startStage(n,paused,fromCp,endless){
+  var stg=buildStage(n,endless),mh=maxHearts(),x0=2,y0=0;
   if(fromCp&&stg.cp){
     x0=stg.cp.x;y0=stg.cp.y;
     stg.enemies=stg.enemies.filter(function(e){return e.x>x0+3;});
@@ -673,8 +693,9 @@ function startStage(n,paused,fromCp){
   }
   G={n:n,stg:stg,wait:true,time:0,cam:Math.max(0,x0-2.8),camY:y0,floorY:y0,coins:0,tapCd:0,hitStop:0,shake:0,arena:false,leftLock:0,end:null,
     p:{x:x0,y:y0,vx:0,vy:0,w:.65,h:.65,hp:mh,maxhp:mh,invul:0,grounded:true,dead:false,lastSafe:{x:x0,y:y0},rot:0,wallCd:0,climb:0},
-    enemies:stg.enemies,parts:[],texts:[],waves:[],shots:[],ebombs:[],earrows:[],fireCd:0,boss:mkBoss(n,stg),
-    banner:{t:2.2,text:fromCp?'Back at the flag':'Stage '+n,sub:fromCp?'':worldName(n)},
+    enemies:stg.enemies,parts:[],texts:[],waves:[],shots:[],ebombs:[],earrows:[],fireCd:0,boss:endless?null:mkBoss(n,stg),
+    banner:endless?{t:2.4,text:'Endless',sub:'How far can you go?'}:{t:2.2,text:fromCp?'Back at the flag':'Stage '+n,sub:fromCp?'':worldName(n)},
+    endless:!!endless,dist:0,nextHeal:100,
     pickups:0,hurt:false,bossHurt:false,runT:0,par:Math.round(stg.arenaX/3.4+35),fromCp:!!fromCp,cpHit:!!fromCp,combo:0,slow:0,onIce:false,zaps:[],
     orbA:0,whirl:0,auraT:0,auraFx:0,petT:0,pet:{x:x0-0.6,y:y0+1.3},flames:[],flameD:0,bossFxCd:0,kills:0,bossKilled:false,
     quakes:[],bigQuake:false,landed:false,meteors:[],rainT:0.6,vtx:{x:x0+2.3,y:y0+0.6},vtxA:0,vtxFx:0,beamT:0.5,beamOn:0,thornFx:0};
@@ -1306,7 +1327,7 @@ var FOE_TIPS={hopper:['hop','Hoppers hurt while in the air. Hit them as they lan
   thumper:['thumper','Thumpers leap at you. Watch for the crouch and dash out of the way.']};
 function coachChecks(g){
   var p=g.p,stg=g.stg,i,e,near=function(x,r){return x>p.x-0.3&&x<p.x+(r||4.5);};
-  if(g.arena&&!save.seen.back&&coach('back','Tap the left side of the screen to dash backwards.'))return;
+  if((g.arena||g.runT>5)&&!save.seen.back&&coach('back','Tap the left side of the screen to dash backwards.'))return;
   if(!save.seen.gap){
     floorAt(g,p.x,p.y+0.1);var isl=floorAt.o;
     if(isl&&isl.kind==='isle'&&isl.x1-p.x<2.4&&isl.x1-p.x>0.2&&!stg.solids.some(function(o){return o!==isl&&o.x0<=isl.x1+0.05&&o.x1>isl.x1;}))
@@ -1588,9 +1609,55 @@ function shopBoosts(g){
   if(PPHub.takeOne('fury')){g.fury=1;toast('🔥 Fury Tonic: double damage this stage');}
 }
 
+/* ---------- endless mode ---------- */
+function endlessTick(g){
+  var p=g.p,st=g.stg,cut=p.x-30,i;
+  if(p.dead)return;
+  g.dist=Math.max(g.dist,Math.floor(p.x-2));
+  g.leftLock=Math.max(g.leftLock,p.x-25);   // the track behind you is cleared away, so there is no going far back
+  if(p.x>st.genX-45){
+    st.enemies=[];st.gen(st.genX+60);
+    for(i=0;i<st.enemies.length;i++)g.enemies.push(st.enemies[i]);
+    ['islands','blocks','spikes'].forEach(function(k){st[k]=st[k].filter(function(o){return o.x1>cut;});});
+    ['coins','crushers','axes','jets','drops','bars'].forEach(function(k){st[k]=st[k].filter(function(o){return o.x>cut;});});
+    g.enemies=g.enemies.filter(function(e){return e.x>cut;});
+    st.solids=st.islands.concat(st.blocks);
+  }
+  var lv=Math.min(40,1+Math.floor(p.x/EL));
+  if(lv>g.n){g.n=lv;g.banner={t:2,text:'Level '+lv,sub:worldName(lv)};beep(660,.15,'triangle',.05,1.5);}
+  // every 100 m patches you up
+  if(g.dist>=g.nextHeal){
+    g.nextHeal+=100;
+    if(p.hp<p.maxhp){p.hp++;hudCache={};floatText(g,p.x,p.y+1.4,'+1 ♥','#ff4d4d');}
+    toast('🏁 '+(g.nextHeal-100)+' m'+(save.endBest&&g.nextHeal-100>save.endBest?' · new best!':''));
+  }
+}
+function beginEndless(){
+  startStage(1,false,false,true);$('#menu').hidden=true;setTab(null);renderSwitch();$('#coach').hidden=true;
+  $('#hud').hidden=false;$('#hint').hidden=false;
+  renderShop();show('#sTitle');
+}
+function endEndless(g){
+  mode='over';
+  var d=g.dist,best=save.endBest||0,nb=d>best;
+  if(nb)save.endBest=d;
+  if(g.coins>0&&PPHub.has('magnet'))g.coins=Math.round(g.coins*1.1);
+  save.coins+=g.coins;save.life+=g.coins;
+  save.kills=(save.kills||0)+(g.kills||0);
+  if(g.kills)PPHub.event('kill',g.kills);
+  PPHub.event('endless');PPHub.best('endless',d);
+  persist();
+  $('#coach').hidden=true;$('#hud').hidden=true;$('#hint').hidden=true;$('#wsw').hidden=true;
+  $('#oText').textContent='You went '+d+' m and reached level '+g.n+'. '+(nb?'A new best! ':'Best: '+best+' m. ')+'You banked '+g.coins+' coins.';
+  $('#bRetry').textContent='Run again';$('#bCont').hidden=true;
+  show('#sOver');
+  checkAch();
+}
+
 /* ---------- main update ---------- */
 function update(dt){
   var g=G,p=g.p,stg=g.stg,wp=WEAPONS[wkey()],i,e;
+  if(g.endless)endlessTick(g);
   g.time+=dt;g.tapCd-=dt;g.fireCd-=dt;if(p.thrust>0)p.thrust-=dt;
   if(!g.wait&&!g.end)g.runT+=dt;
   if(g.banner&&g.banner.t>0)g.banner.t-=dt;
@@ -1754,8 +1821,8 @@ function dash(back){
   g.tapCd=0.08;
   if(g.wait){g.wait=false;show('#none');shopBoosts(g);}
   var wp=WEAPONS[wkey()];
-  // in the boss arena you can dash backwards; the knight and everything it holds turn round
-  p.face=back&&g.arena?-1:1;
+  // a tap on the left of the screen dashes backwards; the knight and everything it holds turn round
+  p.face=back?-1:1;
   if(p.face<0){
     p.vx=-wp.dash*(1+0.07*upl('dash'))*g.dashM;p.thrust=0.22;g.combo=0;
     if(wp.shot)fire(g,wp.shot);
@@ -1776,8 +1843,8 @@ function dash(back){
   puff(g,p.x-0.3,p.y,'#ffffff',3);
   $('#hint').hidden=true;
 }
-// in the boss arena, a tap on the left third of the screen dashes backwards
-cv.addEventListener('pointerdown',function(e){e.preventDefault();var r=cv.getBoundingClientRect();dash(!!(G&&G.arena)&&e.clientX<r.left+r.width/3);});
+// a tap on the left third of the screen dashes backwards (the first tap of a stage always goes forward)
+cv.addEventListener('pointerdown',function(e){e.preventDefault();var r=cv.getBoundingClientRect();dash(!!(G&&!G.wait)&&e.clientX<r.left+r.width/3);});
 window.addEventListener('keydown',function(e){
   if(e.code==='KeyQ'&&!e.repeat)cycleW();
   if(e.code==='Space'||e.code==='ArrowRight'||e.code==='KeyD'){
@@ -1795,6 +1862,7 @@ function starCount(v){return (v&1)+(v>>1&1)+(v>>2&1);}
 function totalStars(){var t=0;for(var k in save.stars)t+=starCount(save.stars[k]);return t;}
 function endRun(kind){
   var g=G;
+  if(g.endless){endEndless(g);return;}
   mode=kind;
   if(kind==='clear'&&g.coins>0&&PPHub.has('magnet'))g.coins=Math.round(g.coins*1.1);   // Coin Magnet perk
   if(kind==='clear'&&g.coins>0&&PPHub.charm('coins')>1)g.coins=Math.round(g.coins*PPHub.charm('coins'));   // Treasure Map charm
@@ -2022,18 +2090,23 @@ function hud(){
   }
   var c=save.coins+g.coins;
   if(hudCache.c!==c){$('#coinN').textContent=c;hudCache.c=c;}
-  if(g.arena){
+  if(g.endless){
+    $('#prog').hidden=true;$('#bossBar').hidden=true;$('#eDist').hidden=false;
+    var dk=g.dist+'/'+g.n;if(hudCache.d!==dk){$('#eDist').textContent=g.dist+' m · Level '+g.n+(save.endBest?' · Best '+save.endBest+' m':'');hudCache.d=dk;}
+  }else if(g.arena){
+    $('#eDist').hidden=true;
     $('#prog').hidden=true;$('#bossBar').hidden=false;
     $('#bossName').textContent=g.boss.name;
     $('#bossFill').style.width=(100*g.boss.hp/g.boss.maxhp)+'%';
   }else{
+    $('#eDist').hidden=true;
     $('#prog').hidden=false;$('#bossBar').hidden=true;
     $('#progFill').style.width=(100*clamp((g.p.x-2)/(g.stg.arenaX-2),0,1))+'%';
   }
 }
 function setMuteLabel(){$('#mute').textContent=save.mute?'Sound off':'Sound on';}
 $('#mute').addEventListener('click',function(){save.mute=!save.mute;persist();setMuteLabel();});
-$('#bRetry').addEventListener('click',function(){beginPlay(G.n);});
+$('#bRetry').addEventListener('click',function(){if(G&&G.endless)beginEndless();else beginPlay(G.n);});
 $('#bCont').addEventListener('click',function(){beginPlay(G.n,true);});
 $('#bNext').addEventListener('click',function(){beginPlay(G.n+1);});
 
@@ -2050,8 +2123,9 @@ $('#bMap').addEventListener('click',function(){openTab('map');});
 $('#bC').addEventListener('click',function(){openTab('knights');});
 $('#bU').addEventListener('click',function(){openTab('shop');});
 $('#bA').addEventListener('click',function(){openTab('ach');});
-function toMap(){beginPlay(G.n);setTab('map');}
+function toMap(){beginPlay(G&&!G.endless?G.n:save.stage);setTab('map');}
 $('#bMenuO').addEventListener('click',toMap);
+$('#bE').addEventListener('click',function(){beep(520,.05,'triangle',.04,1.3);beginEndless();toast('∞ Endless: go as far as you can. Every 100 m heals a heart.');});
 $('#bMenuC').addEventListener('click',toMap);
 
 function renderMap(){
@@ -2109,6 +2183,8 @@ var ACH=[
   {id:'bank',icon:'💰',name:'Treasure hoard',desc:'Bank 1,000 coins in total',r:80,ok:function(){return save.life>=1000;}},
   {id:'foes250',icon:'💥',name:'Foe crusher',desc:'Defeat 250 foes',r:60,ok:function(){return (save.kills||0)>=250;}},
   {id:'boss10',icon:'👹',name:'Boss breaker',desc:'Beat 10 bosses',r:90,ok:function(){return (save.bosses||0)>=10;}},
+  {id:'end250',icon:'∞',name:'Long haul',desc:'Go 250 m in Endless',r:60,ok:function(){return (save.endBest||0)>=250;}},
+  {id:'end1000',icon:'🛤️',name:'Endless knight',desc:'Go 1,000 m in Endless',r:200,ok:function(){return (save.endBest||0)>=1000;}},
   {id:'giants',icon:'🗿',name:'Giant slayer',desc:'Topple 10 big foes',r:70,ok:function(){return (save.giants||0)>=10;}},
   {id:'gear',icon:'🌀',name:'Hands free',desc:'Own a knight with an always-on weapon',r:40,ok:function(){return save.chars.some(function(k){return CHARS[k].weapons.some(function(w){return !!wkind(WEAPONS[w]);});});}}
 ];
