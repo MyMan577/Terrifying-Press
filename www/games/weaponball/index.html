@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<script src="../pp-hub.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WEAPON BALL - 25 NEW CHARACTERS</title>
@@ -13423,7 +13422,6 @@ function rlUpdateTokenDisplay() {
 function startRoguelite() {
   RL.active = true;
   RL.round = 0;
-  PPHub.event('run');
   RL.team = [];
   RL.charms = [];
   RL._greedKills = 0;
@@ -13432,7 +13430,6 @@ function startRoguelite() {
   RL._phoenixUsed = false;
   window._rlEchoQueue = [];
   window._blackHoleActive = null;
-  RL.tokens += PPHub.take('tokens');   // Token Pouch bought in the Press Play shop
   rlUpdateTokenDisplay();
   document.getElementById('rlOverlay').style.display = 'block';
   rlShowPickScreen();
@@ -13775,8 +13772,6 @@ function rlStartRound() {
 function rlOnWin(winnerBall) {
   if (!RL.active || !window._rlRoundEndHooked) return;
   window._rlRoundEndHooked = false;
-  PPHub.event('round');
-  PPHub.best('round', RL.round);
   if (animId) cancelAnimationFrame(animId);
   stopMusic();
 

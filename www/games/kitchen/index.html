@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<script src="../pp-hub.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Kitchen Rush</title>
@@ -655,14 +654,11 @@
     { id:'games_50', icon:'🎖️', name:'Veteran', desc:'Play 50 shifts', check:s=>s.gamesPlayed>=50 },
   ];
 
-  // tells Press Play which achievements exist, so they show (and pay points) in Games > Achievements
-  PPHub.native(ACHIEVEMENTS.map(a => ({ id:a.id, name:a.name, desc:a.desc, icon:a.icon, done:!!unlockedAch[a.id] })));
   function checkAchievements(){
     let any = false;
     ACHIEVEMENTS.forEach(a => {
       if (!unlockedAch[a.id] && a.check(stats, highScores)){
         unlockedAch[a.id] = true;
-        PPHub.ach(a.id);
         any = true;
         queueAchToast(a);
       }
@@ -729,7 +725,6 @@
 
   function recordOrderServed(recipe, byHelper){
     stats.ordersServed++;
-    PPHub.event('serve');
     if (byHelper) stats.helperOrdersServed++;
     stats.recipesServed[recipe.name] = (stats.recipesServed[recipe.name] || 0) + 1;
     if (recipe.sideFries) stats.sideFriesServed++;
@@ -4362,8 +4357,6 @@
 
   function startGame(){
     resetGame();
-    // Overtime bought in the Press Play shop: extra seconds on a timed shift
-    if (gameMode !== 'tutorial' && gameMode !== 'endless' && gameMode !== 'tickets') timeLeft += PPHub.take('overtime');
     gameRunning = true;
     document.getElementById('endScreen').style.display = 'none';
   }

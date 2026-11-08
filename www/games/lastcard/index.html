@@ -1,5 +1,4 @@
-<!DOCTYPE html><html lang="en"><head>
-<meta charset="utf-8"><script src="../pp-hub.js"></script>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Last Card</title>
 <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;800&display=swap" rel="stylesheet">
@@ -896,7 +895,7 @@ SIDS.forEach(i=>['input','change'].forEach(ev=>$('#'+i).addEventListener(ev,save
 let M={on:0,tot:[]};const PT=c=>c.c==='k'?50:isNaN(c.v)?20:+c.v;
 function scoreEnd(w){const T=S.mode==='teams';if(T)$('#endt').textContent=w%2?'Rivals win':'Your team wins';let st={};try{st=JSON.parse(localStorage.getItem('uno-stats')||'{}')}catch(e){}
  st.g=(st.g||0)+1;st.m=st.m||{};const mm=st.m[S.mode]=st.m[S.mode]||{g:0,w:0};mm.g++;
- if(T?!(w%2):!w){st.w=(st.w||0)+1;mm.w++;st.s=(st.s||0)+1;st.b=Math.max(st.b||0,st.s);PPHub.event('win');PPHub.best('streak',st.s)}else st.s=0;PPHub.event('game');
+ if(T?!(w%2):!w){st.w=(st.w||0)+1;mm.w++;st.s=(st.s||0)+1;st.b=Math.max(st.b||0,st.s)}else st.s=0;
  try{localStorage.setItem('uno-stats',JSON.stringify(st))}catch(e){}
  let h='';
  if(M.on){const pts=G.p.reduce((a,q,i)=>(T?i%2===w%2:i===w)?a:a+q.hand.reduce((x,c)=>x+PT(c.real||c),0),0);const k=T?w%2:w;M.tot[k]+=pts;

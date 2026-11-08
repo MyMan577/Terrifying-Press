@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<script src="../pp-hub.js"></script>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Ante Up</title>
@@ -3204,7 +3203,7 @@ function startGame() {
   state.handOrder = [];
   state.playsLeft = 4 + getExtraPlays(state.items);
   state.discardsLeft = 4 + getExtraDiscards(state.items);
-  state.money = 4 + PPHub.take('cash');   // Pocket Money bought in the Press Play shop
+  state.money = 4;
   state.usedCards = [];
   dealInitialHand(d);
   state.overlay = "playing";
@@ -3797,10 +3796,6 @@ function finishPlay(finalScore, newPlaysLeft) {
         state.lastRoundEarnings = { base, interest, leftover };
         state.money = state.money + base + interest + leftover;
         state.overlay = (state.blindIdx === 2 && state.ante === FINAL_ANTE) ? "victory" : "cleared";
-        PPHub.event('blind');
-        PPHub.best('ante', state.ante);
-        if (state.blindIdx === 2) PPHub.event('boss');
-        if (state.overlay === "victory") PPHub.event('win');
         if (state.blindIdx === 2) {
           // Boss Blind cleared - Ratchet's bonus is permanent, so it accumulates
           // on the charm instance itself rather than being recomputed live.
@@ -3812,7 +3807,6 @@ function finishPlay(finalScore, newPlaysLeft) {
         }
       } else if (newPlaysLeft <= 0) {
         state.overlay = "over";
-        PPHub.event('run');
       }
 
       // The hand's outcome (score, money, deck/hand state, and win/loss) is now
@@ -5542,11 +5536,7 @@ document.addEventListener("click", (e) => {
 });
 
 // Resume an in-progress run if one was saved; otherwise start a new one.
-if (loadGame() && state.overlay !== "start") {
-  // a run in progress picks up Pocket Money straight away
-  const ppCash = PPHub.take('cash');
-  if (ppCash) { state.money += ppCash; saveGame(); }
-}
+loadGame();
 if (state.overlay === "start") startGame(); else render();
 </script>
 </body>
