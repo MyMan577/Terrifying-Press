@@ -242,6 +242,20 @@
     border: 1.5px dashed rgba(255,255,255,0.35);
     color: var(--ink-dim);
   }
+  #palEditor { margin: 0 0 14px; padding: 12px; border-radius: 14px; background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.1); }
+  #palEditor[hidden] { display: none; }
+  #palName { width: 100%; box-sizing: border-box; min-height: 36px; padding: 0 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.25); color: var(--ink); font: inherit; font-size: 13px; margin-bottom: 10px; }
+  .pe-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--ink-dim); margin-bottom: 10px; }
+  .pe-label { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 8px; }
+  #palCols { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .pe-col { position: relative; }
+  .pe-col button { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; padding: 0; border: none; border-radius: 50%; background: rgba(0,0,0,0.7); color: #fff; font-size: 11px; line-height: 18px; }
+  #palEditor input[type=color] { width: 44px; height: 44px; padding: 0; border: 1.5px solid rgba(255,255,255,0.3); border-radius: 12px; background: none; }
+  #palEditor input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+  #palEditor input[type=color]::-webkit-color-swatch { border: none; border-radius: 10px; }
+  #palAddCol { width: 100%; min-height: 34px; margin-bottom: 10px; border: 1.5px dashed rgba(255,255,255,0.3); border-radius: 10px; background: none; color: var(--ink-dim); font: inherit; font-size: 12px; }
+  .pe-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  #saveCustomPaletteBtn { background: rgba(139,92,255,0.35); border-color: rgba(139,92,255,0.8); }
   .swatch .del {
     position: absolute; top: 3px; right: 4px; z-index: 2;
     width: 16px; height: 16px; line-height: 14px; padding: 0;
@@ -693,6 +707,15 @@
     <section class="menu-section" data-menu-panel="appearance">
       <div class="section-head"><div class="label">Palette</div></div>
       <div class="palette-row" id="paletteRow"></div>
+      <p class="section-note">Tap <b>+ Custom</b> to make your own palette. Tap one of yours again to edit it.</p>
+      <div id="palEditor" hidden>
+        <input id="palName" maxlength="14" placeholder="Palette name" autocomplete="off">
+        <label class="pe-row"><span>Background</span><input type="color" id="palBg"></label>
+        <div class="pe-label">Particle colours</div>
+        <div id="palCols"></div>
+        <button type="button" id="palAddCol">+ Add a colour</button>
+        <div class="pe-actions"><button type="button" id="cancelCustomPaletteBtn">Cancel</button><button type="button" id="saveCustomPaletteBtn">Save</button></div>
+      </div>
     </section>
 
     <section class="menu-section" data-menu-panel="motion">
@@ -863,7 +886,6 @@ import * as THREE from 'three';
   // completely unchanged — they're just more entries in the same object.
   const CUSTOM_PALETTES_KEY = 'nebulaCustomPalettes';
   function loadCustomPalettes() {
-    return {};
     try { return JSON.parse(localStorage.getItem(CUSTOM_PALETTES_KEY)) || {}; }
     catch { return {}; }
   }
@@ -872,6 +894,7 @@ import * as THREE from 'three';
   }
   const customPalettes = loadCustomPalettes();
   Object.keys(customPalettes).forEach((key) => { PALETTES[key] = customPalettes[key]; });
+  if (PPHub.has('palette')) PALETTES.pressplay = { name: 'Press Play', bg: '#07060d', colors: ['#6ee7d0', '#8b5cff', '#ff5fd8', '#ffffff', '#a68bff'] };   // Press Play exclusive
 
   function hexToRgbFloat(hex) {
     hex = hex.replace('#', '');
@@ -3405,7 +3428,7 @@ import * as THREE from 'three';
   const SETTINGS_KEY = 'nebulaSettings';
   function saveSettings() {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({
-      mode, paletteKey,
+      mode, paletteKey: paletteKey === '__draft' ? (editBefore || 'neon') : paletteKey,
       density: targetCount, trail: trailAmt, size: Math.round(sizeScale * 100),
       speed: +speedSlider.value, turbulence: +turbulenceSlider.value,
       vortex: +vortexSlider.value, bloomEnabled, sparkleEnabled
@@ -3444,37 +3467,128 @@ import * as THREE from 'three';
   // the fly by the "+ Custom" panel below) — one place that knows how to
   // turn a PALETTES entry into a clickable swatch. `beforeAddBtn` inserts
   // the new swatch just ahead of the "+" button instead of at the row's end.
+  // Switches the whole field to a palette: particles recolour, the trail buffers cut over.
+  // `preview` is used by the palette editor so a half-made palette is never saved as the choice.
+  function selectPalette(key, preview) {
+    if (!PALETTES[key]) return;
+    paletteKey = key;
+    paletteBgFloat = hexToRgbFloat(PALETTES[paletteKey].bg);
+    [...paletteRow.children].forEach(s => s.classList.toggle('active', s === paletteSwatches[key]));
+    // Recolor the existing field to match — particles stay, only their look changes.
+    // Cache the GPU-ready components here because they are static until the
+    // next palette change, then upload the color buffer just once.
+    particles.forEach(pt => {
+      pt.color = pickColor();
+      const rgb = colorFloat(pt.color);
+      pt.colorR = rgb[0]; pt.colorG = rgb[1]; pt.colorB = rgb[2];
+    });
+    particleColorDirty = true;
+    // instantly cut both trail buffers over to the new background instead
+    // of fading — same intent as the old immediate ctx.fillRect clear
+    clearTargetToColor(fbos[0], PALETTES[paletteKey].bg);
+    clearTargetToColor(fbos[1], PALETTES[paletteKey].bg);
+    if (!preview) saveSettings();
+  }
+  function swatchLook(sw, pal) {
+    const c = pal.colors;
+    sw.style.background = `linear-gradient(135deg, ${c[0]}, ${c[1] || c[0]} 50%, ${c[2] || c[1] || c[0]})`;
+    sw.querySelector('span').textContent = pal.name;
+  }
   function addPaletteSwatch(key, beforeAddBtn) {
     const sw = document.createElement('button');
     sw.className = 'swatch' + (key === paletteKey ? ' active' : '');
-    const pal = PALETTES[key];
-    sw.style.background = `linear-gradient(135deg, ${pal.colors[0]}, ${pal.colors[1]} 50%, ${pal.colors[2]})`;
-    sw.innerHTML = `<span>${pal.name}</span>`;
-    sw.addEventListener('click', () => {
-      paletteKey = key;
-      paletteBgFloat = hexToRgbFloat(PALETTES[paletteKey].bg);
-      [...paletteRow.children].forEach(s => s.classList.remove('active'));
-      sw.classList.add('active');
-      // Recolor the existing field to match — particles stay, only their look changes.
-      // Cache the GPU-ready components here because they are static until the
-      // next palette change, then upload the color buffer just once.
-      particles.forEach(pt => {
-        pt.color = pickColor();
-        const rgb = colorFloat(pt.color);
-        pt.colorR = rgb[0]; pt.colorG = rgb[1]; pt.colorB = rgb[2];
+    sw.innerHTML = '<span></span>';
+    swatchLook(sw, PALETTES[key]);
+    const custom = !!customPalettes[key];
+    if (custom) {
+      const del = document.createElement('button');
+      del.className = 'del'; del.textContent = '×'; del.setAttribute('aria-label', 'Delete palette');
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete "' + PALETTES[key].name + '"?')) return;
+        delete customPalettes[key]; delete PALETTES[key]; saveCustomPalettes(customPalettes);
+        sw.remove(); delete paletteSwatches[key];
+        if (paletteKey === key) selectPalette('neon');
+        if (editKey === key) closeEditor(false);
       });
-      particleColorDirty = true;
-      // instantly cut both trail buffers over to the new background instead
-      // of fading — same intent as the old immediate ctx.fillRect clear
-      clearTargetToColor(fbos[0], PALETTES[paletteKey].bg);
-      clearTargetToColor(fbos[1], PALETTES[paletteKey].bg);
-      saveSettings();
+      sw.appendChild(del);
+    }
+    sw.addEventListener('click', () => {
+      if (custom && paletteKey === key && palEditor.hidden) { openEditor(key); return; }
+      if (!palEditor.hidden) closeEditor(false);
+      selectPalette(key);
     });
     paletteSwatches[key] = sw;
-    paletteRow.appendChild(sw);
+    if (beforeAddBtn && addSwatch) paletteRow.insertBefore(sw, addSwatch); else paletteRow.appendChild(sw);
     return sw;
   }
+  // ---------- custom palette editor ----------
+  const palEditor = document.getElementById('palEditor'), palName = document.getElementById('palName'),
+        palBg = document.getElementById('palBg'), palCols = document.getElementById('palCols');
+  let addSwatch = null, editKey = null, editBefore = null, draft = null;
+  function renderDraftCols() {
+    palCols.innerHTML = '';
+    draft.colors.forEach((c, i) => {
+      const w = document.createElement('div'); w.className = 'pe-col';
+      const inp = document.createElement('input'); inp.type = 'color'; inp.value = c;
+      inp.addEventListener('input', () => { draft.colors[i] = inp.value; previewDraft(); });
+      w.appendChild(inp);
+      if (draft.colors.length > 2) {
+        const x = document.createElement('button'); x.type = 'button'; x.textContent = '×'; x.setAttribute('aria-label', 'Remove colour');
+        x.addEventListener('click', () => { draft.colors.splice(i, 1); renderDraftCols(); previewDraft(); });
+        w.appendChild(x);
+      }
+      palCols.appendChild(w);
+    });
+    document.getElementById('palAddCol').hidden = draft.colors.length >= 7;
+  }
+  function previewDraft() {
+    PALETTES.__draft = { name: draft.name || 'Custom', bg: draft.bg, colors: draft.colors.slice() };
+    selectPalette('__draft', true);
+  }
+  function openEditor(key) {
+    editKey = key || null;
+    editBefore = paletteKey === '__draft' ? 'neon' : paletteKey;
+    const src = PALETTES[key || paletteKey] || PALETTES.neon;
+    draft = { name: key ? src.name : '', bg: src.bg, colors: src.colors.slice(0, 7) };
+    while (draft.colors.length < 2) draft.colors.push('#ffffff');
+    palName.value = draft.name; palBg.value = draft.bg;
+    renderDraftCols();
+    palEditor.hidden = false;
+    previewDraft();
+    palEditor.scrollIntoView({ block: 'nearest' });
+  }
+  function closeEditor(restore) {
+    palEditor.hidden = true;
+    delete PALETTES.__draft;
+    if (restore && editBefore && PALETTES[editBefore]) selectPalette(editBefore);
+    editKey = null; draft = null;
+  }
+  palName.addEventListener('input', () => { if (draft) draft.name = palName.value.trim(); });
+  palBg.addEventListener('input', () => { if (draft) { draft.bg = palBg.value; previewDraft(); } });
+  document.getElementById('palAddCol').addEventListener('click', () => {
+    if (!draft || draft.colors.length >= 7) return;
+    draft.colors.push('#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0'));
+    renderDraftCols(); previewDraft();
+  });
+  document.getElementById('cancelCustomPaletteBtn').addEventListener('click', () => closeEditor(true));
+  document.getElementById('saveCustomPaletteBtn').addEventListener('click', () => {
+    if (!draft) return;
+    const key = editKey || ('custom_' + Date.now().toString(36));
+    const n = Object.keys(customPalettes).length + (editKey ? 0 : 1);
+    const pal = { name: (draft.name || 'Custom ' + n).slice(0, 14), bg: draft.bg, colors: draft.colors.slice() };
+    PALETTES[key] = pal; customPalettes[key] = pal; saveCustomPalettes(customPalettes);
+    if (paletteSwatches[key]) swatchLook(paletteSwatches[key], pal); else addPaletteSwatch(key, true);
+    palEditor.hidden = true; delete PALETTES.__draft; editKey = null; draft = null;
+    selectPalette(key);
+  });
+
   Object.keys(PALETTES).forEach((key) => addPaletteSwatch(key, false));
+  addSwatch = document.createElement('button');
+  addSwatch.className = 'swatch add';
+  addSwatch.innerHTML = '<span>+ Custom</span>';
+  addSwatch.addEventListener('click', () => openEditor(null));
+  paletteRow.appendChild(addSwatch);
 
   // Particles slider sets how many live on screen at once — the field grows
   // or shrinks smoothly toward this number, it's never reset to zero.

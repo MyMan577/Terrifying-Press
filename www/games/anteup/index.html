@@ -2760,6 +2760,9 @@ function applyCharmEffects(result, cards, charms) {
       case "anchorFlatMult":
         totalMult += eff.value;
         break;
+      case "pppEncore":   // Press Play exclusive
+        totalMult = (totalMult + eff.add) * eff.x;
+        break;
       case "miserMultPerTenDollars":
         totalMult += Math.floor(state.money / 10) * eff.value;
         break;
@@ -3205,6 +3208,10 @@ function startGame() {
   state.playsLeft = 4 + getExtraPlays(state.items);
   state.discardsLeft = 4 + getExtraDiscards(state.items);
   state.money = 4 + PPHub.take('cash');   // Pocket Money bought in the Press Play shop
+  if (PPHub.take('encore') && state.charms.length < state.charmSlots && !state.charms.some((c) => c.id === "ppp_encore")) {
+    state.charms.push({ id: "ppp_encore", name: "Encore", desc: "Press Play exclusive: +4 Mult, then x1.2 Mult on every hand", price: 10,
+      color: "#8b5cff", type: "charm", effect: { type: "pppEncore", add: 4, x: 1.2 }, uid: Math.random().toString(36).slice(2, 9) });
+  }
   state.usedCards = [];
   dealInitialHand(d);
   state.overlay = "playing";

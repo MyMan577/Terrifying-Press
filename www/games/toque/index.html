@@ -14663,6 +14663,26 @@ function repairEvolutions() {
   });
 }
 
+// Rewards bought in the Press Play shop arrive when a save loads
+function pppToqueRewards(){
+  let got = false;
+  let n = PPHub.take('trophies');
+  const types = Object.keys(TROPHY_DEFS);
+  if (n > 0) {
+    for (let i = 0; i < n; i++) { const t = types[Math.floor(Math.random() * types.length)]; state.trophies[t] = (state.trophies[t] || 0) + 1; }
+    log(`Press Play shop: ${n} trophies added to your Trophy Satchel.`); got = true;
+  }
+  n = PPHub.take('rite');
+  for (let i = 0; i < n; i++) { grantKanataXp(300); grantSpiritXp(state.spiritBond, 200); }
+  if (n > 0) { log('Press Play shop: an Ancestor\'s Rite. Kanata gains XP, and so does his spirit.'); got = true; }
+  if (PPHub.take('headphones') && !state.owned.ppp_headphones) {
+    state.owned.ppp_headphones = true;
+    state.atkBonus += 2; state.hpBonus += 12; state.chargeBonus += 10;
+    log('Press Play Headphones! +2 spear damage, +12 max HP, Focus restores +10 more Spirit.'); got = true;
+  }
+  if (got) { updateGoldDisplay(); updateHud(); saveGame(true); }
+}
+
 function loadGame() {
   const raw = localStorage.getItem('toque_spear_save');
   if (!raw) {
@@ -14697,6 +14717,7 @@ function loadGame() {
     }
     
     log('Game Loaded!');
+    pppToqueRewards();
     flash('127,255,212', 0.2); // Visual feedback
   } catch (e) {
     console.error('Load failed', e);
