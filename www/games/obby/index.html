@@ -1,5 +1,6 @@
 <!DOCTYPE html><html lang="en">
 <head>
+<script src="../pp-hub.js"></script>
 <script>
 (function(){
   var muted = false, ctxs = [], els = new Set();
@@ -27450,6 +27451,7 @@ function resolveCollisions(axis, dt) {
   
   let msStats = JSON.parse(localStorage.getItem('obby_ms_stats') || '{}');
   let msUnlocked = new Set(JSON.parse(localStorage.getItem('obby_ms_unlocked') || '[]'));
+  PPHub.native(MILESTONES.map(ms => ({ id:ms.id, name:ms.name, desc:ms.desc, icon:ms.icon, p:Math.max(5, Math.min(50, Math.round(ms.reward / 3))), done:msUnlocked.has(ms.id) })));
 
   function saveMsStats() {
     localStorage.setItem('obby_ms_stats', JSON.stringify(msStats));
@@ -27469,6 +27471,7 @@ function resolveCollisions(axis, dt) {
       const val = getMsStat(ms.stat);
       if (val >= ms.goal) {
         msUnlocked.add(ms.id);
+        PPHub.ach(ms.id);
         totalCoins += ms.reward;
         saveProgress(); saveCosmetics(); renderUpgradePanel(); renderCosmeticPanel();
         saveMsStats();
@@ -27517,7 +27520,7 @@ function resolveCollisions(axis, dt) {
     if (cause === 'spike')  msIncrement('spikeDeaths');
     if (cause === 'enemy')  msIncrement('enemyDeaths');
   };
-  window._trackWin = function() { msIncrement('wins'); };
+  window._trackWin = function() { msIncrement('wins'); PPHub.event('win'); };
   window._trackGamble= function(jackpot, tripleLoss) {
     msIncrement('gambles');
     if (jackpot)    msIncrement('jackpots');

@@ -9077,7 +9077,9 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     'playerMemcSpeedAware',
     'playerLayoutMode',
     'playerHistoryV1',
-    'playerGestureMapPlayerMode'
+    'playerGestureMapPlayerMode',
+    'ppPointsV1',
+    'ppShopUnlocksV1'
   ];
 
   function exportProgressBackup(){
@@ -22124,6 +22126,7 @@ async function ppMp4Chapters(blob){
       // XP follows time actually played, so skipped sections earn nothing. Speed works inversely:
       // faster playback earns less per second (2x = half), slower earns more (0.5x = double).
       if (window.PPXpApi && window.PPXpApi.recordWatchTime) window.PPXpApi.recordWatchTime(deltaMs / Math.min(4, Math.max(0.25, rate > 0 ? rate : 1)));
+      if (window.__ppHub) window.__ppHub.listen(deltaMs);
       if (track && track.dbId && state.trackPlays[track.dbId]){
         state.trackPlays[track.dbId].totalMs = (state.trackPlays[track.dbId].totalMs || 0) + deltaMs;
         if (isBackground){
@@ -22877,9 +22880,20 @@ async function ppMp4Chapters(blob){
       // Not a level reward: earned by scoring 80% or better on The Marathon (Settings).
       { id:'finish-line',     name:'Finish Line',     level:0,   unlock:'marathon', type:'animated', color1:'#06141c', color2:'#a3e635', angle:135 }
     ];
+    // Backgrounds and EQ presets bought early with Press Play Points (Games > Shop).
+    const SHOP_UNLOCK_KEY = 'ppShopUnlocksV1';
+    function shopUnlocks(){
+      try { const o = JSON.parse(localStorage.getItem(SHOP_UNLOCK_KEY) || '{}'); return { bg: Array.isArray(o.bg) ? o.bg : [], eq: Array.isArray(o.eq) ? o.eq : [] }; }
+      catch(e){ return { bg: [], eq: [] }; }
+    }
     function presetUnlocked(p){
+      if (shopUnlocks().bg.indexOf(p.id) >= 0) return true;
       if (p.unlock === 'marathon'){ try { return localStorage.getItem('ppMarathonBgV1') === '1'; } catch(e){ return false; } }
       return isUnlocked(p.level);
+    }
+    function eqProUnlocked(key){
+      const cfg = EQ_PRO_PRESETS[key];
+      return !!cfg && (isUnlocked(cfg.level) || shopUnlocks().eq.indexOf(key) >= 0);
     }
     const EQ_PRO_PRESETS = {
       symphonic:   { label:'Symphonic',    level:6,  gains:[3, 2, 0.5, 0.75, 1, 2, 2.7, 3.5] },
@@ -23143,6 +23157,39 @@ async function ppMp4Chapters(blob){
       getRank: () => rankForLevel(currentLevel()),
       isUnlocked,
       refreshUnlocks: () => refreshAllUnlockUI(),
+      // ---- rewards bought with Press Play Points (Games > Shop) ----
+      shopLevelPct: (pct) => {
+        const before = levelInfo(state.xp).level, info = levelInfo(state.xp);
+        const amount = Math.max(1, Math.round(info.xpForNext * pct));
+        state.xp += amount;
+        markDirty(); saveState();
+        const after = levelInfo(state.xp).level;
+        renderBadge(amount, after > before);
+        if (after > before) handleLevelUp(before, after);
+        return amount;
+      },
+      shopTempBoost: (mult, ms) => {
+        const now = Date.now(), still = state.expMods.tempEndsAt && now < state.expMods.tempEndsAt;
+        state.expMods.tempMult = still ? Math.max(state.expMods.tempMult || 1, mult) : mult;
+        state.expMods.tempEndsAt = (still ? state.expMods.tempEndsAt : now) + ms;
+        markDirty(); saveState();
+        return true;
+      },
+      shopLocked: () => ({
+        bg: BG_PRESETS.filter(p => !presetUnlocked(p)).sort((a, b) => (a.unlock ? 1e4 : a.level) - (b.unlock ? 1e4 : b.level))
+          .map(p => ({ id: p.id, name: p.name, level: p.level, marathon: p.unlock === 'marathon', c1: p.color1, c2: p.color2, angle: p.angle })),
+        eq: Object.keys(EQ_PRO_PRESETS).filter(k => !eqProUnlocked(k)).sort((a, b) => EQ_PRO_PRESETS[a].level - EQ_PRO_PRESETS[b].level)
+          .map(k => ({ id: k, name: EQ_PRO_PRESETS[k].label, level: EQ_PRO_PRESETS[k].level }))
+      }),
+      shopUnlock: (kind, id) => {
+        if ((kind === 'bg' && !BG_PRESETS.some(p => p.id === id)) || (kind === 'eq' && !EQ_PRO_PRESETS[id])) return false;
+        const u = shopUnlocks();
+        if (!u[kind] || u[kind].indexOf(id) >= 0) return false;
+        u[kind].push(id);
+        try { localStorage.setItem(SHOP_UNLOCK_KEY, JSON.stringify(u)); } catch(e){ return false; }
+        refreshAllUnlockUI();
+        return true;
+      },
       flush: () => { if (dirty) saveState(); }
     };
 
@@ -23325,7 +23372,7 @@ async function ppMp4Chapters(blob){
         btn.className = 'ppxp-eq-pro-btn';
         btn.innerHTML = '<span class="ppxp-lock">🔒</span>' + cfg.label;
         btn.addEventListener('click', () => {
-          if (!isUnlocked(cfg.level)){
+          if (!eqProUnlocked(key)){
             if (typeof showToast === 'function') showToast('🔒 "' + cfg.label + '" EQ preset unlocks at Level ' + cfg.level);
             return;
           }
@@ -23344,8 +23391,7 @@ async function ppMp4Chapters(blob){
       const eq = window.PPXpEq;
       if (!eq || !eq.presetRow) return;
       eq.presetRow.querySelectorAll('.ppxp-eq-pro-btn').forEach(btn => {
-        const req = parseInt(btn.dataset.reqLevel, 10);
-        btn.classList.toggle('locked', !isUnlocked(req));
+        btn.classList.toggle('locked', !eqProUnlocked(btn.dataset.eqPreset));
       });
     }
     // Reveals the two extra bands (500Hz, 6K) once unlocked, instead of
@@ -26425,7 +26471,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   .ppg-load.done{ opacity:0; pointer-events:none; }
 
   /* While a game is open, the app underneath stops drawing. Playback keeps going. */
-  body.pp-gaming > *:not(#pp-game):not(script):not(style){ display:none !important; }
+  body.pp-gaming > *:not(#pp-game):not(#ppx-toast):not(script):not(style){ display:none !important; }
 </style>
 <script id="pp-games-js">
 (function(){
@@ -26491,6 +26537,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
         '<div class="ppg-name">' + esc(g.name) + '</div><div class="ppg-tag">' + esc(g.tag) + '</div></button>';
     }).join('') + '</div>';
   document.body.appendChild(grid);
+  window.__ppGames = { list: GAMES, grid: grid, art: artHTML };   // read by the Press Play Points hub below
   grid.querySelector('.ppg-back').addEventListener('click', closeGrid);
   grid.addEventListener('click', function(e){
     var c = e.target.closest('.ppg-card'); if (c) openGame(c.getAttribute('data-game'));
@@ -26556,6 +26603,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     view.appendChild(frame); view.appendChild(load); view.appendChild(bar);
     view.classList.add('open');
     document.body.classList.add('pp-gaming');
+    if (window.__ppHub) window.__ppHub.sessionStart(g.id);
     slowApp(true);
     gameMode(true);
     var pb = document.getElementById('play-btn');
@@ -26565,6 +26613,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   function hideGame(){
     if (!current) return;
     if (playObs){ playObs.disconnect(); playObs = null; }
+    if (window.__ppHub) window.__ppHub.sessionEnd();
     view.classList.remove('open');
     view.innerHTML = '';   // unloads the game and its sound
     frame = null; current = null;
@@ -26579,7 +26628,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   window.addEventListener('popstate', function(){
     var st = history.state || {};
     if (current && !st.ppGame) hideGame();
-    if (grid.classList.contains('open') && !st.ppGames && !st.ppGame) hideGrid();
+    if (grid.classList.contains('open') && !st.ppGames && !st.ppGame && !st.ppHub) hideGrid();
   });
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape') return;
@@ -26609,6 +26658,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   }
 })();
 </script>
+<script src="./pp-points.js?v=20261108a"></script>   <!-- Press Play Points: quests, achievements and shop on the Games page. Bump v= when it changes -->
 <script src="./vocal-separator.js?v=20261030a" defer></script>   <!-- bump v= each time vocal-separator.js changes so phones fetch the new copy -->
 </body>
 </html>
