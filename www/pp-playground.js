@@ -20,16 +20,16 @@
   /* ------------------------------------------------------------------ saved state */
   function fresh(){
     return { v:1, stars:0, total:0, spins:0, lastSpin:'', slots:3, tickets:0, trials:{},
-      charms:{ own:{}, eq:[] }, orders:{ list:[], streak:0, done:0, seq:0 },
+      charms:{ own:{}, eq:[], lv:{} }, orders:{ list:[], streak:0, done:0, seq:0 },
       wheel:{ view:'daily', meter:0, golden:0, streak:0, lastDay:'', hist:[] }, drip:{ day:'', got:{} },
-      stats:{}, opts:{ fab:true, sfx:true }, storm:{ until:0, mult:2 }, gameStarMs:0 };
+      stats:{}, opts:{ fab:true, sfx:true }, storm:{ until:0, mult:2 }, gameStarMs:0, spent:0, shield:{ order:0, wheel:0 } };
   }
   function load(){
     var o = null, f = fresh();
     try { o = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch(e){}
     if (!o || typeof o !== 'object') return f;
     Object.keys(f).forEach(function(k){ if (!(k in o)) o[k] = f[k]; });
-    ['charms', 'orders', 'opts', 'storm', 'wheel', 'drip'].forEach(function(k){
+    ['charms', 'orders', 'opts', 'storm', 'wheel', 'drip', 'shield'].forEach(function(k){
       if (!o[k] || typeof o[k] !== 'object') o[k] = f[k];
       Object.keys(f[k]).forEach(function(j){ if (!(j in o[k])) o[k][j] = f[k][j]; });
     });
@@ -63,7 +63,7 @@
     refreshBalance(); checkAch();
     return n;
   };
-  PP.spendStars = function(n){ if (S.stars < n) return false; S.stars -= n; save(); refreshBalance(); return true; };
+  PP.spendStars = function(n){ n = Math.round(n); if (!(n >= 0) || S.stars < n) return false; S.stars -= n; S.spent = (S.spent || 0) + n; save(); refreshBalance(); checkAch(); return true; };
   PP.addGrooves = function(n){ try { if (window.PPClicker && n > 0){ window.PPClicker.add(n); return true; } } catch(e){} return false; };
   PP.ps = function(){ try { return window.PPClicker ? window.PPClicker.ps() : 0; } catch(e){ return 0; } };
 
@@ -73,7 +73,7 @@
   PP.mult = function(kind){
     if (!on()) return 1;
     var m = 1;
-    activeIds().forEach(function(id){ var c = charmById(id); if (c && c.fx && c.fx[kind]) m *= c.fx[kind]; });
+    activeIds().forEach(function(id){ var c = charmById(id); if (c && c.fx && c.fx[kind]) m *= lvFx(c.fx[kind], charmLv(id)); });
     if (stormActive() && (kind === 'click' || kind === 'ps')) m *= S.storm.mult;
     if (kind === 'xp') m *= 1.25;   // the mode's own bonus: 25% more EXP
     multFns.forEach(function(fn){ try { m *= (fn(kind) || 1); } catch(e){} });
@@ -89,6 +89,14 @@
     return ids;
   }
   PP.activeCharms = activeIds;
+  /* charm levels: Stars take an owned charm to level 2 and 3, and each level adds half of its level-1 bonus again */
+  var CHARM_MAX = 3;
+  function charmLv(id){ var l = S.charms.lv && S.charms.lv[id]; return l > 1 ? Math.min(CHARM_MAX, l) : 1; }
+  function lvScale(lv){ return 1 + 0.5 * (lv - 1); }
+  function lvFx(v, lv){ return v < 1 ? Math.max(0.3, 1 - (1 - v) * lvScale(lv)) : 1 + (v - 1) * lvScale(lv); }
+  function canLevel(c){ return !!(c && c.fx && Object.keys(c.fx).length); }
+  function levelCost(c){ return c.p * charmLv(c.id); }
+  PP.charmLv = charmLv;
   // what the charms do inside a game: score and coins multiply (default 1), everything else adds (default 0)
   PP.gameFx = function(g, kind){
     var mul = (kind === 'score' || kind === 'coins'), v = mul ? 1 : 0;
@@ -179,6 +187,7 @@
     save(); toast('🌩️ Groove Storm! Clicks and grooves ×' + S.storm.mult + ' for ' + Math.round(dur / 60000) + ' min');
     try { if (window.PPClicker) window.PPClicker.show(); } catch(e){}
   }
+  PP.startStorm = startStorm;
 
   /* ------------------------------------------------------------------ the wheels: a daily wheel and a golden one */
   var WCOL = ['#6ee7d0', '#8b5cff', '#ff5fd8', '#ffb36e', '#39d5ff', '#3ddc84'];
@@ -290,7 +299,9 @@
     else {
       if (!spinReady()) return;
       if (S.lastSpin !== dayKey()){
-        S.wheel.streak = (S.wheel.lastDay === yesterdayKey()) ? S.wheel.streak + 1 : 1;
+        if (S.wheel.lastDay === yesterdayKey()) S.wheel.streak++;
+        else if (S.wheel.lastDay && S.wheel.streak > 1 && S.shield.wheel > 0){ S.shield.wheel--; S.wheel.streak++; setTimeout(function(){ toast('🛡️ A Streak Shield saved your ' + (S.wheel.streak - 1) + '-day wheel streak'); }, 3600); }
+        else S.wheel.streak = 1;
         S.wheel.lastDay = dayKey(); S.lastSpin = dayKey();
       } else S.spins--;
     }
@@ -309,7 +320,7 @@
       if (k < 1) return requestAnimationFrame(frame);
       spinning = false;
       var seg = segs[idx], msg = reward(wid, seg);
-      if (wid === 'daily'){ S.wheel.meter++; if (S.wheel.meter >= 7){ S.wheel.meter = 0; S.wheel.golden++; setTimeout(function(){ toast('✨ The lucky meter is full: a Golden Spin is ready!'); }, 1400); } }
+      if (wid === 'daily') fillMeter(1, 1400);
       S.wheel.hist.unshift({ t: Date.now(), w: wid, l: seg.l, m: msg }); if (S.wheel.hist.length > 10) S.wheel.hist.pop();
       chime(); toast('🎡 ' + seg.l + ': ' + msg);
       if (wid === 'golden' || /^(jack|gcharm|gs120)$/.test(seg.k)) confetti();
@@ -319,6 +330,12 @@
       updateWheelInfo();
     })(t0);
   }
+  function fillMeter(n, delay){
+    S.wheel.meter += n;
+    while (S.wheel.meter >= 7){ S.wheel.meter -= 7; S.wheel.golden++; setTimeout(function(){ toast('✨ The lucky meter is full: a Golden Spin is ready!'); }, delay || 0); }
+    save(); updateWheelInfo();
+  }
+  PP.fillMeter = fillMeter;
   function histHTML(){
     if (!S.wheel.hist.length) return '<div class="pgr-meta">No spins yet.</div>';
     return S.wheel.hist.map(function(h){ return '<div class="pgr-meta" style="padding:3px 0">' + (h.w === 'golden' ? '✨ ' : '') + esc(h.l) + ' → ' + esc(h.m) + '</div>'; }).join('');
@@ -348,7 +365,7 @@
     b.textContent = spinning ? 'Spinning…' : wid === 'golden' ? (S.wheel.golden > 0 ? '✨ Golden Spin (' + S.wheel.golden + ')' : 'Fill the lucky meter') : free ? '🎡 Spin (free today)' : S.spins > 0 ? '🎟️ Spin (' + S.spins + ' left)' : 'Back tomorrow';
     var chips = document.getElementById('pgr-wchips');
     if (chips){
-      var html = '<span class="pgr-chip">🔥 ' + S.wheel.streak + '-day streak' + (bonus ? ' (+' + bonus + '% rewards)' : '') + '</span>' + (S.tickets ? '<span class="pgr-chip">🎴 ' + S.tickets + ' pull ticket' + (S.tickets > 1 ? 's' : '') + '</span>' : '') + (S.spins ? '<span class="pgr-chip">🎟️ ' + S.spins + ' spare spin' + (S.spins > 1 ? 's' : '') + '</span>' : '');
+      var html = '<span class="pgr-chip">🔥 ' + S.wheel.streak + '-day streak' + (bonus ? ' (+' + bonus + '% rewards)' : '') + '</span>' + (S.tickets ? '<span class="pgr-chip">🎴 ' + S.tickets + ' pull ticket' + (S.tickets > 1 ? 's' : '') + '</span>' : '') + (S.spins ? '<span class="pgr-chip">🎟️ ' + S.spins + ' spare spin' + (S.spins > 1 ? 's' : '') + '</span>' : '') + (S.shield.wheel ? '<span class="pgr-chip">🛡️ streak shield ×' + S.shield.wheel + '</span>' : '');
       if (chips.__h !== html){ chips.innerHTML = html; chips.__h = html; }
     }
     var note = document.getElementById('pgr-wnote'); if (note) note.textContent = 'Lucky meter ' + S.wheel.meter + '/7: every Daily spin fills it, and a full meter earns a Golden Spin.';
@@ -391,7 +408,11 @@
     for (var i = L.length - 1; i >= 0; i--){
       var o = L[i];
       if (!orderKind(o.kind)){ L.splice(i, 1); changed = true; continue; }
-      if (!o.done && o.until < now){ L.splice(i, 1); S.orders.streak = 0; changed = true; }
+      if (!o.done && o.until < now){
+        L.splice(i, 1); changed = true;
+        if (S.orders.streak > 0 && S.shield.order > 0){ S.shield.order--; toast('🛡️ An Order Shield kept your order streak going'); }
+        else S.orders.streak = 0;
+      }
     }
     while (L.length < 3){ L.push(newOrder(L.map(function(o){ return o.kind; }))); changed = true; }
     if (changed) save();
@@ -410,6 +431,16 @@
     L.splice(L.indexOf(o), 1); fillOrders(); save(true);
     chime(); toast('🧾 Order up! +' + stars + ' ⭐ and +' + fmt(grooves) + ' grooves' + (o.tier === 2 ? ' and a 🎴 pull ticket' : '') + (streak > 1 ? ' (streak ×' + streak + ')' : ''));
     renderActive(); refreshBalance(); checkAch();
+  }
+  var REROLL = 5;
+  function rerollOrder(id){
+    var L = S.orders.list, i;
+    for (i = 0; i < L.length; i++) if (L[i].id === id) break;
+    if (i >= L.length || orderReady(L[i])) return;
+    if (!PP.spendStars(REROLL)){ toast('A new order costs ' + REROLL + ' ⭐'); return; }
+    var used = L.map(function(o){ return o.kind; });
+    L[i] = newOrder(used); PP.stat('rerolls', 1); save(true); blip(520, 0.08, 'triangle', 0.07); toast('🔄 New order on the pass');
+    renderActive();
   }
   function timeLeft(ms){ var m = Math.max(0, Math.ceil(ms / 60000)); return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm'; }
 
@@ -477,6 +508,7 @@
     '.pgr-slot.full{border-style:solid;border-color:rgba(139,92,255,.7)}.pgr-slot.lock{opacity:.55;font-size:20px}',
     '.pgr-charm{display:flex;align-items:center;gap:12px;padding:12px;border-radius:14px;background:var(--bg,#0c0d10);border:1px solid var(--line,#232429);margin-bottom:10px}',
     '.pgr-charm .i{font-size:28px;width:40px;text-align:center}.pgr-charm .m{flex:1;min-width:0}.pgr-charm b{font-size:13.5px}',
+    '.pgr-cbtns{display:flex;flex-direction:column;gap:6px;align-items:stretch}',
     '.pgr-rar{font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;margin-left:6px}',
     '.pgr-strip{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 10px;scrollbar-width:none}.pgr-strip::-webkit-scrollbar{display:none}',
     '.pgr-sb{flex:0 0 auto;display:flex;align-items:center;gap:6px;padding:9px 13px;border-radius:14px;border:1px solid transparent;color:var(--text,#e8e8ea);font:700 12.5px inherit;font-family:inherit;cursor:pointer;position:relative;',
@@ -574,7 +606,7 @@
     var games = (window.__ppGames && window.__ppGames.list) || [];
     el.innerHTML =
       '<div class="pgr-card pgr-hero"><h3>Welcome to the Playground</h3>' +
-      '<p class="pgr-sub" style="margin:0">Everything in the app is unlocked, the clicker stays out, and every game exclusive is free. Earn <b>⭐ Stars</b> from orders, the wheel and playing games, then spend them on charms. Your EXP grows 25% faster here.</p>' +
+      '<p class="pgr-sub" style="margin:0">Everything in the app is unlocked, the clicker stays out, and every game exclusive is free. Earn <b>⭐ Stars</b> from orders, the wheel and playing games, then spend them on charms, charm levels, album pulls and the Star Shop. Your EXP grows 25% faster here.</p>' +
       '<div class="pgr-chips" id="pgr-chips"></div></div>' +
       '<div class="pgr-card" id="pgr-wheelcard"></div>' +
       '<div class="pgr-card"><h3>Sound &amp; look</h3><p class="pgr-sub">One tap sets your real equalizer. Playground adds six presets named after the game exclusives.</p>' +
@@ -598,7 +630,7 @@
     }
     var st = document.getElementById('pgr-stats');
     if (st){
-      var html2 = [['⭐', fmt(S.total), 'Stars earned'], ['🧾', S.orders.done, 'Orders'], ['🎡', PP.get('spins'), 'Spins'], ['🖱️', fmt(PP.get('clicks')), 'Clicks'], ['🎮', Math.floor(PP.get('gameMs') / 60000), 'Game min'], ['🎧', Math.floor(PP.get('listenMs') / 60000), 'Listen min']]
+      var html2 = [['⭐', fmt(S.total), 'Stars earned'], ['🧾', S.orders.done, 'Orders'], ['🎡', PP.get('spins'), 'Spins'], ['🖱️', fmt(PP.get('clicks')), 'Clicks'], ['🎮', Math.floor(PP.get('gameMs') / 60000), 'Game min'], ['🎧', Math.floor(PP.get('listenMs') / 60000), 'Listen min'], ['🛍️', fmt(S.spent || 0), 'Stars spent'], ['⬆️', PP.get('charmUps'), 'Charm levels'], ['🛡️', S.shield.wheel + S.shield.order, 'Shields']]
         .map(function(x){ return '<div class="pgr-stat"><b>' + x[0] + ' ' + x[1] + '</b><small>' + x[2] + '</small></div>'; }).join('');
       if (st.__h !== html2){ st.innerHTML = html2; st.__h = html2; }
     }
@@ -627,6 +659,7 @@
       return;
     }
     if ((b = e.target.closest('[data-claim]'))){ claimOrder(+b.getAttribute('data-claim')); return; }
+    if ((b = e.target.closest('[data-reroll]'))){ rerollOrder(+b.getAttribute('data-reroll')); return; }
     if ((b = e.target.closest('[data-charm]'))){ charmAction(b.getAttribute('data-charm'), b.getAttribute('data-do')); return; }
     if ((b = e.target.closest('[data-slot]'))){ slotAction(+b.getAttribute('data-slot')); return; }
   });
@@ -640,11 +673,11 @@
       var tc = ['#9aa3b2', '#6ea8ff', '#ffb36e'][o.tier], tn = ['Easy', 'Medium', 'Hard'][o.tier];
       return '<div class="pgr-order' + (ready ? ' ready' : '') + '"><div class="m"><b>' + esc(k.t(o.target)) + '<span class="pgr-tier" style="background:' + tc + '">' + tn + '</span></b>' +
         '<div class="pgr-bar"><i style="width:' + pct + '%"></i></div><div class="pgr-meta">' + shownProg + ' / ' + shownTgt + ' · ⭐ ' + ORDER_STARS[o.tier] + ' + grooves' + (o.tier === 2 ? ' + 🎴' : '') + ' · <span data-left="' + o.id + '">' + timeLeft(o.until - Date.now()) + '</span> left</div></div>' +
-        (ready ? '<button type="button" class="pgr-btn sm" data-claim="' + o.id + '">Claim</button>' : '') + '</div>';
+        (ready ? '<button type="button" class="pgr-btn sm" data-claim="' + o.id + '">Claim</button>' : '<button type="button" class="pgr-btn sm alt" data-reroll="' + o.id + '" aria-label="Swap this order for ' + REROLL + ' Stars">🔄 ⭐' + REROLL + '</button>') + '</div>';
     }).join('');
     var bonus = Math.round(Math.min(0.5, S.orders.streak * 0.1) * 100);
-    el.innerHTML = '<div class="pgr-card pgr-hero"><h3>Orders</h3><p class="pgr-sub" style="margin:0">Three orders are always on the pass. Finish them for ⭐ Stars and grooves. A streak of finished orders adds up to +50%; letting one run out resets it.</p>' +
-      '<div class="pgr-chips"><span class="pgr-chip">🔥 Streak ' + S.orders.streak + (bonus ? ' (+' + bonus + '%)' : '') + '</span><span class="pgr-chip">🧾 ' + S.orders.done + ' done</span></div></div>' + rows;
+    el.innerHTML = '<div class="pgr-card pgr-hero"><h3>Orders</h3><p class="pgr-sub" style="margin:0">Three orders are always on the pass. Finish them for ⭐ Stars and grooves. A streak of finished orders adds up to +50%; letting one run out resets it. Do not like an order? Swap it for ' + REROLL + ' ⭐.</p>' +
+      '<div class="pgr-chips"><span class="pgr-chip">🔥 Streak ' + S.orders.streak + (bonus ? ' (+' + bonus + '%)' : '') + '</span><span class="pgr-chip">🧾 ' + S.orders.done + ' done</span>' + (S.shield.order ? '<span class="pgr-chip">🛡️ ' + S.shield.order + ' shield' + (S.shield.order > 1 ? 's' : '') + '</span>' : '') + '</div></div>' + rows;
     el.__sig = ordersSig();
   }
   function ordersSig(){ return S.orders.list.map(function(o){ return o.id + ':' + o.done + ':' + orderProgress(o); }).join('|'); }
@@ -666,12 +699,15 @@
     var now = Date.now();
     var list = CHARMS.filter(function(c){ return charmFilter === 'all' || c.cat === charmFilter; }).map(function(c){
       var own = !!S.charms.own[c.id], eq = S.charms.eq.indexOf(c.id) >= 0, trial = S.trials[c.id] > now;
+      var lv = charmLv(c.id), up = own && canLevel(c) && lv < CHARM_MAX, upCost = up ? levelCost(c) : 0;
       var btn = !own ? '<button type="button" class="pgr-btn sm" data-charm="' + c.id + '" data-do="buy"' + (S.stars < c.p ? ' style="opacity:.55"' : '') + '>⭐ ' + c.p + '</button>'
         : eq ? '<button type="button" class="pgr-btn sm alt" data-charm="' + c.id + '" data-do="unequip">Unequip</button>'
         : '<button type="button" class="pgr-btn sm" data-charm="' + c.id + '" data-do="equip">Equip</button>';
-      return '<div class="pgr-charm"><div class="i">' + c.icon + '</div><div class="m"><b>' + esc(c.n) + '</b><span class="pgr-rar" style="color:' + RAR[c.rar] + '">' + c.rar + '</span>' + (c.g ? '<span class="pgr-gtag">' + esc(c.g) + '</span>' : '') + '<div class="pgr-meta">' + esc(c.d) + '</div>' + (trial ? '<div class="pgr-meta" style="color:#b79bff">🧪 On trial: ' + timeLeft(S.trials[c.id] - now) + ' left, no slot needed</div>' : '') + '</div>' + btn + '</div>';
+      if (up) btn = '<div class="pgr-cbtns">' + btn + '<button type="button" class="pgr-btn sm alt" data-charm="' + c.id + '" data-do="up"' + (S.stars < upCost ? ' style="opacity:.55"' : '') + '>⬆️ Lv ' + (lv + 1) + ' · ⭐ ' + upCost + '</button></div>';
+      var lvTxt = own && canLevel(c) ? '<div class="pgr-meta" style="color:#ffd66e">Level ' + lv + '/' + CHARM_MAX + (lv > 1 ? ': bonus ×' + lvScale(lv) : '') + (lv < CHARM_MAX ? ' · level ' + (lv + 1) + ' makes it ×' + lvScale(lv + 1) : '') + '</div>' : '';
+      return '<div class="pgr-charm"><div class="i">' + c.icon + '</div><div class="m"><b>' + esc(c.n) + '</b><span class="pgr-rar" style="color:' + RAR[c.rar] + '">' + c.rar + '</span>' + (c.g ? '<span class="pgr-gtag">' + esc(c.g) + '</span>' : '') + '<div class="pgr-meta">' + esc(c.d) + '</div>' + lvTxt + (trial ? '<div class="pgr-meta" style="color:#b79bff">🧪 On trial: ' + timeLeft(S.trials[c.id] - now) + ' left, no slot needed</div>' : '') + '</div>' + btn + '</div>';
     }).join('');
-    el.innerHTML = '<div class="pgr-card pgr-hero"><h3>Charms</h3><p class="pgr-sub" style="margin:0">Buy charms with ⭐ Stars and equip up to ' + S.slots + ' (more slots can be unlocked). Their effects stack and reach the Disc Clicker, the wheel, orders, Points and EXP, and some work inside the games while you play. Wheel trials work without a slot.</p></div>' +
+    el.innerHTML = '<div class="pgr-card pgr-hero"><h3>Charms</h3><p class="pgr-sub" style="margin:0">Buy charms with ⭐ Stars and equip up to ' + S.slots + ' (more slots can be unlocked). Their effects stack and reach the Disc Clicker, the wheel, orders, Points and EXP, and some work inside the games while you play. Wheel trials work without a slot. Spend Stars to level an owned charm up to level 3 for a bigger bonus.</p></div>' +
       '<div class="pgr-slots">' + slots + '</div>' +
       '<div class="pgr-row" style="margin-bottom:10px">' + [['all', 'All'], ['app', 'App'], ['game', 'In the games'], ['daily', 'Daily gifts']].map(function(f){ return '<button type="button" class="pgr-pre" data-cfilter="' + f[0] + '" style="' + (charmFilter === f[0] ? 'background:linear-gradient(90deg,#6ee7d0,#b79bff);color:#0c0d10;border-color:transparent' : '') + '">' + f[1] + '</button>'; }).join('') + '</div>' + list;
   }
@@ -687,6 +723,13 @@
       S.charms.eq.push(id); PP.stat('equips', 1); save(true); blip(700, 0.1, 'triangle', 0.08);
     } else if (act === 'unequip'){
       S.charms.eq = S.charms.eq.filter(function(x){ return x !== id; }); save(true); blip(400, 0.08, 'triangle', 0.06);
+    } else if (act === 'up'){
+      if (!S.charms.own[id] || !canLevel(c)) return;
+      var lv = charmLv(id); if (lv >= CHARM_MAX) return;
+      var cost = levelCost(c);
+      if (!PP.spendStars(cost)){ toast('You need ' + (cost - S.stars) + ' more ⭐ Stars'); return; }
+      if (!S.charms.lv) S.charms.lv = {};
+      S.charms.lv[id] = lv + 1; PP.stat('charmUps', 1); save(true); chime(); toast('⬆️ ' + c.icon + ' ' + c.n + ' is now level ' + (lv + 1));
     }
     renderActive(); checkAch();
   }
@@ -717,6 +760,7 @@
       '<button type="button" class="pgr-sb" data-pgr-open="stage"><span class="pgr-emb sm">' + emblem() + '</span> Playground' + (spinReady() ? '<span class="pgr-dot">1</span>' : '') + '</button>' +
       '<button type="button" class="pgr-sb" data-pgr-open="orders">🧾 Orders' + (oc ? '<span class="pgr-dot">' + oc + '</span>' : '') + '</button>' +
       '<button type="button" class="pgr-sb" data-pgr-open="charms">🧿 Charms</button>' +
+      '<button type="button" class="pgr-sb" data-pgr-open="shop">🛍️ Star Shop</button>' +
       '<span class="pgr-sb" style="cursor:default">⭐ ' + fmt(S.stars) + '</span></div>';
   };
 
@@ -761,7 +805,11 @@
     ['pg_gold1',  'Golden Touch',              'Spin the Golden Wheel',              40,  function(){ return PP.get('golden'); }, 1],
     ['pg_streak7','Seven Days of Spin',        'Reach a 7-day wheel streak',         60,  function(){ return S.wheel.streak; }, 7],
     ['pg_charm10','Collector',                 'Own 10 charms',                      80,  function(){ return Object.keys(S.charms.own).length; }, 10],
-    ['pg_eq10',   'Well Tuned',                'Set the equalizer from the Stage 10 times', 25, function(){ return PP.get('eq'); }, 10]
+    ['pg_eq10',   'Well Tuned',                'Set the equalizer from the Stage 10 times', 25, function(){ return PP.get('eq'); }, 10],
+    ['pg_spend1k','Big Spender',               'Spend 1,000 Stars',                  60,  function(){ return S.spent || 0; }, 1000],
+    ['pg_spend10k','High Roller',              'Spend 10,000 Stars',                 180, function(){ return S.spent || 0; }, 10000],
+    ['pg_cup1',   'Polished',                  'Level a charm up',                   25,  function(){ return PP.get('charmUps'); }, 1],
+    ['pg_cmax',   'Charm Master',              'Take a charm to level 3',            70,  function(){ return Object.keys(S.charms.lv || {}).filter(function(id){ return S.charms.lv[id] >= CHARM_MAX; }).length; }, 1]
   ];
   PP.registerAch = function(list){
     var T = window.__ppPoints; if (!T || !T.META) return;
