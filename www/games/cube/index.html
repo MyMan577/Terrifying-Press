@@ -1349,24 +1349,26 @@ function drawGear(g){
     for(i=0;i<o.n;i++){
       var a=g.orbA+i*6.2832/o.n,ox=cx+Math.cos(a)*rr,oy=cy-Math.sin(a)*rr,sz=o.size*S;
       if(o.chain){
-        ctx.fillStyle='#8e9aa6';ctx.strokeStyle=INK;ctx.lineWidth=1.5;
-        for(var c=1;c<6;c++){var t=c/6;ctx.beginPath();ctx.arc(cx+(ox-cx)*t,cy+(oy-cy)*t,S*0.045,0,6.283);ctx.fill();ctx.stroke();}
-        ctx.save();ctx.translate(ox,oy);ctx.rotate(g.time*6);
-        ctx.lineWidth=2.5;
-        for(var sp=0;sp<8;sp++){var sa=sp*0.785;ctx.fillStyle='#6b7885';ctx.beginPath();ctx.moveTo(Math.cos(sa+0.35)*sz*0.8,Math.sin(sa+0.35)*sz*0.8);ctx.lineTo(Math.cos(sa)*sz*1.5,Math.sin(sa)*sz*1.5);ctx.lineTo(Math.cos(sa-0.35)*sz*0.8,Math.sin(sa-0.35)*sz*0.8);ctx.closePath();ctx.fill();ctx.stroke();}
-        ctx.fillStyle='#8e9aa6';ctx.beginPath();ctx.arc(0,0,sz,0,6.283);ctx.fill();ctx.stroke();
-        ctx.fillStyle=GOLD;ctx.beginPath();ctx.arc(0,0,sz*0.35,0,6.283);ctx.fill();ctx.restore();
+        // chain links from the knight out to the ball; they glow and spit embers while whipped
+        for(var c=1;c<7;c++){
+          var t=c/7,lx=cx+(ox-cx)*t,ly=cy+(oy-cy)*t;
+          ctx.save();ctx.translate(lx,ly);ctx.rotate(-a+(c%2?0:1.5708));
+          ctx.fillStyle=w?'#ff8a1f':'#4a4550';ctx.strokeStyle=INK;ctx.lineWidth=1.5;
+          ctx.beginPath();ctx.ellipse(0,0,S*0.07,S*0.04,0,0,6.283);ctx.fill();ctx.stroke();ctx.restore();
+        }
+        if(w&&Math.random()<0.5)g.parts.push({x:(ox-sx(g,0))/S,y:(sy(0)-oy)/S,vx:(Math.random()-.5)*2,vy:Math.random()*2,life:0.35,t:0,c:Math.random()<.5?'#ff8a1f':'#ffc233',s:0.1});
+        starBall(ox,oy,sz,g.time*5,w);
       }else if(o.frz){
         ctx.globalAlpha=0.35;ctx.fillStyle='#b8f0ff';ctx.beginPath();ctx.arc(ox,oy,sz*1.7,0,6.283);ctx.fill();ctx.globalAlpha=1;
         ctx.fillStyle='#b8f0ff';ctx.strokeStyle='#2a78a8';ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(ox,oy,sz,0,6.283);ctx.fill();ctx.stroke();
         ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(ox-sz*0.3,oy-sz*0.3,sz*0.3,0,6.283);ctx.fill();
       }else{
-        ctx.save();ctx.translate(ox,oy);ctx.rotate(-a*3);ctx.fillStyle='#e8f1f7';ctx.strokeStyle=INK;ctx.lineWidth=2.2;
-        ctx.beginPath();ctx.moveTo(0,-sz*1.4);ctx.lineTo(sz*0.5,0);ctx.lineTo(0,sz*1.4);ctx.lineTo(-sz*0.5,0);ctx.closePath();ctx.fill();ctx.stroke();
-        ctx.fillStyle=w?'#ff5fd8':'#8b5cff';ctx.beginPath();ctx.arc(0,0,sz*0.35,0,6.283);ctx.fill();ctx.restore();
+        // crescent blades facing the way they travel, with fading afterimages behind them
+        for(var tr=4;tr>=1;tr--){var ta=a-tr*0.16;ctx.globalAlpha=0.13*(5-tr);crescent(cx+Math.cos(ta)*rr,cy-Math.sin(ta)*rr,sz,-ta,w,true);}
+        ctx.globalAlpha=1;crescent(ox,oy,sz,-a,w,false);
       }
     }
-    if(w){ctx.globalAlpha=Math.min(0.5,g.whirl);ctx.strokeStyle=o.frz?'#b8f0ff':'#fff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(cx,cy,rr,0,6.283);ctx.stroke();ctx.globalAlpha=1;}
+    if(w&&o.frz){ctx.globalAlpha=Math.min(0.5,g.whirl);ctx.strokeStyle='#b8f0ff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(cx,cy,rr,0,6.283);ctx.stroke();ctx.globalAlpha=1;}
   }else if(wp.saw){
     var f=p.face||1,x=sx(g,p.x+f*(p.w/2+wp.saw.r*0.9)),r=wp.saw.r*S;
     ctx.save();ctx.translate(x,cy);ctx.rotate(g.orbA*f);
@@ -1387,6 +1389,29 @@ function drawGear(g){
     ctx.fillStyle='#7af0ff';ctx.strokeStyle=INK;ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(px,py-pr*1.6);ctx.quadraticCurveTo(px+pr*1.2,py-pr*0.2,px,py+pr);ctx.quadraticCurveTo(px-pr*1.2,py-pr*0.2,px,py-pr*1.6);ctx.closePath();ctx.fill();ctx.stroke();
     ctx.fillStyle=INK;ctx.fillRect(px-pr*0.45,py-pr*0.2,pr*0.22,pr*0.3);ctx.fillRect(px+pr*0.23,py-pr*0.2,pr*0.22,pr*0.3);
   }
+}
+// Morning Star head: dark iron with gold spikes and a molten core that flares when whipped
+function starBall(x,y,sz,rot,hot){
+  ctx.save();ctx.translate(x,y);
+  ctx.globalAlpha=hot?0.55:0.25;ctx.fillStyle='#ff6a2e';ctx.beginPath();ctx.arc(0,0,sz*(hot?2.1:1.6),0,6.283);ctx.fill();ctx.globalAlpha=1;
+  ctx.rotate(rot);ctx.strokeStyle=INK;ctx.lineWidth=2.2;ctx.lineJoin='round';
+  for(var i=0;i<6;i++){var sa=i*1.0472;ctx.fillStyle=GOLD;ctx.beginPath();ctx.moveTo(Math.cos(sa+0.42)*sz*0.85,Math.sin(sa+0.42)*sz*0.85);ctx.lineTo(Math.cos(sa)*sz*1.75,Math.sin(sa)*sz*1.75);ctx.lineTo(Math.cos(sa-0.42)*sz*0.85,Math.sin(sa-0.42)*sz*0.85);ctx.closePath();ctx.fill();ctx.stroke();}
+  ctx.fillStyle='#3a3540';ctx.beginPath();ctx.arc(0,0,sz,0,6.283);ctx.fill();ctx.stroke();
+  ctx.strokeStyle=hot?'#ffc233':'#ff6a2e';ctx.lineWidth=Math.max(1.5,sz*0.18);
+  ctx.beginPath();ctx.moveTo(-sz*0.5,-sz*0.15);ctx.lineTo(-sz*0.05,sz*0.1);ctx.lineTo(sz*0.25,-sz*0.35);ctx.moveTo(-sz*0.05,sz*0.1);ctx.lineTo(sz*0.1,sz*0.55);ctx.stroke();
+  ctx.restore();
+}
+// Blade Ring blade: a curved crescent, teal to violet (pink while whirling)
+function crescent(x,y,sz,rot,hot,ghost){
+  ctx.save();ctx.translate(x,y);ctx.rotate(rot);
+  var gr=ctx.createLinearGradient(0,-sz*1.5,0,sz*1.5);gr.addColorStop(0,'#6ee7d0');gr.addColorStop(1,hot?'#ff5fd8':'#8b5cff');
+  ctx.fillStyle=gr;ctx.beginPath();
+  ctx.arc(0,0,sz*1.5,-1.25,1.25,false);
+  ctx.arc(-sz*0.75,0,sz*1.25,0.95,-0.95,true);
+  ctx.closePath();ctx.fill();
+  if(!ghost){ctx.strokeStyle=INK;ctx.lineWidth=2;ctx.lineJoin='round';ctx.stroke();
+    ctx.strokeStyle='rgba(255,255,255,.85)';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(0,0,sz*1.28,-0.8,0.6);ctx.stroke();}
+  ctx.restore();
 }
 // boosts bought in the Press Play Points shop, used once the stage starts for real
 function shopBoosts(g){
@@ -2748,15 +2773,16 @@ function drawWeapon(g,p,hx,hy){
 function gearIcon(wk,S2){
   var C=function(c,x,y,r){ctx.fillStyle=c;ctx.beginPath();ctx.arc(S2*x,S2*y,S2*r,0,6.283);ctx.fill();ctx.stroke();},i;
   if(wk==='morningstar'){
-    ctx.fillStyle='#8a5a2b';ctx.fillRect(-S2*0.2,-S2*0.045,S2*0.5,S2*0.09);ctx.strokeRect(-S2*0.2,-S2*0.045,S2*0.5,S2*0.09);
-    for(i=0;i<4;i++)C('#8e9aa6',0.36+i*0.12,0.04+i*0.05,0.04);
-    for(i=0;i<8;i++){var a=i*0.785;ctx.fillStyle='#6b7885';ctx.beginPath();ctx.moveTo(S2*(1.0+Math.cos(a+0.35)*0.16),S2*(0.3+Math.sin(a+0.35)*0.16));ctx.lineTo(S2*(1.0+Math.cos(a)*0.32),S2*(0.3+Math.sin(a)*0.32));ctx.lineTo(S2*(1.0+Math.cos(a-0.35)*0.16),S2*(0.3+Math.sin(a-0.35)*0.16));ctx.closePath();ctx.fill();ctx.stroke();}
-    C('#8e9aa6',1.0,0.3,0.19);C(GOLD,1.0,0.3,0.06);return true;
+    // a loop of chain swinging round to the ball, no handle
+    ctx.strokeStyle='#4a4550';ctx.lineWidth=Math.max(2,S2*0.05);ctx.setLineDash([S2*0.07,S2*0.04]);ctx.beginPath();ctx.arc(S2*0.45,S2*0.12,S2*0.38,2.4,5.6);ctx.stroke();ctx.setLineDash([]);
+    ctx.strokeStyle=INK;C('#4a4550',0.45,0.12,0.07);
+    starBall(S2*(0.45+Math.cos(5.6)*0.38),S2*(0.12+Math.sin(5.6)*0.38),S2*0.2,0.3,false);return true;
   }
   if(wk==='bladering'){
-    ctx.strokeStyle='#8b5cff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(S2*0.6,0,S2*0.42,0,6.283);ctx.stroke();ctx.strokeStyle=INK;ctx.lineWidth=2.5;
-    for(i=0;i<3;i++){var b=i*2.094;ctx.save();ctx.translate(S2*(0.6+Math.cos(b)*0.42),S2*Math.sin(b)*0.42);ctx.rotate(b);ctx.fillStyle='#e8f1f7';ctx.beginPath();ctx.moveTo(0,-S2*0.2);ctx.lineTo(S2*0.08,0);ctx.lineTo(0,S2*0.2);ctx.lineTo(-S2*0.08,0);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();}
-    C('#8b5cff',0.6,0,0.08);return true;
+    for(i=0;i<3;i++){var b=i*2.094+0.5;
+      for(var tr=3;tr>=1;tr--){ctx.globalAlpha=0.18*(4-tr);crescent(S2*(0.6+Math.cos(b-tr*0.22)*0.38),S2*Math.sin(b-tr*0.22)*0.38,S2*0.13,b-tr*0.22+1.5708,false,true);}
+      ctx.globalAlpha=1;crescent(S2*(0.6+Math.cos(b)*0.38),S2*Math.sin(b)*0.38,S2*0.13,b+1.5708,false,false);}
+    ctx.strokeStyle=INK;C('#6ee7d0',0.6,0,0.07);return true;
   }
   if(wk==='frostorbs'){C('#b8f0ff',0.35,0.1,0.2);C('#b8f0ff',0.85,-0.15,0.2);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(S2*0.3,S2*0.04,S2*0.06,0,6.283);ctx.fill();ctx.beginPath();ctx.arc(S2*0.8,-S2*0.21,S2*0.06,0,6.283);ctx.fill();return true;}
   if(wk==='buzzsaw'){
@@ -2783,9 +2809,9 @@ function gearIcon(wk,S2){
 function wicon(cvs,wk){
   var c=cvs.getContext('2d'),oc=ctx,w=cvs.width;
   var sc={sword:0.7,spear:0.33,hammer:0.6,axe:0.68,knives:0.85,bomb:1.3,gun:0.58,katana:0.72,mace:0.62,scythe:0.45,bow:0.7,rapier:0.5,trident:0.33,shuriken:1.1,crossbow:0.6,firestaff:0.55,
-    greatsword:0.5,flail:0.55,javelin:0.38,boomerang:1.0,icestaff:0.52,zapstaff:0.52,whip:0.36,pickaxe:0.68,morningstar:0.55,bladering:0.7,frostorbs:0.75,buzzsaw:0.8,tempest:0.7,wisp:0.85,emberboots:0.8};
+    greatsword:0.5,flail:0.55,javelin:0.38,boomerang:1.0,icestaff:0.52,zapstaff:0.52,whip:0.36,pickaxe:0.68,morningstar:0.75,bladering:0.75,frostorbs:0.75,buzzsaw:0.8,tempest:0.7,wisp:0.85,emberboots:0.8};
   ctx=c;c.clearRect(0,0,w,w);
-  if(wkind(WEAPONS[wk])&&wk!=='morningstar'){c.save();c.translate(w*0.5-w*(sc[wk]||0.6)*0.6,w*0.5);weaponShape(wk,w*(sc[wk]||0.6));c.restore();}
+  if(wkind(WEAPONS[wk])){c.save();c.translate(w*0.5-w*(sc[wk]||0.6)*0.6,w*0.5);weaponShape(wk,w*(sc[wk]||0.6));c.restore();}
   else{c.save();c.translate(w*0.2,w*0.78);c.rotate(-0.8);weaponShape(wk,w*(sc[wk]||0.6));c.restore();}
   ctx=oc;
 }
