@@ -5846,7 +5846,7 @@ function performJump() {
     }
     let dir = player.lastMoveDir || 1;
     if (variant === 'back' && !inAir) dir = -dir;
-    return { hit, dir };
+    return { hit, dir, variant };
   }
   function performPunch() {
     if (selectedCharacter !== 'brawler') return;
@@ -5855,7 +5855,7 @@ function performJump() {
       window.PPStrike.press(() => {
         if (selectedCharacter !== 'brawler') return null;
         const pv = brawlerPreview();
-        return { fd: BRAWLER_FD[pv.hit.label] || { windup:0.06, endlag:0.12 }, dir: pv.dir, color: pv.hit.color, fire: () => brawlerPunchNow(true) };
+        return { fd: BRAWLER_FD[pv.hit.label] || { windup:0.06, endlag:0.12 }, dir: pv.dir, color: pv.hit.color, aim: pv.variant, fire: () => brawlerPunchNow(true) };
       }, true);
       return;
     }
@@ -11174,20 +11174,20 @@ function resetPlayer() {
       let key = k.st + '_' + k.d;
       if (archmageFlameBomb && !archmageFlameBomb.launched) key = 'air_launch';
       else if (key === 'ground_down' && archmageWallCount >= 2) key = 'ground_down3';
-      return { fd: ARCHMAGE_FD[key] || _NOFD, dir: k.dir, color: '#a78bfa' };
+      return { fd: ARCHMAGE_FD[key] || _NOFD, dir: k.dir, color: '#a78bfa', aim: key === 'air_launch' ? 'side' : k.d };
     },
     conduit() {
       if (conduitAttackEndlag > 0) return null;
       const k = _strikeDirs(), fd = CONDUIT_FD[k.st + '_' + k.d];
       if (!fd || ((conduitAttackCooldowns[fd.key] || 0) > 0 && !((conduitActiveForms.resonance || 0) > 0))) return { fd: _NOFD, dir: k.dir };
-      return { fd, dir: k.dir, color: '#7cdbff' };
+      return { fd, dir: k.dir, color: '#7cdbff', aim: k.d };
     },
     formSwitcher() {
       if (fsAttackEndlag > 0) return null;
       const k = _strikeDirs(), form = FORM_SWITCHER_FORMS[formSwitcherIndex], ff = FS_FORM_FD[form.id] || FS_FORM_FD.flame;
       const w = ff.base * FS_DIR_MUL[k.d] * (k.st === 'air' ? 0.8 : 1) * (fsFollowUpWindow > 0 ? 0.5 : 1);
       return { fd: { windup: w, sweet: 0.07, active: 0.3, endlag: 0, sweetDmg: ff.sweetDmg, sweetKb: ff.sweetKb, sweetStun: ff.sweetStun, sweetStop: ff.sweetStop, sweetShake: ff.sweetShake },
-        dir: k.dir, color: form.color || '#ff6b35' };
+        dir: k.dir, color: form.color || '#ff6b35', aim: k.d, variant: form.id };
     },
   };
   const STRIKE_CHARGE = { phantomace: true };   // the Ace's sword slash can be charged; spells keep their own timing
@@ -11740,7 +11740,7 @@ function resetPlayer() {
         const kR = keys.has('arrowright') || keys.has('d') || mobileKeys.right, kL = keys.has('arrowleft') || keys.has('a') || mobileKeys.left;
         const atk = ac ? ac.atk : kUp ? 'up' : kDn ? 'down' : (kR || kL) ? 'side' : 'neutral';
         const chain = SLUGGER_CHAINS[atk] || SLUGGER_CHAINS.neutral, mv = chain[Math.min(ac ? ac.idx : 0, chain.length - 1)];
-        return { fd: SLUGGER_FD[mv.name] || { windup:0.05, endlag:0.1 }, dir: kR ? 1 : kL ? -1 : (player.dashDir || 1), color: mv.color,
+        return { fd: SLUGGER_FD[mv.name] || { windup:0.05, endlag:0.1 }, dir: kR ? 1 : kL ? -1 : (player.dashDir || 1), color: mv.color, aim: atk,
           fire: () => { _sluggerViaStrike = true; try { performAttackAction(); } finally { _sluggerViaStrike = false; } } };
       }, true);
       return;
@@ -11798,7 +11798,7 @@ function resetPlayer() {
       window.PPStrike.press(() => {
         if (selectedCharacter !== ch || mode !== 'play') return null;
         const pk = STRIKE_PICK[ch](); if (!pk) return null;
-        return { fd: pk.fd, dir: pk.dir, color: pk.color, fire: () => { _strikeViaFire = true; try { performAttackAction(); } finally { _strikeViaFire = false; } } };
+        return { fd: pk.fd, dir: pk.dir, color: pk.color, aim: pk.aim, variant: pk.variant, fire: () => { _strikeViaFire = true; try { performAttackAction(); } finally { _strikeViaFire = false; } } };
       }, !!STRIKE_CHARGE[ch]);
       return;
     }
@@ -38209,10 +38209,11 @@ window._claimLBro = function() {
         const k = window._gameKeys || new Set(), mk = window.mobileKeys || {};
         const up = k.has('arrowup') || k.has('w') || !!mk.up, dn = k.has('arrowdown') || !!mk.down;
         const side = k.has('arrowright') || k.has('d') || k.has('arrowleft') || k.has('a') || !!mk.left || !!mk.right;
-        const move = MOVESET[curForm().id][p.onGround ? 'ground' : 'air'][(dn && !up) ? 'down' : (up && !dn) ? 'up' : side ? 'side' : 'neutral'];
+        const aimDir = (dn && !up) ? 'down' : (up && !dn) ? 'up' : side ? 'side' : 'neutral';
+        const move = MOVESET[curForm().id][p.onGround ? 'ground' : 'air'][aimDir];
         if (!move) return null;
         const pDir = (k.has('arrowright') || k.has('d') || mk.right) ? 1 : (k.has('arrowleft') || k.has('a') || mk.left) ? -1 : (p.dashDir || p.lastMoveDir || 1);
-        return { fd: chamFD(move), dir: pDir, color: curForm().color, fire: () => { _chFiring = true; try { window.performSlash(); } finally { _chFiring = false; } } };
+        return { fd: chamFD(move), dir: pDir, color: curForm().color, aim: aimDir, fire: () => { _chFiring = true; try { window.performSlash(); } finally { _chFiring = false; } } };
       }, false);
       return;
     }
@@ -39914,6 +39915,7 @@ window._claimLBro = function() {
     const p = P(); if (!p) return;
     cur = {
       fd, fire: spec.fire, dir: spec.dir || 1, power: power || 0, col: spec.color || fd.color || '#ffffff',
+      aim: spec.aim === 'up' || spec.aim === 'down' ? spec.aim : 'side', variant: spec.variant || '',
       phase: 'windup', t: 0, char: window.selectedCharacter,
       windup: power ? Math.min(0.04, fd.windup || 0) : (fd.windup || 0),
       endlag: (fd.endlag || 0) * (1 + 0.45 * (power || 0)),
@@ -39965,6 +39967,292 @@ window._claimLBro = function() {
     if (e.hp <= 0 && !e.dead && window._killEnemy) window._killEnemy(e);
   }
 
+  // ===== each fighter's own look for windup, strike, recovery and charge =====
+  // A style has a pose per phase (lean / squash / offset of the body around its feet) and its own effects
+  // (fx: drawn over the world). st = { ph, u (0..1 through the phase), t, d (facing), hv (how heavy the move
+  // is), aim ('side' | 'up' | 'down'), power (charge), col, variant (e.g. the Form Switcher's form) }.
+  const ease = u => 1 - Math.pow(1 - Math.max(0, Math.min(1, u)), 3);
+  const clamp01 = u => Math.max(0, Math.min(1, u));
+  function styleState() {
+    const p = P(); if (!p || !playing()) return null;
+    if (charge) {
+      if (nowS() - charge.start < CHARGE_MIN * 0.6) return null;
+      const pw = API.chargePower();
+      return { ph: 'charge', u: pw, t: nowS(), d: (p.lastMoveDir || p.dashDir || 1) >= 0 ? 1 : -1, hv: 0.6 + 0.6 * pw, aim: 'side', power: pw, col: '#7cdbff', variant: charge.variant || '', ch: window.selectedCharacter };
+    }
+    if (!cur) return null;
+    const hv = Math.max(0.35, Math.min(1.25, (cur.fd.windup || 0.06) / 0.15)) * (1 + 0.4 * cur.power);
+    const u = cur.phase === 'windup' ? (cur.windup > 0 ? cur.t / cur.windup : 1)
+      : cur.phase === 'live' ? cur.t / Math.max(0.05, cur.sweet + cur.active)
+      : (cur.endlag > 0 ? cur.t / cur.endlag : 1);
+    return { ph: cur.phase, u: clamp01(u), t: cur.t, d: cur.dir >= 0 ? 1 : -1, hv, aim: cur.aim, power: cur.power, col: cur.col, variant: cur.variant, ch: cur.char, sweet: cur.sweet, active: cur.active };
+  }
+  // how far into the strike the snap is (0 -> 1 fast, then fading)
+  function strikeK(st) { const snap = clamp01(st.t / 0.04); return snap * (1 - st.u * 0.6); }
+  // up and down moves bend the pose: uppercuts crouch then spring up, dives tuck then stretch down
+  function aimPose(st, r, W, H) {
+    if (st.aim === 'side') return;
+    const k = st.ph === 'live' ? strikeK(st) : st.ph === 'windup' || st.ph === 'charge' ? ease(st.u) : 1 - ease(st.u);
+    r.lean *= 0.3; r.ox *= 0.3;
+    if (st.aim === 'up') {
+      if (st.ph === 'live') { r.sy = Math.max(r.sy, 1 + 0.28 * st.hv * k); r.sx = Math.min(r.sx, 1 - 0.1 * st.hv * k); r.oy -= H * 0.1 * st.hv * k; }
+      else if (st.ph !== 'endlag') { r.sy = Math.min(r.sy, 1 - 0.2 * st.hv * k); r.sx = Math.max(r.sx, 1 + 0.12 * st.hv * k); }
+    } else {
+      if (st.ph === 'live') { r.sy = Math.max(r.sy, 1 + 0.22 * st.hv * k); r.sx = Math.min(r.sx, 1 - 0.08 * st.hv * k); r.oy += H * 0.06 * k; }
+      else if (st.ph !== 'endlag') { r.sy = Math.min(r.sy, 1 - 0.1 * st.hv * k); r.oy -= H * 0.06 * k; }
+    }
+  }
+  // small drawing helpers (screen space)
+  function glow(ctx, col, a) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.fillStyle = col; }
+  function zig(ctx, x1, y1, x2, y2, n, amp) {
+    ctx.beginPath(); ctx.moveTo(x1, y1);
+    for (let i = 1; i < n; i++) { const u = i / n, nx = -(y2 - y1), ny = x2 - x1, L = Math.hypot(nx, ny) || 1; const o = (Math.random() - 0.5) * 2 * amp; ctx.lineTo(x1 + (x2 - x1) * u + nx / L * o, y1 + (y2 - y1) * u + ny / L * o); }
+    ctx.lineTo(x2, y2); ctx.stroke();
+  }
+  function tri(ctx, x, y, s, d) { ctx.beginPath(); ctx.moveTo(x - d * s * 0.6, y - s); ctx.lineTo(x + d * s * 0.9, y); ctx.lineTo(x - d * s * 0.6, y + s); ctx.closePath(); ctx.fill(); }
+  function streaks(ctx, X, st, n, col, lenMul) {
+    const a = 1 - st.u, T = X.T, bx = X.x - st.d * T * 0.35;
+    if (st.aim !== 'side') {   // up moves leave streaks below, dives above
+      const s2 = st.aim === 'up' ? 1 : -1, by = X.y + s2 * T * 0.4;
+      for (let i = 0; i < n; i++) { const xx = X.x + (i - (n - 1) / 2) * T * 0.2, l = T * (0.7 + 0.6 * st.hv) * (lenMul || 1) * (0.6 + 0.4 * ((i * 37) % 10) / 10) * a;
+        glow(ctx, i % 2 ? '#ffffff' : col, 0.55 * a); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(xx, by); ctx.lineTo(xx, by + s2 * l); ctx.stroke(); }
+      return;
+    }
+    for (let i = 0; i < n; i++) { const yy = X.y + (i - (n - 1) / 2) * T * 0.2, l = T * (0.7 + 0.6 * st.hv) * (lenMul || 1) * (0.6 + 0.4 * ((i * 37) % 10) / 10) * a;
+      glow(ctx, i % 2 ? '#ffffff' : col, 0.55 * a); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(bx, yy); ctx.lineTo(bx - st.d * l, yy); ctx.stroke(); }
+  }
+
+  const STYLES = {
+    // anyone without a style of their own: lean back, lunge, settle
+    _default: {
+      windup: st => { const u = ease(st.u), h = st.hv; return { lean: -st.d * 0.3 * h * u, sx: 1 + 0.12 * h * u, sy: Math.max(0.76, 1 - 0.18 * h * u) }; },
+      live: (st, W) => { const k = strikeK(st), h = st.hv; return { lean: st.d * 0.24 * h * k, sx: 1 + 0.26 * h * k, sy: 1 - 0.1 * h * k, ox: st.d * W * 0.24 * h * k }; },
+      endlag: (st, W) => { const k = 1 - ease(st.u), h = st.hv; return { lean: st.d * 0.1 * h * k, sy: 1 - 0.08 * h * Math.sin(Math.min(1, st.u * 1.4) * Math.PI), ox: st.d * W * 0.1 * h * k }; },
+      fx(ctx, st, X) { if (st.ph === 'live' && st.t < st.sweet + 0.1) streaks(ctx, X, st, 4, st.col); },
+    },
+
+    // BRAWLER: a boxer. Coils his shoulder back with the glove cocked behind him, drives through with the
+    // glove sweeping forward, then bounces on his toes with his guard up.
+    brawler: {
+      windup: (st, W) => { const u = ease(st.u), h = st.hv; return { lean: -st.d * 0.3 * h * u, sx: 1 - 0.06 * h * u, sy: 1 - 0.1 * h * u, ox: -st.d * W * 0.16 * h * u }; },
+      live: (st, W) => { const k = strikeK(st), h = st.hv; return { lean: st.d * 0.28 * h * k, sx: 1 + 0.3 * h * k, sy: 1 - 0.08 * h * k, ox: st.d * W * 0.3 * h * k }; },
+      endlag: (st, W, H) => { const k = 1 - ease(st.u); return { oy: -Math.abs(Math.sin(st.u * Math.PI * 2)) * H * 0.07 * k, lean: st.d * 0.06 * k, sy: 1 + 0.03 * Math.sin(st.u * Math.PI * 4) * k }; },
+      fx(ctx, st, X) {
+        const T = X.T, sh = X.y - T * 0.12, up = st.aim === 'up', dn = st.aim === 'down';
+        if ((up || dn) && st.ph === 'live' && st.t < st.sweet + 0.12) {
+          // uppercut: the glove rises past the face; down moves drive it into the ground
+          const a = 1 - st.u, k = clamp01(st.t / 0.05), s2 = up ? -1 : 1, gy = X.y + s2 * T * (0.2 + 0.6 * k);
+          glow(ctx, st.col, 0.8 * a); ctx.lineWidth = T * 0.16; ctx.beginPath(); ctx.moveTo(X.x + st.d * T * 0.3, X.y - s2 * T * 0.2); ctx.quadraticCurveTo(X.x + st.d * T * 0.55, X.y, X.x + st.d * T * 0.25, gy); ctx.stroke();
+          ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = a; ctx.fillStyle = st.col; ctx.beginPath(); ctx.arc(X.x + st.d * T * 0.25, gy, T * 0.2, 0, Math.PI * 2); ctx.fill();
+          streaks(ctx, X, st, 3, st.col); return;
+        }
+        if (st.ph === 'windup' || st.ph === 'charge') {
+          const u = ease(st.u), r = T * (0.16 + 0.08 * u + 0.06 * st.power);
+          const gx = up || dn ? X.x + st.d * T * 0.15 : X.x - st.d * T * (0.35 + 0.3 * u);
+          const sh2 = up ? X.y + T * (0.15 + 0.2 * u) : dn ? X.y - T * (0.4 + 0.25 * u) : sh;
+          glow(ctx, st.col, 0.25 + 0.35 * u); ctx.beginPath(); ctx.arc(gx, sh2, r * 1.8, 0, Math.PI * 2); ctx.fill();
+          ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.fillStyle = st.col; ctx.beginPath(); ctx.arc(gx, sh2, r, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.6; ctx.beginPath(); ctx.arc(gx - r * 0.3, sh2 - r * 0.3, r * 0.3, 0, Math.PI * 2); ctx.fill();
+        } else if (st.ph === 'live' && st.t < st.sweet + 0.12) {
+          const a = 1 - st.u, k = clamp01(st.t / 0.05);
+          glow(ctx, st.col, 0.8 * a); ctx.lineWidth = T * 0.16;
+          ctx.beginPath(); ctx.arc(X.x, sh + T * 0.1, T * 0.85, st.d > 0 ? -1.3 : Math.PI + 1.3 - 1.0 * k, st.d > 0 ? -1.3 + 1.0 * k : Math.PI + 1.3, st.d < 0); ctx.stroke();
+          ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = a; ctx.fillStyle = st.col;
+          ctx.beginPath(); ctx.arc(X.x + st.d * T * (0.55 + 0.45 * k), sh, T * 0.2, 0, Math.PI * 2); ctx.fill();
+          streaks(ctx, X, st, 3, st.col);
+        }
+      },
+    },
+
+    // SLUGGER: a retro brawler. Winds his arm in a windmill before he throws, snaps it out with speed lines,
+    // then shakes his head off.
+    cb_slugger: {
+      windup: (st, W) => { const u = ease(st.u), h = st.hv; return { lean: -st.d * 0.16 * h * u, sx: 1 - 0.1 * h * u, sy: 1 - 0.06 * h * u, ox: -st.d * W * 0.08 * h * u }; },
+      live: (st, W) => { const k = strikeK(st), h = st.hv; return { lean: st.d * 0.2 * h * k, sx: 1 + 0.32 * h * k, sy: 1 - 0.12 * h * k, ox: st.d * W * 0.28 * h * k }; },
+      endlag: st => { const k = 1 - st.u; return { lean: 0.14 * Math.sin(st.u * Math.PI * 3) * k }; },
+      fx(ctx, st, X) {
+        const T = X.T;
+        if (st.ph === 'windup' || st.ph === 'charge') {
+          const a0 = (st.ph === 'charge' ? nowS() : st.t) * 26 * st.d, cx = X.x - st.d * T * 0.3, cy = X.y - T * 0.15;
+          glow(ctx, st.col, 0.75); ctx.lineWidth = 3;
+          for (let i = 0; i < 2; i++) { ctx.beginPath(); ctx.arc(cx, cy, T * (0.42 + i * 0.16), a0 + i * Math.PI, a0 + i * Math.PI + 1.8); ctx.stroke(); }
+          ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.fillStyle = st.col;
+          ctx.beginPath(); ctx.arc(cx + Math.cos(a0 + 1.8) * T * 0.42, cy + Math.sin(a0 + 1.8) * T * 0.42, T * 0.15, 0, Math.PI * 2); ctx.fill();
+        } else if (st.ph === 'live' && st.t < st.sweet + 0.1) {
+          streaks(ctx, X, st, 5, st.col, 1.3);
+          const a = 1 - st.u, fx0 = X.x + st.d * T * 0.9; glow(ctx, '#ffffff', a); ctx.lineWidth = 2.5;
+          for (let i = 0; i < 6; i++) { const an = i * Math.PI / 3; ctx.beginPath(); ctx.moveTo(fx0 + Math.cos(an) * T * 0.1, X.y + Math.sin(an) * T * 0.1); ctx.lineTo(fx0 + Math.cos(an) * T * 0.35, X.y + Math.sin(an) * T * 0.35); ctx.stroke(); }
+        } else if (st.ph === 'endlag') {
+          glow(ctx, '#ffe066', 0.6 * (1 - st.u)); for (let i = 0; i < 3; i++) { const an = st.t * 10 + i * 2.1; ctx.beginPath(); ctx.arc(X.x + Math.cos(an) * X.T * 0.35, X.y - X.T * 0.75 + Math.sin(an) * X.T * 0.1, 2.5, 0, Math.PI * 2); ctx.fill(); }
+        }
+      },
+    },
+
+    // PRESS PLAY PRODIGY: dips to the beat while EQ bars rise around his feet, the hit lets out a ring of
+    // sound, and he nods twice as it lands.
+    cb_pressplay: {
+      windup: (st, W, H) => { const u = ease(st.u), h = st.hv; return { sy: 1 - 0.14 * h * Math.sin(u * Math.PI * 0.5), sx: 1 + 0.06 * h * u, lean: -st.d * 0.1 * h * u, oy: 0 }; },
+      live: (st, W) => { const k = strikeK(st), h = st.hv; return { sx: 1 + 0.18 * h * k, sy: 1 - 0.06 * h * k, lean: st.d * 0.14 * h * k, ox: st.d * W * 0.14 * h * k }; },
+      endlag: (st, W, H) => { const k = 1 - st.u * 0.5; return { lean: st.d * 0.16 * Math.abs(Math.sin(st.u * Math.PI * 2)) * k, oy: H * 0.03 * Math.abs(Math.sin(st.u * Math.PI * 2)) }; },
+      fx(ctx, st, X) {
+        const T = X.T;
+        if (st.ph === 'windup' || st.ph === 'charge') {
+          const u = ease(st.u), cols = [st.col, '#6ee7d0', '#ff5fd8'];
+          for (let i = 0; i < 7; i++) {
+            const bx = X.x + (i - 3) * T * 0.2, hgt = T * (0.2 + 0.7 * u) * (0.5 + 0.5 * Math.abs(Math.sin(i * 1.7 + (st.ph === 'charge' ? nowS() * 9 : st.t * 20))));
+            glow(ctx, cols[i % 3], 0.75); ctx.fillRect(bx - T * 0.06, X.fy - hgt, T * 0.12, hgt);
+          }
+        } else if (st.ph === 'live') {
+          const a = 1 - st.u, fx0 = X.x + st.d * T * 0.5; glow(ctx, st.col, 0.85 * a); ctx.lineWidth = 3;
+          for (let i = 0; i < 3; i++) { const r = T * (0.3 + 0.35 * i + st.u * 1.2); ctx.beginPath(); ctx.arc(fx0, X.y, r, st.d > 0 ? -0.7 : Math.PI - 0.7, st.d > 0 ? 0.7 : Math.PI + 0.7); ctx.stroke(); }
+        }
+      },
+    },
+
+    // PRESS PLAY MIXTAPE: the tape rewinds (◀◀ and a winding spiral), the strike presses ▶ PLAY with a
+    // streak of tape, and recovery shows ❚❚ PAUSE fading out.
+    cb_pp_mixtape: {
+      windup: (st, W) => { const u = ease(st.u), h = st.hv; return { lean: -st.d * 0.18 * h * u, sx: 1 - 0.05 * h * u, sy: 1 - 0.1 * h * u, ox: -st.d * W * 0.1 * h * u }; },
+      live: (st, W) => { const k = strikeK(st), h = st.hv; return { lean: st.d * 0.2 * h * k, sx: 1 + 0.24 * h * k, sy: 1 - 0.08 * h * k, ox: st.d * W * 0.2 * h * k }; },
+      endlag: st => ({ sy: 1 - 0.05 * Math.sin(st.u * Math.PI) }),
+      fx(ctx, st, X) {
+        const T = X.T;
+        if (st.ph === 'windup' || st.ph === 'charge') {
+          const u = ease(st.u), cx = X.x - st.d * T * 0.55, cy = X.y - T * 0.1, sp = (st.ph === 'charge' ? nowS() : st.t) * -14 * st.d;
+          glow(ctx, '#3b2a22', 0.9); ctx.globalCompositeOperation = 'source-over'; ctx.strokeStyle = '#3b2a22'; ctx.lineWidth = 3;
+          ctx.beginPath(); for (let a = 0; a < Math.PI * 4 * u + 0.5; a += 0.2) { const r = T * (0.5 - a * 0.03); ctx.lineTo(cx + Math.cos(a + sp) * r, cy + Math.sin(a + sp) * r); } ctx.stroke();
+          glow(ctx, st.col, 0.9); tri(ctx, cx + st.d * T * 0.05, X.y - T * 0.85, T * 0.14, -st.d); tri(ctx, cx - st.d * T * 0.22, X.y - T * 0.85, T * 0.14, -st.d);
+        } else if (st.ph === 'live') {
+          const a = 1 - st.u; glow(ctx, st.col, a); tri(ctx, X.x + st.d * T * 0.85, X.y - T * 0.05, T * (0.2 + 0.1 * clamp01(st.t / 0.05)), st.d);
+          ctx.globalAlpha = 0.8 * a; ctx.strokeStyle = '#ffb020'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(X.x - st.d * T * 0.8 * a, X.y + T * 0.05); ctx.lineTo(X.x + st.d * T * 0.6, X.y + T * 0.05); ctx.stroke();
+        } else if (st.ph === 'endlag') {
+          glow(ctx, '#ffffff', 0.75 * (1 - st.u)); const px = X.x, py = X.y - T * 0.95; ctx.fillRect(px - T * 0.12, py - T * 0.12, T * 0.07, T * 0.24); ctx.fillRect(px + T * 0.05, py - T * 0.12, T * 0.07, T * 0.24);
+        }
+      },
+    },
+
+    // PHANTOM ACE: hovers as stars rush in to him, flashes forward leaving afterimages, then twirls down.
+    phantomace: {
+      windup: (st, W, H) => { const u = ease(st.u), h = st.hv; return { oy: -H * 0.1 * u, lean: -st.d * 0.12 * h * u, sx: 1 - 0.04 * u, sy: 1 + 0.04 * u }; },
+      live: (st, W, H) => { const k = strikeK(st), h = st.hv; return { lean: st.d * 0.3 * h * k, sx: 1 + 0.3 * h * k, sy: 1 - 0.12 * h * k, ox: st.d * W * 0.3 * h * k, oy: -H * 0.06 * (1 - st.u) }; },
+      endlag: (st, W, H) => { const k = 1 - ease(st.u); return { lean: 0.3 * Math.sin(st.u * Math.PI * 2) * k, oy: -H * 0.05 * k }; },
+      fx(ctx, st, X) {
+        const T = X.T;
+        if (st.ph === 'windup' || st.ph === 'charge') {
+          const u = ease(st.u), rot = (st.ph === 'charge' ? nowS() : st.t) * 8;
+          glow(ctx, '#ffe566', 0.9);
+          for (let i = 0; i < 5; i++) { const an = rot + i * Math.PI * 0.4, r = T * (1.3 - 0.95 * u); const sx = X.x + Math.cos(an) * r, sy = X.y + Math.sin(an) * r, s2 = T * 0.07;
+            ctx.beginPath(); ctx.moveTo(sx, sy - s2 * 2); ctx.lineTo(sx + s2 * 0.6, sy - s2 * 0.6); ctx.lineTo(sx + s2 * 2, sy); ctx.lineTo(sx + s2 * 0.6, sy + s2 * 0.6); ctx.lineTo(sx, sy + s2 * 2); ctx.lineTo(sx - s2 * 0.6, sy + s2 * 0.6); ctx.lineTo(sx - s2 * 2, sy); ctx.lineTo(sx - s2 * 0.6, sy - s2 * 0.6); ctx.closePath(); ctx.fill(); }
+        } else if (st.ph === 'live') {
+          const a = 1 - st.u;
+          for (let i = 1; i <= 3; i++) { glow(ctx, i % 2 ? '#ffe566' : '#7cdbff', 0.28 * a / i); ctx.beginPath(); ctx.roundRect(X.x - st.d * T * 0.45 * i - T * 0.3, X.y - T * 0.45, T * 0.6, T * 0.9, T * 0.2); ctx.fill(); }
+          glow(ctx, '#ffffff', a); ctx.beginPath(); ctx.arc(X.x + st.d * T * 0.7, X.y, T * 0.12 * (1 + 2 * st.u), 0, Math.PI * 2); ctx.fill();
+        }
+      },
+    },
+
+    // ARCH MAGE: rises off the ground over a turning rune circle with the robe flaring, the spell kicks him
+    // back, then the circle shrinks as he sinks down.
+    archmage: {
+      ownAim: true,
+      windup: (st, W, H) => { const u = ease(st.u); return { oy: -H * 0.16 * u, sx: 1 + 0.1 * u, sy: 1 - 0.04 * u }; },
+      live: (st, W, H) => { const k = strikeK(st), h = st.hv; return { oy: -H * 0.16 * (1 - st.u * 0.5), ox: -st.d * W * 0.14 * h * k, lean: -st.d * 0.12 * h * k, sx: 1 + 0.06 * k }; },
+      endlag: (st, W, H) => { const k = 1 - ease(st.u); return { oy: -H * 0.08 * k, sy: 1 - 0.05 * Math.sin(st.u * Math.PI) }; },
+      fx(ctx, st, X) {
+        const T = X.T, rot = (st.ph === 'charge' ? nowS() : st.t) * 3;
+        const ringR = st.ph === 'endlag' ? T * 0.9 * (1 - st.u) : st.ph === 'live' ? T * 0.9 : T * 0.9 * ease(st.u);
+        const ringA = st.ph === 'endlag' ? 1 - st.u : 1;
+        if (ringR > 1) {
+          glow(ctx, st.col, 0.8 * ringA); ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.ellipse(X.x, X.fy - 2, ringR, ringR * 0.28, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.ellipse(X.x, X.fy - 2, ringR * 0.7, ringR * 0.2, 0, 0, Math.PI * 2); ctx.stroke();
+          for (let i = 0; i < 8; i++) { const an = rot + i * Math.PI / 4; ctx.beginPath(); ctx.moveTo(X.x + Math.cos(an) * ringR * 0.7, X.fy - 2 + Math.sin(an) * ringR * 0.2); ctx.lineTo(X.x + Math.cos(an) * ringR, X.fy - 2 + Math.sin(an) * ringR * 0.28); ctx.stroke(); }
+        }
+        if (st.ph === 'live' && st.t < st.sweet + 0.12) {
+          const a = 1 - st.u, hx = X.x + st.d * T * 0.55; glow(ctx, '#ffffff', a); ctx.lineWidth = 2.5;
+          for (let i = 0; i < 8; i++) { const an = i * Math.PI / 4 + 0.2; ctx.beginPath(); ctx.moveTo(hx + Math.cos(an) * T * 0.1, X.y + Math.sin(an) * T * 0.1); ctx.lineTo(hx + Math.cos(an) * T * (0.3 + 0.5 * st.u), X.y + Math.sin(an) * T * (0.3 + 0.5 * st.u)); ctx.stroke(); }
+        }
+      },
+    },
+
+    // CONDUIT: crackles and jitters as current builds, a white flash and a small recoil as it discharges,
+    // then a slump with leftover sparks.
+    conduit: {
+      ownAim: true,
+      windup: (st, W, H) => { const u = ease(st.u); return { ox: (Math.random() - 0.5) * 3.5 * u, oy: (Math.random() - 0.5) * 2 * u, sx: 1 + 0.05 * u * Math.sin(st.t * 60), sy: 1 + 0.04 * u }; },
+      live: (st, W) => { const k = strikeK(st); return { ox: -st.d * W * 0.08 * k, sy: 1 + 0.06 * k, sx: 1 - 0.04 * k }; },
+      endlag: st => ({ sy: 1 - 0.07 * Math.sin(Math.min(1, st.u * 1.2) * Math.PI), lean: st.d * 0.05 * (1 - st.u) }),
+      fx(ctx, st, X) {
+        const T = X.T;
+        if (st.ph === 'windup' || st.ph === 'charge') {
+          const n = 2 + Math.round(3 * ease(st.u)); glow(ctx, st.col, 0.9); ctx.lineWidth = 2;
+          for (let i = 0; i < n; i++) { const an = Math.random() * Math.PI * 2, r1 = T * 0.3, r2 = T * (0.6 + Math.random() * 0.4); zig(ctx, X.x + Math.cos(an) * r1, X.y + Math.sin(an) * r1, X.x + Math.cos(an) * r2, X.y + Math.sin(an) * r2, 4, T * 0.1); }
+        } else if (st.ph === 'live') {
+          const a = 1 - st.u; glow(ctx, '#ffffff', 0.7 * a); ctx.beginPath(); ctx.arc(X.x, X.y, T * (0.5 + 0.4 * st.u), 0, Math.PI * 2); ctx.fill();
+        } else if (st.ph === 'endlag' && Math.random() < 0.5) {
+          glow(ctx, st.col, 0.7 * (1 - st.u)); ctx.lineWidth = 1.5; const an = Math.random() * Math.PI * 2; zig(ctx, X.x, X.y, X.x + Math.cos(an) * T * 0.5, X.y + Math.sin(an) * T * 0.5, 3, T * 0.08);
+        }
+      },
+    },
+
+    // FORM SWITCHER: each form moves its own way. Flame flickers with rising embers and a tongue of fire;
+    // frost snaps into a quick crouch while ice crystals form; storm hovers and crackles; stone squats low
+    // and heavy, kicks up rubble and cracks the ground, and is slow to stand back up.
+    formSwitcher: {
+      windup: (st, W, H) => { const u = ease(st.u), v = st.variant;
+        if (v === 'stone') return { sy: 1 - 0.24 * u, sx: 1 + 0.2 * u, lean: -st.d * 0.08 * u };
+        if (v === 'frost') return { sy: 1 - 0.16 * clamp01(st.u * 2), sx: 1 + 0.08 * u, lean: -st.d * 0.1 * u };
+        if (v === 'storm') return { oy: -H * 0.08 * u, ox: (Math.random() - 0.5) * 2.5 * u, lean: -st.d * 0.08 * u };
+        return { sy: 1 - 0.08 * u + 0.04 * Math.sin(st.t * 45), lean: -st.d * 0.16 * u, ox: -st.d * W * 0.08 * u }; },
+      live: (st, W, H) => { const k = strikeK(st), v = st.variant;
+        if (v === 'stone') return { sx: 1 + 0.22 * k, sy: 1 - 0.18 * k, ox: st.d * W * 0.18 * k, lean: st.d * 0.12 * k };
+        if (v === 'storm') return { sx: 1 + 0.34 * k, sy: 1 - 0.1 * k, ox: st.d * W * 0.32 * k, oy: -H * 0.05 * (1 - st.u) };
+        if (v === 'frost') return { sx: 1 + 0.26 * k, sy: 1 - 0.08 * k, ox: st.d * W * 0.24 * k, lean: st.d * 0.18 * k };
+        return { sx: 1 + 0.22 * k, sy: 1 - 0.06 * k, ox: st.d * W * 0.2 * k, lean: st.d * 0.22 * k }; },
+      endlag: (st, W, H) => { const v = st.variant, k = 1 - ease(st.u);
+        if (v === 'stone') return { sy: 0.84 + 0.16 * ease(st.u * 0.9), sx: 1 + 0.08 * k };
+        if (v === 'frost') return { ox: Math.sin(st.t * 80) * 1.2 * k };
+        if (v === 'storm') return { oy: -H * 0.04 * k };
+        return { sy: 1 - 0.04 * Math.sin(st.u * Math.PI), lean: st.d * 0.06 * k }; },
+      fx(ctx, st, X) {
+        const T = X.T, v = st.variant, tt = st.ph === 'charge' ? nowS() : st.t;
+        if (st.ph === 'windup' || st.ph === 'charge') {
+          const u = ease(st.u);
+          if (v === 'stone') { ctx.globalCompositeOperation = 'source-over'; for (let i = 0; i < 6; i++) { const rx = X.x + (i - 2.5) * T * 0.22, ry = X.fy - T * 0.08 - u * T * (0.2 + 0.25 * ((i * 7) % 5) / 5); ctx.globalAlpha = 0.9; ctx.fillStyle = i % 2 ? '#8d7b68' : '#b8a68f'; ctx.fillRect(rx - 3, ry - 3, 6 + (i % 3), 6); } }
+          else if (v === 'frost') { glow(ctx, '#bae6fd', 0.9); for (let i = 0; i < Math.ceil(5 * u); i++) { const cx = X.x + st.d * T * (0.6 + i * 0.12), cy = X.y + (i - 2) * T * 0.15, s2 = T * 0.08; ctx.beginPath(); ctx.moveTo(cx, cy - s2 * 1.6); ctx.lineTo(cx + s2, cy); ctx.lineTo(cx, cy + s2 * 1.6); ctx.lineTo(cx - s2, cy); ctx.closePath(); ctx.fill(); } }
+          else if (v === 'storm') { glow(ctx, '#ffe066', 0.95); ctx.lineWidth = 2.2; zig(ctx, X.x - T * 0.1, X.y - T * 1.4, X.x + T * 0.05, X.y - T * 0.65, 4, T * 0.12 * u + 2); }
+          else { for (let i = 0; i < 6; i++) { const ph = (tt * 1.6 + i / 6) % 1; glow(ctx, i % 2 ? '#ffd166' : '#ff4500', 0.9 * (1 - ph) * u); ctx.beginPath(); ctx.arc(X.x + Math.sin(i * 2.3 + tt * 4) * T * 0.35, X.fy - ph * T * 1.3, 2 + (i % 3), 0, Math.PI * 2); ctx.fill(); } }
+        } else if (st.ph === 'live' && st.t < st.sweet + 0.12) {
+          const a = 1 - st.u;
+          if (v === 'stone') { glow(ctx, '#b8a68f', a); ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(X.x, X.fy); for (let i = 1; i <= 6; i++) ctx.lineTo(X.x + st.d * T * 0.3 * i, X.fy - (i % 2 ? 5 : 0)); ctx.stroke(); }
+          else if (v === 'storm') { glow(ctx, '#ffe066', a); ctx.lineWidth = 2.5; zig(ctx, X.x - st.d * T * 1.2, X.y, X.x + st.d * T * 0.6, X.y, 6, T * 0.12); }
+          else if (v === 'frost') { glow(ctx, '#bae6fd', a); ctx.lineWidth = 2; for (let i = 0; i < 4; i++) { const yy = X.y + (i - 1.5) * T * 0.16; ctx.beginPath(); ctx.moveTo(X.x + st.d * T * 0.4, yy); ctx.lineTo(X.x + st.d * T * (0.9 + 0.3 * i % 2), yy); ctx.stroke(); } }
+          else { glow(ctx, '#ff6b35', 0.9 * a); ctx.beginPath(); ctx.moveTo(X.x + st.d * T * 0.3, X.y - T * 0.25); ctx.quadraticCurveTo(X.x + st.d * T * 1.4, X.y - T * 0.1 * Math.sin(st.t * 40), X.x + st.d * T * 0.3, X.y + T * 0.25); ctx.closePath(); ctx.fill(); }
+        } else if (st.ph === 'endlag' && v === 'flame') {
+          ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = '#9aa0a6'; for (let i = 0; i < 3; i++) { ctx.globalAlpha = 0.35 * (1 - st.u); ctx.beginPath(); ctx.arc(X.x + (i - 1) * T * 0.2, X.y - T * 0.6 - st.u * T * 0.6 - i * 4, T * (0.1 + 0.08 * st.u), 0, Math.PI * 2); ctx.fill(); }
+        }
+      },
+    },
+
+    // CHROMA: puffs up as its colours cycle, snaps thin and long with a splash of colour, then wobbles
+    // like jelly as it settles.
+    cb_chameleon: {
+      windup: st => { const u = ease(st.u); return { sx: 1 + 0.16 * u, sy: 1 + 0.12 * u, lean: -st.d * 0.08 * u }; },
+      live: (st, W) => { const k = strikeK(st); return { sx: 1 + 0.38 * k, sy: 1 - 0.2 * k, ox: st.d * W * 0.22 * k, lean: st.d * 0.1 * k }; },
+      endlag: st => { const k = 1 - st.u, w = Math.sin(st.u * Math.PI * 4) * k; return { sx: 1 + 0.12 * w, sy: 1 - 0.12 * w }; },
+      fx(ctx, st, X) {
+        const T = X.T;
+        if (st.ph === 'windup' || st.ph === 'charge') {
+          const u = ease(st.u), tt = st.ph === 'charge' ? nowS() : st.t; ctx.lineWidth = 3;
+          for (let i = 0; i < 6; i++) { glow(ctx, 'hsl(' + ((tt * 400 + i * 60) % 360) + ',90%,60%)', 0.8 * u); ctx.beginPath(); ctx.arc(X.x, X.y, T * (0.75 + 0.1 * u), i * Math.PI / 3 + tt * 5, i * Math.PI / 3 + tt * 5 + 0.8); ctx.stroke(); }
+        } else if (st.ph === 'live' && st.t < st.sweet + 0.12) {
+          const a = 1 - st.u;
+          for (let i = 0; i < 7; i++) { const an = (st.d > 0 ? 0 : Math.PI) + (i - 3) * 0.3, r = T * (0.5 + 0.9 * st.u); glow(ctx, 'hsl(' + (i * 50) + ',90%,60%)', a); ctx.beginPath(); ctx.arc(X.x + Math.cos(an) * r, X.y + Math.sin(an) * r, 3 + (i % 3), 0, Math.PI * 2); ctx.fill(); }
+        }
+      },
+    },
+  };
+
   const API = {
     busy() { return !!cur || !!charge; },
     canQueue() { return !charge && (!cur || bufferable()); },
@@ -40001,31 +40289,14 @@ window._claimLBro = function() {
     // the body's pose for the current phase, applied around the feet before the player is drawn:
     // windup leans back, crouches and draws back (heavier moves further, with a tremble at the end),
     // the strike stretches forward and leans into it, end lag settles back down. Charging crouches deeper.
+    // the body's pose for the current phase, from the fighter's own style (see STYLES below)
     pose(ctx, W, H) {
-      const p = P(); if (!p || !playing()) return;
-      const ease = u => 1 - Math.pow(1 - Math.max(0, Math.min(1, u)), 3);
-      let lean = 0, sx = 1, sy = 1, ox = 0, oy = 0;
-      if (charge) {
-        const u = API.chargePower(), d = (p.lastMoveDir || p.dashDir || 1) >= 0 ? 1 : -1, held = nowS() - charge.start;
-        if (held < CHARGE_MIN * 0.6) return;
-        lean = -d * (0.08 + 0.16 * u); sx = 1 + 0.08 + 0.06 * u; sy = 1 - 0.08 - 0.10 * u; ox = -d * W * (0.06 + 0.1 * u);
-        if (u >= 1) ox += Math.sin(nowS() * 70) * 1.6;
-      } else if (cur) {
-        const d = cur.dir >= 0 ? 1 : -1, hv = Math.max(0.35, Math.min(1.25, (cur.fd.windup || 0.06) / 0.15)) * (1 + 0.4 * cur.power);
-        if (cur.phase === 'windup') {
-          const u = ease(cur.windup > 0 ? cur.t / cur.windup : 1);
-          lean = -d * 0.34 * hv * u; sx = 1 + 0.14 * hv * u; sy = Math.max(0.74, 1 - 0.2 * hv * u); ox = -d * W * 0.2 * hv * u;
-          if (u > 0.75 && cur.windup >= 0.1) ox += Math.sin(cur.t * 90) * 1.2 * hv;   // straining at the end of a big windup
-        } else if (cur.phase === 'live') {
-          const L = Math.max(0.05, cur.sweet + cur.active), u = Math.min(1, cur.t / L), snap = Math.min(1, cur.t / 0.04);
-          const k = snap * (1 - u * 0.6);
-          lean = d * 0.26 * hv * k; sx = 1 + 0.3 * hv * k; sy = 1 - 0.12 * hv * k; ox = d * W * 0.26 * hv * k;
-        } else if (cur.phase === 'endlag') {
-          const u = cur.endlag > 0 ? Math.min(1, cur.t / cur.endlag) : 1, k = 1 - ease(u);
-          lean = d * 0.10 * hv * k; sx = 1 + 0.06 * hv * k; sy = 1 - 0.09 * hv * Math.sin(Math.min(1, u * 1.4) * Math.PI) - 0.03 * hv * k; ox = d * W * 0.12 * hv * k;
-        } else return;
-      } else return;
-      ctx.translate(W / 2 + ox, H + oy); ctx.rotate(lean); ctx.scale(sx, sy); ctx.translate(-W / 2, -H);
+      const st = styleState(); if (!st) return;
+      const sty = STYLES[st.ch] || STYLES._default;
+      const fn = sty[st.ph === 'charge' ? 'windup' : st.ph]; if (!fn) return;
+      const r = Object.assign({ lean: 0, sx: 1, sy: 1, ox: 0, oy: 0 }, fn(st, W, H));
+      if (!sty.ownAim) aimPose(st, r, W, H);
+      ctx.translate(W / 2 + r.ox, H + r.oy); ctx.rotate(r.lean); ctx.scale(r.sx, r.sy); ctx.translate(-W / 2, -H);
     },
     cancel() { cur = null; buffered = null; charge = null; },
     // some fighters (the Brawler) may jump out of their recovery
@@ -40094,24 +40365,8 @@ window._claimLBro = function() {
       const T = window._TILE || 40, SX = x => x * T - (cam ? cam.x : 0), SY = y => y * T - (cam ? cam.y : 0);
       ctx.save(); ctx.lineCap = 'round';
       const x = SX(pcx(p)), y = SY(pcy(p));
-      if (cur && cur.phase === 'windup' && cur.windup > 0) {
-        // a glint that closes in on your fist as the move gets ready
-        const u = Math.min(1, cur.t / cur.windup), hx = x + cur.dir * T * 0.45;
-        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35 + 0.6 * u;
-        ctx.strokeStyle = cur.col; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(hx, y, T * (0.7 - 0.5 * u), 0, Math.PI * 2); ctx.stroke();
-        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(hx, y, 2 + 3 * u, 0, Math.PI * 2); ctx.fill();
-      }
-      if (cur && cur.phase === 'live' && cur.t < cur.sweet + 0.1) {
-        const u = cur.t / (cur.sweet + 0.1), hv = Math.max(0.35, Math.min(1.25, (cur.fd.windup || 0.06) / 0.15));
-        const len = T * (0.6 + 0.9 * hv + 0.04 * (cur.fd.push || 0)), bx = x - cur.dir * T * 0.35;
-        ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
-        for (let i = 0; i < 4; i++) {
-          const yy = y + (i - 1.5) * T * 0.2, l = len * (0.6 + 0.4 * ((i * 37) % 10) / 10) * (1 - u);
-          ctx.globalAlpha = 0.55 * (1 - u); ctx.strokeStyle = i % 2 ? '#ffffff' : cur.col; ctx.lineWidth = 2.5;
-          ctx.beginPath(); ctx.moveTo(bx, yy); ctx.lineTo(bx - cur.dir * l, yy); ctx.stroke();
-        }
-      }
+      // the fighter's own windup / strike / recovery effects
+      { const st = styleState(); if (st) { const sty = STYLES[st.ch] || STYLES._default; if (sty.fx) { ctx.save(); try { sty.fx(ctx, st, { x, y, fy: SY(p.y + p.h), T }); } catch (e) {} ctx.restore(); } } }
       if (charge) {
         const pw = API.chargePower(), held = nowS() - charge.start;
         if (held >= CHARGE_MIN * 0.6) {
@@ -40848,7 +41103,7 @@ window._claimLBro = function() {
       if (on) fx.push({ k: 'label', x: pcx(q), y: q.y - 0.5, t: 0, life: 0.7, text: lbl });
       msg(text);
     };
-    if (window.PPStrike) window.PPStrike.start({ fd: PFD[key], dir: face, color: md.pal[1], fire: go }); else go();
+    if (window.PPStrike) window.PPStrike.start({ fd: PFD[key], dir: face, color: md.pal[1], aim: dir, variant: md.id, fire: go }); else go();
   };
 
   // ---- EQ switch (G / 🎛️) ----
@@ -42412,7 +42667,7 @@ window._claimLBro = function() {
     };
     if (window.PPStrike) {
       // windup, sweet spot and end lag per move; holding S charges Side A moves
-      window.PPStrike.press(() => { const sel = pick(); return sel && { fd: MFD[sel.key], dir: sel.f, color: PALETTE[0], fire: () => fire(sel) }; }, true);
+      window.PPStrike.press(() => { const sel = pick(); return sel && { fd: MFD[sel.key], dir: sel.f, color: PALETTE[0], aim: sel.key.split('_')[1], fire: () => fire(sel) }; }, true);
       return;
     }
     const sel = pick(); if (sel) fire(sel);
