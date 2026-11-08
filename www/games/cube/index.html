@@ -2131,24 +2131,55 @@ function knightDraw(k,x0,y0,pw,ph,o){
     R('#5a3a1e',0,0.74,1,0.1);R(GOLD,0.42,0.72,0.16,0.14);
     ctx.lineWidth=lw*1.3;ctx.beginPath();ctx.moveTo(X(0.05),Y(0.62));ctx.lineTo(X(0.95),Y(0.97));ctx.stroke();ctx.lineWidth=lw;
     R('#c99a62',0.7,0.78,0.26,0.2);
-  }else if(k==='pressplay'||k==='pressplay2'||k==='pressplay3'){
-    // Press Play Paladin (violet), Phantom (teal) and Prodigy (pink): a teal-to-pink chest band with a play button, headphones and a cape
-    var alt=k==='pressplay2',pro=k==='pressplay3';
-    P(pro?'#6ee7d0':alt?'#6ee7d0':'#ff5fd8',[[0.05,0.1],[-(0.3+0.5*run),0.32+fl],[-(0.25+0.45*run),0.95+fl],[0.05,0.9]]);
-    base(pro?'#c0399a':alt?'#1f6f78':'#5b3fd0');
-    if(pro)P('#ffd23f',[[0.18,0.02],[0.18,-0.2],[0.34,-0.07],[0.5,-0.28],[0.66,-0.07],[0.82,-0.2],[0.82,0.02]]);
+  }else if(k==='pressplay'){
+    // Press Play Paladin: violet plate, pink cape, the teal-to-pink chest band with a play button, winged headphones over the helm
+    P('#ff5fd8',[[0.05,0.1],[-(0.3+0.5*run),0.32+fl],[-(0.25+0.45*run),0.95+fl],[0.05,0.9]]);
+    base('#5b3fd0');
     var pg=ctx.createLinearGradient(X(0),0,X(1),0);pg.addColorStop(0,'#6ee7d0');pg.addColorStop(0.55,'#8b5cff');pg.addColorStop(1,'#ff5fd8');
     ctx.fillStyle=pg;ctx.fillRect(X(0),Y(0.6),pw,ph*0.2);ctx.strokeRect(X(0),Y(0.6),pw,ph*0.2);
     P('#fff',[[0.43,0.63],[0.43,0.77],[0.6,0.7]]);
     R(INK,0.1,0.22,0.8,0.24);
     E(0.22,0.29,0.16,0.1,true);E(0.62,0.29,0.16,0.1,true);
-    // black and grey headphones, in Press Play's own colours
     ctx.lineWidth=lw*2.2;ctx.strokeStyle='#15161b';ctx.beginPath();ctx.arc(X(0.5),Y(0.24),pw*0.6,Math.PI*1.1,Math.PI*1.9);ctx.stroke();
     ctx.lineWidth=lw*0.8;ctx.strokeStyle='#5c606b';ctx.beginPath();ctx.arc(X(0.5),Y(0.24),pw*0.6,Math.PI*1.22,Math.PI*1.78);ctx.stroke();
     ctx.lineWidth=lw;ctx.strokeStyle=INK;
+    P(GOLD,[[-0.12,0.16],[-0.42,-0.12-F*0.05],[-0.3,0.08],[-0.46,0.06-F*0.04],[-0.12,0.34]]);
+    P(GOLD,[[1.12,0.16],[1.42,-0.12-F*0.05],[1.3,0.08],[1.46,0.06-F*0.04],[1.12,0.34]]);
     R('#15161b',-0.14,0.12,0.2,0.36);R('#15161b',0.94,0.12,0.2,0.36);
     R('#3a3d46',-0.1,0.18,0.12,0.24);R('#3a3d46',0.98,0.18,0.12,0.24);
     rivet(0.5,0.09);
+  }else if(k==='pressplay2'){
+    // Press Play Phantom: a pointed hood, a fully masked face with slit eyes, a tattered scarf and a diagonal play-button sash
+    [0.3,0.5,0.7].forEach(function(yy,i){var ln=0.35+0.4*run+i*0.08,w2=Math.sin(o.t*12+i*1.7)*0.06;P(i%2?'#8b5cff':'#6ee7d0',[[0.05,yy-0.06],[-ln,yy+w2],[-ln+0.08,yy+0.08+w2],[0.05,yy+0.06]]);});
+    base('#1f6a72');
+    P('#17525a',[[-0.06,0.62],[-0.06,0.1],[0.5,-0.42],[1.06,0.1],[1.06,0.62],[0.86,0.62],[0.86,0.18],[0.14,0.18],[0.14,0.62]]);
+    R('#05080a',0.14,0.18,0.72,0.44);
+    if(o.hurt){E(0.24,0.32,0.18,0.08,true);E(0.58,0.32,0.18,0.08,true);}
+    else{P('#6ee7d0',[[0.22,0.3],[0.42,0.35],[0.42,0.39],[0.22,0.36]],true);P('#6ee7d0',[[0.78,0.3],[0.58,0.35],[0.58,0.39],[0.78,0.36]],true);}
+    var sg=ctx.createLinearGradient(X(0),Y(0.62),X(1),Y(1));sg.addColorStop(0,'#6ee7d0');sg.addColorStop(1,'#8b5cff');
+    ctx.fillStyle=sg;ctx.beginPath();ctx.moveTo(X(0),Y(0.66));ctx.lineTo(X(0.18),Y(0.62));ctx.lineTo(X(1),Y(0.9));ctx.lineTo(X(1),Y(1));ctx.lineTo(X(0.9),Y(1));ctx.closePath();ctx.fill();ctx.stroke();
+    P('#fff',[[0.5,0.73],[0.5,0.85],[0.63,0.82]]);
+    // a thin band across the hood with round cups
+    ctx.lineWidth=lw*1.6;ctx.strokeStyle='#15161b';ctx.beginPath();ctx.moveTo(X(0.02),Y(0.2));ctx.quadraticCurveTo(X(0.5),Y(-0.36),X(0.98),Y(0.2));ctx.stroke();ctx.lineWidth=lw;ctx.strokeStyle=INK;
+    [[-0.02,0.3],[1.02,0.3]].forEach(function(c){ctx.fillStyle='#15161b';ctx.beginPath();ctx.arc(X(c[0]),Y(c[1]),pw*0.15,0,6.283);ctx.fill();ctx.stroke();ctx.fillStyle='#6ee7d0';ctx.beginPath();ctx.arc(X(c[0]),Y(c[1]),pw*0.06,0,6.283);ctx.fill();});
+  }else if(k==='pressplay3'){
+    // Press Play Virtuoso: a stage star. White jacket with black lapels, gold bow tie, a big pink quiff, shades, headphones round the neck and a floating note
+    base('#f4f0f8');
+    P('#15161b',[[0.0,0.55],[0.36,0.55],[0.5,0.98],[0.0,0.98]]);P('#15161b',[[1.0,0.55],[0.64,0.55],[0.5,0.98],[1.0,0.98]]);
+    P('#ff5fd8',[[0.36,0.55],[0.64,0.55],[0.5,0.98]]);
+    P(GOLD,[[0.36,0.6],[0.5,0.66],[0.64,0.6],[0.64,0.74],[0.5,0.68],[0.36,0.74]]);
+    R('#f2c9a0',0.12,0.14,0.76,0.38);
+    var hg=ctx.createLinearGradient(X(0),Y(-0.4),X(1),Y(0.2));hg.addColorStop(0,'#ff5fd8');hg.addColorStop(1,'#8b5cff');
+    ctx.fillStyle=hg;ctx.beginPath();ctx.moveTo(X(0.04),Y(0.24));ctx.quadraticCurveTo(X(-0.06),Y(-0.2),X(0.5),Y(-0.34-F*0.03));ctx.quadraticCurveTo(X(1.25),Y(-0.42),X(1.02),Y(0.0));ctx.quadraticCurveTo(X(0.7),Y(-0.06),X(0.5),Y(0.16));ctx.quadraticCurveTo(X(0.3),Y(0.02),X(0.04),Y(0.24));ctx.closePath();ctx.fill();ctx.stroke();
+    if(o.hurt){E(0.24,0.26,0.18,0.1);E(0.58,0.26,0.18,0.1);}
+    else{var sh=ctx.createLinearGradient(X(0.14),0,X(0.86),0);sh.addColorStop(0,'#6ee7d0');sh.addColorStop(1,'#ff5fd8');ctx.fillStyle=sh;ctx.fillRect(X(0.14),Y(0.24),pw*0.72,ph*0.12);ctx.strokeRect(X(0.14),Y(0.24),pw*0.72,ph*0.12);}
+    ctx.beginPath();ctx.moveTo(X(0.36),Y(0.44));ctx.quadraticCurveTo(X(0.5),Y(0.5),X(0.66),Y(0.42));ctx.stroke();
+    // headphones resting round the neck
+    ctx.lineWidth=lw*1.8;ctx.strokeStyle='#15161b';ctx.beginPath();ctx.moveTo(X(0.02),Y(0.6));ctx.quadraticCurveTo(X(0.5),Y(0.76),X(0.98),Y(0.6));ctx.stroke();ctx.lineWidth=lw;ctx.strokeStyle=INK;
+    R('#15161b',-0.12,0.5,0.2,0.26);R('#15161b',0.92,0.5,0.2,0.26);R('#ff5fd8',-0.08,0.55,0.12,0.16);R('#6ee7d0',0.96,0.55,0.12,0.16);
+    // a note bobbing beside the head
+    var nb=Math.sin(o.t*4)*0.06;ctx.fillStyle=GOLD;ctx.beginPath();ctx.ellipse(X(1.16),Y(-0.02+nb),pw*0.08,pw*0.06,-0.4,0,6.283);ctx.fill();ctx.stroke();
+    ctx.lineWidth=lw*0.9;ctx.beginPath();ctx.moveTo(X(1.23),Y(-0.04+nb));ctx.lineTo(X(1.23),Y(-0.36+nb));ctx.quadraticCurveTo(X(1.33),Y(-0.3+nb),X(1.35),Y(-0.2+nb));ctx.stroke();ctx.lineWidth=lw;
   }else if(k==='knight'){
     P('#b8312a',[[0,0.1],[-(0.3+0.5*run),0.3+fl],[-(0.27+0.45*run),0.95+fl],[0,0.9]]);
     base('#b8c4d0');
