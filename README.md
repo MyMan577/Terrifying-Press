@@ -63,6 +63,7 @@ The app does use the internet in a few specific situations, so you know exactly 
 - **Downloading AI models.** Each model is a one-time download. Once it is on your phone it works offline. You choose which ones to get.
 - **Lyrics lookup (optional).** If you turn on background lyric fetching, song titles are sent to lrclib.net and lyrics.ovh to find lyrics, which are then saved so they work offline. This is a single toggle in the lyrics settings. Turn it off and nothing is sent. You can also generate lyrics yourself with the on-device transcriber, which never sends anything anywhere.
 - **Translation language packs.** About 30 MB per language, downloaded the first time you use that language. After that, translation runs offline.
+- **Playing a game together (optional).** Obby Builder, Weapon Ball, Bastion Brawl and Kitchen Rush can link two phones by scanning QR codes. The phones then talk to each other directly, and only game data (positions, moves, the course) goes between them. To find each other, the phones ask a public STUN server (stun.l.google.com) for their network addresses. Nothing about your library is sent.
 
 ## AI features, all on your device
 
@@ -116,6 +117,32 @@ Bloop is entirely optional. If you do not want it, turn off the mascot and the a
 - Media notification and lock screen controls, with playback that keeps going in the background.
 - Picture in picture for video.
 - An optional progression system with levels, a minigame, a quiz and unlockable perks such as extra accent colors and animated gradients. It is completely optional and can be hidden with one switch.
+
+## Games
+
+The Games tab holds ten games that play offline, right inside the app. Your music keeps playing while you play, and Obby Builder and Weapon Ball turn their own soundtrack off while a song is on.
+
+| Game | What it is |
+| --- | --- |
+| Obby Builder | Build an obstacle course, then beat it with a cast of characters who each move and fight their own way |
+| Nebula Touch | Stir a field of light with your fingers |
+| Toque & Spear | Hunt, fight and bond with the spirits of the wild |
+| Weapon Ball | Pick your balls and watch them fight it out |
+| Ante Up | Play poker hands to beat ten antes |
+| Last Card | Match colours and numbers, and be first to empty your hand |
+| Blob Barrage | Turn-based blob battles with silly weapons |
+| Bastion Brawl | Send troops in and knock down the towers |
+| Kitchen Rush | Cook every order before the clock runs out |
+| Dashcube Knight | Tap to dash through stages of monsters |
+
+**Press Play Points.** Daily and weekly quests and each game's achievements earn points. Spend them in the shop on game currencies, boosts and Press Play exclusives: characters, cosmetics and emotes you can't get inside the games themselves. The shop also sells the Playground, an extra app mode with a daily wheel, a beat sequencer, a rhythm game and a card album of characters from every game.
+
+**Obby Builder fighting.** The fighters are built to make every hit feel like it lands:
+- Each move has its own windup, sweet spot and recovery, and the character shows it with its whole body. The Brawler cocks a glowing glove back, the Arch Mage rises over a rune circle, the Form Switcher's stone form squats low and is slow to stand back up. A hit on the sweet spot does more damage, launches harder and freezes the action for a moment.
+- Hold the attack button to charge a special, aimed sideways, up or down. Each fighter has its own: a dash through a crowd, a launching pillar, a shockwave, a meteor, a lightning storm, a rolling boulder.
+- The Press Play Prodigy fights to a beat that follows the song playing in Press Play, reading its tempo from the song's tags or working it out from the kick drum. There is a headphone delay slider for Bluetooth headphones, with a tap-along button to set it.
+- The Press Play Mixtape has two forms: a tape-whip fighter, and a grappling ribbon you can shoot in any direction to swing from blocks or grab foes and throw them.
+- Emotes: wave, dance, laugh, flex and bow, plus Air Guitar, Headbang and Mic Drop from the shop. Your character performs them with a pair of floating hands, dances move on the beat of your song, and the emote wheel shows a live preview of your own character. In two-phone play, the other phone sees your emotes too.
 
 ## Install
 
