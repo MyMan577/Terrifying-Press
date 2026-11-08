@@ -5178,8 +5178,12 @@ let srEchoFrames = [];
       const keepCtx = ctx, kcx = cam.x, kcy = cam.y;
       const F = ['x','y','vx','vy','dashDir','onGround','isDashing','hpInvuln','enemyKnockbackInvuln','isWallSliding','slashTimer','punchTimer'];
       const keep = {}; for (const k of F) keep[k] = player[k];
+      // auras draw straight onto the game screen (not onto `ctx`), so they would land in its top-left
+      // corner: leave them out of previews
+      const keepAura = window.drawCosmeticAura;
       c2d.save();
       try {
+        window.drawCosmeticAura = null;
         ctx = c2d; c2d.scale(scale, scale);
         player.x = 0; player.y = 0; player.vx = 0; player.vy = 0; player.dashDir = 1; player.onGround = true; player.isDashing = false;
         player.hpInvuln = 0; player.enemyKnockbackInvuln = 0; player.isWallSliding = false; player.slashTimer = 0; player.punchTimer = 0;
@@ -5188,6 +5192,7 @@ let srEchoFrames = [];
         drawPlayer();
       } catch (e) {}
       finally {
+        window.drawCosmeticAura = keepAura;
         window.__ppRemoteDraw = null;
         for (const k of F) player[k] = keep[k];
         cam.x = kcx; cam.y = kcy; ctx = keepCtx; c2d.restore();
