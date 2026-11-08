@@ -25403,8 +25403,11 @@ function saveGachaState() {
 }
 let gachaState = loadGachaState();
 
+// Press Play exclusive troops: owned when bought in the Press Play shop, and free in Playground mode
+const PP_SHOP_TROOPS = { pressplayparagon: 'paragon', pressplaymaestro: 'maestro' };
 function isGachaCardOwned(cardId) {
-  return !!gachaState.owned[cardId] || !!gachaState.shopUnlocked[cardId];
+  if (!!gachaState.owned[cardId] || !!gachaState.shopUnlocked[cardId]) return true;
+  return !!(PP_SHOP_TROOPS[cardId] && window.PPHub && PPHub.has(PP_SHOP_TROOPS[cardId]));
 }
 
 function addGachaVoucher(n) {

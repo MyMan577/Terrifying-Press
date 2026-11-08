@@ -470,9 +470,9 @@ function wi(){var a=CHARS[save.char].weapons;return Math.min(save.wsel[save.char
 function wkey(){return CHARS[save.char].weapons[wi()];}
 function persist(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(save));}catch(e){}}
 // knights bought in the Press Play shop join the roster the next time the game opens
-(function(){if(PPHub.take('pppknight')&&save.chars.indexOf('pressplay')<0){save.chars.push('pressplay');setTimeout(function(){toast('▶️ The Press Play Paladin joined your roster');},900);}
-if(PPHub.take('pppknight2')&&save.chars.indexOf('pressplay2')<0){save.chars.push('pressplay2');setTimeout(function(){toast('▶️ The Press Play Phantom joined your roster');},1900);}
-if(PPHub.take('pppknight3')&&save.chars.indexOf('pressplay3')<0){save.chars.push('pressplay3');setTimeout(function(){toast('▶️ The Press Play Virtuoso joined your roster');},2900);}
+(function(){if((PPHub.take('pppknight')||PPHub.has('pppknight'))&&save.chars.indexOf('pressplay')<0){save.chars.push('pressplay');setTimeout(function(){toast('▶️ The Press Play Paladin joined your roster');},900);}
+if((PPHub.take('pppknight2')||PPHub.has('pppknight2'))&&save.chars.indexOf('pressplay2')<0){save.chars.push('pressplay2');setTimeout(function(){toast('▶️ The Press Play Phantom joined your roster');},1900);}
+if((PPHub.take('pppknight3')||PPHub.has('pppknight3'))&&save.chars.indexOf('pressplay3')<0){save.chars.push('pressplay3');setTimeout(function(){toast('▶️ The Press Play Virtuoso joined your roster');},2900);}
 var n=PPHub.take('knight');while(n-->0){var free=Object.keys(CHARS).filter(function(k){return !CHARS[k].ppp&&save.chars.indexOf(k)<0;});if(!free.length)break;var k=free[Math.floor(Math.random()*free.length)];save.chars.push(k);setTimeout(function(k){return function(){toast('⚔️ '+(CHARS[k].name||k)+' joined from the Press Play shop');};}(k),900);}persist();
 PPHub.info('knightsLeft',buyableLeft());})();
 /* ---------- stats and accessories ---------- */

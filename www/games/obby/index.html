@@ -26356,20 +26356,21 @@ function resolveCollisions(axis, dt) {
 
   let unlockedCosmetics = new Set(JSON.parse(localStorage.getItem('obby_cosmetics') || '[]'));
   let activeCosmetics   = new Set(JSON.parse(localStorage.getItem('obby_cosm_active') || '[]'));
-  // the Press Play Wave comes from the Press Play shop
-  if (PPHub.take('eq') && !unlockedCosmetics.has('cs23')) {
+  // Press Play shop cosmetics: delivered when bought, and also whenever the shop says you have them
+  // (that includes Playground mode, where every Press Play exclusive is free)
+  if ((PPHub.take('eq') || PPHub.has('eq')) && !unlockedCosmetics.has('cs23')) {
     unlockedCosmetics.add('cs23'); activeCosmetics.add('cs23');
     localStorage.setItem('obby_cosmetics', JSON.stringify([...unlockedCosmetics]));
     localStorage.setItem('obby_cosm_active', JSON.stringify([...activeCosmetics]));
   }
   [['vinyl', 'cs24'], ['pulse', 'cs25']].forEach(function (pr) {
-    if (PPHub.take(pr[0]) && !unlockedCosmetics.has(pr[1])) {
+    if ((PPHub.take(pr[0]) || PPHub.has(pr[0])) && !unlockedCosmetics.has(pr[1])) {
       unlockedCosmetics.add(pr[1]); activeCosmetics.add(pr[1]);
       localStorage.setItem('obby_cosmetics', JSON.stringify([...unlockedCosmetics]));
       localStorage.setItem('obby_cosm_active', JSON.stringify([...activeCosmetics]));
     }
   });
-  if (PPHub.take('wave') && !unlockedCosmetics.has('cs22')) {
+  if ((PPHub.take('wave') || PPHub.has('wave')) && !unlockedCosmetics.has('cs22')) {
     unlockedCosmetics.add('cs22'); activeCosmetics.add('cs22');
     localStorage.setItem('obby_cosmetics', JSON.stringify([...unlockedCosmetics]));
     localStorage.setItem('obby_cosm_active', JSON.stringify([...activeCosmetics]));
@@ -40920,7 +40921,7 @@ window._claimLBro = function() {
   function owned() { try { return JSON.parse(localStorage.getItem(OWN_KEY) || '[]'); } catch (e) { return []; } }
   if (window.PPHub) {
     const have = owned(); let changed = false;
-    for (const em of EMOTES) if (em.shop && PPHub.take(em.shop) && !have.includes(em.id)) { have.push(em.id); changed = true; }
+    for (const em of EMOTES) if (em.shop && (PPHub.take(em.shop) || PPHub.has(em.shop)) && !have.includes(em.id)) { have.push(em.id); changed = true; }
     if (changed) try { localStorage.setItem(OWN_KEY, JSON.stringify(have)); } catch (e) {}
   }
   function unlocked(em) { return !em.shop || owned().includes(em.id); }
@@ -41326,8 +41327,8 @@ window._claimLBro = function() {
   };
   const STATS = { speed: 1.3, jump: 1.25, maxJumps: 3, maxDashes: 3, hp: 4 };
 
-  // a Prodigy bought in the Press Play shop joins your saved roster
-  if (window.PPHub && PPHub.take('prodigy')) {
+  // a Prodigy from the Press Play shop (bought, or free in Playground mode) joins your saved roster
+  if (window.PPHub && (PPHub.take('prodigy') || PPHub.has('prodigy'))) {
     try {
       const owned = JSON.parse(localStorage.getItem('obby_cbox_owned') || '[]');
       if (!owned.includes(ID)) { owned.push(ID); localStorage.setItem('obby_cbox_owned', JSON.stringify(owned)); }
@@ -43188,8 +43189,8 @@ window._claimLBro = function() {
   };
   const STATS = { speed: 1.25, jump: 1.25, maxJumps: 2, maxDashes: 2, hp: 4 };
 
-  // a Mixtape bought in the Press Play shop joins your saved roster
-  if (window.PPHub && PPHub.take('mixtape')) {
+  // a Mixtape from the Press Play shop (bought, or free in Playground mode) joins your saved roster
+  if (window.PPHub && (PPHub.take('mixtape') || PPHub.has('mixtape'))) {
     try {
       const owned = JSON.parse(localStorage.getItem('obby_cbox_owned') || '[]');
       if (!owned.includes(ID)) { owned.push(ID); localStorage.setItem('obby_cbox_owned', JSON.stringify(owned)); }
