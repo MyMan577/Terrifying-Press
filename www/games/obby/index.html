@@ -5797,13 +5797,77 @@ function performJump() {
   
   window.performSlash = performSlash;
 
+  // Brawler frame data, per move (see the strike engine): jabs are snappy, finishers wind up and
+  // recover slowly but hit much harder at the tip of their reach (tip = sweet-spot distance in front).
+  const BRAWLER_FD = {
+    'Jab':          { windup:0.04, active:0.08, endlag:0.07, push:2,  tip:[1.2, 2.0], sweetDmg:1, sweetKb:1.3 },
+    'Hook':         { windup:0.05, active:0.08, endlag:0.09, push:2,  tip:[1.5, 2.4], sweetDmg:1, sweetKb:1.4 },
+    'Body':         { windup:0.07, active:0.10, endlag:0.11, push:3,  tip:[1.8, 2.8], sweetDmg:1, sweetKb:1.3 },
+    'Haymaker':     { windup:0.13, active:0.10, endlag:0.18, push:6,  tip:[2.1, 3.2], sweetDmg:2, sweetKb:1.7, sweetStop:0.10, sweetShake:11 },
+    'UPPERCUT':     { windup:0.17, active:0.12, endlag:0.30, push:2,  tip:[0.0, 1.4], tipAny:true, sweetDmg:2, sweetKb:1.5, sweetStop:0.12, sweetShake:14 },
+    'Lunge':        { windup:0.06, active:0.10, endlag:0.10, push:9,  tip:[1.6, 2.6], sweetDmg:1, sweetKb:1.4 },
+    'Drive':        { windup:0.08, active:0.10, endlag:0.13, push:10, tip:[1.9, 3.0], sweetDmg:1, sweetKb:1.5 },
+    'ROCKET PUNCH': { windup:0.20, active:0.12, endlag:0.34, push:15, tip:[2.2, 3.4], sweetDmg:3, sweetKb:1.6, sweetStop:0.13, sweetShake:16 },
+    'Backfist':     { windup:0.07, active:0.08, endlag:0.13, push:2,  tip:[1.3, 2.2], sweetDmg:1, sweetKb:1.4 },
+    'SPIN KICK':    { windup:0.15, active:0.10, endlag:0.27, push:4,  tip:[1.6, 2.6], sweetDmg:2, sweetKb:1.6, sweetStop:0.11, sweetShake:12 },
+    'Sweep':        { windup:0.05, active:0.08, endlag:0.11, push:2,  tip:[1.4, 2.4], sweetDmg:1, sweetKb:1.2 },
+    'Slide Kick':   { windup:0.07, active:0.12, endlag:0.15, push:10, tip:[1.8, 3.0], sweetDmg:1, sweetKb:1.4 },
+    'FLOOR SLAM':   { windup:0.20, active:0.10, endlag:0.34, push:0,  tip:[2.0, 3.6], tipAny:true, sweetDmg:3, sweetKb:1.5, sweetStop:0.13, sweetShake:16 },
+    'Up Jab':       { windup:0.04, active:0.08, endlag:0.11, push:0,  tip:[0.0, 1.2], tipAny:true, sweetDmg:1, sweetKb:1.3 },
+    'ROCKET UPPER': { windup:0.16, active:0.12, endlag:0.28, push:0,  tip:[0.0, 1.5], tipAny:true, sweetDmg:2, sweetKb:1.5, sweetStop:0.12, sweetShake:14 },
+    // dash attacks: fast to come out (you are already moving), long recovery if they whiff
+    'DASH PUNCH':   { windup:0.03, active:0.12, endlag:0.22, push:10, sweet:0.07, sweetDmg:2, sweetKb:1.5, sweetStop:0.10 },
+    'FLYING KICK':  { windup:0.02, active:0.10, endlag:0.20, push:14, sweet:0.07, sweetDmg:2, sweetKb:1.6, sweetStop:0.10 },
+    'REVERSE SLAM': { windup:0.08, active:0.12, endlag:0.26, push:3,  sweet:0.08, sweetDmg:2, sweetKb:1.5, sweetStop:0.11 },
+    'SKID LOW':     { windup:0.03, active:0.14, endlag:0.24, push:12, sweet:0.08, sweetDmg:2, sweetKb:1.3 },
+    'LEAP STRIKE':  { windup:0.04, active:0.12, endlag:0.22, push:3, pushUp:6, sweet:0.07, sweetDmg:2, sweetKb:1.4 },
+    // air moves keep your momentum (no rooting) and recover quicker
+    'N-Air':        { windup:0.04, active:0.10, endlag:0.08, root:false, tip:[0.0, 1.6], tipAny:true, sweetDmg:1, sweetKb:1.3 },
+    'N-Air 2':      { windup:0.08, active:0.10, endlag:0.16, root:false, tip:[0.8, 2.0], tipAny:true, sweetDmg:2, sweetKb:1.5, sweetStop:0.1 },
+    'F-Air':        { windup:0.05, active:0.10, endlag:0.10, root:false, push:3, tip:[1.4, 2.4], sweetDmg:1, sweetKb:1.4 },
+    'F-Air 2':      { windup:0.10, active:0.10, endlag:0.18, root:false, push:4, tip:[1.8, 2.8], sweetDmg:2, sweetKb:1.6, sweetStop:0.11, sweetShake:12 },
+    'B-Air':        { windup:0.06, active:0.10, endlag:0.12, root:false, tip:[1.2, 2.2], sweetDmg:1, sweetKb:1.4 },
+    'B-Air 2':      { windup:0.11, active:0.10, endlag:0.20, root:false, tip:[1.5, 2.6], sweetDmg:2, sweetKb:1.6, sweetStop:0.11, sweetShake:12 },
+    'D-Air':        { windup:0.07, active:0.12, endlag:0.12, root:false, hang:false, tip:[0.4, 1.6], tipAny:true, sweetDmg:1, sweetKb:1.3 },
+    'METEOR':       { windup:0.12, active:0.12, endlag:0.22, root:false, tip:[0.4, 1.8], tipAny:true, sweetDmg:2, sweetKb:1.6, sweetStop:0.13, sweetShake:14 },
+    'U-Air':        { windup:0.04, active:0.10, endlag:0.10, root:false, tip:[0.0, 1.4], tipAny:true, sweetDmg:1, sweetKb:1.3 },
+    'U-Air 2':      { windup:0.09, active:0.10, endlag:0.18, root:false, tip:[0.0, 1.6], tipAny:true, sweetDmg:2, sweetKb:1.5, sweetStop:0.11 },
+  };
+  window.BRAWLER_FD = BRAWLER_FD;
+  // which move the next press would throw (no state changes), so the strike engine can use its frame data
+  function brawlerPreview() {
+    const inAir = !player.onGround, dashing = player.isDashing || (player.brawlerDashWindow > 0), variant = getBrawlerVariant();
+    let hit;
+    if (dashing) hit = DASH_MOVES[variant] || DASH_MOVES.neutral;
+    else {
+      const mode = inAir ? 'aerial' : 'ground', table = (inAir ? AERIAL_MOVES : GROUND_MOVES)[variant] || (inAir ? AERIAL_MOVES : GROUND_MOVES).neutral;
+      const reset = player.comboExpiry <= 0 || player._lastAttackMode !== mode || player._lastVariant !== variant;
+      hit = table[Math.min(reset ? 0 : player.comboCount, table.length - 1)];
+    }
+    let dir = player.lastMoveDir || 1;
+    if (variant === 'back' && !inAir) dir = -dir;
+    return { hit, dir };
+  }
   function performPunch() {
+    if (selectedCharacter !== 'brawler') return;
+    if (window.PPStrike) {
+      // windup, sweet spot and end lag come from the strike engine; holding S charges the punch
+      window.PPStrike.press(() => {
+        if (selectedCharacter !== 'brawler') return null;
+        const pv = brawlerPreview();
+        return { fd: BRAWLER_FD[pv.hit.label] || { windup:0.06, endlag:0.12 }, dir: pv.dir, color: pv.hit.color, fire: () => brawlerPunchNow(true) };
+      }, true);
+      return;
+    }
+    brawlerPunchNow(false);
+  }
+  function brawlerPunchNow(viaStrike) {
     if (selectedCharacter !== 'brawler') return;
 
     
     
-    if (player.punchCooldown > 0) return;     
-    if (player.punchTimer > 0) return;        
+    if (!viaStrike && player.punchCooldown > 0) return;     
+    if (!viaStrike && player.punchTimer > 0) return;        
 
     const inAir   = !player.onGround;
     const dashing  = player.isDashing || (player.brawlerDashWindow > 0);
@@ -6045,6 +6109,7 @@ function performJump() {
   
   function brawlerJumpCancel() {
     if (selectedCharacter !== 'brawler') return;
+    if (window.PPStrike) window.PPStrike.cancelEndlag();
     if (player.punchTimer > 0) {
       player.punchTimer = 0;     
       
@@ -11030,6 +11095,26 @@ function resetPlayer() {
   }
   window.protagFireRetaliateCounter = protagFireRetaliateCounter;
 
+  // Slugger frame data per punch: chain punches recover fast enough to keep the 0.45s chain window,
+  // the last punch of each string winds up and recovers like a finisher
+  const SLUGGER_FD = {
+    'JAB':           { windup:0.03, active:0.08, endlag:0.06, push:2,  tip:[1.3, 2.2], sweetDmg:1, sweetKb:1.3 },
+    'CROSS':         { windup:0.04, active:0.08, endlag:0.07, push:2,  tip:[1.4, 2.3], sweetDmg:1, sweetKb:1.3 },
+    'HOOK':          { windup:0.06, active:0.08, endlag:0.09, push:3,  tip:[1.1, 2.0], sweetDmg:1, sweetKb:1.4 },
+    'BODY BLOW':     { windup:0.06, active:0.08, endlag:0.10, push:3,  tip:[1.2, 2.1], sweetDmg:1, sweetKb:1.3 },
+    'RISING ELBOW':  { windup:0.14, active:0.10, endlag:0.26, push:2,  tip:[1.0, 2.0], sweetDmg:2, sweetKb:1.6, sweetStop:0.12, sweetShake:13 },
+    'HAYMAKER DASH': { windup:0.10, active:0.12, endlag:0.12, push:13, sweet:0.07, sweetDmg:2, sweetKb:1.5, sweetStop:0.10 },
+    'LIVER SHOT':    { windup:0.06, active:0.08, endlag:0.10, push:3,  tip:[1.6, 2.6], sweetDmg:1, sweetKb:1.4 },
+    'OVERHAND':      { windup:0.16, active:0.10, endlag:0.28, push:5,  tip:[1.8, 2.8], sweetDmg:2, sweetKb:1.6, sweetStop:0.12, sweetShake:13 },
+    'UPPERCUT':      { windup:0.08, active:0.10, endlag:0.12, push:1,  tip:[0.0, 1.5], tipAny:true, sweetDmg:2, sweetKb:1.5, sweetStop:0.10 },
+    'KNEE RISE':     { windup:0.05, active:0.08, endlag:0.10, push:2,  tip:[0.0, 1.3], tipAny:true, sweetDmg:1, sweetKb:1.3 },
+    'SPIN HOOK':     { windup:0.15, active:0.12, endlag:0.27, push:2,  tip:[0.6, 2.2], tipAny:true, sweetDmg:2, sweetKb:1.6, sweetStop:0.12, sweetShake:13 },
+    'SWEEP KICK':    { windup:0.06, active:0.08, endlag:0.11, push:2,  tip:[1.5, 2.5], sweetDmg:1, sweetKb:1.2 },
+    'LOW KICK':      { windup:0.04, active:0.08, endlag:0.08, push:2,  tip:[1.2, 2.1], sweetDmg:1, sweetKb:1.2 },
+    'SHIN CRACK':    { windup:0.06, active:0.08, endlag:0.10, push:3,  tip:[1.4, 2.3], sweetDmg:1, sweetKb:1.3 },
+    'SPIN SWEEP':    { windup:0.16, active:0.12, endlag:0.30, push:3,  tip:[1.8, 3.0], sweetDmg:2, sweetKb:1.5, sweetStop:0.12, sweetShake:14 },
+  };
+  let _sluggerViaStrike = false;
   function performAttackAction() {
     if (mode !== 'play') return;
     
@@ -11568,6 +11653,20 @@ function resetPlayer() {
     
     
     
+    if (selectedCharacter === 'cb_slugger' && _onGnd && window.PPStrike && !_sluggerViaStrike) {
+      // windup, sweet spot and end lag per punch come from the strike engine; holding S charges it
+      window.PPStrike.press(() => {
+        if (selectedCharacter !== 'cb_slugger' || !player.onGround) return null;
+        const ac = (player._sluggerChain && player._sluggerChain.windowTimer > 0) ? player._sluggerChain : null;
+        const kUp = keys.has('arrowup') || keys.has('w') || mobileKeys.up, kDn = keys.has('arrowdown') || mobileKeys.down;
+        const kR = keys.has('arrowright') || keys.has('d') || mobileKeys.right, kL = keys.has('arrowleft') || keys.has('a') || mobileKeys.left;
+        const atk = ac ? ac.atk : kUp ? 'up' : kDn ? 'down' : (kR || kL) ? 'side' : 'neutral';
+        const chain = SLUGGER_CHAINS[atk] || SLUGGER_CHAINS.neutral, mv = chain[Math.min(ac ? ac.idx : 0, chain.length - 1)];
+        return { fd: SLUGGER_FD[mv.name] || { windup:0.05, endlag:0.1 }, dir: kR ? 1 : kL ? -1 : (player.dashDir || 1), color: mv.color,
+          fire: () => { _sluggerViaStrike = true; try { performAttackAction(); } finally { _sluggerViaStrike = false; } } };
+      }, true);
+      return;
+    }
     if (selectedCharacter === 'cb_slugger' && _onGnd) {
       const activeChain = (player._sluggerChain && player._sluggerChain.windowTimer > 0) ? player._sluggerChain : null;
       let atk, stepIdx;
@@ -12054,6 +12153,7 @@ function resetPlayer() {
       const heldMs = (window.performance ? performance.now() : Date.now()) - player._protagDashChargeStart;
       performProtagDashRelease(heldMs);
     }
+    if (e.key.toLowerCase() === 's' && window.PPStrike) window.PPStrike.release();
     if (e.key.toLowerCase() === 's' && player._protagAtkCharging) {
       player._protagAtkCharging = false;
       const heldMs = (window.performance ? performance.now() : Date.now()) - player._protagAtkChargeStart;
@@ -12229,6 +12329,7 @@ function resetPlayer() {
     };
     const releaseAction = e => {
       e.preventDefault();
+      if (window.PPStrike) window.PPStrike.release();
       if (player._protagAtkCharging) {
         player._protagAtkCharging = false;
         const heldMs = (window.performance ? performance.now() : Date.now()) - player._protagAtkChargeStart;
@@ -25988,6 +26089,8 @@ function resolveCollisions(axis, dt) {
   let _lastMode = '';
   function loop(t) {
     const now = t / 1000, dt = Math.min(0.033, now - lastTime || 0.016); lastTime = now;
+    // hit-stop: a heavy hit freezes the game for a few frames (set by the strike engine)
+    if (window._ppHitstop > 0) { window._ppHitstop -= dt; draw(); _hubLastMs = t; requestAnimationFrame(loop); return; }
     
     if (mode !== _lastMode) { _rebuildTileTypeIndex(); _lastMode = mode; }
     update(dt); draw(); _sharedRafHub(t);
@@ -39649,6 +39752,233 @@ window._claimLBro = function() {
 <script src="../qrlink/qrlink.js"></script>
 <script src="online.js"></script>
 <script>
+// ===== Strike engine: attack weight for the fighters, modelled on the Protagonist's shield form =====
+// Each move carries its own frame data:
+//   windup  - seconds of telegraph before it fires (rooted on the ground, a brief hang in the air)
+//   sweet   - the sweet spot. Time-based (the first `sweet` seconds after it fires) for lunges, dashes and
+//             projectiles, or spacing-based with `tip: [min, max]` (a foe that far in front of you) for
+//             instant punches. A sweet hit adds damage, launches harder, freezes the frame and shakes more.
+//   active  - seconds after the sweet spot that still count as this move
+//   endlag  - recovery: rooted on the ground, no new attack (a press in the last moments is buffered)
+//   push    - forward speed while it is live (the push-forward of a lunge); pushUp lifts you
+// Hold S on a chargeable move to charge it (CHARGE_MIN to CHARGE_FULL seconds): the charge replaces the
+// windup, and the hit does more damage, launches harder and pushes further, with a longer end lag.
+// Hits are found by watching foes' HP drop, so a character's own hit code stays as it is.
+(function () {
+  'use strict';
+  const BUFFER = 0.25, CHARGE_MIN = 0.22, CHARGE_FULL = 0.8;
+  let cur = null, buffered = null, charge = null, lastPX = null, lastPY = null, lastChar = null;
+  const fx = [];
+
+  function P() { return window._gamePlayer; }
+  // a press this close to the end of the current move is remembered and fires the moment it recovers
+  function bufferable() {
+    if (!cur || cur.phase === 'windup') return false;
+    const left = cur.phase === 'live' ? (cur.sweet + cur.active - cur.t) + cur.endlag : cur.endlag - cur.t;
+    return left <= BUFFER;
+  }
+  function foes() { return (window._gameEnemies || []).filter(e => e && !e.dead); }
+  function playing() { return !window._gameMode || window._gameMode() === 'play'; }
+  function pcx(p) { return p.x + p.w / 2; }
+  function pcy(p) { return p.y + p.h / 2; }
+  function ex(e) { return e.x + (e.w || 0.9) / 2; }
+  function ey(e) { return e.y + (e.h || 0.9) / 2; }
+  function shake(n) { if (window._getScreenShake && window._setScreenShake) window._setScreenShake(Math.max(window._getScreenShake() || 0, n)); }
+  function hitstop(s) { if (s > 0) window._ppHitstop = Math.max(window._ppHitstop || 0, s); }
+  function nowS() { return (window.performance ? performance.now() : Date.now()) / 1000; }
+
+  function begin(spec, power) {
+    const fd = spec.fd || {};
+    const p = P(); if (!p) return;
+    cur = {
+      fd, fire: spec.fire, dir: spec.dir || 1, power: power || 0, col: spec.color || fd.color || '#ffffff',
+      phase: 'windup', t: 0, char: window.selectedCharacter,
+      windup: power ? Math.min(0.04, fd.windup || 0) : (fd.windup || 0),
+      endlag: (fd.endlag || 0) * (1 + 0.45 * (power || 0)),
+      sweet: fd.sweet == null ? 0.06 : fd.sweet,
+      active: fd.active == null ? 0.12 : fd.active,
+    };
+    if (cur.windup <= 0) goLive();
+  }
+  function goLive() {
+    const p = P(); if (!cur || !p) return;
+    cur.snap = new Map(); for (const e of foes()) cur.snap.set(e, e.hp);
+    cur.seen = new Set();
+    cur.phase = 'live'; cur.t = 0;
+    const fd = cur.fd, pw = cur.power;
+    try { cur.fire(pw); } catch (e) { (window.__ppStrikeErr = window.__ppStrikeErr || []).push(String(e && e.stack || e)); }
+    if (fd.push) p.vx = cur.dir * fd.push * (1 + 0.5 * pw);
+    if (fd.pushUp) p.vy = Math.min(p.vy, -fd.pushUp * (1 + 0.3 * pw));
+    if (fd.armor) p.dashInvuln = Math.max(p.dashInvuln || 0, cur.sweet + 0.05);
+    if (pw >= 0.99) { shake(6); fx.push({ k: 'burst', x: pcx(p), y: pcy(p), t: 0, life: 0.3, c: cur.col }); }
+  }
+  // a foe this strike damaged: decide sweet or plain, and add the weight
+  function landed(e, p) {
+    const fd = cur.fd, pw = cur.power;
+    let sweet;
+    if (fd.tip) {
+      const along = (ex(e) - pcx(p)) * cur.dir, d = Math.hypot(ex(e) - pcx(p), ey(e) - pcy(p));
+      sweet = (fd.tipAny ? d : along) >= fd.tip[0] && (fd.tipAny ? d : along) <= fd.tip[1];
+    } else sweet = cur.sweet > 0 && cur.t <= cur.sweet + 1e-3;
+    const bonus = (sweet ? (fd.sweetDmg == null ? 1 : fd.sweetDmg) : 0) + Math.round(pw * (fd.chargeDmg == null ? 2 : fd.chargeDmg));
+    if (bonus > 0) e.hp = Math.max(0, (e.hp || 0) - bonus);
+    const kb = (sweet ? (fd.sweetKb || 1.5) : 1) * (1 + 0.6 * pw);
+    if (kb !== 1 && !e._noKnockback) {
+      if (e.vx) e.vx *= kb;
+      if (e.vy && e.vy < 0) e.vy *= Math.min(kb, 1.6);
+    }
+    if (sweet) e.stunTimer = Math.max(e.stunTimer || 0, (fd.sweetStun || 0.5) + 0.3 * pw);
+    e.hitFlash = Math.max(e.hitFlash || 0, sweet ? 0.5 : 0.3);
+    hitstop(sweet ? (fd.sweetStop || 0.09) + 0.03 * pw : (fd.stop == null ? 0.035 : fd.stop) + 0.03 * pw);
+    shake(sweet ? (fd.sweetShake || 9) : (fd.shake || 2) + 4 * pw);
+    if (sweet) {
+      fx.push({ k: 'star', x: ex(e), y: ey(e), t: 0, life: 0.35, c: cur.col });
+      fx.push({ k: 'label', x: ex(e), y: e.y - 0.2, t: 0, life: 0.7, text: 'SWEET SPOT!', c: '#ffe066' });
+    } else if (pw > 0.2) fx.push({ k: 'star', x: ex(e), y: ey(e), t: 0, life: 0.3, c: cur.col });
+    if (e.hp <= 0 && !e.dead && window._killEnemy) window._killEnemy(e);
+  }
+
+  const API = {
+    busy() { return !!cur || !!charge; },
+    canQueue() { return !charge && (!cur || bufferable()); },
+    // spec = { fd, fire(power), dir, color }. Returns true if it started now.
+    start(spec) {
+      if (!playing()) return false;
+      if (cur) {
+        if (bufferable()) buffered = { resolve: () => spec };
+        return false;
+      }
+      begin(spec, 0); return true;
+    },
+    // S pressed: resolve() returns the spec at the moment it fires (directions read then).
+    // chargeable moves start charging; others start right away.
+    press(resolve, chargeable) {
+      if (!playing() || charge) return;
+      if (cur) {
+        if (bufferable()) buffered = { resolve, chargeable };
+        return;
+      }
+      if (chargeable) charge = { start: nowS(), resolve, full: false };
+      else { const s = resolve(); if (s) begin(s, 0); }
+    },
+    // S released
+    release() {
+      if (!charge) return;
+      const c = charge; charge = null;
+      if (!playing()) return;
+      const held = nowS() - c.start;
+      const s = c.resolve(); if (!s) return;
+      if (held < CHARGE_MIN) begin(s, 0);
+      else begin(s, Math.min(1, (held - CHARGE_MIN) / (CHARGE_FULL - CHARGE_MIN)));
+    },
+    cancel() { cur = null; buffered = null; charge = null; },
+    // some fighters (the Brawler) may jump out of their recovery
+    cancelEndlag() { if (cur && cur.phase === 'endlag') cur = null; },
+    chargePower() { return charge ? Math.max(0, Math.min(1, (nowS() - charge.start - CHARGE_MIN) / (CHARGE_FULL - CHARGE_MIN))) : 0; },
+    phase() { return cur ? cur.phase : charge ? 'charge' : null; },
+  };
+  window.PPStrike = API;
+
+  (window._rafHubTickers = window._rafHubTickers || []).push(function _ppStrikeTick(dt) {
+    const p = P();
+    if (!p || !playing() || window.selectedCharacter !== lastChar) { lastChar = window.selectedCharacter; API.cancel(); lastPX = null; fx.length = 0; return; }
+    // respawned or teleported
+    if (lastPX != null && (Math.abs(p.x - lastPX) > 4 || Math.abs(p.y - lastPY) > 4)) API.cancel();
+    lastPX = p.x; lastPY = p.y;
+    for (let i = fx.length - 1; i >= 0; i--) { fx[i].t += dt; if (fx[i].t >= fx[i].life) fx.splice(i, 1); }
+
+    if (charge) {
+      // charging: you can still move, slowly
+      const cap = 3.5;
+      if (p.onGround && Math.abs(p.vx) > cap) p.vx = Math.sign(p.vx) * cap;
+      const pw = API.chargePower();
+      if (pw >= 1 && !charge.full) { charge.full = true; shake(3); fx.push({ k: 'burst', x: pcx(p), y: pcy(p), t: 0, life: 0.25, c: '#ffffff' }); }
+    }
+    if (!cur) return;
+    cur.t += dt;
+    const fd = cur.fd;
+    if (cur.phase === 'windup') {
+      if (p.onGround) { if (fd.root !== false) p.vx = 0; }
+      else if (fd.hang !== false) { p.vx *= 0.85; p.vy = Math.min(p.vy, 2); }
+      if (cur.t >= cur.windup) goLive();
+      return;
+    }
+    if (cur.phase === 'live') {
+      if (fd.push) {
+        if (cur.t <= cur.sweet) p.vx = cur.dir * fd.push * (1 + 0.5 * cur.power);
+        else p.vx = cur.dir * fd.push * 0.55 * (1 + 0.5 * cur.power);
+      }
+      for (const [e, hp0] of cur.snap) {
+        if (cur.seen.has(e)) continue;
+        if ((e.hp || 0) < hp0) {
+          cur.seen.add(e);
+          if (!e.dead) landed(e, p);
+          else { hitstop(fd.sweetStop || 0.08); shake(fd.sweetShake || 8); }   // a knockout still lands with weight
+        }
+      }
+      if (cur.t >= cur.sweet + cur.active) { cur.phase = 'endlag'; cur.t = 0; }
+      return;
+    }
+    if (cur.phase === 'endlag') {
+      if (p.onGround && fd.root !== false) p.vx = 0;
+      if (cur.t >= cur.endlag) {
+        cur = null;
+        if (buffered) { const b = buffered; buffered = null; if (b.chargeable) API.press(b.resolve, false); else { const s = b.resolve(); if (s) begin(s, 0); } }
+      }
+    }
+  });
+
+  // drawing: the windup glint, the charge ring, sweet-spot stars and labels
+  const _prevDraw = window.drifterDrawHook;
+  window.drifterDrawHook = function (ctx, now2, cam) {
+    if (_prevDraw) _prevDraw(ctx, now2, cam);
+    const p = P(); if (!p || !playing()) return;
+    if (!cur && !charge && !fx.length) return;
+    try {
+      const T = window._TILE || 40, SX = x => x * T - (cam ? cam.x : 0), SY = y => y * T - (cam ? cam.y : 0);
+      ctx.save(); ctx.lineCap = 'round';
+      const x = SX(pcx(p)), y = SY(pcy(p));
+      if (cur && cur.phase === 'windup' && cur.windup > 0) {
+        // a glint that closes in on your fist as the move gets ready
+        const u = Math.min(1, cur.t / cur.windup), hx = x + cur.dir * T * 0.45;
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35 + 0.6 * u;
+        ctx.strokeStyle = cur.col; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(hx, y, T * (0.7 - 0.5 * u), 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(hx, y, 2 + 3 * u, 0, Math.PI * 2); ctx.fill();
+      }
+      if (charge) {
+        const pw = API.chargePower(), held = nowS() - charge.start;
+        if (held >= CHARGE_MIN * 0.6) {
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = 0.25; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(x, y, T * 0.85, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = 0.9; ctx.strokeStyle = pw >= 1 ? '#ffe066' : '#7cdbff'; ctx.lineWidth = 3.5;
+          ctx.beginPath(); ctx.arc(x, y, T * 0.85, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * pw); ctx.stroke();
+          if (pw >= 1) { ctx.globalAlpha = 0.3 + 0.3 * Math.sin(nowS() * 30); ctx.beginPath(); ctx.arc(x, y, T * 1.05, 0, Math.PI * 2); ctx.stroke(); }
+        }
+      }
+      for (const f of fx) {
+        const u = f.t / f.life, a = 1 - u, fx0 = SX(f.x), fy0 = SY(f.y);
+        if (f.k === 'star') {
+          ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
+          for (let i = 0; i < 8; i++) { const an = i * Math.PI / 4 + 0.3, r1 = T * 0.15, r2 = T * (0.4 + u * 0.6) * (i % 2 ? 0.6 : 1); ctx.beginPath(); ctx.moveTo(fx0 + Math.cos(an) * r1, fy0 + Math.sin(an) * r1); ctx.lineTo(fx0 + Math.cos(an) * r2, fy0 + Math.sin(an) * r2); ctx.stroke(); }
+          ctx.strokeStyle = f.c; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(fx0, fy0, T * (0.2 + u * 0.7), 0, Math.PI * 2); ctx.stroke();
+        } else if (f.k === 'burst') {
+          ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a; ctx.strokeStyle = f.c; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(fx0, fy0, T * (0.4 + u * 1.2), 0, Math.PI * 2); ctx.stroke();
+        } else if (f.k === 'label') {
+          ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = a;
+          ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = '#16131c';
+          const ty = fy0 - f.t * 30 - 14;
+          ctx.strokeText(f.text, fx0, ty); ctx.fillStyle = f.c; ctx.fillText(f.text, fx0, ty);
+        }
+      }
+      ctx.restore();
+    } catch (e) {}
+  };
+})();
+</script>
+<script>
 // ===== Press Play Prodigy: Press Play exclusive character (only from the Press Play shop) =====
 // Registered the same way as the other add-on capsule characters. Its tier ('pressplay')
 // is in no capsule pool, so it can never be rolled; it is given straight to you.
@@ -39774,6 +40104,35 @@ window._claimLBro = function() {
       ground: { neutral: { name: 'Tuning Fork', cd: 0.5 }, side: { name: 'Sonar Ping', cd: 0.9 }, up: { name: 'Harmonic Orbit', cd: 1.4 }, down: { name: 'Standing Wave', cd: 1.6 } },
       air:    { neutral: { name: 'Echo Shot', cd: 0.6 }, side: { name: 'Phase Shift', cd: 1.0 }, up: { name: 'Overtone Lift', cd: 0.9 }, down: { name: 'Shatter Dive', cd: 1.0 } },
     },
+  };
+  // frame data per move (strike engine): Crescendo is quick, Titan Bass winds up and recovers heavy,
+  // Deep Resonance sits between. Projectiles and fields have no sweet spot beyond point blank;
+  // the dives keep their hit window open until they land.
+  const PFD = {
+    cres_ground_neutral:  { windup:0.04, sweet:0.05, active:0.25, endlag:0.08 },
+    cres_ground_side:     { windup:0.06, sweet:0.08, active:0.16, endlag:0.14, armor:true, sweetDmg:1, sweetKb:1.4 },
+    cres_ground_up:       { windup:0.06, sweet:0.0,  active:0.6,  endlag:0.12 },
+    cres_ground_down:     { windup:0.12, sweet:0.0,  active:0.3,  endlag:0.20 },
+    cres_air_neutral:     { windup:0.05, sweet:0.06, active:0.30, endlag:0.10, root:false },
+    cres_air_side:        { windup:0.05, sweet:0.08, active:0.20, endlag:0.12, root:false, sweetKb:1.4 },
+    cres_air_up:          { windup:0.03, sweet:0.0,  active:0.30, endlag:0.10, root:false, hang:false },
+    cres_air_down:        { windup:0.08, sweet:0.0,  active:1.2,  endlag:0.14, root:false, hang:false, stop:0.06 },
+    titan_ground_neutral: { windup:0.14, sweet:0.07, active:0.15, endlag:0.22, sweetDmg:2, sweetKb:1.6, sweetStop:0.12, sweetShake:13 },
+    titan_ground_side:    { windup:0.16, sweet:0.10, active:0.30, endlag:0.26, armor:true, sweetDmg:2, sweetKb:1.5, sweetStop:0.12, sweetShake:13 },
+    titan_ground_up:      { windup:0.14, sweet:0.08, active:0.15, endlag:0.26, sweetDmg:2, sweetKb:1.5, sweetStop:0.12, sweetShake:13 },
+    titan_ground_down:    { windup:0.18, sweet:0.0,  active:0.6,  endlag:0.30, stop:0.06, shake:5 },
+    titan_air_neutral:    { windup:0.12, sweet:0.0,  active:0.8,  endlag:0.20, root:false, stop:0.06 },
+    titan_air_side:       { windup:0.14, sweet:0.0,  active:1.0,  endlag:0.22, root:false },
+    titan_air_up:         { windup:0.06, sweet:0.06, active:0.2,  endlag:0.14, root:false, hang:false },
+    titan_air_down:       { windup:0.14, sweet:0.0,  active:1.2,  endlag:0.24, root:false, hang:false, stop:0.08, shake:6 },
+    deep_ground_neutral:  { windup:0.05, sweet:0.05, active:0.25, endlag:0.10 },
+    deep_ground_side:     { windup:0.08, sweet:0.0,  active:0.5,  endlag:0.14 },
+    deep_ground_up:       { windup:0.10, sweet:0.0,  active:0.6,  endlag:0.16 },
+    deep_ground_down:     { windup:0.12, sweet:0.0,  active:0.3,  endlag:0.20 },
+    deep_air_neutral:     { windup:0.05, sweet:0.05, active:0.25, endlag:0.10, root:false },
+    deep_air_side:        { windup:0.05, sweet:0.0,  active:0.3,  endlag:0.12, root:false },
+    deep_air_up:          { windup:0.03, sweet:0.0,  active:0.3,  endlag:0.10, root:false, hang:false },
+    deep_air_down:        { windup:0.10, sweet:0.0,  active:1.2,  endlag:0.18, root:false, hang:false, stop:0.07 },
   };
   const DROP_DMG = 20;
   const DROP_BUILDS = { cres: 0.6, titan: 0.85, deep: 0.7 }, DROP_FXLEN = { cres: 0.9, titan: 1.1, deep: 1.0 };
@@ -40158,6 +40517,7 @@ window._claimLBro = function() {
     const md = curMode();
     const mv = MOVES[md.id][stance][dir];
     if (stance === 'air' && dir === 'up' && airUpUsed) { msg(md.icon + ' ' + mv.name + ' is used up until you land'); return; }
+    if (window.PPStrike && !window.PPStrike.canQueue()) return;   // still winding up or recovering
     const b = beatInfo();
     if (b.on) { streak = (b.idx - lastBeatIdx <= 2) ? streak + 1 : 1; lastBeatIdx = b.idx; addHype(1); }
     else streak = 0;
@@ -40172,9 +40532,17 @@ window._claimLBro = function() {
       if (b.on) { aftershocks.push({ idx: b.idx + 1, x: pcx(p), y: p.y + p.h }); tag = ' + AFTERSHOCK'; }
     } else if (b.on) tag = ' +1 RESONANCE';
     atkCD = mv.cd;
-    ACT[md.id + '_' + stance + '_' + dir](p, face, m, b.on ? Math.min(streak, 7) : 0, b.on, sc);
-    if (b.on) fx.push({ k: 'label', x: pcx(p), y: p.y - 0.5, t: 0, life: 0.7, text: (streak > 1 ? 'ON BEAT x' + streak : 'ON BEAT') + (md.id === 'cres' && dyn ? ' ' + DYN[dyn] : '') });
-    msg(md.icon + ' ' + mv.name.toUpperCase() + '!' + (b.on ? ' ✨ ON BEAT' + (streak > 1 ? ' x' + streak : '') : '') + tag);
+    // the beat is judged on the press; the move itself lands after its windup (strike engine)
+    const key = md.id + '_' + stance + '_' + dir, ni = b.on ? Math.min(streak, 7) : 0, on = b.on;
+    const lbl = (streak > 1 ? 'ON BEAT x' + streak : 'ON BEAT') + (md.id === 'cres' && dyn ? ' ' + DYN[dyn] : '');
+    const text = md.icon + ' ' + mv.name.toUpperCase() + '!' + (b.on ? ' ✨ ON BEAT' + (streak > 1 ? ' x' + streak : '') : '') + tag;
+    const go = () => {
+      const q = window._gamePlayer; if (!q || window.selectedCharacter !== ID || drop) return;
+      ACT[key](q, face, m, ni, on, sc);
+      if (on) fx.push({ k: 'label', x: pcx(q), y: q.y - 0.5, t: 0, life: 0.7, text: lbl });
+      msg(text);
+    };
+    if (window.PPStrike) window.PPStrike.start({ fd: PFD[key], dir: face, color: md.pal[1], fire: go }); else go();
   };
 
   // ---- EQ switch (G / 🎛️) ----
@@ -41365,6 +41733,17 @@ window._claimLBro = function() {
     ground: { neutral: { name: 'Tape Whip', cd: 0.45 }, side: { name: 'Fast-Forward Dash', cd: 0.9 }, up: { name: 'Spool Launch', cd: 1.0 }, down: { name: 'Tangle', cd: 1.4 } },
     air:    { neutral: { name: 'Ribbon Lash', cd: 0.6 }, side: { name: 'Tape Zip', cd: 0.9 }, up: { name: 'Rewind Climb', cd: 0.8 }, down: { name: 'Eject Slam', cd: 1.0 } },
   };
+  // Side A frame data (strike engine): the whip cracks hardest at the very end of the tape
+  const MFD = {
+    ground_neutral: { windup:0.06, active:0.10, endlag:0.10, push:2, tip:[2.0, 2.95], sweetDmg:1, sweetKb:1.5 },
+    ground_side:    { windup:0.08, sweet:0.08, active:0.14, endlag:0.18, armor:true, sweetDmg:1, sweetKb:1.5 },
+    ground_up:      { windup:0.12, sweet:0.07, active:0.12, endlag:0.24, sweetDmg:2, sweetKb:1.4, sweetStop:0.11, sweetShake:11 },
+    ground_down:    { windup:0.14, active:0.12, endlag:0.26, tip:[2.2, 3.3], tipAny:true, sweetDmg:1, sweetKb:1.2 },
+    air_neutral:    { windup:0.06, active:0.12, endlag:0.12, root:false, tip:[1.2, 1.9], tipAny:true, sweetDmg:1, sweetKb:1.4 },
+    air_side:       { windup:0.05, sweet:0.0, active:0.4, endlag:0.14, root:false },
+    air_up:         { windup:0.03, sweet:0.0, active:0.2, endlag:0.10, root:false, hang:false },
+    air_down:       { windup:0.08, sweet:0.0, active:1.2, endlag:0.18, root:false, hang:false, stop:0.07, shake:5 },
+  };
   const TAPE_MAX = 10, FF_LEN = 6;
   const RIBBON_RANGE = 8, RIBBON_SPEED = 38, ZIP_RANGE = 6;
   const SWING_G = 36, SWING_PUMP = 16, SWING_MAX = 21, REEL_SPEED = 8, MIN_LEN = 1.0;
@@ -41690,15 +42069,29 @@ window._claimLBro = function() {
       atkCD = 0.22 * cdM;
       return;
     }
-    const k = keyDirs();
-    const stance = p.onGround ? 'ground' : 'air';
-    const dir = (k.down && !k.up) ? 'down' : (k.up && !k.down) ? 'up' : (k.left || k.right) ? 'side' : 'neutral';
-    const mv = MOVES[stance][dir];
-    if (stance === 'air' && dir === 'up' && airUpUsed) { msg('📼 ' + mv.name + ' is used up until you land'); return; }
-    if (rope) dropRope();
-    atkCD = mv.cd * cdM;
-    ACT[stance + '_' + dir](p, facing(p, k));
-    msg('📼 ' + mv.name.toUpperCase() + '!');
+    const pick = () => {
+      const q = window._gamePlayer; if (!q || window.selectedCharacter !== ID || curForm().id !== 'a') return null;
+      const k = keyDirs();
+      const stance = q.onGround ? 'ground' : 'air';
+      const dir = (k.down && !k.up) ? 'down' : (k.up && !k.down) ? 'up' : (k.left || k.right) ? 'side' : 'neutral';
+      const mv = MOVES[stance][dir];
+      if (stance === 'air' && dir === 'up' && airUpUsed) { msg('📼 ' + mv.name + ' is used up until you land'); return null; }
+      const key = stance + '_' + dir, f = facing(q, k);
+      return { key, mv, f };
+    };
+    const fire = (sel) => {
+      const q = window._gamePlayer; if (!q) return;
+      if (rope) dropRope();
+      atkCD = sel.mv.cd * (ff ? 0.5 : 1);
+      ACT[sel.key](q, sel.f);
+      msg('📼 ' + sel.mv.name.toUpperCase() + '!');
+    };
+    if (window.PPStrike) {
+      // windup, sweet spot and end lag per move; holding S charges Side A moves
+      window.PPStrike.press(() => { const sel = pick(); return sel && { fd: MFD[sel.key], dir: sel.f, color: PALETTE[0], fire: () => fire(sel) }; }, true);
+      return;
+    }
+    const sel = pick(); if (sel) fire(sel);
   };
 
   // ---- flip the tape (G / 📼) ----
