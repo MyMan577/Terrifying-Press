@@ -262,7 +262,7 @@ var $=function(s){return document.querySelector(s);};
 var INK='#1c2a39', GOLD='#ffc233';
 var cv=$('#cv'), ctx=cv.getContext('2d');
 var W=0,H=0,DPR=1,S=44,groundY=0;
-var GRAV=24,JUMP=8.5,WALLJ=12,HOVER=0.5;
+var GRAV=24,JUMP=8.5,WALLJ=12,HOVER=0.5,RAMWALL=1.1;   // Ram King walls: low enough for a normal hop to clear
 
 function resize(){
   var r=cv.getBoundingClientRect();
@@ -622,7 +622,7 @@ function buildStage(n){
   top=sn(clamp(top+[-1,0,1][Math.floor(rnd()*3)],0,5));
   st.arenaX=x;st.arenaTop=top;st.arenaEnd=x+18;
   isle(x,21.6,top);
-  if(bossType(n)==='charger')[4,8,12].forEach(function(o){st.blocks.push({x0:x+o,x1:x+o+1.2,y0:top,y1:top+2.4,kind:'block'});});
+  if(bossType(n)==='charger')[4,8,12].forEach(function(o){st.blocks.push({x0:x+o,x1:x+o+1.2,y0:top,y1:top+RAMWALL,kind:'block'});});
   st.solids=st.islands.concat(st.blocks);
   st.coinTotal=st.coins.length;
   return st;
@@ -1092,13 +1092,13 @@ function updBoss2(g,b,dt){
       var fx=b.x+b.dir*b.w/2,hit=null,bl=A.blocks;
       for(i=0;i<bl.length;i++){o=bl[i];if(fx<=o.x1&&b.x>o.x0){hit=o;break;}}
       if(hit||fx<=A.arenaX+0.3){
-        if(hit){A.blocks.splice(A.blocks.indexOf(hit),1);A.solids.splice(A.solids.indexOf(hit),1);burst(g,hit.x1,hit.y0+1.2,'#9aa7b3',18,7);}
+        if(hit){A.blocks.splice(A.blocks.indexOf(hit),1);A.solids.splice(A.solids.indexOf(hit),1);burst(g,hit.x1,hit.y0+RAMWALL/2,'#9aa7b3',18,7);}
         b.x=Math.max(b.x,A.arenaX+b.w/2+0.3);b.cx=0;b.state='daze';b.st=ph2?2.4:3.0;
         g.shake=Math.min(1.4,g.shake+1);g.hitStop=Math.max(g.hitStop,0.08);beep(60,.4,'sawtooth',.1,.4);
         burst(g,fx,b.y+0.6,'#ffffff',14,6);
         for(i=0;i<8&&A.blocks.length<3;i++){
           var nx=A.arenaX+3+Math.random()*(A.arenaEnd-A.arenaX-8);
-          if(Math.abs(p.x-nx)>2.2&&Math.abs(b.x-nx)>b.w/2+1.6){var nb={x0:nx,x1:nx+1.2,y0:A.arenaTop,y1:A.arenaTop+2.4,kind:'block'};A.blocks.push(nb);A.solids.push(nb);}
+          if(Math.abs(p.x-nx)>2.2&&Math.abs(b.x-nx)>b.w/2+1.6){var nb={x0:nx,x1:nx+1.2,y0:A.arenaTop,y1:A.arenaTop+RAMWALL,kind:'block'};A.blocks.push(nb);A.solids.push(nb);}
         }
       }
     }
