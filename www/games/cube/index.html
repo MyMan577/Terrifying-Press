@@ -110,44 +110,71 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
 .ach .ai{font-size:22px;width:28px;text-align:center}.ach div{flex:1;min-width:0}.ach b{font-family:var(--display);font-weight:400;font-size:16px;display:block}.ach small{color:var(--muted);font-size:12px}
 .ach .rw{font-family:var(--display);font-size:14px}.ach.done{background:#fff6d6}.ach:not(.done) .ai{filter:grayscale(1);opacity:.45}
 .hearts .gi{font-size:22px;font-variant-emoji:emoji;text-shadow:none;margin-left:4px;align-self:center}
-/* character sheet: stats left, knight centre, weapons right, accessory slots along the bottom */
-#sChar{z-index:4}
-.sheet{width:min(100%,460px);gap:10px;padding:14px}
-.shead{display:flex;align-items:center;gap:8px}
-.shead h2{flex:1;min-width:0;font-size:30px}
-.shead .icon{font-size:16px;padding:6px 12px}
-.sbody{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr) 66px;gap:8px;align-items:start}
-.scol{display:flex;flex-direction:column;gap:8px;min-width:0}
-.stat b{font-family:var(--display);font-weight:400;font-size:15px;display:flex;justify-content:space-between;gap:4px}
-.stat b span{font-variant-numeric:tabular-nums}
-.stat small{display:block;color:var(--muted);font-size:11px;font-weight:700;line-height:1.2;margin-top:2px}
-.pp{display:flex;gap:2px;margin-top:2px}
-.pp i{flex:1 1 0;max-width:11px;height:9px;border:2px solid var(--ink);border-radius:3px;background:#fff;box-sizing:border-box}
-.pp i.b{background:#4a8fe0}.pp i.x{background:var(--grass)}.pp i.m{background:#ffb3b3}
-.sstage{display:flex;flex-direction:column;align-items:stretch;gap:6px;min-width:0}
-#chCv{position:static;inset:auto;width:100%;height:178px;border:3px solid var(--ink);border-radius:14px;box-sizing:border-box;background:linear-gradient(#bfe6f7,#eaf7e3)}
-.wdesc{font-size:12px;line-height:1.3;color:var(--muted);text-align:center}
-.wdesc b{display:block;font-family:var(--display);font-weight:400;font-size:17px;color:var(--ink)}
-.wdesc .wt{display:block;margin-top:2px;font-weight:700;color:var(--ink);font-size:11px}
-.wpick{display:flex;flex-direction:column;align-items:center;gap:1px;padding:4px 2px;border:3px solid var(--ink);border-radius:12px;background:#f4f8fb;cursor:pointer;color:var(--ink);font-family:var(--body);font-size:10px;font-weight:700;line-height:1.1;min-width:0}
-.wpick canvas{position:static;inset:auto;width:44px;height:44px;display:block}
-.wpick.on{background:var(--coin);box-shadow:0 3px 0 var(--ink)}
-.slots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.slot{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:66px;padding:4px;border:3px dashed var(--ink);border-radius:12px;background:#f4f8fb;cursor:pointer;color:var(--ink);font-family:var(--body);font-size:11px;font-weight:700;line-height:1.15;min-width:0;position:relative}
-.slot .ei{font-size:24px;line-height:1}
-.slot.full{border-style:solid;background:#fff6d6}
-.slot.sel{background:var(--coin);border-style:solid;box-shadow:0 3px 0 var(--ink)}
-.slot:disabled{opacity:.5;cursor:default}
-.slot .dot,.accg .dot{position:absolute;top:-6px;right:-6px;background:var(--hurt);color:#fff;border:2px solid var(--ink);border-radius:999px;font-size:10px;padding:0 5px;font-family:var(--display)}
-.accg{display:grid;grid-template-columns:repeat(auto-fill,minmax(122px,1fr));gap:6px;max-height:30vh;overflow-y:auto;padding:6px 6px 2px;border:3px solid var(--ink);border-radius:12px;background:#f4f8fb}
-.acc{display:flex;align-items:center;gap:6px;text-align:left;padding:5px 6px;border:3px solid var(--ink);border-radius:10px;background:#fff;cursor:pointer;color:var(--ink);font-family:var(--body);min-width:0;position:relative}
-.acc .ei{font-size:20px;flex:none}
-.acc span{min-width:0}.acc b{display:block;font-family:var(--display);font-weight:400;font-size:13px;line-height:1.1}.acc small{display:block;font-size:10px;color:var(--muted);font-weight:700;line-height:1.15}
-.acc.on{background:var(--coin)}.acc.on small{color:var(--ink)}
-.acc.lock{background:#e5eaee;cursor:default}.acc.lock .ei{filter:grayscale(1);opacity:.4}
-.acc.rm{justify-content:center;font-family:var(--display);font-size:14px}
-#chMsg{min-height:1.2em;font-weight:700;color:var(--hurt);font-size:13px;text-align:center}
-@media (max-width:360px){.sbody{grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) 58px}#chCv{height:160px}.shead h2{font-size:26px}}
+/* character screen: full-screen, knight on a pedestal in the middle, stats left, weapons right, accessory sockets along the bottom */
+#sChar{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;color:#fff;
+  background:radial-gradient(120% 70% at 50% 38%,#3d5a9e 0%,#26365f 55%,#161f36 100%);
+  padding:calc(10px + env(safe-area-inset-top,0px)) max(14px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(14px,env(safe-area-inset-left,0px));box-sizing:border-box;gap:8px;overflow:hidden}
+.ol{text-shadow:0 3px 0 var(--ink),2px 0 0 var(--ink),-2px 0 0 var(--ink),0 -2px 0 var(--ink),2px 2px 0 var(--ink),-2px 2px 0 var(--ink)}
+.cs-top{display:flex;align-items:center;gap:8px;padding:0 4px}
+.cs-title{flex:1;min-width:0;text-align:center}
+.cs-title h2{margin:0;font-family:var(--display);font-weight:400;font-size:34px;line-height:1;letter-spacing:.01em}
+.cs-title span{display:inline-block;margin-top:4px;font-family:var(--display);font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#cfe0ff}
+.cs-title span.own{color:var(--coin)}
+.rb{flex:none;width:42px;height:42px;border-radius:50%;border:3px solid var(--ink);background:rgba(255,255,255,.14);color:#fff;font-family:var(--display);font-size:24px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.rb:active{transform:scale(.92)}
+.rb.x{background:var(--hurt);font-size:18px;box-shadow:0 3px 0 var(--ink)}
+.cs-mid{position:relative;flex:1 1 auto;min-height:250px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) minmax(0,1fr);gap:8px;align-items:center}
+#chCv{position:absolute;inset:0;width:100%;height:100%;z-index:0}
+.cs-pan{position:relative;z-index:1;align-self:center;height:min(100%,330px);box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-around;gap:8px;padding:12px 10px;
+  background:rgba(10,16,30,.38);border:2px solid rgba(255,255,255,.14);border-radius:18px}
+.cs-stats{pointer-events:none}
+.st b{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--display);font-weight:400;font-size:16px;line-height:1}
+.st b em{font-style:normal;font-variant-numeric:tabular-nums}
+.st b em.bon{color:#8fff7a}.st b em.pen{color:#ff9a9a}
+.sbar{position:relative;height:13px;margin-top:4px;border:2px solid var(--ink);border-radius:999px;background:rgba(10,16,30,.55);overflow:hidden;box-shadow:0 2px 0 var(--ink)}
+.sbar i{position:absolute;top:0;bottom:0;left:0;border-radius:999px}
+.sbar i.bn{background:repeating-linear-gradient(-45deg,#8fff7a 0 4px,#5fd34a 4px 8px)}
+.sbar i.ls{background:repeating-linear-gradient(-45deg,rgba(255,90,90,.55) 0 4px,transparent 4px 8px)}
+.sbar i.bs{box-shadow:inset 0 3px 0 rgba(255,255,255,.35)}
+.sbar::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 calc(100%/9 - 2px),rgba(10,16,30,.6) calc(100%/9 - 2px) calc(100%/9))}
+.st small{display:block;margin-top:3px;font-size:11px;font-weight:700;color:#cfe0ff}
+.cs-weps{align-items:center}
+.cs-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cs-btns .btn{font-size:20px;padding:10px 6px}
+.ws{display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:0;padding:0;cursor:pointer;color:#fff;font-family:var(--display);font-size:11px;width:68px}
+.ws i{width:56px;height:56px;border-radius:50%;border:3px solid var(--ink);background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;box-sizing:border-box}
+.ws canvas{position:static;inset:auto;width:42px;height:42px;display:block}
+.ws.on i{background:var(--coin);box-shadow:0 0 0 3px #fff6c2,0 0 18px 4px rgba(255,194,51,.7)}
+.ws span{line-height:1.05;text-align:center}
+.cs-wd{text-align:center;min-height:62px}
+.cs-wd b{display:block;font-family:var(--display);font-weight:400;font-size:22px;line-height:1.1}
+.cs-wd p{margin:2px auto 5px;max-width:30ch;font-size:13px;line-height:1.3;color:#dbe6ff}
+.tags{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+.tags span{font-family:var(--display);font-size:12px;letter-spacing:.04em;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.35);border-radius:999px;padding:2px 9px}
+.cs-lbl{font-family:var(--display);font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:#cfe0ff;text-align:center;margin-bottom:6px}
+.slots{display:flex;justify-content:center;gap:18px}
+.slot{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:0;padding:0;cursor:pointer;color:#fff;font-family:var(--display);font-size:12px;width:84px}
+.slot i{width:64px;height:64px;border-radius:50%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:30px;border:3px dashed rgba(255,255,255,.45);color:rgba(255,255,255,.6);background:rgba(10,16,30,.35)}
+.slot.full i{border:3px solid var(--ink);background:radial-gradient(circle at 40% 35%,#fff6c2,#ffc233 70%);box-shadow:0 0 0 3px #e0a21a,0 4px 0 3px var(--ink)}
+.slot.sel i{border:3px solid #fff;box-shadow:0 0 0 3px var(--coin),0 0 18px 4px rgba(255,194,51,.7)}
+.slot span{line-height:1.05;text-align:center;max-width:84px}
+.slot:disabled{opacity:.45;cursor:default}
+.dot{position:absolute;top:-4px;right:2px;background:var(--hurt);color:#fff;border:2px solid var(--ink);border-radius:999px;font-size:10px;padding:0 5px;font-family:var(--display);font-style:normal}
+#chMsg{min-height:1.2em;font-weight:700;color:var(--coin);font-size:13px;text-align:center}
+#sChar .btn.alt{background:rgba(255,255,255,.9)}
+.cs-pick{position:absolute;left:0;right:0;bottom:0;z-index:2;max-height:62%;display:flex;flex-direction:column;gap:8px;background:#1c2a39;border-top:3px solid var(--ink);border-radius:20px 20px 0 0;box-shadow:0 -6px 24px rgba(0,0,0,.45);
+  padding:12px max(14px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(14px,env(safe-area-inset-left,0px));animation:up .2s ease-out}
+@keyframes up{from{transform:translateY(40%);opacity:0}}
+.cs-pick header{display:flex;align-items:center;justify-content:space-between;font-family:var(--display);font-size:18px}
+.cs-pick header button{font-family:var(--display);font-size:14px;color:#fff;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.35);border-radius:999px;padding:4px 12px;cursor:pointer}
+.accg{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;overflow-y:auto;padding:4px 2px}
+.acc{position:relative;display:flex;align-items:center;gap:8px;text-align:left;padding:7px 8px;border:2px solid rgba(255,255,255,.18);border-radius:14px;background:rgba(255,255,255,.08);cursor:pointer;color:#fff;font-family:var(--body);min-width:0}
+.acc .ei{flex:none;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;background:radial-gradient(circle at 40% 35%,#fff6c2,#ffc233 70%);border:2px solid var(--ink)}
+.acc b{display:block;font-family:var(--display);font-weight:400;font-size:14px;line-height:1.1}
+.acc small{display:block;font-size:11px;color:#b9c8e6;font-weight:700;line-height:1.2}
+.acc.on{border-color:var(--coin);background:rgba(255,194,51,.18)}
+.acc.lock{cursor:default;opacity:.5}.acc.lock .ei{background:#3a475a;filter:grayscale(1)}
+@media (prefers-reduced-motion:reduce){.cs-pick{animation:none}}
 </style>
 
 <div id="game">
@@ -189,20 +216,23 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
     </div>
   </section>
 
-  <section class="screen" id="sChar" hidden>
-    <div class="card sheet" role="dialog" aria-labelledby="chName">
-      <div class="shead"><h2 id="chName">Knight</h2><button class="icon" id="chX" type="button">Close</button></div>
-      <div class="sbody">
-        <div class="scol" id="chStats"></div>
-        <div class="sstage"><canvas id="chCv"></canvas><div class="wdesc" id="chWDesc"></div></div>
-        <div class="scol" id="chWeps"></div>
-      </div>
-      <h3>Accessories</h3>
-      <div class="slots" id="chSlots"></div>
-      <div class="accg" id="chPick" hidden></div>
-      <div id="chMsg" role="status"></div>
-      <button class="btn" id="chAct" type="button">Equip</button>
+  <section id="sChar" role="dialog" aria-labelledby="chName" hidden>
+    <div class="cs-top">
+      <button class="rb" id="chPrev" type="button" aria-label="Previous knight">‹</button>
+      <div class="cs-title"><h2 id="chName" class="ol">Knight</h2><span id="chSub"></span></div>
+      <button class="rb" id="chNext" type="button" aria-label="Next knight">›</button>
     </div>
+    <div class="cs-mid">
+      <canvas id="chCv"></canvas>
+      <div class="cs-pan cs-stats" id="chStats"></div>
+      <div class="cs-gap"></div>
+      <div class="cs-pan cs-weps" id="chWeps"></div>
+    </div>
+    <div class="cs-wd" id="chWDesc"></div>
+    <div><div class="cs-lbl">Accessories</div><div class="slots" id="chSlots"></div></div>
+    <div id="chMsg" role="status"></div>
+    <div class="cs-btns"><button class="btn alt" id="chX" type="button">Back</button><button class="btn" id="chAct" type="button">Equip</button></div>
+    <div class="cs-pick" id="chPick" hidden></div>
   </section>
 
   <section class="screen" id="sOver" hidden>
@@ -1427,56 +1457,61 @@ function renderShop(){
   });
   box.scrollLeft=sl;
 }
-/* ---------- character sheet ---------- */
+/* ---------- character screen ---------- */
 var SH={k:null,w:0,slot:-1,open:false};
+var STATC={hp:'#ff5a6e',spd:'#3fd0ff',pow:'#ff9a2e',luck:'#7be36a'};
 function openSheet(k){
   SH.k=k;SH.slot=-1;SH.open=true;
   SH.w=save.chars.indexOf(k)>=0?Math.min(save.wsel[k]||0,CHARS[k].weapons.length-1):0;
   $('#sChar').hidden=false;$('#chMsg').textContent='';
   sizeSheet();renderSheet();beep(520,.05,'triangle',.04,1.3);
 }
+function stepSheet(d){var ks=Object.keys(CHARS),i=(ks.indexOf(SH.k)+d+ks.length)%ks.length;openSheet(ks[i]);}
 function closeSheet(){SH.open=false;$('#sChar').hidden=true;renderShop();renderSwitch();}
 function sizeSheet(){
   var c=$('#chCv'),r=c.getBoundingClientRect(),d=Math.min(window.devicePixelRatio||1,2);
   c.width=Math.max(1,Math.round(r.width*d));c.height=Math.max(1,Math.round(r.height*d));
+  var a=$('#chStats').getBoundingClientRect(),b=$('#chWeps').getBoundingClientRect();
+  SH.L=(a.right-r.left)*d;SH.R=(b.left-r.left)*d;
 }
 function sheetSay(t){var m=$('#chMsg');m.textContent=t;clearTimeout(sheetSay.t);sheetSay.t=setTimeout(function(){m.textContent='';},2600);}
 function reachWord(wp){return wp.shot?'Ranged':wp.reach>=1.8?'Very long reach':wp.reach>=1.25?'Long reach':wp.reach>=0.9?'Medium reach':'Short reach';}
 function renderSheet(){
   var k=SH.k,d=CHARS[k],owned=save.chars.indexOf(k)>=0,eq=save.char===k;
   $('#chName').textContent=d.name;
-  // stats: blue = base, green = from accessories, pink = taken away by one
+  var sub=$('#chSub');sub.textContent=eq?'Equipped':owned?'Owned':d.cost+' coins';sub.className=owned?'own':'';
+  // stats: solid = base, green stripes = from accessories, red stripes = taken away by one
   var base=charStats(k,true),tot=owned?charStats(k):base,h='';
   STATS.forEach(function(st){
-    var q=st[0],b=base[q],t=tot[q],pips='';
-    for(var i=1;i<=STATMAX;i++)pips+='<i class="'+(i<=Math.min(b,t)?'b':i<=t?'x':i<=b?'m':'')+'"></i>';
-    h+='<div class="stat"><b>'+st[1]+'<span>'+t+(t>b?' ▲':t<b?' ▼':'')+'</span></b><div class="pp">'+pips+'</div><small>'+statText(q,t)+'</small></div>';
+    var q=st[0],b=base[q],t=tot[q],pc=function(v){return (100*v/STATMAX)+'%';},c=STATC[q];
+    h+='<div class="st"><b class="ol">'+st[1]+'<em class="'+(t>b?'bon':t<b?'pen':'')+'">'+t+'</em></b><div class="sbar">'+
+      (t>b?'<i class="bn" style="width:'+pc(t)+'"></i>':'')+(t<b?'<i class="ls" style="width:'+pc(b)+'"></i>':'')+
+      '<i class="bs" style="width:'+pc(Math.min(b,t))+';background:'+c+'"></i></div><small>'+statText(q,t)+'</small></div>';
   });
   $('#chStats').innerHTML=h;
   // weapons
   var wb=$('#chWeps');wb.innerHTML='';
   d.weapons.forEach(function(wk,i){
-    var b=document.createElement('button');b.type='button';b.className='wpick'+(i===SH.w?' on':'');
-    var c=document.createElement('canvas');c.width=88;c.height=88;b.appendChild(c);wicon(c,wk);
-    if(wk==='none'){var cx=c.getContext('2d');cx.font='52px system-ui';cx.textAlign='center';cx.textBaseline='middle';cx.fillText('🪖',44,48);}
-    b.appendChild(document.createTextNode(WEAPONS[wk].name));
+    var b=document.createElement('button');b.type='button';b.className='ws'+(i===SH.w?' on':'');
+    var ring=document.createElement('i'),c=document.createElement('canvas');c.width=84;c.height=84;ring.appendChild(c);b.appendChild(ring);
+    if(wk==='none'){var cx=c.getContext('2d');cx.font='50px system-ui';cx.textAlign='center';cx.textBaseline='middle';cx.fillText('🪖',42,46);}else wicon(c,wk);
+    var nm=document.createElement('span');nm.className='ol';nm.textContent=WEAPONS[wk].name;b.appendChild(nm);
     b.addEventListener('click',function(){SH.w=i;if(owned){save.wsel[k]=i;persist();}beep(520,.05,'triangle',.04,1.3);renderSheet();});
     wb.appendChild(b);
   });
-  var wp=WEAPONS[d.weapons[SH.w]];
-  $('#chWDesc').innerHTML='<b>'+wp.name+'</b>'+wp.desc+'<span class="wt">Damage '+(wp.shot==='jav'||wp.shot==='bolt'?2:wp.dmg)+' · '+reachWord(wp)+'</span>';
-  // accessory slots
+  var wp=WEAPONS[d.weapons[SH.w]],dm=wp.shot==='jav'||wp.shot==='bolt'?2:wp.dmg;
+  $('#chWDesc').innerHTML='<b class="ol">'+wp.name+'</b><p>'+wp.desc+'</p><div class="tags"><span>Damage '+dm+'</span><span>'+reachWord(wp)+'</span></div>';
+  // accessory sockets
   var sl=$('#chSlots'),gear=slotsOf(k);sl.innerHTML='';
   gear.forEach(function(id,i){
     var a=id&&save.acc.indexOf(id)>=0?ACCM[id]:null,b=document.createElement('button');
     b.type='button';b.className='slot'+(a?' full':'')+(SH.slot===i?' sel':'');b.disabled=!owned;
-    b.innerHTML=a?'<span class="ei">'+a.icon+'</span>'+a.name:'<span class="ei">＋</span>'+(owned?'Empty':'Locked');
+    b.innerHTML='<i>'+(a?a.icon:'+')+'</i><span class="ol">'+(a?a.name:owned?'Empty':'Locked')+'</span>';
     b.setAttribute('aria-label','Accessory slot '+(i+1)+': '+(a?a.name:'empty'));
     b.addEventListener('click',function(){SH.slot=SH.slot===i?-1:i;renderSheet();});
     sl.appendChild(b);
   });
   renderPick();
-  // action button
   var act=$('#chAct');
   act.textContent=!owned?'Buy for '+d.cost+' coins':eq?'Equipped ✓':'Equip '+d.name;
   act.className='btn'+(eq?' alt':'');
@@ -1484,24 +1519,28 @@ function renderSheet(){
 function renderPick(){
   var box=$('#chPick'),k=SH.k;
   box.hidden=SH.slot<0;if(box.hidden)return;
-  var gear=slotsOf(k),cur=gear[SH.slot];box.innerHTML='';
-  if(cur){var rm=document.createElement('button');rm.type='button';rm.className='acc rm';rm.textContent='Take off';
-    rm.addEventListener('click',function(){gear[SH.slot]=null;persist();SH.slot=-1;applyLoadout();renderSheet();});box.appendChild(rm);}
+  var gear=slotsOf(k),cur=gear[SH.slot],n=save.acc.length;
+  box.innerHTML='<header><span>Slot '+(SH.slot+1)+' · '+n+' of '+ACC.length+' found</span><button type="button" id="pkX">Done</button></header>';
+  var grid=document.createElement('div');grid.className='accg';box.appendChild(grid);
+  box.querySelector('#pkX').addEventListener('click',function(){SH.slot=-1;renderSheet();});
+  if(cur){var rm=document.createElement('button');rm.type='button';rm.className='acc';rm.innerHTML='<span class="ei">✕</span><span><b>Take off</b><small>Empty this slot</small></span>';
+    rm.addEventListener('click',function(){gear[SH.slot]=null;persist();SH.slot=-1;applyLoadout();renderSheet();});grid.appendChild(rm);}
   ACC.forEach(function(a){
     var have=save.acc.indexOf(a.id)>=0,b=document.createElement('button'),at=gear.indexOf(a.id);
     b.type='button';b.className='acc'+(!have?' lock':at>=0?' on':'');
-    b.innerHTML='<span class="ei">'+a.icon+'</span><span><b>'+(have?a.name:'???')+'</b><small>'+(have?a.desc:'Clear stage '+a.stage)+'</small></span>'+(have&&save.accNew[a.id]?'<i class="dot">NEW</i>':'');
+    b.innerHTML='<span class="ei">'+(have?a.icon:'?')+'</span><span><b>'+(have?a.name:'Locked')+'</b><small>'+(have?a.desc:'Clear stage '+a.stage)+'</small></span>'+(have&&save.accNew[a.id]?'<i class="dot">NEW</i>':'');
     if(have)b.addEventListener('click',function(){
       if(at>=0&&at!==SH.slot)gear[at]=gear[SH.slot];   // swap slots if it is already worn
       gear[SH.slot]=a.id;delete save.accNew[a.id];persist();
       sheetSay(a.icon+' '+a.name+': '+a.desc);beep(780,.08,'triangle',.05,1.4);
       SH.slot=-1;applyLoadout();checkAch();renderSheet();
     });
-    box.appendChild(b);
+    grid.appendChild(b);
   });
 }
 $('#chX').addEventListener('click',closeSheet);
-$('#sChar').addEventListener('click',function(e){if(e.target===this)closeSheet();});
+$('#chPrev').addEventListener('click',function(){stepSheet(-1);});
+$('#chNext').addEventListener('click',function(){stepSheet(1);});
 $('#chAct').addEventListener('click',function(){
   var k=SH.k,d=CHARS[k];
   if(save.chars.indexOf(k)<0){
@@ -1514,17 +1553,36 @@ $('#chAct').addEventListener('click',function(){
 });
 window.addEventListener('resize',function(){if(SH.open)sizeSheet();});
 function drawSheet(ts){
-  var c=$('#chCv'),x=c.getContext('2d'),cw=c.width,ch=c.height,oc=ctx,t=ts/1000,k=SH.k,wk=CHARS[k].weapons[SH.w];
+  var c=$('#chCv'),x=c.getContext('2d'),cw=c.width,ch=c.height,oc=ctx,t=ts/1000,k=SH.k,wk=CHARS[k].weapons[SH.w],d=cw/(c.clientWidth||1);
   if(cw<2)return;
   ctx=x;x.setTransform(1,0,0,1,0,0);x.clearRect(0,0,cw,ch);
-  var gy=ch*0.84;
-  x.fillStyle='#82d65c';x.fillRect(0,gy,cw,ch-gy);x.fillStyle='#45a23f';x.fillRect(0,gy,cw,Math.max(3,ch*0.025));
-  var pw=Math.min(cw*0.3,ch*0.3),S2=pw/0.65,bob=Math.abs(Math.sin(t*3.2))*ch*0.05,kx=cw*0.34,yb=gy-bob;
-  x.fillStyle='rgba(28,42,57,.18)';x.beginPath();x.ellipse(kx,gy+2,pw*(0.55-bob/ch),pw*0.1,0,0,6.283);x.fill();
+  // keep the knight between the stats (left) and the weapon sockets (right)
+  var L=SH.L||cw*0.35,R=SH.R||cw*0.65,kx=cw/2;
+  var pw=Math.min((R-L)*0.6,ch*0.2),gy=ch*0.5+pw*0.95,S2=pw/0.65,bob=Math.abs(Math.sin(t*3))*pw*0.12,yb=gy-pw*0.18-bob;
+  // light rays and glow
+  var cy=ch*0.5,col=CHARS[k].color;
+  x.save();x.translate(kx,cy);x.rotate(t*0.25);
+  for(var i=0;i<12;i++){x.rotate(Math.PI/6);x.fillStyle=i%2?'rgba(255,255,255,.07)':'rgba(255,236,170,.10)';x.beginPath();x.moveTo(0,0);x.lineTo(ch*0.9,-ch*0.1);x.lineTo(ch*0.9,ch*0.1);x.closePath();x.fill();}
+  x.restore();
+  var gl=x.createRadialGradient(kx,cy,0,kx,cy,pw*2.2);gl.addColorStop(0,'rgba(255,240,190,.55)');gl.addColorStop(1,'rgba(255,240,190,0)');
+  x.fillStyle=gl;x.fillRect(0,0,cw,ch);
+  // fade the rays out before the canvas edge so there is no hard box
+  var fm=x.createRadialGradient(kx,cy,0,kx,cy,Math.min(cw,ch)*0.62);fm.addColorStop(0.55,'#000');fm.addColorStop(1,'rgba(0,0,0,0)');
+  x.globalCompositeOperation='destination-in';x.fillStyle=fm;x.fillRect(0,0,cw,ch);x.globalCompositeOperation='source-over';
+  // pedestal
+  var pr=Math.min(pw*1.1,(R-L)*0.5),ph=pw*0.18;
+  x.lineWidth=3*d;x.strokeStyle=INK;
+  var top=gy-ph*0.9;
+  x.fillStyle='#4a5878';x.beginPath();x.ellipse(kx,gy,pr,ph,0,0,6.283);x.fill();x.stroke();
+  x.fillRect(kx-pr,top,pr*2,gy-top);
+  x.beginPath();x.moveTo(kx-pr,top);x.lineTo(kx-pr,gy);x.moveTo(kx+pr,top);x.lineTo(kx+pr,gy);x.stroke();
+  x.fillStyle='#8fa0c2';x.beginPath();x.ellipse(kx,gy-ph*0.9,pr,ph,0,0,6.283);x.fill();x.stroke();
+  x.fillStyle=col;x.globalAlpha=0.5;x.beginPath();x.ellipse(kx,gy-ph*0.9,pr*0.7,ph*0.6,0,0,6.283);x.fill();x.globalAlpha=1;
+  x.fillStyle='rgba(28,42,57,.35)';x.beginPath();x.ellipse(kx,gy-ph*0.9,pw*(0.55-bob/pw*0.6),ph*0.35,0,0,6.283);x.fill();
   knightDraw(k,kx-pw/2,yb-pw,pw,pw,{t:t,vx:2+Math.sin(t*1.3)*1.5,hurt:false});
   if(wk!=='none'){
-    var hx=kx+pw/2-S2*0.05,hy=yb-pw*0.45,ang=WREST[wk]+Math.sin(t*2)*0.06,L=WLEN[wk]||1;
-    var ws=Math.min(S2,(cw-hx-8)/(L*Math.abs(Math.cos(ang))+0.2),(hy-8)/(L*Math.abs(Math.sin(ang))+0.35));
+    var hx=kx+pw/2-S2*0.05,hy=yb-pw*0.45,ang=WREST[wk]+Math.sin(t*2)*0.06,Ln=WLEN[wk]||1;
+    var ws=Math.min(S2*0.8,(R+10*d-hx)/(Ln*Math.abs(Math.cos(ang))+0.2),(hy-6*d)/(Ln*Math.abs(Math.sin(ang))+0.35));
     x.save();x.translate(hx,hy);x.rotate(ang);weaponShape(wk,ws);x.restore();
   }
   ctx=oc;
