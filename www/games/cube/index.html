@@ -399,7 +399,8 @@ var ET={
   // big foes: taller than a hop, so they wall off the path until you break through
   golem:{hp:9,w:1.5,h:2.6,c:'#7d8a96',coins:12,big:1},
   bulwark:{hp:7,w:1.25,h:2.2,c:'#4f5f80',coins:10,big:1},
-  ogre:{hp:10,w:1.7,h:2.8,c:'#6f9a3a',coins:15,big:1}
+  ogre:{hp:10,w:1.7,h:2.8,c:'#6f9a3a',coins:15,big:1},
+  thumper:{hp:7,w:1.5,h:2.0,c:'#9a6a4a',coins:12,big:1}
 };
 /* A new world every 5 stages: its own look, one new foe and one new hazard. */
 var WORLDS=[
@@ -566,7 +567,7 @@ function buildStage(n){
       w=6.5;
     }else if(pat==='wall'){
       // one big foe blocking the way, with a small one or two around it
-      var big=['golem'];if(n>=4)big.push('bulwark');if(n>=6)big.push('ogre');
+      var big=['golem'];if(n>=4)big.push('bulwark');if(n>=5)big.push('thumper');if(n>=6)big.push('ogre');
       var bt=big[Math.floor(rnd()*big.length)];
       if(rnd()<0.6)st.enemies.push(mkEnemy(pick(),ix+0.6,top,rnd));
       st.enemies.push(mkEnemy(bt,ix+2.4,top,rnd));
@@ -976,10 +977,14 @@ function updEnemy(g,e,dt){
     return;
   }
   // big foes are too heavy to be knocked about
-  if(ET[e.type].big&&!e.dying){if(e.vy>0)e.vy=0;e.vx=clamp(e.vx,-1,1);}
+  if(ET[e.type].big&&!e.dying&&!e.leap){if(e.vy>0)e.vy=0;e.vx=clamp(e.vx,-1,1);}
   var wasG=e.grounded,eox=e.x,eland=stepY(g,e,dt);
   e.x+=e.vx*dt;
-  if(eland){if(!wasG&&e.vy<-4)puff(g,e.x,e.y,'#ffffff',3);e.vy=0;e.grounded=true;}else e.grounded=false;
+  if(eland){
+    if(!wasG&&e.vy<-4)puff(g,e.x,e.y,'#ffffff',3);
+    if(e.leap&&!wasG){e.leap=false;e.vx=0;g.shake=Math.min(1.2,g.shake+0.5);burst(g,e.x,e.y+0.1,'#ffffff',12,5);beep(60,.3,'sawtooth',.08,.4);}
+    e.vy=0;e.grounded=true;
+  }else e.grounded=false;
   e.vx*=Math.exp(-(e.grounded?4:0.5)*dt);
   var eh=solidPush(g,e,eox);if((eh===1&&e.vx>0)||(eh===-1&&e.vx<0))e.vx*=-0.3;
   if(e.x<-1.4){e.x=-1.4;e.vx=Math.abs(e.vx)*0.3;}
@@ -990,7 +995,7 @@ function updEnemy(g,e,dt){
     if(e.dyT<=0){e.gone=true;burst(g,e.x,e.y+e.h/2,e.color,10,5);}
     return;
   }
-  if(e.frozen>0){if(e.state==='air'||e.state==='slide'||e.state==='draw'||e.state==='crouch'||e.state==='prep'||e.state==='raise')e.state='idle';return;}
+  if(e.frozen>0){if(e.state==='air'||e.state==='slide'||e.state==='draw'||e.state==='crouch'||e.state==='prep'||e.state==='raise'||e.state==='squat')e.state='idle';return;}
   var slow=Math.abs(e.vx)<1.2;
   if(e.type==='hopper'||e.type==='imp'){
     var im=e.type==='imp';
@@ -1027,8 +1032,12 @@ function updEnemy(g,e,dt){
     if(e.grounded&&bd2>0.5&&bd2<8&&!p.dead&&floorAt(g,e.x-e.w/2-0.1,e.y+0.2)>=e.y-0.3)e.x-=0.75*dt;
   }else if(e.type==='ogre'){
     // winds up when you are close, then swings its club in front of it
-    var od=e.x-p.x;e.st-=dt;
-    if(e.state==='idle'){if(e.st<=0&&od>0&&od<e.w/2+2.6&&!p.dead){e.state='raise';e.st=0.7;beep(150,.3,'sawtooth',.05,.6);}}
+    var od=e.x-p.x;e.st-=dt;e.leapCd=(e.leapCd||0)-dt;
+    if(e.state==='idle'){
+      if(e.st<=0&&od>0&&od<e.w/2+2.6&&!p.dead){e.state='raise';e.st=0.7;beep(150,.3,'sawtooth',.05,.6);}
+      else if(e.leapCd<=0&&e.grounded&&od>3.6&&od<7&&Math.abs(p.y-e.y)<2.5&&!p.dead){e.state='squat';e.st=0.6;}
+    }
+    else if(e.state==='squat'){if(e.st<=0){bigLeap(g,e,1.0);e.state='idle';e.st=0.5;e.leapCd=4;}}
     else if(e.state==='raise'){
       if(e.st<=0){
         e.state='swing';e.st=0.3;
@@ -1039,11 +1048,25 @@ function updEnemy(g,e,dt){
     }
     else if(e.state==='swing'){if(e.st<=0){e.state='rest';e.st=1.3;}}
     else if(e.state==='rest'){if(e.st<=0){e.state='idle';e.st=0.3;}}
+  }else if(e.type==='thumper'){
+    // crouches, then leaps at where you are; it shakes the ground when it lands
+    var td=e.x-p.x;e.st-=dt;
+    if(e.state==='idle'){if(e.grounded&&e.st<=0&&td>-1&&td<7.5&&Math.abs(p.y-e.y)<3&&!p.dead){e.state='squat';e.st=0.55;}}
+    else if(e.state==='squat'){if(e.st<=0){bigLeap(g,e,0.85);e.state='air';}}
+    else if(e.state==='air'){if(e.grounded&&!e.leap){e.state='idle';e.st=1.5;}}
   }else if(e.type==='archer'){
     var ad=e.x-p.x;e.st-=dt;
     if(e.state==='draw'){if(e.st<=0){g.earrows.push({x:e.x-e.w/2,y:e.y+e.h*0.55,vx:-6.5,t:0});beep(520,.08,'triangle',.04,.5);e.state='idle';e.st=2.1;}}
     else if(e.st<=0&&ad>0.9&&ad<9&&Math.abs(p.y-e.y)<3&&!p.dead){e.state='draw';e.st=0.6;}
   }
+}
+// a big foe jumps to land where the knight is (never off the end of its own island)
+function bigLeap(g,e,T){
+  var p=g.p,tx=p.x+clamp(p.vx,-3,3)*0.3;
+  floorAt(g,e.x,e.y+0.2);var isl=floorAt.o;
+  if(isl)tx=clamp(tx,isl.x0+e.w/2,isl.x1-e.w/2);
+  e.leap=true;e.vy=GRAV*T/2;e.vx=clamp((tx-e.x)/T,-9,9);e.grounded=false;
+  beep(110,.2,'triangle',.06,1.6);
 }
 function chainHits(g){
   var E=g.enemies;
@@ -1263,7 +1286,8 @@ var FOE_TIPS={hopper:['hop','Hoppers hurt while in the air. Hit them as they lan
   archer:['archer','Archers shoot. Dash into an arrow to knock it away.'],
   golem:['golem','A Golem blocks the way. Keep dashing into it to break through.'],
   bulwark:['bulwark','Bulwarks shove you back. Keep hitting to batter them down.'],
-  ogre:['ogre','Ogres swing a club when you get close. Strike right after a swing!']};
+  ogre:['ogre','Ogres swing a club up close and leap at you from further away. Strike right after a swing!'],
+  thumper:['thumper','Thumpers leap at you. Watch for the crouch and dash out of the way.']};
 function coachChecks(g){
   var p=g.p,stg=g.stg,i,e,near=function(x,r){return x>p.x-0.3&&x<p.x+(r||4.5);};
   if(g.arena&&!save.seen.back&&coach('back','Tap the left side of the screen to dash backwards.'))return;
@@ -1534,6 +1558,12 @@ function update(dt){
       e=g.enemies[i];
       if(e.gone||e.dying)continue;
       var ox=Math.abs(p.x-e.x)<(p.w+e.w)/2-0.1,oy=p.y<ehTop(e)-0.3&&p.y+p.h>e.y+0.1;
+      // landed on from above: any foe coming down on top of you hurts, then bounces off
+      if(ox&&!e.grounded&&e.vy<-1.5&&!(e.frozen>0)&&e.y>p.y+p.h*0.35&&e.y<p.y+p.h+0.25){
+        if(p.invul<=0){hurtPlayer(g,ET[e.type].big?2:1,p.x<e.x?-1:1);floatText(g,p.x,p.y+p.h+0.9,'Stomped!','#ff4d4d');}
+        e.vy=ET[e.type].big?3:5;e.vx=(e.x>=p.x?1:-1)*2;
+        continue;
+      }
       if(!ox||!oy)continue;
       var danger=!(e.frozen>0)&&(((e.type==='hopper'||e.type==='imp')&&!e.grounded)||(e.type==='leaper'&&e.state==='air')||e.type==='bat'||(e.type==='penguin'&&e.state==='slide'));
       if(danger&&p.invul<=0)hurtPlayer(g,1,p.x<e.x?-1:1);
@@ -2458,7 +2488,7 @@ function drawEnemy(g,e){
   if(!onScreen(g,e.x))return;
   var col=e.flash>0?shade(e.color,0.65):e.color,y=e.y;
   if(e.type==='walker'&&e.grounded&&!e.dying)y+=Math.max(0,Math.sin(e.phase*3))*0.04;
-  var crouch=e.type==='leaper'&&e.state==='crouch',h=crouch?e.h*0.75:e.h;
+  var crouch=(e.type==='leaper'&&e.state==='crouch')||e.state==='squat',h=crouch?e.h*(e.state==='squat'?0.82:0.75):e.leap?e.h*1.06:e.h;
   if(!e.dying)shadow(g,e.x,e.y,e.w,supported(g,e.x));
   var shake=(e.type==='bomber'&&e.fuse>=0)||crouch?(Math.random()-.5)*0.05:0;
   if(e.type==='bomber'&&e.fuse>=0&&Math.floor(g.time*16)%2===0)col='#ff6a3d';
@@ -2504,6 +2534,13 @@ function drawEnemy(g,e){
     ctx.beginPath();
     for(var bc=0;bc<e.maxhp-e.hp;bc++){var byy=sht+shh*(0.1+bc*0.12);ctx.moveTo(shx+shw*0.1,byy);ctx.lineTo(shx+shw*0.35,byy+shh*0.05);ctx.lineTo(shx+shw*0.2,byy+shh*0.09);}
     ctx.stroke();
+  }else if(e.type==='thumper'){
+    // a squat rock beast with big feet: it squashes down before a leap and stretches in the air
+    ctx.fillStyle=shade(e.color,-0.25);[0.08,0.62].forEach(function(f){ctx.fillRect(r.x0+r.pw*f,r.y0+r.ph*0.86,r.pw*0.3,r.ph*0.14);ctx.strokeRect(r.x0+r.pw*f,r.y0+r.ph*0.86,r.pw*0.3,r.ph*0.14);});
+    eyes({x0:r.x0,y0:r.y0+r.ph*0.05,pw:r.pw,ph:r.ph*0.55},-1,{brow:true});
+    ctx.fillStyle=INK;ctx.fillRect(r.x0+r.pw*0.25,r.y0+r.ph*0.5,r.pw*0.5,r.ph*0.08);
+    ctx.fillStyle='#fff';[0.3,0.45,0.6].forEach(function(t){ctx.beginPath();ctx.moveTo(r.x0+r.pw*t,r.y0+r.ph*0.5);ctx.lineTo(r.x0+r.pw*(t+0.05),r.y0+r.ph*0.56);ctx.lineTo(r.x0+r.pw*(t+0.1),r.y0+r.ph*0.5);ctx.closePath();ctx.fill();});
+    ctx.fillStyle=shade(e.color,0.25);[[0.15,0.72],[0.55,0.7],[0.8,0.3]].forEach(function(q){ctx.beginPath();ctx.arc(r.x0+r.pw*q[0],r.y0+r.ph*q[1],r.pw*0.06,0,6.283);ctx.fill();ctx.stroke();});
   }else if(e.type==='ogre'){
     // a hulking brute with tusks and a club it raises before swinging
     eyes({x0:r.x0,y0:r.y0,pw:r.pw,ph:r.ph*0.5},-1,{brow:true});
@@ -2552,7 +2589,7 @@ function drawEnemy(g,e){
     ctx.fillStyle='#ff4d4d';ctx.fillRect(hbx,hby,hbw*e.hp/e.maxhp,S*0.16);
   }
   // "!" when a foe is about to attack
-  if(!e.dying&&((e.type==='leaper'&&e.state==='crouch')||(e.type==='penguin'&&e.state==='prep')||(e.type==='archer'&&e.state==='draw')||(e.type==='ogre'&&e.state==='raise'))){
+  if(!e.dying&&((e.type==='leaper'&&e.state==='crouch')||(e.type==='penguin'&&e.state==='prep')||(e.type==='archer'&&e.state==='draw')||(e.type==='ogre'&&(e.state==='raise'||e.state==='squat'))||(e.type==='thumper'&&e.state==='squat'))){
     var wx=sx(g,e.x),wy=sy(e.y+e.h)-S*0.55;
     ctx.font=Math.round(S*0.6)+'px "Lilita One",system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
     ctx.lineWidth=4;ctx.strokeStyle=INK;ctx.strokeText('!',wx,wy);ctx.fillStyle='#ff4d4d';ctx.fillText('!',wx,wy);
