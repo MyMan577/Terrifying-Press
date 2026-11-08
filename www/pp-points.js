@@ -31,6 +31,25 @@
   }
   function iget(k){ try { return Math.max(0, parseInt(localStorage.getItem(k) || '0', 10) || 0); } catch(e){ return 0; } }
   function iadd(k, n){ try { localStorage.setItem(k, String(iget(k) + n)); return true; } catch(e){ return false; } }
+  // Press Play Playground: every Press Play exclusive that a game checks for is free while the mode is on
+  function pgFree(){ try { return localStorage.getItem('ppPlaygroundMode') === '1'; } catch(e){ return false; } }
+  // The Press Play Playground emblem, drawn as an image (a play-button ring, equalizer bars and sparkles). Each call gets its own gradient ids.
+  var embN = 0;
+  window.__ppEmblem = function(){
+    var n = ++embN, g = 'ppemg' + n, b = 'ppemb' + n;
+    return '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="width:100%;height:100%;display:block"><defs>'
+      + '<linearGradient id="' + g + '" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6ee7d0"/><stop offset=".55" stop-color="#8b5cff"/><stop offset="1" stop-color="#ff5fd8"/></linearGradient>'
+      + '<radialGradient id="' + b + '" cx=".3" cy=".2" r="1.05"><stop offset="0" stop-color="#34246e"/><stop offset="1" stop-color="#0c0d10"/></radialGradient></defs>'
+      + '<rect width="64" height="64" fill="url(#' + b + ')"/>'
+      + '<path d="M10 29a22 22 0 0 1 22-22" fill="none" stroke="url(#' + g + ')" stroke-width="2" stroke-linecap="round" opacity=".5"/>'
+      + '<path d="M54 29a22 22 0 0 1-22 22" fill="none" stroke="url(#' + g + ')" stroke-width="2" stroke-linecap="round" opacity=".5"/>'
+      + '<circle cx="32" cy="29" r="15" fill="#0c0d10" stroke="url(#' + g + ')" stroke-width="4"/>'
+      + '<path d="M27.6 21.5v15l12.4-7.5z" fill="#fff"/>'
+      + '<g fill="url(#' + g + ')"><rect x="15" y="53" width="5" height="6" rx="2.5"/><rect x="23" y="49" width="5" height="10" rx="2.5"/><rect x="31" y="46" width="5" height="13" rx="2.5"/><rect x="39" y="50" width="5" height="9" rx="2.5"/><rect x="47" y="54" width="5" height="5" rx="2.5"/></g>'
+      + '<path d="M52 6l1.5 4 4 1.5-4 1.5-1.5 4-1.5-4-4-1.5 4-1.5z" fill="#ffb36e"/>'
+      + '<path d="M11 8l1 2.6 2.6 1-2.6 1-1 2.6-1-2.6-2.6-1 2.6-1z" fill="#6ee7d0"/></svg>';
+  };
+  function pgPts(){ try { return window.PPPlayground && window.PPPlayground.mult ? window.PPPlayground.mult('points') : 1; } catch(e){ return 1; } }
   function musicOn(){ var b = document.getElementById('play-btn'); return !!(b && b.classList.contains('is-playing')); }
   function lateHour(){ var h = new Date().getHours(); return h >= 21 || h < 4; }
 
@@ -189,7 +208,7 @@
 
   /* ---------------- points ---------------- */
   function earn(n, why, quiet){
-    n = Math.round(n); if (n <= 0) return;
+    n = Math.round(n * pgPts()); if (n <= 0) return;
     P.pts += n; P.tot += n;
     P.log.unshift({ t:Date.now(), n:n, d:why }); if (P.log.length > 40) P.log.length = 40;
     save();
@@ -457,7 +476,7 @@
       questNotices(); checkMeta();
     },
     info: function(g, key, v){ (P.info[g] = P.info[g] || {})[key] = v; save(); },
-    has: function(g, kind){ return !!P.own[g + ':' + kind]; },
+    has: function(g, kind){ return pgFree() || !!P.own[g + ':' + kind]; },
     take: function(g, kind){
       var k = g + ':' + kind, n = P.bo[k] || 0;
       if (n){ delete P.bo[k]; save(true); changed(); }
@@ -693,7 +712,7 @@
     { id:'lvl100', n:'Level Up',         d:'Fill your whole current level bar.', p:220, buy:function(){ return !!xpApi() && xpApi().shopLevelPct(1) > 0; } },
     { id:'xp24',  n:'XP All Day',       d:'1.25× XP from listening for 24 hours.', p:150, buy:function(){ return !!xpApi() && xpApi().shopTempBoost(1.25, 24 * 3600000); } }
   ];
-  var BG_PRICE = 150, EQ_PRICE = 200;
+  var BG_PRICE = 150, EQ_PRICE = 200, MODE_PRICE = 1200;
 
   var armed = null, armT = null;
   function tryBuy(key, price, label, fn){
@@ -759,6 +778,7 @@
     '.ppx-btn .ppx-coin{width:15px;height:15px}',
     '.ppx-ico{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;font-size:19px;background:rgba(255,255,255,.06);flex:0 0 auto;overflow:hidden}',
     '.ppx-ico img{width:100%;height:100%;object-fit:cover;display:block}',
+    '.ppx-ico.ppx-emb{background:#0c0d10;box-shadow:0 0 0 1px rgba(139,92,255,.5)}',
     '.ppx-sum{display:flex;gap:10px;margin:8px 0 4px}',
     '.ppx-sum div{flex:1;padding:12px;border-radius:14px;background:rgba(255,255,255,.045);text-align:center}',
     '.ppx-sum b{display:block;font-size:20px}.ppx-sum small{font-size:11.5px;color:var(--text-dim,#8b8c93)}',
@@ -970,6 +990,10 @@
       });
       h += '<p class="ppx-note">Items marked Press Play exclusive can only be had here. Perks last for good, Twists change your next run, Bundles save points and Mystery Packs give one random item. Game rewards appear the next time you open that game.</p>';
     } else {
+      var mg = window.PPModeGate, haveMode = !!(mg && mg.state && mg.state().playground);
+      h += '<div class="ppx-h">App modes</div><div class="ppx-card ppx-ex"><span class="ppx-ico ppx-emb'  + '">' + window.__ppEmblem() + '</span><div class="ppx-main"><b>Press Play Playground <span class="ppx-tag">Mode</span></b>'
+        + '<small>A fourth app mode: everything unlocked, the clicker always out, every game exclusive free, plus orders, charms, a daily wheel, new EQ presets and backgrounds, and more. Turn it on in Settings → App mode.</small></div>'
+        + buyBtn('mode/playground', MODE_PRICE, haveMode ? 'Owned' : (mg && mg.grant ? '' : 'Unavailable')) + '</div>';
       var api = xpApi();
       if (!api){ h += '<p class="ppx-note">Press Play rewards aren\'t available right now.</p>'; bodyEl.innerHTML = h; return; }
       h += '<div class="ppx-h">Level and XP</div>';
@@ -1031,6 +1055,8 @@
           if (!dl.it.buy()) return false;
           td().deal = 1; return true;
         });
+      } else if (parts[0] === 'mode'){
+        if (parts[1] === 'playground') tryBuy(key, MODE_PRICE, 'Press Play Playground', function(){ var g = window.PPModeGate; return !!(g && g.grant && g.grant('playground')); });
       } else if (parts[0] === 'app'){
         var a = APP.filter(function(x){ return x.id === parts[1]; })[0];
         if (a) tryBuy(key, a.p, a.n, a.buy);
@@ -1046,5 +1072,5 @@
 
   // ---- start ----
   qd(); qw(); checkMeta(); save(); renderStrip();
-  window.__ppPoints = { state:P, open:openHub, earn:earn };   // handy for debugging from the console
+  window.__ppPoints = { state:P, open:openHub, earn:earn, META:META, check:checkMeta, td:td };   // handy for debugging from the console
 })();

@@ -109,14 +109,14 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
 <script id="pp-gate-core">
 /* Mode gate: runs before the app so it can tell people who already have saved data from brand-new users. */
 (function(){
-  var K='ppModeGateV1', MODE_KEYS={lite:'ppLiteMode',plus:'ppPlusMode',premium:'ppPremiumMode'}, CLEAN_GOAL=3600000, PLUS_PASS=75;
+  var K='ppModeGateV1', MODE_KEYS={lite:'ppLiteMode',plus:'ppPlusMode',premium:'ppPremiumMode',playground:'ppPlaygroundMode'}, CLEAN_GOAL=3600000, PLUS_PASS=75;
   function rd(k){try{return localStorage.getItem(k)}catch(e){return null}}
   function wr(k,v){try{localStorage.setItem(k,v)}catch(e){}}
   var st=null; try{st=JSON.parse(rd(K)||'null')}catch(e){}
   if(!st||typeof st!=='object'){
     var had=false;
     try{ for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i)||''; if(/^(player|pp|disc)/i.test(k)&&k!==K){had=true;break} } }catch(e){}
-    st={v:1,legacy:had,lite:false,plus:false,premium:false,clean:0,notice:false};
+    st={v:1,legacy:had,lite:false,plus:false,premium:false,playground:false,clean:0,notice:false};
     wr(K,JSON.stringify(st));
   }
   st.clean=st.clean||0;
@@ -133,12 +133,14 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
     quizBest:quizBest, marathonBest:marathonBest,
     cleanGoal:CLEAN_GOAL, plusPass:PLUS_PASS,
     unlocked:function(m){
+      if(m==='playground')return !!st.playground;   // bought in the Points shop, so saves with old data do not get it for free
       if(!m||st.legacy)return true;
       if(m==='premium'&&!st.premium&&marathonBest()>=100){st.premium=true;save()}
       if(m==='plus'&&!st.plus&&quizPassed()){st.plus=true;save()}
       return !!st[m];
     },
     done:function(m){ if(st.legacy||st[m])return; st[m]=true; save(); fire(m); },
+    grant:function(m){ if(m!=='playground'||st.playground)return false; st.playground=true; save(); fire(m); return true; },
     check:function(){
       if(st.legacy)return;
       if(!st.plus&&quizPassed()){st.plus=true;save();fire('plus')}
@@ -153,7 +155,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
     }
   };
   // A locked mode can never be active for someone who hasn't earned it (before any app script reads these flags).
-  if(!st.legacy){ for(var m in MODE_KEYS){ if(rd(MODE_KEYS[m])==='1'&&!G.unlocked(m))wr(MODE_KEYS[m],'0'); } }
+  for(var m in MODE_KEYS){ if(rd(MODE_KEYS[m])==='1'&&!G.unlocked(m))wr(MODE_KEYS[m],'0'); }
   window.addEventListener('pagehide',save);
 })();
 </script>
@@ -246,6 +248,13 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
   .title-mode{ color:var(--accent); }
   .title-mode[data-ed="lite"]{ color:#a78bfa; }
   .title-mode[data-ed="plus"]{ color:#22d3ee; }
+  .title-mode[data-ed="playground"]{
+    background:linear-gradient(90deg,#6ee7d0,#8b5cff,#ff5fd8,#ffb36e,#6ee7d0); background-size:200% 100%;
+    -webkit-background-clip:text; background-clip:text;
+    -webkit-text-fill-color:transparent; color:transparent;
+    animation:ppgTitleFlow 6s linear infinite;
+  }
+  @keyframes ppgTitleFlow{ to{ background-position:200% 0; } }
   .title-mode[data-ed="premium"]{
     background:linear-gradient(90deg,#ff3b3b,#ff9f1c,#ffe14d,#3ddc84,#22d3ee,#4f7cff,#b05cff);
     -webkit-background-clip:text; background-clip:text;
@@ -3919,7 +3928,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
 #pp-loader .pp-ld-sub{font-size:12px;color:var(--text-dim,#8b8f98);margin-top:-14px}
 #pp-loader .pp-ld-spin{display:none;width:44px;height:44px;align-items:center;justify-content:center}
 #pp-loader[data-ed] .pp-ld-bars{display:none}
-#pp-loader[data-ed="lite"] .pp-ld-lite,#pp-loader[data-ed="plus"] .pp-ld-plus,#pp-loader[data-ed="premium"] .pp-ld-premium{display:flex}
+#pp-loader[data-ed="lite"] .pp-ld-lite,#pp-loader[data-ed="plus"] .pp-ld-plus,#pp-loader[data-ed="premium"] .pp-ld-premium,#pp-loader[data-ed="playground"] .pp-ld-premium{display:flex}
 #pp-loader .pp-ld-lite svg,#pp-loader .pp-ld-plus svg{width:44px;height:44px;fill:none;stroke-linecap:round;stroke-linejoin:round}
 #pp-loader .pp-ld-lite svg{stroke:#a78bfa;stroke-width:2.2;animation:ppLdSpin .9s linear infinite}
 #pp-loader .pp-ld-plus svg{stroke:#22d3ee;stroke-width:2.6;animation:ppLdPlus 1.1s cubic-bezier(.65,0,.35,1) infinite}
@@ -3935,7 +3944,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
 #pp-loader .pp-ld-title .pp-ld-ed{margin-left:.3em}
 #pp-loader .pp-ld-ed[data-ed="lite"]{color:#a78bfa}
 #pp-loader .pp-ld-ed[data-ed="plus"]{color:#22d3ee}
-#pp-loader .pp-ld-ed[data-ed="premium"]{background:linear-gradient(90deg,#ff3b3b,#ff9f1c,#ffe14d,#3ddc84,#22d3ee,#4f7cff,#b05cff);
+#pp-loader .pp-ld-ed[data-ed="premium"],#pp-loader .pp-ld-ed[data-ed="playground"]{background:linear-gradient(90deg,#ff3b3b,#ff9f1c,#ffe14d,#3ddc84,#22d3ee,#4f7cff,#b05cff);
   -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
 @keyframes ppLdSpin{to{transform:rotate(360deg)}}
 @keyframes ppLdPlus{0%{transform:rotate(0)}100%{transform:rotate(90deg)}}
@@ -3955,11 +3964,11 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
 (function(){
   var l=document.getElementById('pp-loader');
   try{
-    var ed=localStorage.getItem('ppLiteMode')==='1'?'lite':localStorage.getItem('ppPlusMode')==='1'?'plus':localStorage.getItem('ppPremiumMode')==='1'?'premium':'';
+    var ed=localStorage.getItem('ppPlaygroundMode')==='1'?'playground':localStorage.getItem('ppLiteMode')==='1'?'lite':localStorage.getItem('ppPlusMode')==='1'?'plus':localStorage.getItem('ppPremiumMode')==='1'?'premium':'';
     if(ed&&l){
       l.setAttribute('data-ed',ed);
       var t=l.querySelector('.pp-ld-title');
-      if(t)t.insertAdjacentHTML('beforeend','<span class="pp-ld-ed" data-ed="'+ed+'">'+{lite:'Lite',plus:'Plus',premium:'Premium'}[ed]+'</span>');
+      if(t)t.insertAdjacentHTML('beforeend','<span class="pp-ld-ed" data-ed="'+ed+'">'+{lite:'Lite',plus:'Plus',premium:'Premium',playground:'Playground'}[ed]+'</span>');
     }
   }catch(e){}
   setTimeout(function(){var x=document.getElementById('pp-loader');if(x)x.remove()},15000);
@@ -7630,13 +7639,14 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   // " Settings" is added on the Settings tab. Nothing is added when no edition is on.
   function currentEdition(){
     try {
+      if (localStorage.getItem('ppPlaygroundMode') === '1') return 'playground';
       if (localStorage.getItem('ppLiteMode') === '1') return 'lite';
       if (localStorage.getItem('ppPlusMode') === '1') return 'plus';
       if (localStorage.getItem('ppPremiumMode') === '1') return 'premium';
     } catch(e){}
     return '';
   }
-  const EDITION_NAMES = { lite: 'Lite', plus: 'Plus', premium: 'Premium' };
+  const EDITION_NAMES = { lite: 'Lite', plus: 'Plus', premium: 'Premium', playground: 'Playground' };
   window.__ppEdition = currentEdition;
   let lastEdition = null;
   function syncTitleMode(){
@@ -7645,7 +7655,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (lastEdition !== null && lastEdition !== ed && window.__ppRenderHomeNow) window.__ppRenderHomeNow();
     lastEdition = ed;
     const tg = document.getElementById('ed-tag');
-    if (tg) tg.textContent = ({ lite: 'Just play.', plus: 'Everything unlocked.', premium: 'The full experience.' })[ed] || '';
+    if (tg) tg.textContent = ({ lite: 'Just play.', plus: 'Everything unlocked.', premium: 'The full experience.', playground: 'Everything. Unlocked. Unleashed.' })[ed] || '';
     const html = ed ? ' <span class="title-mode" data-ed="' + ed + '">' + EDITION_NAMES[ed] + '</span>' : '';
     document.querySelectorAll('.ed-slot').forEach(el => { if (el.dataset.ed !== ed){ el.dataset.ed = ed; el.innerHTML = html; } });
     const tail = document.getElementById('title-tail');
@@ -21527,6 +21537,8 @@ async function ppMp4Chapters(blob){
       try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch(e){ /* storage full */ }
     }
 
+    // Press Play Playground charms, the album and the Groove Storm scale click power and production.
+    const pgMult = k => { try { return (window.PPPlayground && window.PPPlayground.mult) ? window.PPPlayground.mult(k) : 1; } catch(e){ return 1; } };
     function generatorCost(gen){
       const owned = state.generatorCounts[gen.id] || 0;
       return Math.round(gen.baseCost * Math.pow(1.15, owned));
@@ -21539,7 +21551,7 @@ async function ppMp4Chapters(blob){
       GLOBAL_UPGRADES.forEach(u => {
         if (u.kind === 'click' && state.upgradesBought[u.id]) power *= u.mult;
       });
-      return power;
+      return power * pgMult('click');
     }
     function totalPs(){
       let sum = GENERATORS.reduce((total, gen) => {
@@ -21553,7 +21565,7 @@ async function ppMp4Chapters(blob){
       GLOBAL_UPGRADES.forEach(u => {
         if (u.kind === 'ps' && state.upgradesBought[u.id]) sum *= u.mult;
       });
-      return sum;
+      return sum * pgMult('ps');
     }
     function formatNum(n){
       if (n < 1000) return (Math.round(n * 10) / 10).toString();
@@ -21759,6 +21771,7 @@ async function ppMp4Chapters(blob){
 
     const HIDDEN_KEY = 'discClickerHiddenV1';
     function isHidden(){
+      try { if (localStorage.getItem('ppPlaygroundMode') === '1') return false; } catch(e){}   // Playground keeps the clicker out
       try { return localStorage.getItem(HIDDEN_KEY) === '1'; } catch(e){ return false; }
     }
     function setHidden(hidden){
@@ -21770,7 +21783,10 @@ async function ppMp4Chapters(blob){
       try { localStorage.setItem(HIDDEN_KEY, hidden ? '1' : '0'); } catch(e){ /* ignore */ }
     }
     if (sidebarToggleBtn){
-      sidebarToggleBtn.addEventListener('click', () => setHidden(!isHidden()));
+      sidebarToggleBtn.addEventListener('click', () => {
+        try { if (localStorage.getItem('ppPlaygroundMode') === '1'){ if (typeof showToast === 'function') showToast('Playground keeps the clicker out. Switch the app mode to hide it.'); return; } } catch(e){}
+        setHidden(!isHidden());
+      });
     }
     setHidden(isHidden());
 
@@ -21820,6 +21836,7 @@ async function ppMp4Chapters(blob){
     discBtn.addEventListener('click', (e) => {
       const power = clickPower();
       state.grooves += power;
+      try { if (window.PPPlayground) window.PPPlayground.stat('clicks', 1); } catch(e2){}
       discBtn.classList.remove('dc-wobble');
       void discBtn.offsetWidth; // restart animation
       discBtn.classList.add('dc-wobble');
@@ -21950,6 +21967,16 @@ async function ppMp4Chapters(blob){
       renderStats();
       renderShop();
     }
+    // Used by Press Play Playground: orders, the wheel, rewards and games add grooves, and charms can spend them.
+    window.PPClicker = {
+      grooves: () => state.grooves,
+      ps: () => totalPs(),
+      clickPower: () => clickPower(),
+      fmt: formatNum,
+      add: (n) => { if (!(n > 0)) return; state.grooves += n; renderStats(); saveState(); },
+      spend: (n) => { if (!(n > 0) || state.grooves < n) return false; state.grooves -= n; renderAll(); saveState(); return true; },
+      show: () => { setHidden(false); root.classList.add('dc-open'); tabBtn.setAttribute('aria-expanded', 'true'); renderAll(); }
+    };
 
     // ---------- Game loop ----------
     const TICK_MS = 200;
@@ -22878,7 +22905,14 @@ async function ppMp4Chapters(blob){
       { id:'cyber-dawn',      name:'Cyber Dawn',      level:450, type:'animated', color1:'#0b0a1f', color2:'#ec4899', angle:130 },
       { id:'eternal-aurora',  name:'Eternal Aurora',  level:500, type:'animated', color1:'#0a0f24', color2:'#7cf0d0', angle:135 },
       // Not a level reward: earned by scoring 80% or better on The Marathon (Settings).
-      { id:'finish-line',     name:'Finish Line',     level:0,   unlock:'marathon', type:'animated', color1:'#06141c', color2:'#a3e635', angle:135 }
+      { id:'finish-line',     name:'Finish Line',     level:0,   unlock:'marathon', type:'animated', color1:'#06141c', color2:'#a3e635', angle:135 },
+      // Press Play Playground only: free in that mode, hidden everywhere else
+      { id:'pg-arcade',    name:'Neon Arcade',     level:0, pg:true, type:'animated', color1:'#0b0a1f', color2:'#ff5fd8', angle:130 },
+      { id:'pg-prodigy',   name:'Prodigy Pulse',   level:0, pg:true, type:'animated', color1:'#120a2e', color2:'#6ee7d0', angle:135 },
+      { id:'pg-titan',     name:'Titan Quake',     level:0, pg:true, type:'animated', color1:'#1a0800', color2:'#ff6a3d', angle:125 },
+      { id:'pg-deep',      name:'Deep Resonance',  level:0, pg:true, type:'animated', color1:'#02101f', color2:'#39d5ff', angle:140 },
+      { id:'pg-paladin',   name:'Paladin Violet',  level:0, pg:true, type:'gradient', color1:'#1a1038', color2:'#8b5cff', angle:135 },
+      { id:'pg-cartridge', name:'Cartridge Green', level:0, pg:true, type:'gradient', color1:'#06100a', color2:'#3ddc84', angle:150 }
     ];
     // Backgrounds and EQ presets bought early with Press Play Points (Games > Shop).
     const SHOP_UNLOCK_KEY = 'ppShopUnlocksV1';
@@ -22887,12 +22921,14 @@ async function ppMp4Chapters(blob){
       catch(e){ return { bg: [], eq: [] }; }
     }
     function presetUnlocked(p){
+      if (p.pg){ try { return localStorage.getItem('ppPlaygroundMode') === '1'; } catch(e){ return false; } }
       if (shopUnlocks().bg.indexOf(p.id) >= 0) return true;
       if (p.unlock === 'marathon'){ try { return localStorage.getItem('ppMarathonBgV1') === '1'; } catch(e){ return false; } }
       return isUnlocked(p.level);
     }
     function eqProUnlocked(key){
       const cfg = EQ_PRO_PRESETS[key];
+      if (cfg && cfg.pg){ try { return localStorage.getItem('ppPlaygroundMode') === '1'; } catch(e){ return false; } }
       return !!cfg && (isUnlocked(cfg.level) || shopUnlocks().eq.indexOf(key) >= 0);
     }
     const EQ_PRO_PRESETS = {
@@ -22912,11 +22948,18 @@ async function ppMp4Chapters(blob){
       crescendo:    { label:'Crescendo',       level:340, gains:[5, 4, 2, 1, 0.5, 2, 3, 4.5] },
       clubfloor:    { label:'Club Floor',      level:400, gains:[8, 6.5, 2.5, 0, -1, 1, 2, 3] },
       mythicmix:    { label:'Mythic Mix',      level:475, gains:[3.5, 3, 1, 0.5, 1, 2.5, 3.5, 4] },
-      eternalref:   { label:'Eternal Reference',level:500, gains:[2, 1.5, 0.5, 0.5, 1, 2, 2.5, 3] }
+      eternalref:   { label:'Eternal Reference',level:500, gains:[2, 1.5, 0.5, 0.5, 1, 2, 2.5, 3] },
+      // Press Play Playground only, named after the exclusives in the games
+      pgprodigy:    { label:'Prodigy',         level:0, pg:true, gains:[6, 4, 1, 0, 1, 3, 5, 6] },
+      pgmaestro:    { label:'Maestro',         level:0, pg:true, gains:[2, 1, 0, 1, 3, 4, 3, 2] },
+      pgphantom:    { label:'Phantom',         level:0, pg:true, gains:[-1, 0, 2, 3, 3, 2, 0, -1] },
+      pgparagon:    { label:'Paragon',         level:0, pg:true, gains:[5, 3, 1, 0, 0, 1, 3, 5] },
+      pgpanther:    { label:'Panther',         level:0, pg:true, gains:[7, 5, 2, 0, -1, 0, 1, 2] },
+      pgpaladin:    { label:'Paladin',         level:0, pg:true, gains:[3, 3, 2, 1, 1, 2, 3, 3] }
     };
 
     function currentLevel(){ return levelInfo(state.xp).level; }
-    function isUnlocked(level){ try { if ((localStorage.getItem('ppPlusMode') === '1' || localStorage.getItem('ppPremiumMode') === '1') && localStorage.getItem('ppLiteMode') !== '1') return true; } catch(e){} return currentLevel() >= level; }
+    function isUnlocked(level){ try { if ((localStorage.getItem('ppPlusMode') === '1' || localStorage.getItem('ppPremiumMode') === '1' || localStorage.getItem('ppPlaygroundMode') === '1') && localStorage.getItem('ppLiteMode') !== '1') return true; } catch(e){} return currentLevel() >= level; }
 
     // ---------- EXP shop ----------
     // Spends grooves (the minigame currency, owned by a separate closure
@@ -23036,11 +23079,12 @@ async function ppMp4Chapters(blob){
     function activeTempMultiplier(){
       return (state.expMods.tempEndsAt && Date.now() < state.expMods.tempEndsAt) ? (state.expMods.tempMult || 1) : 1;
     }
+    function pgXp(){ try { return window.PPPlayground && window.PPPlayground.mult ? window.PPPlayground.mult('xp') : 1; } catch(e){ return 1; } }
     function effectiveXpMultiplier(){
       const raw = (state.expMods.permanentMult || 1) * activeTempMultiplier();
       // Sprints stack with timed boosts, but the combined shop total can
       // never exceed the hard cap (3x). The streak bonus is separate.
-      return Math.min(raw * sprintMultiplier(), expMultiplierCap());
+      return Math.min(raw * sprintMultiplier(), expMultiplierCap()) * pgXp();
     }
 
     // Keeps the drain moving forward even if the EXP shop modal is never
@@ -23176,9 +23220,9 @@ async function ppMp4Chapters(blob){
         return true;
       },
       shopLocked: () => ({
-        bg: BG_PRESETS.filter(p => !presetUnlocked(p)).sort((a, b) => (a.unlock ? 1e4 : a.level) - (b.unlock ? 1e4 : b.level))
+        bg: BG_PRESETS.filter(p => !p.pg && !presetUnlocked(p)).sort((a, b) => (a.unlock ? 1e4 : a.level) - (b.unlock ? 1e4 : b.level))
           .map(p => ({ id: p.id, name: p.name, level: p.level, marathon: p.unlock === 'marathon', c1: p.color1, c2: p.color2, angle: p.angle })),
-        eq: Object.keys(EQ_PRO_PRESETS).filter(k => !eqProUnlocked(k)).sort((a, b) => EQ_PRO_PRESETS[a].level - EQ_PRO_PRESETS[b].level)
+        eq: Object.keys(EQ_PRO_PRESETS).filter(k => !EQ_PRO_PRESETS[k].pg && !eqProUnlocked(k)).sort((a, b) => EQ_PRO_PRESETS[a].level - EQ_PRO_PRESETS[b].level)
           .map(k => ({ id: k, name: EQ_PRO_PRESETS[k].label, level: EQ_PRO_PRESETS[k].level }))
       }),
       shopUnlock: (kind, id) => {
@@ -23324,6 +23368,7 @@ async function ppMp4Chapters(blob){
         sw.type = 'button';
         sw.className = 'ppxp-bg-swatch';
         sw.dataset.presetId = p.id;
+        if (p.pg) sw.dataset.pg = '1';
         sw.title = p.unlock === 'marathon' ? p.name + ' (The Marathon, 80%)' : p.name + ' (Level ' + p.level + ')';
         sw.style.backgroundImage = `linear-gradient(135deg, ${p.color1}, ${p.color2})`;
         sw.innerHTML = '<span class="ppxp-bg-swatch-lock">🔒</span><span class="ppxp-bg-swatch-name">' + p.name + '</span>';
@@ -23370,6 +23415,7 @@ async function ppMp4Chapters(blob){
         btn.dataset.eqPreset = key;
         btn.dataset.reqLevel = String(cfg.level);
         btn.className = 'ppxp-eq-pro-btn';
+        if (cfg.pg) btn.dataset.pg = '1';
         btn.innerHTML = '<span class="ppxp-lock">🔒</span>' + cfg.label;
         btn.addEventListener('click', () => {
           if (!eqProUnlocked(key)){
@@ -23558,7 +23604,7 @@ async function ppMp4Chapters(blob){
     function savePerks(){ try { localStorage.setItem(PERKS_KEY, JSON.stringify(perks)); } catch(e){ /* storage full */ } }
     function liteOn(){ try { return localStorage.getItem('ppLiteMode') === '1'; } catch(e){ return false; } }
     // Press Play PLUS keeps the leveling system but unlocks every perk from the start.
-    function plusOn(){ try { return !liteOn() && (localStorage.getItem('ppPlusMode') === '1' || localStorage.getItem('ppPremiumMode') === '1'); } catch(e){ return false; } }
+    function plusOn(){ try { return !liteOn() && (localStorage.getItem('ppPlusMode') === '1' || localStorage.getItem('ppPremiumMode') === '1' || localStorage.getItem('ppPlaygroundMode') === '1'); } catch(e){ return false; } }
     function perkOn(name){ return !liteOn() && (plusOn() || isUnlocked(PERK_LEVELS[name])); }
     function setRange(el, v){
       el.value = String(v);
@@ -24812,7 +24858,7 @@ async function ppMp4Chapters(blob){
   });
 
   // ----- Edition layouts (Lite / Plus / Premium each get their own Home) -----
-  const TAGLINES = { lite: 'Just play.', plus: 'Everything unlocked.', premium: 'The full experience.' };
+  const TAGLINES = { lite: 'Just play.', plus: 'Everything unlocked.', premium: 'The full experience.', playground: 'Everything. Unlocked. Unleashed.' };
   function listRowHTML(t, i, srcKey, sub, cur){
     return '<button type="button" class="ph-card ph-lrow' + (cur ? ' cur' : '') + '" data-act="play-video" data-src="' + srcKey + '" data-idx="' + i + '">' +
       thumbHTML(t, true) +
@@ -24949,6 +24995,8 @@ async function ppMp4Chapters(blob){
         homeEl.innerHTML = head + tabs + chips + vSec + aSec + hSec;
       } else if (ed === 'premium'){
         homeEl.innerHTML = head + tabs + hero + vSec + aSec + hSec;
+      } else if (ed === 'playground'){
+        homeEl.innerHTML = head + (window.PPPlayground && window.PPPlayground.homeStrip ? window.PPPlayground.homeStrip() : '') + tabs + vSec + aSec + hSec;
       } else {
         homeEl.innerHTML = head + tabs + vSec + aSec + hSec;
       }
@@ -25982,16 +26030,17 @@ body.pp-lite .eq-band-pro { display:flex !important; }
 </script>
 <script id="pp-premium">
 (function(){
-  var KEYS={lite:'ppLiteMode',plus:'ppPlusMode',premium:'ppPremiumMode'};
+  var KEYS={playground:'ppPlaygroundMode',lite:'ppLiteMode',plus:'ppPlusMode',premium:'ppPremiumMode'};
   var ls={g:function(k){try{return localStorage.getItem(k)}catch(e){return null}},s:function(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
   var toast=function(m){try{showToast(m)}catch(e){}};
   var cur=function(){for(var k in KEYS){if(ls.g(KEYS[k])==='1')return k}return null};
   // Task gate (see pp-gate-core). If it somehow failed to load, nothing is locked.
   var G=window.PPModeGate||{unlocked:function(){return true},legacy:function(){return true},state:function(){return {}},check:function(){},done:function(){},addClean:function(){},quizBest:function(){return 0},marathonBest:function(){return 0},cleanGoal:3600000,plusPass:75};
-  var NAMES={lite:'Press Play Lite',plus:'Press Play PLUS',premium:'Press Play PREMIUM'};
+  var NAMES={lite:'Press Play Lite',plus:'Press Play PLUS',premium:'Press Play PREMIUM',playground:'Press Play Playground'};
   function mmss(ms){var t=Math.floor(ms/1000);return Math.floor(t/60)+':'+('0'+(t%60)).slice(-2)}
   function taskText(m){
     var st=G.state();
+    if(m==='playground')return 'Playground is sold in the shop: open Games \u2192 Points \u2192 Shop \u2192 For Press Play and buy Press Play Playground.';
     if(m==='lite')return 'Lite is playback with nothing on top, so prove it: play '+Math.round(G.cleanGoal/60000)+' minutes with the equalizer off, boost at 100%, no DJ effects, normal speed, and no video filters, smoothing or delay ('+mmss(Math.min(G.cleanGoal,(st.clean||0)))+' / '+mmss(G.cleanGoal)+' so far).';
     if(m==='plus')return 'PLUS is for people who know the app, so pass the Press Play quiz in Settings (75% or better; best so far: '+G.quizBest()+'%).';
     return 'ace The Marathon in Settings: 30 questions, 10 seconds each, all correct (best so far: '+G.marathonBest()+'%).';
@@ -26040,7 +26089,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   var bt=null;
   function banner(m){
     var old=document.getElementById('pp-mode-banner'); if(old)old.remove(); clearTimeout(bt);
-    var d={lite:['Press Play Lite','Simple. Just play.'],plus:['\u2728 Press Play PLUS \u2728','Everything unlocked. Turn it up.'],premium:['<span class="cr">\uD83D\uDC51</span> <span class="g">Press Play PREMIUM</span> <span class="cr">\uD83D\uDC51</span>','Welcome. Everything is unlocked.']}[m];
+    var d={playground:['\uD83C\uDFAA Press Play Playground \uD83C\uDFAA','Everything unlocked. Everything unleashed.'],lite:['Press Play Lite','Simple. Just play.'],plus:['\u2728 Press Play PLUS \u2728','Everything unlocked. Turn it up.'],premium:['<span class="cr">\uD83D\uDC51</span> <span class="g">Press Play PREMIUM</span> <span class="cr">\uD83D\uDC51</span>','Welcome. Everything is unlocked.']}[m];
     var el=document.createElement('div'); el.id='pp-mode-banner'; el.className=m; el.innerHTML='<span class="t">'+d[0]+'</span><small>'+d[1]+'</small>'; document.body.appendChild(el);
     requestAnimationFrame(function(){requestAnimationFrame(function(){el.classList.add('show')})});
     bt=setTimeout(function(){el.classList.remove('show');setTimeout(function(){el.remove()},700)}, m==='premium'?6000:4500);
@@ -26053,6 +26102,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     for(var k in KEYS){ls.s(KEYS[k],k===m?'1':'0'); document.body.classList.toggle('pp-'+k,k===m);}
     xp(m==='lite'||m==='premium');
     try{window.PPXpApi&&window.PPXpApi.refreshUnlocks&&window.PPXpApi.refreshUnlocks()}catch(e){}
+    if(m==='playground'){try{window.PPClicker&&window.PPClicker.show()}catch(e){}}
     if(m==='lite'){ // simple layout: no custom accent, and the two extra EQ bands stay usable
       document.documentElement.style.removeProperty('--accent');document.documentElement.style.removeProperty('--accent-dim');
       document.querySelectorAll('.eq-band-pro').forEach(function(b){b.classList.add('unlocked')});
@@ -26060,8 +26110,9 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   }
   var MODES=[['lite','Press Play Lite','Simple layout: fewer EQ presets and filters, no levels, EXP or games. Every audio and video tool stays.'],
     ['plus','Press Play PLUS','Everything unlocked from the start: presets, EQ bands, backgrounds, colors and perks. Levels, EXP and games stay on.'],
-    ['premium','Press Play PREMIUM','Everything unlocked, every tool kept, and levels, EXP and games hidden.']];
-  var EDGE={lite:'var(--accent)',plus:'#ec4899',premium:'#d4af57'};
+    ['premium','Press Play PREMIUM','Everything unlocked, every tool kept, and levels, EXP and games hidden.'],
+    ['playground','Press Play Playground','Everything unlocked, the clicker always out, every game exclusive free, and a Playground of orders, charms, a daily wheel and more. Levels, EXP and games stay on.']];
+  var EDGE={lite:'var(--accent)',plus:'#ec4899',premium:'#d4af57',playground:'#b05cff'};
   function label(){var c=cur(),n=MODES.filter(function(x){return x[0]===c})[0];return n?n[1]:'Standard'}
   function refreshRow(){var el=document.getElementById('pp-mode-current');if(el)el.textContent=label()}
   function closeMenu(){var o=document.getElementById('pp-mode-menu');if(o)o.remove()}
@@ -26537,7 +26588,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
         '<div class="ppg-name">' + esc(g.name) + '</div><div class="ppg-tag">' + esc(g.tag) + '</div></button>';
     }).join('') + '</div>';
   document.body.appendChild(grid);
-  window.__ppGames = { list: GAMES, grid: grid, art: artHTML };   // read by the Press Play Points hub below
+  window.__ppGames = { list: GAMES, grid: grid, art: artHTML, open: function(id){ openGame(id); } };   // read by the Press Play Points hub below
   grid.querySelector('.ppg-back').addEventListener('click', closeGrid);
   grid.addEventListener('click', function(e){
     var c = e.target.closest('.ppg-card'); if (c) openGame(c.getAttribute('data-game'));
@@ -26658,7 +26709,8 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   }
 })();
 </script>
-<script src="./pp-points.js?v=20261108i"></script>   <!-- Press Play Points: quests, achievements and shop on the Games page. Bump v= when it changes -->
+<script src="./pp-points.js?v=20261108j"></script>   <!-- Press Play Points: quests, achievements and shop on the Games page. Bump v= when it changes -->
+<script src="./pp-playground.js?v=20261108a"></script>   <!-- Press Play Playground (the fourth app mode): hub, orders, charms, wheel. Bump v= when it changes -->
 <script src="./vocal-separator.js?v=20261030a" defer></script>   <!-- bump v= each time vocal-separator.js changes so phones fetch the new copy -->
 </body>
 </html>
