@@ -1,0 +1,50 @@
+name: Publish games website
+
+# Publishes the games website on GitHub Pages: every game plus Points, quests, achievements, the shop,
+# the Playground and the Disc Clicker, built from the app's own code by tools/build_games_site.py.
+# Media-player features are left out there (window.__ppWeb).
+# One-time setup: repo Settings > Pages > Build and deployment > Source: "GitHub Actions".
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'www/games/**'
+      - 'www/index.html'   # the Games screen and the Disc Clicker come from here
+      - 'www/pp-*.js'
+      - 'web/**'
+      - 'tools/build_games_site.py'
+      - '.github/workflows/games-site.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: games-site
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v7
+
+      # Fills web/index.html from the app's own Games code and copies the games and Points/Playground scripts.
+      # Fails if a piece it needs has moved in www/index.html, or if any script has a syntax error.
+      - name: Build the site
+        run: python3 tools/build_games_site.py _site
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

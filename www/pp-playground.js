@@ -175,6 +175,7 @@
     { id:'totem',   cat:'daily', g:'Toque & Spear',    icon:'🗿', n:'Ancestor Totem',  rar:'Rare',   p:150, drip:function(){ return giveBoost('toque', 'trophies', 2) ? '+2 trophies waiting in Toque & Spear' : ''; }, d:'Daily: 2 trophies for your Toque & Spear satchel.' },
     { id:'purse',   cat:'daily', g:'Dashcube Knight',  icon:'👛', n:"Knight's Purse",  rar:'Common', p:70,  drip:function(){ return cubeCoins(150) ? '+150 coins in Dashcube Knight' : ''; },                 d:'Daily: +150 coins in Dashcube Knight.' }
   ];
+  if (window.__ppWeb) CHARMS = CHARMS.filter(function(c){ return c.id !== 'study'; });   // the games website has no app EXP
   function charmById(id){ for (var i = 0; i < CHARMS.length; i++) if (CHARMS[i].id === id) return CHARMS[i]; return null; }
   PP.CHARMS = CHARMS; PP.charmEquipped = function(id){ return activeIds().indexOf(id) >= 0; };
   var RAR = { Common:'#9aa3b2', Rare:'#6ea8ff', Epic:'#b05cff', Legendary:'#ffb36e' };
@@ -398,8 +399,10 @@
   function orderTarget(o){ var k = orderKind(o.kind); return k.unit === 'ms' ? o.target * 60000 : o.target; }
   function orderProgress(o){ var k = orderKind(o.kind); return Math.min(orderTarget(o), Math.max(0, (S.stats[k.stat] || 0) - o.base)); }
   function newOrder(usedKinds){
-    var pool = ORDER_KINDS.filter(function(k){ return usedKinds.indexOf(k.id) < 0; });
-    if (!pool.length) pool = ORDER_KINDS;
+    // the games website has no media player, so no listening or EQ orders there
+    var kinds = window.__ppWeb ? ORDER_KINDS.filter(function(k){ return k.id !== 'listen' && k.id !== 'eq'; }) : ORDER_KINDS;
+    var pool = kinds.filter(function(k){ return usedKinds.indexOf(k.id) < 0; });
+    if (!pool.length) pool = kinds;
     var k = pick(pool), tier = Math.random() < 0.5 ? 0 : (Math.random() < 0.65 ? 1 : 2);
     return { id: ++S.orders.seq, kind: k.id, tier: tier, target: k.tgt[tier], base: S.stats[k.stat] || 0, until: Date.now() + ORDER_TIME, done: false };
   }
@@ -606,17 +609,17 @@
     var games = (window.__ppGames && window.__ppGames.list) || [];
     el.innerHTML =
       '<div class="pgr-card pgr-hero"><h3>Welcome to the Playground</h3>' +
-      '<p class="pgr-sub" style="margin:0">Everything in the app is unlocked, the clicker stays out, and every game exclusive is free. Earn <b>⭐ Stars</b> from orders, the wheel and playing games, then spend them on charms, charm levels, album pulls and the Star Shop. Your EXP grows 25% faster here.</p>' +
+      '<p class="pgr-sub" style="margin:0">' + (window.__ppWeb ? 'The clicker stays out and every game exclusive is free. Earn <b>⭐ Stars</b> from orders, the wheel and playing games, then spend them on charms, charm levels, album pulls and the Star Shop.</p>' : 'Everything in the app is unlocked, the clicker stays out, and every game exclusive is free. Earn <b>⭐ Stars</b> from orders, the wheel and playing games, then spend them on charms, charm levels, album pulls and the Star Shop. Your EXP grows 25% faster here.</p>') +
       '<div class="pgr-chips" id="pgr-chips"></div></div>' +
       '<div class="pgr-card" id="pgr-wheelcard"></div>' +
-      '<div class="pgr-card"><h3>Sound &amp; look</h3><p class="pgr-sub">One tap sets your real equalizer. Playground adds six presets named after the game exclusives.</p>' +
+      (window.__ppWeb ? '' : '<div class="pgr-card"><h3>Sound &amp; look</h3><p class="pgr-sub">One tap sets your real equalizer. Playground adds six presets named after the game exclusives.</p>' +
       '<div class="pgr-row" id="pgr-eq">' + EQ_LINKS.map(function(p){ return '<button type="button" class="pgr-pre" data-eq="' + p[0] + '">' + esc(p[1]) + '</button>'; }).join('') + '</div>' +
       '<p class="pgr-sub" style="margin:12px 0 8px">Backdrops (they apply to the tab you have open in Settings → Appearance, or the app by default):</p>' +
-      '<div class="pgr-row" id="pgr-bg">' + BACKDROPS.map(function(b){ return '<button type="button" class="pgr-sw" data-bg="' + b[0] + '" style="background:linear-gradient(135deg,' + b[2] + ',' + b[3] + ')"><span>' + esc(b[1]) + '</span></button>'; }).join('') + '</div></div>' +
+      '<div class="pgr-row" id="pgr-bg">' + BACKDROPS.map(function(b){ return '<button type="button" class="pgr-sw" data-bg="' + b[0] + '" style="background:linear-gradient(135deg,' + b[2] + ',' + b[3] + ')"><span>' + esc(b[1]) + '</span></button>'; }).join('') + '</div></div>') +
       '<div class="pgr-card"><h3>Games <span class="pgr-tier" style="background:linear-gradient(90deg,#6ee7d0,#ff5fd8)">Free play</span></h3><p class="pgr-sub">Every Press Play exclusive that a game checks for is yours while Playground is on. Playing earns ⭐ Stars (1 a minute).</p>' +
       '<div class="pgr-games">' + games.map(function(g){ return '<button type="button" class="pgr-g" data-game="' + esc(g.id) + '"><span class="pgr-free">FREE PLAY</span><div class="a" style="background:' + esc(g.bg) + '">' + (window.__ppGames && window.__ppGames.art ? window.__ppGames.art(g) : '') + '</div><b>' + esc(g.name) + '</b></button>'; }).join('') + '</div></div>' +
       '<div class="pgr-card"><h3>Your Playground</h3><div class="pgr-stats" id="pgr-stats"></div></div>' +
-      '<p class="pgr-note">Perks you get in this mode: EXP +25%, every level unlock and Press Play shop perk, six Playground EQ presets and six Playground backdrops.</p>';
+      (window.__ppWeb ? '' : '<p class="pgr-note">Perks you get in this mode: EXP +25%, every level unlock and Press Play shop perk, six Playground EQ presets and six Playground backdrops.</p>');
     renderWheelCard();
     liveStage();
   }

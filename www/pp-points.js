@@ -212,6 +212,10 @@
     { id:'vis30',   n:'Part of the Furniture', d:'Open Games on 30 different days', p:80, f:function(){ return P.m.visits; }, v:30 },
     { id:'rich500', n:'Saving Up',       d:'Hold 500 points at once',    p:20,  f:function(){ return P.pts; }, v:500 }
   ];
+  // The games website (window.__ppWeb) has no media player: drop what needs one.
+  var WEB_OFF = { listen:1, music:1, lis10:1, lis100:1, mus60:1 };
+  function webOk(k){ return !(window.__ppWeb && WEB_OFF[k]); }
+  META = META.filter(function(a){ return webOk(a.id); });
   function playedCount(){ return GAMES.filter(function(g){ return gst(g.id).ses > 0; }).length; }
   function totalMs(){ var t = 0; for (var g in P.st) t += P.st[g].ms || 0; return t; }
   function achCount(){ return Object.keys(P.ach).length; }
@@ -327,6 +331,8 @@
     ['ev', 'lastcard', 'win', 10, 90, 'Win 10 games of Last Card'],
     ['ev', 'anteup', 'blind', 20, 100, 'Clear 20 blinds in Ante Up']
   ];
+  function webQ(t){ return webOk(t[0]); }
+  QD_GENERAL = QD_GENERAL.filter(webQ); QD_GAME = QD_GAME.filter(webQ); QW = QW.filter(webQ);
   function mkQuest(t, i){
     var g = t[1] === '*' ? pick(GAMES).id : t[1];
     return { id:(t.join('|') + (t[1] === '*' ? g : '')), k:t[0], g:g, e:t[2], n:t[3], p:t[4], t:t[5].replace('{g}', NAME[g] || ''), c:false, seen:false };
@@ -1040,9 +1046,11 @@
     } else {
       var mg = window.PPModeGate, haveMode = !!(mg && mg.state && mg.state().playground);
       h += '<div class="ppx-h">App modes</div><div class="ppx-card ppx-ex"><span class="ppx-ico ppx-emb'  + '">' + window.__ppEmblem() + '</span><div class="ppx-main"><b>Press Play Playground <span class="ppx-tag">Mode</span></b>'
-        + '<small>A fourth app mode: everything unlocked, the clicker always out, every game exclusive free, plus orders, charms, a daily wheel, new EQ presets and backgrounds, and more. Turn it on in Settings → App mode.</small></div>'
+        + (window.__ppWeb ? '<small>Every game exclusive free, the clicker always out, plus orders, charms, a daily wheel, a card album, a Beat Lab and more. Turn it on with the Playground switch on the Games page.</small></div>'
+          : '<small>A fourth app mode: everything unlocked, the clicker always out, every game exclusive free, plus orders, charms, a daily wheel, new EQ presets and backgrounds, and more. Turn it on in Settings → App mode.</small></div>')
         + buyBtn('mode/playground', MODE_PRICE, haveMode ? 'Owned' : (mg && mg.grant ? '' : 'Unavailable')) + '</div>';
       var api = xpApi();
+      if (window.__ppWeb){ h += '<p class="ppx-note">Level, XP, background and EQ rewards are for the Press Play app.</p>'; bodyEl.innerHTML = h; return; }
       if (!api){ h += '<p class="ppx-note">Press Play rewards aren\'t available right now.</p>'; bodyEl.innerHTML = h; return; }
       h += '<div class="ppx-h">Level and XP</div>';
       APP.forEach(function(it){ h += '<div class="ppx-card"><div class="ppx-main"><b>' + esc(it.n) + '</b><small>' + esc(it.d) + '</small></div>' + buyBtn('app/' + it.id, it.p) + '</div>'; });

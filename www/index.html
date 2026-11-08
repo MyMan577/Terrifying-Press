@@ -26600,7 +26600,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   grid.id = 'pp-games';
   grid.setAttribute('role', 'dialog'); grid.setAttribute('aria-label', 'Games');
   grid.innerHTML = '<div class="ppg-head"><button type="button" class="ppg-back" aria-label="Back">' + CHEV + '</button><h1 class="ppg-title">Games</h1></div>' +
-    '<div class="ppg-sub">' + GAMES.length + ' games. Your music keeps playing.</div>' +
+    '<div class="ppg-sub">' + GAMES.length + (window.__ppWeb ? ' games. Progress is saved in this browser.' : ' games. Your music keeps playing.') + '</div>' +
     '<div class="ppg-grid">' + GAMES.map(function(g){
       return '<button type="button" class="ppg-card" data-game="' + g.id + '"><div class="ppg-art" style="background:' + g.bg + '">' + artHTML(g) + '</div>' +
         '<div class="ppg-name">' + esc(g.name) + '</div><div class="ppg-tag">' + esc(g.tag) + '</div></button>';
@@ -26618,7 +26618,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     requestAnimationFrame(function(){ grid.classList.add('shown'); });
     try { history.pushState({ ppGames:1 }, ''); } catch(e){}
   }
-  function hideGrid(){ grid.classList.remove('open', 'shown'); }
+  function hideGrid(){ if (window.__ppWeb) return; grid.classList.remove('open', 'shown'); }   // the website (games-site) has no app behind the grid
   function closeGrid(){
     if (history.state && history.state.ppGames) history.back(); else hideGrid();
   }
