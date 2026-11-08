@@ -262,7 +262,7 @@ var $=function(s){return document.querySelector(s);};
 var INK='#1c2a39', GOLD='#ffc233';
 var cv=$('#cv'), ctx=cv.getContext('2d');
 var W=0,H=0,DPR=1,S=44,groundY=0;
-var GRAV=24,JUMP=8.5,WALLJ=12,HOVER=0.5,RAMWALL=1.1;   // Ram King walls: low enough for a normal hop to clear
+var GRAV=24,JUMP=8.5,WALLJ=12,RAMWALL=1.1;   // Ram King walls: low enough for a normal hop to clear
 
 function resize(){
   var r=cv.getBoundingClientRect();
@@ -670,7 +670,7 @@ function floorAt(g,x,oy,hw){
 function stepY(g,e,dt){
   var oy=e.y,s=g.stg.solids,i,o;
   e.vy-=GRAV*dt;
-  if(e.hover&&e.vy<0){e.vy=0;e.hoverLeft-=dt;}   // a dash holds the cube where it is instead of letting it fall
+  if(e.hover&&e.vy<0)e.vy=0;   // a dash holds the cube where it is instead of letting it fall
   e.y+=e.vy*dt;
   if(e.vy>0){
     for(i=0;i<s.length;i++){o=s[i];if(e.x>=o.x0&&e.x<=o.x1&&oy+e.h<=o.y0+0.1&&e.y+e.h>o.y0){e.y=o.y0-e.h;e.vy=0;}}
@@ -1430,9 +1430,8 @@ function update(dt){
   g.shake=Math.max(0,g.shake-dt*2.2);
 
   // player physics
-  // a dash holds the cube up: no falling while it lasts, for up to half a second per jump
-  if(p.hoverLeft==null)p.hoverLeft=HOVER;   // refilled on every landing, below
-  p.hover=p.thrust>0&&p.hoverLeft>0&&!p.dead&&!g.wait;
+  // a dash holds the cube up while it lasts; between dashes it falls as normal
+  p.hover=p.thrust>0&&!p.dead&&!g.wait;
   var fx=p.x,fy=p.y,was=p.grounded,pox=p.x,land=stepY(g,p,dt);
   p.x+=p.vx*dt;p.invul-=dt;p.wallCd-=dt;
   // enemy heads and crusher slabs are platforms: land on them like cubes
@@ -1457,7 +1456,7 @@ function update(dt){
   if(land){
     var fo=onE?null:floorAt.o;
     if(!was&&p.vy<-5)puff(g,p.x,p.y,'#ffffff',5);
-    p.vy=0;p.grounded=true;p.hoverLeft=HOVER;   // refill here: the cube hops again this same frame, so it is never seen standing at the next one
+    p.vy=0;p.grounded=true;
     if(fo){g.floorY=fo.y1;if(fo.kind==='isle'&&!p.dead&&p.x>fo.x0+0.8&&p.x<fo.x1-0.8)p.lastSafe={x:p.x,y:p.y};}
     g.onIce=!!(fo&&fo.ice);
   }else p.grounded=false;
