@@ -5110,6 +5110,7 @@ let srEchoFrames = [];
   
   window._gameMovers    = movers;
   window._fullDestroyWorld = function() {
+    window._worldLoadGen = (window._worldLoadGen || 0) + 1;
     enemies.length = 0;
     enemyProjectiles.length = 0;
     movers.length = 0;
@@ -5122,6 +5123,7 @@ let srEchoFrames = [];
   
   
   window._rebuildWorldFromTiles = function() {
+    window._worldLoadGen = (window._worldLoadGen || 0) + 1;
     enemies.length = 0;
     enemyProjectiles.length = 0;
     movers.length = 0;
@@ -5172,6 +5174,29 @@ let srEchoFrames = [];
     exportLevel: () => exportLevel(), importLevel: j => importLevel(j),
     resetPlayer: () => resetPlayer(),
     setMessage: t => setMessage(t),
+    // Building together: put the other phone's block changes in (set: [[key, tile]], del: [keys]).
+    applyEdits(set, del, goal, spawn) {
+      for (const k of del || []) { world.tiles.delete(k); const i = movers.findIndex(m => m.id === k); if (i >= 0) movers.splice(i, 1); }
+      for (const [k, t] of set || []) {
+        const tile = Object.assign({}, t, { id: k });
+        world.tiles.set(k, tile);
+        const i = movers.findIndex(m => m.id === k);
+        if (tile.type === 'mover') { if (i < 0) movers.push({ id: k, x: tile.x, x0: tile.x, x1: tile.x + 5, dir: 1, speed: 1.4 }); }
+        else if (i >= 0) movers.splice(i, 1);
+      }
+      if (goal) world.goal = { ...goal };
+      if (spawn) world.spawn = { ...spawn };
+      _rebuildTileTypeIndex();
+    },
+    // a name tag at a spot in the world (tiles), e.g. where a friend just built
+    drawTag(tx, ty, text, alpha) {
+      const x = tx * TILE - cam.x, y = ty * TILE - cam.y;
+      ctx.save(); ctx.globalAlpha = alpha == null ? 1 : alpha;
+      ctx.strokeStyle = '#7c9cff'; ctx.lineWidth = 3; ctx.strokeRect(x - 2, y - 2, TILE + 4, TILE + 4);
+      ctx.font = 'bold 12px system-ui, sans-serif'; ctx.textAlign = 'center';
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.strokeText(text, x + TILE / 2, y - 8);
+      ctx.fillStyle = '#c9d6ff'; ctx.fillText(text, x + TILE / 2, y - 8); ctx.restore();
+    },
     // Draw the player into another canvas, standing at its centre, performing an emote (em = { id, t }).
     // Used by the emote wheel's live previews. Everything it touches is put back afterwards.
     drawPreview(c2d, w, h, em, scale) {
@@ -9488,6 +9513,7 @@ function activateDash() {
   }
 
   function clearStage() {
+    window._worldLoadGen = (window._worldLoadGen || 0) + 1;
     saveHistory({ type: 'clear', tiles: Array.from(world.tiles.entries()), movers: [...movers], goal: {...world.goal} });
     world.tiles.clear(); movers.length = 0; enemies.length = 0; enemyProjectiles.length = 0;
     window._levelIsImported = false; 
@@ -9809,7 +9835,28 @@ function resetPlayer() {
     document.addEventListener(evt, _unlockMusic, { once: true, passive: true, capture: true });
   });
 
+  // Play mode never changes the course for good. Glitch and Quarry blocks, ice blocks, broken walls and
+  // breakables, crumbled tiles, keys and coins picked up: whatever play does to the blocks is undone when you go
+  // back to build mode, so it is never saved either. Only when no whole course was loaded meanwhile (a story
+  // level, a tutorial, an import, Clear Stage): then the newly loaded course stays.
+  let _playSnap = null;
+  window._worldLoadGen = window._worldLoadGen || 0;
+  function _cloneTile(t) { try { return structuredClone(t); } catch (e) { return JSON.parse(JSON.stringify(t)); } }
+  function _playSnapshotSwitch(prev, next) {
+    if (next === 'play' && prev !== 'play') {
+      _playSnap = { gen: window._worldLoadGen, tiles: Array.from(world.tiles.entries()).map(([k, t]) => [k, _cloneTile(t)]), movers: movers.map(m => ({ ...m })) };
+    } else if (next !== 'play' && prev === 'play' && _playSnap) {
+      const snap = _playSnap; _playSnap = null;
+      if (snap.gen !== window._worldLoadGen) return;
+      world.tiles.clear();
+      for (const [k, t] of snap.tiles) world.tiles.set(k, t);
+      movers.length = 0; for (const m of snap.movers) movers.push(m);
+      enemies.length = 0; enemyProjectiles.length = 0; collectedTiles.clear();
+      _rebuildTileTypeIndex();
+    }
+  }
   function setMode(newMode) {
+    _playSnapshotSwitch(mode, newMode);
     mode = newMode;
     _music.dangerActive = false;
     if (!window._gtActive) _music.play(mode === 'play' ? 'play' : 'build');
@@ -26153,6 +26200,7 @@ function resolveCollisions(axis, dt) {
     try {
       const data = JSON.parse(jsonString);
       if (!data.world || !data.world.tiles) throw new Error('Invalid level format');
+      window._worldLoadGen = (window._worldLoadGen || 0) + 1;
       
       saveHistory({ type: 'clear', tiles: Array.from(world.tiles.entries()), movers: [...movers], goal: {...world.goal} });
       world.tiles.clear();
