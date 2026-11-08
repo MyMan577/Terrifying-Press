@@ -39618,8 +39618,8 @@ window._claimLBro = function() {
   const ID = 'cb_pressplay';
   const DEF = {
     id: ID, name: 'Press Play Prodigy', icon: '🎧', tier: 'pressplay',
-    ability: 'Bass Drop (S / ⚔️) · 3 jumps, 3 dashes',
-    desc: 'Press Play exclusive. Violet suit, black and grey headphones and a play button on the chest. BASS DROP (S on PC, ⚔️ on mobile): a shockwave that hits, knocks back and stuns every enemy around you; in mid-air it also bounces you up. Encore: 3 jumps, 3 dashes, 4 HP and top speed.',
+    ability: 'Synth Kit: 8 beat moves + THE DROP (K / 🎚️)',
+    desc: 'Press Play exclusive. Violet suit, black and grey headphones and a play button on the chest. SYNTH KIT on a 128 BPM beat: press S / ⚔️ on the beat for 1.5x damage, a rising melody and Hype. Ground: Square Wave (S, piercing bolt), Saw Slicer (side+S, sawtooth dash), Arpeggiator (up+S, 3 homing notes), Subwoofer (down+S, speaker that thumps on the next 4 beats). Air: Sine Beam (S, hover beam that slows), Pitch Bend (side+S, wave glide), Riser (up+S, noise sweep launch, once per jump), Kick Stomp (down+S, slam with a kick shockwave). A full Hype meter unlocks THE DROP (K / 🎚️): build-up, then a bass shockwave that hits, knocks back and stuns everything around you. Encore: 3 jumps, 3 dashes, 4 HP and top speed.',
     color: '#8b5cff'
   };
   const STATS = { speed: 1.3, jump: 1.25, maxJumps: 3, maxDashes: 3, hp: 4 };
@@ -39682,84 +39682,735 @@ window._claimLBro = function() {
     ctx.fillStyle = '#15161b'; ctx.beginPath(); ctx.ellipse(ex, ey, s * 2.4, s * 3.1, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#3a3d46'; ctx.beginPath(); ctx.ellipse(ex, ey, s * 1.4, s * 2, 0, 0, Math.PI * 2); ctx.fill();
     // little beat pulse above the headphones
-    const pulse = (Math.sin(t * 6) + 1) / 2;
+    // the note above the headphones bounces on the kit's beat while you play
+    const pulse = active ? beatPulse : (Math.sin(t * 6) + 1) / 2;
+    // ear cup lights up on every beat
+    ctx.fillStyle = 'rgba(110,231,208,' + (0.15 + 0.6 * pulse).toFixed(2) + ')';
+    ctx.beginPath(); ctx.ellipse(ex, ey, s * 0.8, s * 1.2, 0, 0, Math.PI * 2); ctx.fill();
     ctx.globalAlpha = 0.35 + pulse * 0.4;
     ctx.fillStyle = '#b79bff'; ctx.font = (s * 4) + 'px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('♪', cx + pw * 0.34, py + ph * 0.06 - pulse * s * 1.5);
     ctx.restore();
-    synthWave(ctx, cx, py + ph / 2, performance.now() / 1000);
   };
 
-  // ---- Bass Drop: the Prodigy's special (S on PC, the ⚔️ button on mobile; both call performSlash) ----
-  const BD_CD = 1.4, BD_RANGE = 3.2, BD_DMG = 20;
-  let bdReadyAt = 0, bdFx = null;
-  const BD_FX_LEN = 0.6;
-  // Bass Drop look: an oscilloscope wave sweeping out both sides plus a ring whose
-  // edge ripples like a sine wave, in layered teal / violet / pink, fading as it spreads.
-  function synthWave(ctx, cx, cy, now) {
-    if (!bdFx) return;
-    const age = now - bdFx.t0;
-    if (age > BD_FX_LEN || age < 0) { bdFx = null; return; }
-    const k = age / BD_FX_LEN, ease = 1 - Math.pow(1 - k, 3), R = bdFx.range * ease, fade = 1 - k;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-    const layers = [['#6ee7d0', -1.5, 0], ['#8b5cff', 0, 0.6], ['#ff5fd8', 1.5, 1.2]];
-    // oscilloscope line: a sine carrier with a saw-like harmonic, loudest in the middle
-    for (const [col, off, ph] of layers) {
-      ctx.strokeStyle = col; ctx.globalAlpha = 0.85 * fade; ctx.lineWidth = 3;
-      ctx.shadowColor = col; ctx.shadowBlur = 10;
-      ctx.beginPath();
-      for (let x = -R; x <= R; x += 3) {
-        const env = Math.max(0, 1 - Math.abs(x) / (R + 1));
-        const y = (Math.sin(x * 0.12 - age * 40 + ph) + 0.35 * Math.sin(x * 0.36 - age * 55 + ph)) * 22 * env * (0.4 + 0.6 * fade);
-        if (x === -R) ctx.moveTo(cx + x, cy + y + off); else ctx.lineTo(cx + x, cy + y + off);
-      }
-      ctx.stroke();
+  // ===== SYNTH KIT: the Prodigy's full moveset =====
+  // S / ⚔️ plus a direction, on the ground or in the air, gives 8 moves. K / the 🎚️ button is THE DROP.
+  // Everything runs on a 128 BPM beat: a move pressed on the beat hits 1.5x harder, plays the next
+  // note of a rising melody and fills the Hype meter faster. A full meter unlocks THE DROP.
+  // Every effect is drawn as a waveform (square, saw, sine, noise, kick) and every move plays a synth sound.
+  const BPM = 128, BEAT = 60 / BPM, BEAT_WIN = 0.11, HYPE_MAX = 10;
+  const C_TEAL = '#6ee7d0', C_VIOLET = '#8b5cff', C_PINK = '#ff5fd8', C_LILAC = '#b79bff';
+  const PALETTE = [C_TEAL, C_VIOLET, C_PINK];
+  // A minor pentatonic over two octaves: on-beat streaks climb it
+  const SCALE = [220, 261.63, 293.66, 329.63, 392, 440, 523.25, 587.33, 659.25, 783.99, 880, 1046.5];
+  const MOVES = {
+    ground: {
+      neutral: { name: 'Square Wave', cd: 0.45 },
+      side:    { name: 'Saw Slicer',  cd: 0.8 },
+      up:      { name: 'Arpeggiator', cd: 1.0 },
+      down:    { name: 'Subwoofer',   cd: 1.6 },
+    },
+    air: {
+      neutral: { name: 'Sine Beam',   cd: 0.6 },
+      side:    { name: 'Pitch Bend',  cd: 0.9 },
+      up:      { name: 'Riser',       cd: 0.9 },
+      down:    { name: 'Kick Stomp',  cd: 1.0 },
     }
-    // ripple ring at the edge of the blast
-    ctx.lineWidth = 2.5;
-    for (const [col, off, ph] of layers) {
-      ctx.strokeStyle = col; ctx.globalAlpha = 0.7 * fade; ctx.shadowColor = col; ctx.shadowBlur = 8;
-      ctx.beginPath();
-      for (let i = 0; i <= 96; i++) {
-        const a = i / 96 * Math.PI * 2, r = R + off * 2 + Math.sin(a * 12 + age * 30 + ph) * 5 * fade;
-        const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * 0.75;
-        if (!i) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-    }
-    ctx.restore();
+  };
+  const DROP_DMG = 20, DROP_RANGE = 4, DROP_BUILD = 0.55, DROP_FX = 0.9;
+
+  let active = false, atkCD = 0, hype = 0, hypeFullSaid = false, streak = 0, lastBeatIdx = -99;
+  let beatClock = 0, beatPulse = 0, riserUsed = false, lastPX = null, lastPY = null;
+  let dash = null, stomp = null, beam = null, drop = null, riserT = 0;
+  const projs = [], subs = [], fx = [];
+  // the kit replaces the generic punch every character gets
+  if (window.UNIVERSAL_PUNCH_EXCLUDED_CHARS) window.UNIVERSAL_PUNCH_EXCLUDED_CHARS.add(ID);
+
+  // ---- synth voice (its own AudioContext, which the app's mute wrapper also controls) ----
+  let AC = null, out = null, noiseBuf = null;
+  function ac() {
+    if (AC) { if (AC.state === 'suspended') { try { AC.resume(); } catch (e) {} } return AC; }
+    try {
+      const Ctor = window.AudioContext || window.webkitAudioContext; if (!Ctor) return null;
+      AC = new Ctor(); out = AC.createGain(); out.gain.value = 0.22;
+      const comp = AC.createDynamicsCompressor(); out.connect(comp); comp.connect(AC.destination);
+    } catch (e) { AC = null; }
+    return AC;
   }
+  function tone(freq, o) {
+    const a = ac(); if (!a) return; o = o || {};
+    const t = a.currentTime + (o.delay || 0), dur = o.dur || 0.15, v = o.vol == null ? 0.4 : o.vol;
+    const osc = a.createOscillator(), g = a.createGain();
+    osc.type = o.type || 'square';
+    osc.frequency.setValueAtTime(freq, t);
+    if (o.slide) osc.frequency.exponentialRampToValueAtTime(Math.max(20, o.slide), t + dur);
+    if (o.detune) osc.detune.setValueAtTime(o.detune, t);
+    let node = osc;
+    if (o.cut) {
+      const fl = a.createBiquadFilter(); fl.type = 'lowpass'; fl.Q.value = o.q || 6;
+      fl.frequency.setValueAtTime(o.cut, t);
+      if (o.cutEnd) fl.frequency.exponentialRampToValueAtTime(o.cutEnd, t + dur);
+      osc.connect(fl); node = fl;
+    }
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(v, t + (o.att || 0.006));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    node.connect(g); g.connect(out);
+    osc.start(t); osc.stop(t + dur + 0.05);
+  }
+  function noise(o) {
+    const a = ac(); if (!a) return; o = o || {};
+    if (!noiseBuf) {
+      noiseBuf = a.createBuffer(1, a.sampleRate, a.sampleRate);
+      const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const t = a.currentTime + (o.delay || 0), dur = o.dur || 0.2, v = o.vol == null ? 0.3 : o.vol;
+    const src = a.createBufferSource(); src.buffer = noiseBuf;
+    const fl = a.createBiquadFilter(); fl.type = o.ftype || 'bandpass'; fl.Q.value = o.q || 1.2;
+    fl.frequency.setValueAtTime(o.cut || 2000, t);
+    if (o.cutEnd) fl.frequency.exponentialRampToValueAtTime(o.cutEnd, t + dur);
+    const g = a.createGain();
+    if (o.swell) { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + dur * 0.92); }
+    else g.gain.setValueAtTime(v, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(fl); fl.connect(g); g.connect(out);
+    src.start(t); src.stop(t + dur + 0.05);
+  }
+  function kick(delay, big) {
+    tone(big ? 120 : 150, { type: 'sine', dur: big ? 0.6 : 0.28, slide: big ? 32 : 45, vol: big ? 0.9 : 0.65, delay: delay || 0 });
+    noise({ dur: 0.03, cut: 3500, vol: 0.14, delay: delay || 0 });
+  }
+  function nf(i) { return SCALE[Math.max(0, Math.min(SCALE.length - 1, i))]; }
+
+  // ---- helpers ----
+  const BLOCK = new Set(['solid', 'ice', 'crumble', 'mover', 'half']);
+  function blocked(x, y, w, h) {
+    const wd = window._gameWorld; if (!wd || !wd.tiles) return false;
+    for (let tx = Math.floor(x); tx <= Math.floor(x + w - 1e-3); tx++)
+      for (let ty = Math.floor(y); ty <= Math.floor(y + h - 1e-3); ty++) {
+        const tl = wd.tiles.get(tx + ',' + ty);
+        if (tl && BLOCK.has(tl.type)) return true;
+      }
+    return false;
+  }
+  function ex(e) { return e.x + (e.w || 0.9) / 2; }
+  function ey(e) { return e.y + (e.h || 0.9) / 2; }
+  function foes() { return (window._gameEnemies || []).filter(e => e && !e.dead); }
+  function msg(s) { if (window._setMessage) window._setMessage(s); }
+  function shake(n) { if (window._getScreenShake && window._setScreenShake) window._setScreenShake(Math.max(window._getScreenShake() || 0, n)); }
+  function pcx(p) { return p.x + p.w / 2; }
+  function pcy(p) { return window._moveCenterY ? window._moveCenterY(p) : p.y + p.h / 2; }
+  function addHype(n) {
+    hype = Math.min(HYPE_MAX, hype + n);
+    if (hype >= HYPE_MAX && !hypeFullSaid) {
+      hypeFullSaid = true;
+      msg('🎚️ HYPE FULL! Press K / 🎚️ for THE DROP!');
+      for (let i = 0; i < 4; i++) tone(nf(5 + i * 2), { type: 'triangle', dur: 0.12, vol: 0.22, delay: i * 0.06 });
+    }
+  }
+  function hit(e, dmg, o) {
+    o = o || {};
+    e.hp = Math.max(0, (e.hp || 1) - dmg);
+    e.hitFlash = 0.5;
+    if (o.stun) e.stunTimer = Math.max(e.stunTimer || 0, o.stun);
+    if (o.slow) e.slowTimer = Math.max(e.slowTimer || 0, o.slow);
+    if (o.kx != null) e.vx = o.kx;
+    if (o.ky != null) e.vy = o.ky;
+    fx.push({ k: 'hit', x: ex(e), y: ey(e), t: 0, life: 0.3, c: o.c || '#ffffff' });
+    if (e.hp <= 0 && !e.dead && window._killEnemy) window._killEnemy(e);
+    addHype(o.beat ? 0.75 : 0.35);
+  }
+  function beatInfo() {
+    const t = beatClock % BEAT;
+    return { on: Math.min(t, BEAT - t) <= BEAT_WIN, idx: Math.round(beatClock / BEAT) };
+  }
+  function resetKit() {
+    projs.length = 0; subs.length = 0; fx.length = 0;
+    dash = stomp = beam = drop = null;
+    atkCD = 0; hype = 0; hypeFullSaid = false; streak = 0; riserUsed = false; riserT = 0; lastPX = lastPY = null;
+  }
+
+  // ---- the 8 moves ----
+  const ACT = {
+    // Square Wave: a piercing square-wave bolt
+    ground_neutral(p, face, m, ni, on) {
+      projs.push({ k: 'sq', x: pcx(p) + face * 0.5, y: pcy(p), vx: face * 13, vy: 0, life: 0.9, age: 0, dmg: Math.round(2 * m), pierce: 1, hitSet: new Set(), beat: on, big: on });
+      tone(nf(ni + 2), { type: 'square', dur: 0.14, cut: 3200, cutEnd: 500, vol: 0.3 });
+      tone(nf(ni + 2) / 2, { type: 'square', dur: 0.1, vol: 0.12 });
+    },
+    // Saw Slicer: ride a sawtooth wave forward and cut through everything in the way
+    ground_side(p, face, m, ni, on) {
+      dash = { k: 'saw', t: 0, dur: 0.22, face, speed: 15, x0: pcx(p), y: pcy(p), dmg: Math.round(3 * m), hitSet: new Set(), beat: on };
+      p.dashInvuln = Math.max(p.dashInvuln || 0, 0.3);
+      tone(nf(ni), { type: 'sawtooth', dur: 0.26, cut: 300, cutEnd: 6000, q: 12, vol: 0.3, slide: nf(ni) * 1.5 });
+    },
+    // Arpeggiator: three homing notes, each a step higher
+    ground_up(p, face, m, ni, on) {
+      for (let i = 0; i < 3; i++) {
+        projs.push({ k: 'note', x: pcx(p), y: pcy(p) - 0.2, vx: face * (3.5 + i * 1.6), vy: -8.5 - i * 1.2, delay: i * 0.09, life: 1.8, age: 0, dmg: Math.round(2 * m), pierce: 0, hitSet: new Set(), beat: on, col: PALETTE[i], g: 13 });
+        tone(nf(ni + i * 2), { type: 'triangle', dur: 0.16, vol: 0.3, delay: i * 0.09 });
+        tone(nf(ni + i * 2) * 2, { type: 'square', dur: 0.08, vol: 0.07, cut: 4000, delay: i * 0.09 });
+      }
+    },
+    // Subwoofer: plant a speaker that thumps a damaging pulse on the next 4 beats
+    ground_down(p, face, m, ni, on) {
+      if (subs.length >= 2) subs.shift();
+      subs.push({ x: pcx(p), y: p.y + p.h, pulses: 4, lastIdx: Math.floor(beatClock / BEAT), pump: 1, fade: 0.4, dmg: Math.round(2 * m), beat: on, t: 0 });
+      kick(0); tone(55, { type: 'sine', dur: 0.3, vol: 0.4 });
+    },
+    // Sine Beam: a chorus of sine waves fired forward while you hover
+    air_neutral(p, face, m, ni, on) {
+      beam = { t: 0, life: 0.42, face, len: 0, max: 5.5, dmg: Math.round(2 * m), hitSet: new Set(), beat: on };
+      tone(nf(ni + 4), { type: 'sine', dur: 0.42, vol: 0.32, slide: nf(ni + 4) * 0.5 });
+      tone(nf(ni + 4), { type: 'sine', dur: 0.42, vol: 0.18, detune: 14, slide: nf(ni + 4) * 0.5 });
+      tone(nf(ni + 4) * 2, { type: 'triangle', dur: 0.2, vol: 0.08 });
+    },
+    // Pitch Bend: glide sideways along a bending wave, hitting what you pass
+    air_side(p, face, m, ni, on) {
+      dash = { k: 'bend', t: 0, dur: 0.32, face, speed: 13, pts: [], dmg: Math.round(3 * m), hitSet: new Set(), beat: on };
+      p.dashInvuln = Math.max(p.dashInvuln || 0, 0.4);
+      tone(nf(ni), { type: 'sawtooth', dur: 0.32, slide: nf(ni) * 2, cut: 2600, vol: 0.22 });
+      tone(nf(ni) * 1.5, { type: 'square', dur: 0.32, slide: nf(ni) * 0.75, cut: 1800, vol: 0.1 });
+    },
+    // Riser: a white-noise sweep launches you up and knocks foes above you upward (once per jump)
+    air_up(p, face, m, ni, on) {
+      riserUsed = true; riserT = 0.35;
+      p.vy = Math.max(-17, Math.min(-13.5, Math.min(p.vy, 0) - 6));   // adds to a jump, capped
+      const x = pcx(p), y = pcy(p);
+      fx.push({ k: 'riser', x, y0: y, t: 0, life: 0.6 });
+      for (const e of foes()) {
+        if (Math.abs(ex(e) - x) < 1.1 && ey(e) < y + 0.6 && ey(e) > y - 3.6) hit(e, Math.round(3 * m), { ky: -8, stun: 0.5, beat: on, c: C_TEAL });
+      }
+      noise({ dur: 0.45, cut: 400, cutEnd: 9000, swell: true, vol: 0.28, q: 2 });
+      tone(nf(ni), { type: 'sawtooth', dur: 0.45, slide: nf(ni) * 4, cut: 1200, cutEnd: 7000, vol: 0.16 });
+    },
+    // Kick Stomp: slam down; landing (or landing on a foe) drops a four-on-the-floor kick
+    air_down(p, face, m, ni, on) {
+      stomp = { t: 0, dmg: Math.round(4 * m), beat: on, y0: pcy(p) };
+      p.vy = 26; p.dashInvuln = Math.max(p.dashInvuln || 0, 0.4);
+      tone(nf(ni) * 2, { type: 'square', dur: 0.2, slide: nf(ni) / 2, vol: 0.18, cut: 2200 });
+    },
+  };
+
+  function stompImpact(x, y, s) {
+    for (const e of foes()) {
+      const dx = ex(e) - x, dy = ey(e) - (y - 0.4);
+      if (dx * dx + dy * dy <= 2.3 * 2.3) hit(e, s.dmg, { kx: (dx >= 0 ? 1 : -1) * 7, ky: -6, stun: 0.6, beat: s.beat, c: C_PINK });
+    }
+    fx.push({ k: 'floor', x, y, t: 0, life: 0.55, R: 3.2 });
+    fx.push({ k: 'ring', x, y: y - 0.3, t: 0, life: 0.4, R: 2.3, flat: 0.45, c: C_PINK });
+    kick(0, true); shake(6);
+  }
+
   const _prevSlash = window.performSlash;
   window.performSlash = function () {
     if (window.selectedCharacter !== ID) { if (_prevSlash) return _prevSlash.apply(this, arguments); return; }
-    const p = window._gamePlayer, msg = window._setMessage || function(){}, ptcl = window._gameParticles || [], TILE = window._TILE || 40;
-    if (!p) return;
-    const now = performance.now() / 1000;
-    if (now < bdReadyAt) { msg('🎧 Bass Drop in ' + (bdReadyAt - now).toFixed(1) + 's'); return; }
-    bdReadyAt = now + BD_CD;
-    const px = p.x + p.w / 2, py = p.y + p.h / 2;
-    // the look is a synth sound wave, drawn with the character (see synthWave below)
-    bdFx = { t0: now, range: BD_RANGE * TILE };
-    for (let i = 0; i < 6; i++) ptcl.push({ x: px * TILE + (Math.random() - .5) * 20, y: py * TILE - 16, vx: (Math.random() - .5) * 2, vy: -2.5 - Math.random() * 2, life: 0.7, color: ['#6ee7d0', '#b79bff', '#ff5fd8'][i % 3], size: 3 });
-    window._screenShake = (window._screenShake || 0) + 4;
-    // hit everything in range
+    const p = window._gamePlayer;
+    if (!p || drop || atkCD > 0) return;
+    const keys = window._gameKeys || new Set(), mk = window.mobileKeys || {};
+    const up = keys.has('arrowup') || keys.has('w') || !!mk.up;
+    const down = keys.has('arrowdown') || !!mk.down;
+    const right = keys.has('arrowright') || keys.has('d') || !!mk.right;
+    const left = keys.has('arrowleft') || keys.has('a') || !!mk.left;
+    const stance = p.onGround ? 'ground' : 'air';
+    const dir = (down && !up) ? 'down' : (up && !down) ? 'up' : (left || right) ? 'side' : 'neutral';
+    const face = right ? 1 : left ? -1 : ((p.dashDir || p.lastMoveDir || 1) >= 0 ? 1 : -1);
+    if (stance === 'air' && dir === 'up' && riserUsed) { msg('🎧 Riser is used up until you land'); return; }
+    const mv = MOVES[stance][dir];
+    const b = beatInfo();
+    if (b.on) { streak = (b.idx - lastBeatIdx <= 2) ? streak + 1 : 1; lastBeatIdx = b.idx; addHype(1); }
+    else streak = 0;
+    atkCD = mv.cd;
+    ACT[stance + '_' + dir](p, face, b.on ? 1.5 : 1, b.on ? Math.min(streak, 7) : 0, b.on);
+    if (b.on) fx.push({ k: 'label', x: pcx(p), y: p.y - 0.5, t: 0, life: 0.7, text: streak > 1 ? 'ON BEAT x' + streak : 'ON BEAT' });
+    msg('🎧 ' + mv.name.toUpperCase() + '!' + (b.on ? ' ✨ ON BEAT' + (streak > 1 ? ' x' + streak : '') : ''));
+  };
+
+  // ---- THE DROP (K / 🎚️): needs a full Hype meter ----
+  function pressDrop() {
+    if (window.selectedCharacter !== ID || (window._gameMode && window._gameMode() !== 'play')) return;
+    const p = window._gamePlayer; if (!p || drop) return;
+    if (hype < HYPE_MAX) { msg('🎚️ Hype ' + Math.floor(hype) + '/' + HYPE_MAX + ': hit on the beat to fill it for THE DROP'); return; }
+    hype = 0; hypeFullSaid = false; dash = stomp = beam = null;
+    drop = { t: 0, x: pcx(p), y: pcy(p) };
+    // snare roll speeding up, with a saw riser underneath
+    for (let i = 0; i < 12; i++) noise({ delay: DROP_BUILD * Math.pow(i / 12, 0.75), dur: 0.05, cut: 1900, vol: 0.1 + i * 0.02, q: 0.8 });
+    tone(110, { type: 'sawtooth', dur: DROP_BUILD, slide: 440, cut: 400, cutEnd: 5000, vol: 0.2, att: 0.2 });
+    msg('🎚️ BUILD UP...');
+  }
+  function dropBlast(p) {
+    const x = pcx(p), y = pcy(p);
     let hits = 0;
-    for (const e of (window._gameEnemies || [])) {
-      if (!e || e.dead) continue;
-      const dx = (e.x + (e.w || 1) / 2) - px, dy = (e.y + (e.h || 1) / 2) - py;
-      if (dx * dx + dy * dy > BD_RANGE * BD_RANGE) continue;
-      e.hp = Math.max(0, (e.hp || 1) - BD_DMG);
-      e.stunTimer = Math.max(e.stunTimer || 0, 1.0);
-      e.hitFlash = 0.6;
-      e.vx = (dx >= 0 ? 1 : -1) * 8; e.vy = -6;
-      if (e.hp <= 0 && window._killEnemy) window._killEnemy(e);
+    for (const e of foes()) {
+      const dx = ex(e) - x, dy = ey(e) - y;
+      if (dx * dx + dy * dy > DROP_RANGE * DROP_RANGE) continue;
+      hit(e, DROP_DMG, { stun: 1.5, kx: (dx >= 0 ? 1 : -1) * 9, ky: -7, c: C_PINK });
       hits++;
     }
-    // in the air it doubles as a rebound
+    hype = 0; hypeFullSaid = false;
+    const bars = []; for (let i = 0; i < 36; i++) bars.push(0.35 + Math.random() * 0.65);
+    fx.push({ k: 'drop', x, y, t: 0, life: DROP_FX, R: DROP_RANGE, bars });
     if (!p.onGround) p.vy = Math.min(p.vy, -9);
-    msg('🎧 BASS DROP!' + (hits ? ' ' + hits + ' hit' + (hits > 1 ? 's' : '') + '!' : ''));
+    kick(0, true);
+    tone(55, { type: 'sine', dur: 1.0, slide: 38, vol: 0.85 });
+    [nf(0) / 2, nf(4) / 2, nf(5)].forEach((fq, i) => tone(fq, { type: 'sawtooth', dur: 0.75, cut: 5000, cutEnd: 200, q: 8, vol: 0.16, detune: i * 7 }));
+    noise({ dur: 0.5, cut: 6000, cutEnd: 300, vol: 0.2, ftype: 'lowpass' });
+    shake(10);
+    msg('🎚️ THE DROP!' + (hits ? ' ' + hits + ' hit' + (hits > 1 ? 's' : '') + '!' : ''));
+  }
+  window.addEventListener('keydown', e => { if (!e.repeat && e.key && e.key.toLowerCase() === 'k') pressDrop(); });
+
+  // ---- 🎚️ button (also shows the Hype meter and the beat) ----
+  if (!document.getElementById('ppDropStyle')) {
+    const sty = document.createElement('style');
+    sty.id = 'ppDropStyle';
+    sty.textContent = `
+      #ppDropBtn { position:absolute; top:136px; right:16px; z-index:100; width:54px; height:54px; border-radius:50%;
+        border:2px solid #b79bff; display:none; align-items:center; justify-content:center; cursor:pointer;
+        font-size:22px; color:#fff; padding:0; touch-action:none; transition:transform .12s; }
+      #ppDropBtn:active { transform:scale(.9); }
+      #ppDropBtn.ready { border-color:#fff; animation: ppDropReady .47s infinite; }
+      @keyframes ppDropReady { 0%,100% { box-shadow:0 0 10px #ff5fd8; } 50% { box-shadow:0 0 28px #ff5fd8, 0 0 8px #6ee7d0; } }
+      @media (max-width: 480px) { #ppDropBtn { transform: scale(0.85); } }
+      @media (max-height: 500px) { #ppDropBtn { top:98px; transform: scale(0.8); } }
+    `;
+    document.head.appendChild(sty);
+  }
+  let btn = null, btnKey = '';
+  function ensureBtn() {
+    if (btn) return btn;
+    btn = document.createElement('button');
+    btn.id = 'ppDropBtn'; btn.title = 'THE DROP (K)'; btn.textContent = '🎚️';
+    const fire = ev => { ev.preventDefault(); ev.stopPropagation(); pressDrop(); };
+    btn.addEventListener('touchstart', fire, { passive: false });
+    btn.addEventListener('mousedown', fire);
+    document.body.appendChild(btn);
+    return btn;
+  }
+  function updateBtn() {
+    const pct = Math.round(hype / HYPE_MAX * 100), glow = Math.round(beatPulse * 4);
+    const key = pct + '|' + glow;
+    if (key === btnKey) return;
+    btnKey = key;
+    btn.style.background = 'radial-gradient(circle, rgba(22,16,44,.95) 52%, transparent 54%), conic-gradient(#6ee7d0 0%, #8b5cff ' + (pct / 2) + '%, #ff5fd8 ' + pct + '%, rgba(40,30,80,.85) ' + pct + '% 100%)';
+    btn.classList.toggle('ready', hype >= HYPE_MAX);
+    if (hype < HYPE_MAX) btn.style.boxShadow = '0 0 ' + (6 + glow * 4) + 'px rgba(139,92,255,' + (0.3 + glow * 0.12) + ')';
+    else btn.style.boxShadow = '';
+  }
+
+  // ---- per-frame update ----
+  (window._rafHubTickers = window._rafHubTickers || []).push(function _ppProdigyTick(dt) {
+    const b = ensureBtn();
+    const playing = window.selectedCharacter === ID && (!window._gameMode || window._gameMode() === 'play');
+    if (!playing) { b.style.display = 'none'; if (active) resetKit(); active = false; return; }
+    const p = window._gamePlayer; if (!p) return;
+    active = true; b.style.display = 'flex';
+
+    // respawned or teleported: drop anything that moves the player
+    if (lastPX != null && (Math.abs(p.x - lastPX) > 3 || Math.abs(p.y - lastPY) > 3)) { dash = stomp = beam = drop = null; }
+
+    const prevIdx = Math.floor(beatClock / BEAT);
+    beatClock += dt;
+    const idx = Math.floor(beatClock / BEAT);
+    beatPulse = Math.pow(1 - (beatClock % BEAT) / BEAT, 2.2);
+    if (idx > prevIdx && idx % 4 === 0) addHype(1);   // a little Hype every bar, even when idle
+    if (atkCD > 0) atkCD = Math.max(0, atkCD - dt);
+    if (p.onGround) riserUsed = false;
+    const enemies = foes();
+
+    // square waves and notes
+    for (let i = projs.length - 1; i >= 0; i--) {
+      const q = projs[i];
+      if (q.delay > 0) { q.delay -= dt; q.x = pcx(p); q.y = pcy(p) - 0.2; if (q.delay > 0) continue; }
+      q.age += dt; q.life -= dt;
+      if (q.life <= 0) { projs.splice(i, 1); continue; }
+      if (q.k === 'note') {
+        let best = null, bd = 36;
+        if (q.age > 0.22) for (const e of enemies) { const d = (ex(e) - q.x) ** 2 + (ey(e) - q.y) ** 2; if (d < bd && !q.hitSet.has(e)) { bd = d; best = e; } }
+        if (best) {
+          const d = Math.sqrt(bd) || 1, k = Math.min(1, dt * 5);
+          q.vx += ((ex(best) - q.x) / d * 10 - q.vx) * k; q.vy += ((ey(best) - q.y) / d * 10 - q.vy) * k;
+        } else q.vy += q.g * dt;
+      }
+      q.x += q.vx * dt; q.y += q.vy * dt;
+      (q.trail = q.trail || []).push({ x: q.x, y: q.y }); if (q.trail.length > 10) q.trail.shift();
+      if (blocked(q.x - 0.12, q.y - 0.12, 0.24, 0.24)) { fx.push({ k: 'hit', x: q.x, y: q.y, t: 0, life: 0.25, c: q.col || C_TEAL }); projs.splice(i, 1); continue; }
+      for (const e of enemies) {
+        if (e.dead || q.hitSet.has(e)) continue;
+        if (Math.abs(ex(e) - q.x) < 0.62 && Math.abs(ey(e) - q.y) < 0.62) {
+          q.hitSet.add(e);
+          hit(e, q.dmg, { stun: 0.35, kx: Math.sign(q.vx || 1) * 3, beat: q.beat, c: q.col || C_TEAL });
+          if (q.pierce > 0) q.pierce--; else { projs.splice(i, 1); break; }
+        }
+      }
+    }
+
+    // Saw Slicer / Pitch Bend
+    if (dash) {
+      const prevT = dash.t; dash.t = Math.min(dash.dur, dash.t + dt);
+      const step = dash.face * dash.speed * (dash.t - prevT);
+      if (!blocked(p.x + step, p.y + 0.02, p.w, p.h - 0.04)) p.x += step; else dash.t = dash.dur;
+      if (dash.k === 'bend') {
+        const yo = tt => -Math.sin(Math.min(1, tt / dash.dur) * Math.PI * 2) * 0.55;
+        const dy = yo(dash.t) - yo(prevT);
+        if (!blocked(p.x, p.y + dy, p.w, p.h)) p.y += dy;
+        p.vy = 0;
+        dash.pts.push({ x: pcx(p), y: pcy(p) });
+      }
+      p.dashInvuln = Math.max(p.dashInvuln || 0, 0.12);
+      for (const e of enemies) {
+        if (dash.hitSet.has(e)) continue;
+        if (ex(e) > p.x - 0.35 && ex(e) < p.x + p.w + 0.35 && ey(e) > p.y - 0.3 && ey(e) < p.y + p.h + 0.3) {
+          dash.hitSet.add(e);
+          hit(e, dash.dmg, { kx: dash.face * 7, ky: -4, stun: 0.5, beat: dash.beat, c: dash.k === 'saw' ? C_PINK : C_LILAC });
+        }
+      }
+      if (dash.t >= dash.dur) {
+        if (dash.k === 'saw') fx.push({ k: 'saw', x0: dash.x0, x1: pcx(p), y: dash.y, t: 0, life: 0.4 });
+        else fx.push({ k: 'bend', pts: dash.pts, t: 0, life: 0.45 });
+        p.vx = dash.face * 6;
+        dash = null;
+      }
+    }
+
+    // Sine Beam
+    if (beam) {
+      beam.t += dt; beam.len = Math.min(beam.max, beam.max * beam.t / 0.1);
+      p.vy = Math.min(p.vy, 0.6);
+      const ox = pcx(p) + beam.face * 0.4, oy = pcy(p);
+      for (const e of enemies) {
+        if (beam.hitSet.has(e)) continue;
+        const along = (ex(e) - ox) * beam.face;
+        if (along > -0.3 && along < beam.len && Math.abs(ey(e) - oy) < 0.75) {
+          beam.hitSet.add(e);
+          hit(e, beam.dmg, { stun: 0.4, slow: 1.5, kx: beam.face * 4, beat: beam.beat, c: C_VIOLET });
+        }
+      }
+      if (beam.t >= beam.life) beam = null;
+    }
+
+    // Kick Stomp
+    if (stomp) {
+      stomp.t += dt;
+      p.vy = Math.max(p.vy, 24);
+      p.dashInvuln = Math.max(p.dashInvuln || 0, 0.15);
+      let landed = null;
+      for (const e of enemies) {
+        if (ex(e) > p.x - 0.2 && ex(e) < p.x + p.w + 0.2 && e.y < p.y + p.h + 0.25 && e.y + (e.h || 0.9) > p.y + p.h * 0.5) { landed = e; break; }
+      }
+      if (landed) { const s = stomp; stomp = null; p.vy = -11; stompImpact(pcx(p), p.y + p.h, s); }
+      else if (p.onGround && stomp.t > 0.03) { const s = stomp; stomp = null; stompImpact(pcx(p), p.y + p.h, s); }
+      else if (stomp.t > 1.2) stomp = null;
+    }
+
+    // Riser leaves rings at your feet as you climb
+    if (riserT > 0) {
+      riserT -= dt;
+      if (Math.floor((riserT + dt) / 0.05) !== Math.floor(riserT / 0.05)) fx.push({ k: 'ring', x: pcx(p), y: p.y + p.h, t: 0, life: 0.35, R: 0.9, flat: 0.28, c: C_TEAL });
+    }
+
+    // Subwoofers pulse on every beat
+    for (let i = subs.length - 1; i >= 0; i--) {
+      const s = subs[i];
+      s.t += dt; s.pump = Math.max(0, s.pump - dt * 5);
+      if (s.pulses > 0 && idx > s.lastIdx) {
+        s.lastIdx = idx; s.pulses--; s.pump = 1;
+        const sx = s.x, sy = s.y - 0.45;
+        for (const e of enemies) {
+          const dx = ex(e) - sx, dy = ey(e) - sy;
+          if (dx * dx + dy * dy <= 2.3 * 2.3) hit(e, s.dmg, { kx: (dx >= 0 ? 1 : -1) * 6, ky: -5, stun: 0.4, beat: s.beat, c: C_VIOLET });
+        }
+        fx.push({ k: 'ring', x: sx, y: sy, t: 0, life: 0.42, R: 2.3, flat: 0.8, c: C_VIOLET });
+        kick(0); shake(2);
+      }
+      if (s.pulses <= 0) { s.fade -= dt; if (s.fade <= 0) subs.splice(i, 1); }
+    }
+
+    // THE DROP
+    if (drop) {
+      drop.t += dt;
+      p.vy = 0; p.vx *= 0.8;
+      p.dashInvuln = Math.max(p.dashInvuln || 0, 0.25);
+      drop.x = pcx(p); drop.y = pcy(p);
+      if (drop.t >= DROP_BUILD) { drop = null; dropBlast(p); p.dashInvuln = Math.max(p.dashInvuln || 0, 0.5); }
+    }
+
+    for (let i = fx.length - 1; i >= 0; i--) { fx[i].t += dt; if (fx[i].t >= fx[i].life) fx.splice(i, 1); }
+    lastPX = p.x; lastPY = p.y;
+    updateBtn();
+  });
+
+  // ---- drawing (world space; drawn after the player) ----
+  function neon(ctx, col, w, a) {
+    ctx.globalAlpha = 0.28 * a; ctx.strokeStyle = col; ctx.lineWidth = w * 3.2; ctx.stroke();
+    ctx.globalAlpha = 0.9 * a; ctx.lineWidth = w; ctx.stroke();
+    ctx.globalAlpha = 0.85 * a; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, w * 0.35); ctx.stroke();
+  }
+  function ripplePath(ctx, cx, cy, r, flat, lobes, amp, ph) {
+    ctx.beginPath();
+    for (let i = 0; i <= 96; i++) {
+      const a = i / 96 * Math.PI * 2, rr = r + Math.sin(a * lobes + ph) * amp;
+      const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr * flat;
+      if (!i) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+  }
+  // THE DROP's look: an oscilloscope wave sweeping out both sides plus a ring whose edge ripples
+  // like a sine wave, in layered teal / violet / pink, fading as it spreads.
+  function synthWave(ctx, cx, cy, age, len, Rmax) {
+    const k = age / len, ease = 1 - Math.pow(1 - k, 3), R = Rmax * ease, fade = 1 - k;
+    const layers = [[C_TEAL, -1.5, 0], [C_VIOLET, 0, 0.6], [C_PINK, 1.5, 1.2]];
+    for (const [col, off, ph] of layers) {
+      ctx.beginPath();
+      for (let x = -R; x <= R; x += 3) {
+        const env = Math.max(0, 1 - Math.abs(x) / (R + 1));
+        const y = (Math.sin(x * 0.12 - age * 40 + ph) + 0.35 * Math.sin(x * 0.36 - age * 55 + ph)) * 26 * env * (0.4 + 0.6 * fade);
+        if (x === -R) ctx.moveTo(cx + x, cy + y + off); else ctx.lineTo(cx + x, cy + y + off);
+      }
+      neon(ctx, col, 3, fade);
+    }
+    for (const [col, off, ph] of layers) {
+      ripplePath(ctx, cx, cy, R + off * 2, 0.75, 12, 6 * fade, age * 30 + ph);
+      neon(ctx, col, 2.5, 0.8 * fade);
+    }
+  }
+  function sawPath(ctx, xa, xb, y, A, P) {
+    const dir = xb >= xa ? 1 : -1, L = Math.abs(xb - xa);
+    ctx.beginPath(); ctx.moveTo(xa, y + A);
+    for (let u = 0; u < L; u += P) {
+      const u2 = Math.min(L, u + P), hgt = A * (u2 - u) / P;
+      ctx.lineTo(xa + dir * u2, y + A - 2 * hgt);
+      ctx.lineTo(xa + dir * u2, y + A);
+    }
+  }
+  function squarePath(ctx, hx, hy, dirx, L, P, A, off) {
+    const H = P / 2;
+    let u = 0, hi = Math.floor(off / H) % 2 === 0;
+    ctx.beginPath(); ctx.moveTo(hx, hy + (hi ? -A : A));
+    let guard = 0;
+    while (u < L && guard++ < 200) {
+      const edge = Math.max(u + 0.5, (Math.floor((u + off) / H) + 1) * H - off);
+      const u2 = Math.min(L, edge), amp = A * (1 - 0.7 * u2 / L);
+      ctx.lineTo(hx - dirx * u2, hy + (hi ? -amp : amp));
+      if (u2 < L) { hi = !hi; ctx.lineTo(hx - dirx * u2, hy + (hi ? -amp : amp)); }
+      u = u2;
+    }
+  }
+  function drawNote(ctx, x, y, s, col) {
+    ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(x, y, 5.5 * s, 4 * s, -0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x + 4.6 * s, y - 1.5 * s); ctx.lineTo(x + 4.6 * s, y - 17 * s);
+    ctx.quadraticCurveTo(x + 11 * s, y - 13 * s, x + 10 * s, y - 6 * s); ctx.stroke();
+    ctx.fillStyle = '#ffffff'; ctx.globalAlpha *= 0.8;
+    ctx.beginPath(); ctx.ellipse(x - 1.5 * s, y - 1 * s, 2 * s, 1.2 * s, -0.4, 0, Math.PI * 2); ctx.fill();
+  }
+
+  function drawWorld(ctx, cam) {
+    const p = window._gamePlayer; if (!p || !active) return;
+    const T = window._TILE || 40, cx0 = cam ? cam.x : 0, cy0 = cam ? cam.y : 0;
+    const SX = x => x * T - cx0, SY = y => y * T - cy0;
+    const clk = beatClock;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.shadowBlur = 0;
+
+    // beat ring under your feet
+    ctx.beginPath(); ctx.ellipse(SX(pcx(p)), SY(p.y + p.h) - 1, T * (0.35 + 0.25 * beatPulse), T * 0.09 * (1 + beatPulse), 0, 0, Math.PI * 2);
+    neon(ctx, C_VIOLET, 1.5, 0.15 + 0.5 * beatPulse);
+
+    // subwoofers
+    for (const s of subs) {
+      const a = s.pulses > 0 ? 1 : Math.max(0, s.fade / 0.4);
+      const bx = SX(s.x), by = SY(s.y), w = T * 0.8, h = T * 0.9, pump = s.pump;
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = a;
+      ctx.fillStyle = '#15161b'; ctx.beginPath(); ctx.roundRect(bx - w / 2, by - h, w, h, 5); ctx.fill();
+      const cr = T * 0.24 * (1 + pump * 0.18);
+      const g = ctx.createRadialGradient(bx, by - h * 0.36, 1, bx, by - h * 0.36, cr);
+      g.addColorStop(0, '#5c606b'); g.addColorStop(0.55, '#2b2d34'); g.addColorStop(1, '#0c0d10');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(bx, by - h * 0.36, cr, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#3a3d46'; ctx.beginPath(); ctx.arc(bx, by - h * 0.78, T * 0.08 * (1 + pump * 0.3), 0, Math.PI * 2); ctx.fill();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.beginPath(); ctx.roundRect(bx - w / 2, by - h, w, h, 5); neon(ctx, C_VIOLET, 1.5, a * (0.5 + 0.5 * pump));
+      ctx.beginPath(); ctx.arc(bx, by - h * 0.36, cr + 2, 0, Math.PI * 2); neon(ctx, C_PINK, 1.5, a * (0.3 + 0.7 * pump));
+      // remaining pulses as tiny lights on top
+      for (let i = 0; i < 4; i++) {
+        ctx.globalAlpha = a * (i < s.pulses ? 0.95 : 0.15); ctx.fillStyle = PALETTE[i % 3];
+        ctx.fillRect(bx - w * 0.36 + i * w * 0.2, by - h - 5, w * 0.14, 3);
+      }
+    }
+
+    // square waves and notes
+    for (const q of projs) {
+      if (q.delay > 0) continue;
+      const hx = SX(q.x), hy = SY(q.y);
+      if (q.k === 'sq') {
+        const dirx = Math.sign(q.vx) || 1, L = Math.min(T * 1.7, q.age * 400);
+        squarePath(ctx, hx, hy, dirx, L, 14, q.big ? 10 : 7, (clk * 220) % 14);
+        neon(ctx, C_TEAL, 2.4, Math.min(1, q.life / 0.2));
+        ctx.globalAlpha = 1; ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(hx, hy, 3.5, 0, Math.PI * 2); ctx.fill();
+      } else {
+        const tr = q.trail || [];
+        if (tr.length > 1) {
+          ctx.beginPath();
+          for (let i = 0; i < tr.length; i++) {
+            const a = tr[Math.max(0, i - 1)], b2 = tr[Math.min(tr.length - 1, i + 1)];
+            let nx = -(b2.y - a.y), ny = b2.x - a.x; const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
+            const w = Math.sin(i * 1.4 - clk * 30) * 4 * (i / tr.length);
+            const x = SX(tr[i].x) + nx * w, y = SY(tr[i].y) + ny * w;
+            if (!i) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          neon(ctx, q.col, 1.8, 0.7);
+        }
+        ctx.globalAlpha = Math.min(1, q.life / 0.2);
+        drawNote(ctx, hx, hy + 4, 1 + 0.15 * beatPulse, q.col);
+      }
+    }
+
+    // live Saw Slicer / Pitch Bend
+    if (dash && dash.k === 'saw') {
+      sawPath(ctx, SX(dash.x0), SX(pcx(p)), SY(dash.y), 11, 18);
+      neon(ctx, C_PINK, 2.6, 1);
+      ctx.beginPath(); ctx.moveTo(SX(pcx(p)) + dash.face * T * 0.45, SY(p.y) - 4); ctx.lineTo(SX(pcx(p)) + dash.face * T * 0.45, SY(p.y + p.h) + 4);
+      neon(ctx, '#ffffff', 2, 0.8);
+    }
+    if (dash && dash.k === 'bend' && dash.pts.length > 1) drawBend(ctx, dash.pts, SX, SY, clk, 1);
+
+    // Sine Beam
+    if (beam) {
+      const ox = SX(pcx(p) + beam.face * 0.4), oy = SY(pcy(p)), L = beam.len * T;
+      const fade = beam.t > beam.life - 0.12 ? (beam.life - beam.t) / 0.12 : 1;
+      const layers = [[C_TEAL, 0.09, 10, 0], [C_VIOLET, 0.15, 6, 1.3], [C_PINK, 0.05, 14, 2.4]];
+      for (const [col, kf, amp, ph] of layers) {
+        ctx.beginPath();
+        for (let u = 0; u <= L; u += 3) {
+          const env = Math.min(1, u / 30) * (1 - u / (L + 60));
+          const y = Math.sin(u * kf - clk * 34 + ph) * amp * env * (beam.beat ? 1.3 : 1);
+          if (!u) ctx.moveTo(ox, oy + y); else ctx.lineTo(ox + beam.face * u, oy + y);
+        }
+        neon(ctx, col, 2.2, fade);
+      }
+      ctx.globalAlpha = fade; ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(ox + beam.face * L, oy, 3 + 2 * beatPulse, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Kick Stomp: a decaying kick waveform trails above you as you fall
+    if (stomp) {
+      const x = SX(pcx(p)), yb = SY(pcy(p)), top = Math.max(SY(stomp.y0), yb - T * 4), L = yb - top;
+      if (L > 4) {
+        ctx.beginPath();
+        for (let v = 0; v <= L; v += 3) {
+          const w = Math.sin(v * 0.3 + clk * 45) * 10 * (1 - v / L);
+          if (!v) ctx.moveTo(x + w, yb); else ctx.lineTo(x + w, yb - v);
+        }
+        neon(ctx, C_PINK, 2.4, 0.9);
+      }
+    }
+
+    // THE DROP build-up: rings and spectrum bars pulled in toward you
+    if (drop) {
+      const k = drop.t / DROP_BUILD, x = SX(drop.x), y = SY(drop.y);
+      for (let i = 0; i < 4; i++) {
+        const r = T * DROP_RANGE * (1 - ((k * 2 + i / 4) % 1));
+        ripplePath(ctx, x, y, r, 0.75, 10, 4, clk * 20 + i);
+        neon(ctx, PALETTE[i % 3], 2, 0.25 + 0.6 * k);
+      }
+      ctx.globalAlpha = 0.5 + 0.5 * k; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+      for (let i = 0; i < 24; i++) {
+        const a = i / 24 * Math.PI * 2, r0 = T * (1.6 - 1.0 * k), r1 = r0 + 6 + Math.abs(Math.sin(clk * 25 + i * 1.7)) * 16 * k;
+        ctx.strokeStyle = PALETTE[i % 3];
+        ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * r0, y + Math.sin(a) * r0 * 0.75); ctx.lineTo(x + Math.cos(a) * r1, y + Math.sin(a) * r1 * 0.75); ctx.stroke();
+      }
+    }
+
+    // effects
+    for (const f of fx) {
+      const k = f.t / f.life, fade = 1 - k;
+      if (f.k === 'ring') {
+        const ease = 1 - Math.pow(1 - k, 2.5);
+        ripplePath(ctx, SX(f.x), SY(f.y), Math.max(1, f.R * T * ease), f.flat || 0.75, 10, 4 * fade, f.t * 30);
+        neon(ctx, f.c, 2, fade);
+      } else if (f.k === 'saw') {
+        sawPath(ctx, SX(f.x0), SX(f.x1), SY(f.y), 11 * (0.5 + 0.5 * fade), 18);
+        neon(ctx, C_PINK, 2.4, fade);
+      } else if (f.k === 'bend') {
+        drawBend(ctx, f.pts, SX, SY, clk, fade);
+      } else if (f.k === 'floor') {
+        const R = f.R * T * (1 - Math.pow(1 - k, 2)), x = SX(f.x), y = SY(f.y) - 2;
+        for (const side of [1, -1]) {
+          ctx.beginPath(); ctx.moveTo(x, y);
+          for (let u = 0; u <= R; u += 3) ctx.lineTo(x + side * u, y - Math.abs(Math.sin(u * 0.22 - f.t * 50)) * 20 * Math.exp(-u / (T * 1.4)) * fade);
+          neon(ctx, side > 0 ? C_PINK : C_TEAL, 2.4, fade);
+        }
+      } else if (f.k === 'riser') {
+        const x = SX(f.x), y0 = SY(f.y0), y1 = SY(pcy(p));
+        if (y0 - y1 > 4) {
+          for (const col of [C_TEAL, C_LILAC]) {
+            ctx.beginPath(); ctx.moveTo(x, y0);
+            for (let y = y0; y > y1; y -= 4) ctx.lineTo(x + (Math.random() - 0.5) * 16 * ((y0 - y) / (y0 - y1)), y);
+            neon(ctx, col, 1.4, fade * 0.8);
+          }
+        }
+      } else if (f.k === 'hit') {
+        const x = SX(f.x), y = SY(f.y), r = 4 + k * 18;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + 0.3; ctx.moveTo(x + Math.cos(a) * r * 0.5, y + Math.sin(a) * r * 0.5); ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); }
+        neon(ctx, f.c, 1.6, fade);
+      } else if (f.k === 'drop') {
+        const x = SX(f.x), y = SY(f.y);
+        synthWave(ctx, x, y, f.t, f.life, f.R * T);
+        const ease = 1 - Math.pow(1 - k, 3), r0 = T * 0.7 + ease * f.R * T * 0.3;
+        ctx.lineWidth = 4;
+        for (let i = 0; i < f.bars.length; i++) {
+          const a = i / f.bars.length * Math.PI * 2, len = f.bars[i] * (0.5 + 0.5 * Math.abs(Math.sin(f.t * 22 + i * 1.3))) * 46 * fade;
+          ctx.globalAlpha = 0.9 * fade; ctx.strokeStyle = PALETTE[Math.floor(i / f.bars.length * 3)];
+          ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * r0, y + Math.sin(a) * r0 * 0.75); ctx.lineTo(x + Math.cos(a) * (r0 + len), y + Math.sin(a) * (r0 + len) * 0.75); ctx.stroke();
+        }
+      }
+    }
+
+    // Hype meter: a little equalizer over your head
+    if (hype > 0 || drop) {
+      const n = HYPE_MAX, bw = 3, gap = 1.5, total = n * bw + (n - 1) * gap;
+      const bx = SX(pcx(p)) - total / 2, by = SY(p.y) - 9, full = hype >= HYPE_MAX;
+      for (let i = 0; i < n; i++) {
+        const lit = i < Math.floor(hype);
+        const hgt = lit ? 3 + Math.abs(Math.sin(clk * 9 + i * 0.9)) * 5 * (0.4 + 0.6 * beatPulse) + (full ? 3 : 0) : 2;
+        ctx.globalAlpha = lit ? 0.95 : 0.25;
+        ctx.fillStyle = lit ? PALETTE[Math.min(2, Math.floor(i / n * 3))] : '#8b8fa0';
+        ctx.fillRect(bx + i * (bw + gap), by - hgt, bw, hgt);
+      }
+    }
+
+    // labels
+    ctx.globalCompositeOperation = 'source-over';
+    for (const f of fx) {
+      if (f.k !== 'label') continue;
+      const fade = 1 - f.t / f.life;
+      ctx.globalAlpha = fade; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,10,40,0.8)';
+      const x = SX(f.x), y = SY(f.y) - f.t * 30 - 12;
+      ctx.strokeText(f.text, x, y); ctx.fillStyle = C_TEAL; ctx.fillText(f.text, x, y);
+    }
+    ctx.restore();
+  }
+  function drawBend(ctx, pts, SX, SY, clk, a) {
+    const first = pts[0], last = pts[pts.length - 1];
+    const g = ctx.createLinearGradient(SX(first.x), SY(first.y), SX(last.x), SY(last.y));
+    g.addColorStop(0, C_TEAL); g.addColorStop(0.5, C_VIOLET); g.addColorStop(1, C_PINK);
+    ctx.beginPath();
+    pts.forEach((pt, i) => { if (!i) ctx.moveTo(SX(pt.x), SY(pt.y)); else ctx.lineTo(SX(pt.x), SY(pt.y)); });
+    ctx.globalAlpha = 0.3 * a; ctx.strokeStyle = g; ctx.lineWidth = 9; ctx.stroke();
+    ctx.globalAlpha = 0.95 * a; ctx.lineWidth = 3; ctx.stroke();
+    // vibrato riding the bend
+    ctx.beginPath();
+    pts.forEach((pt, i) => { const y = SY(pt.y) + Math.sin(i * 1.6 - clk * 40) * 6; if (!i) ctx.moveTo(SX(pt.x), y); else ctx.lineTo(SX(pt.x), y); });
+    ctx.globalAlpha = 0.8 * a; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2; ctx.stroke();
+  }
+  const _prevDrawHook = window.drifterDrawHook;
+  window.drifterDrawHook = function (ctx, now2, cam) {
+    if (_prevDrawHook) _prevDrawHook(ctx, now2, cam);
+    if (window.selectedCharacter !== ID) return;
+    try { drawWorld(ctx, cam); } catch (e) {}
   };
 
   // join the character list once the capsule system is ready
