@@ -500,7 +500,14 @@
         { id:'v1',    n:'Gacha Voucher',  d:'One pull in the card gacha.', p:25, buy:function(){ return bastionAdd('vouchers', 1); } },
         { id:'v5',    n:'Voucher Bundle', d:'Five gacha pulls.', p:100, buy:function(){ return bastionAdd('vouchers', 5); } },
         { id:'crown', n:'CrownCard',      d:'A pull that is guaranteed Mythic or better.', p:150, buy:function(){ return bastionAdd('crownCards', 1); } },
-        { id:'crownp',n:'CrownCard+',     d:'A pull that is guaranteed Legendary Limited.', p:300, buy:function(){ return bastionAdd('crownPlusCards', 1); } }
+        { id:'crownp',n:'CrownCard+',     d:'A pull that is guaranteed Legendary Limited.', p:300, buy:function(){ return bastionAdd('crownPlusCards', 1); } },
+        { id:'paragon', n:'Press Play Paragon', x:1, d:'Press Play exclusive troop (5 elixir): a shielded violet melee champion in headphones that lets out a big sound blast when it falls. Never in the gacha.', p:450,
+          off:ownedOff('bastion', 'paragon'),
+          buy:function(){
+            if (owned('bastion', 'paragon')) return false;
+            if (!jpatch('ccGachaState', function(o){ o.shopUnlocked = o.shopUnlocked || {}; o.shopUnlocked.pressplayparagon = true; }, JSON.parse(JSON.stringify(BASTION_DEFAULT)))) return false;
+            P.own['bastion:paragon'] = 1; return true;
+          } }
       ]
     },
     blob: {
@@ -555,6 +562,7 @@
         { id:'csil',  n:'Silver Capsule',  d:'A free character capsule: simple characters with one ability.', p:70, buy:function(){ return boost('obby', 'cb_silver', 1); } },
         { id:'cret',  n:'Retro Box',       d:'A free Retro character box.', p:110, buy:function(){ return boost('obby', 'cb_retro', 1); } },
         { id:'cgold', n:'Gold Capsule',    d:'A free Gold capsule: stronger characters with their own tricks.', p:160, buy:function(){ return boost('obby', 'cb_gold', 1); } },
+        { id:'prodigy', n:'Press Play Prodigy', x:1, d:'Press Play exclusive character: violet suit, black and grey headphones. Encore: 3 jumps, 3 dashes, 4 HP and top speed.', p:420, off:ownedOff('obby', 'prodigy'), buy:exclusive('obby', 'prodigy', 'prodigy') },
         { id:'wave',  n:'Press Play Wave', x:1, d:'Press Play exclusive cosmetic: a teal-to-pink sound wave trail and orbiting music notes.', p:180, off:ownedOff('obby', 'wave'), buy:exclusive('obby', 'wave', 'wave') }
       ]
     },
@@ -563,6 +571,8 @@
       items: [
         { id:'trophies', n:'Trophy Cache', d:'3 random trophies in your Trophy Satchel next time your save loads.', p:50, off:function(){ return toqueSave() ? '' : 'Start a game first'; }, buy:function(){ return boost('toque', 'trophies', 3); } },
         { id:'rite',     n:'Ancestor\'s Rite', d:'Kanata gains 300 XP and his spirit 200 XP next time your save loads.', p:70, off:function(){ return toqueSave() ? '' : 'Start a game first'; }, buy:function(){ return boost('toque', 'rite', 1); } },
+        { id:'panther', n:'Press Play Panther', x:1, d:'Press Play exclusive spirit: a charcoal panther in black and grey headphones. Hits hard, its Encore stuns and heals, and it learns Drop the Beat and Replay.', p:400,
+          off:function(){ return owned('toque', 'panther') ? 'Owned' : toqueSave() ? '' : 'Start a game first'; }, buy:exclusive('toque', 'panther', 'panther') },
         { id:'headphones', n:'Press Play Headphones', x:1, d:'Press Play exclusive gear: +2 spear damage, +12 max HP, and Focus restores +10 more Spirit.', p:220,
           off:function(){ return owned('toque', 'headphones') ? 'Owned' : toqueSave() ? '' : 'Start a game first'; }, buy:exclusive('toque', 'headphones', 'headphones') }
       ]

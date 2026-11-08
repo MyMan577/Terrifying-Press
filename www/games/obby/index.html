@@ -39610,6 +39610,100 @@ window._claimLBro = function() {
 <script src="../qrlink/qrlink.js"></script>
 <script src="online.js"></script>
 <script>
+// ===== Press Play Prodigy: Press Play exclusive character (only from the Press Play shop) =====
+// Registered the same way as the other add-on capsule characters. Its tier ('pressplay')
+// is in no capsule pool, so it can never be rolled; it is given straight to you.
+(function () {
+  'use strict';
+  const ID = 'cb_pressplay';
+  const DEF = {
+    id: ID, name: 'Press Play Prodigy', icon: '🎧', tier: 'pressplay',
+    ability: 'Encore: 3 jumps, 3 dashes, 4 HP',
+    desc: 'Press Play exclusive. Violet suit, black and grey headphones and a play button on the chest. Encore: 3 jumps, 3 dashes, 4 HP and top speed.',
+    color: '#8b5cff'
+  };
+  const STATS = { speed: 1.3, jump: 1.25, maxJumps: 3, maxDashes: 3, hp: 4 };
+
+  // a Prodigy bought in the Press Play shop joins your saved roster
+  if (window.PPHub && PPHub.take('prodigy')) {
+    try {
+      const owned = JSON.parse(localStorage.getItem('obby_cbox_owned') || '[]');
+      if (!owned.includes(ID)) { owned.push(ID); localStorage.setItem('obby_cbox_owned', JSON.stringify(owned)); }
+    } catch (e) {}
+  }
+  function isOwned() {
+    try { return JSON.parse(localStorage.getItem('obby_cbox_owned') || '[]').includes(ID); } catch (e) { return false; }
+  }
+  function register() {
+    if (window.CBOX_CHARS_DEF && !window.CBOX_CHARS_DEF.find(c => c.id === ID)) window.CBOX_CHARS_DEF.push(DEF);
+    if (window.cboxOwnedChars) window.cboxOwnedChars.add(ID);
+    window._gtCharStatCache = window._gtCharStatCache || {};
+    window._gtCharStatCache[ID] = Object.assign({}, STATS);
+  }
+
+  const _origDraw = window.cboxCharDraw;
+  window.cboxCharDraw = function (charId, ctx, px, py, pw, ph, now2) {
+    if (charId !== ID) { if (_origDraw) return _origDraw(charId, ctx, px, py, pw, ph, now2); return; }
+    if (!isFinite(px) || !isFinite(py) || !isFinite(pw) || !isFinite(ph) || pw <= 0 || ph <= 0) return;
+    const t = now2 || Date.now() / 1000;
+    const cx = px + pw / 2, s = pw / 20;
+    ctx.save();
+    // violet glow
+    ctx.shadowBlur = 8; ctx.shadowColor = 'rgba(139,92,255,0.7)';
+    // body with a teal-violet-pink chest band
+    ctx.fillStyle = '#5b3fd0';
+    ctx.beginPath(); ctx.roundRect(px + pw * 0.18, py + ph * 0.4, pw * 0.64, ph * 0.42, s * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    const g = ctx.createLinearGradient(px + pw * 0.18, 0, px + pw * 0.82, 0);
+    g.addColorStop(0, '#6ee7d0'); g.addColorStop(0.55, '#8b5cff'); g.addColorStop(1, '#ff5fd8');
+    ctx.fillStyle = g; ctx.fillRect(px + pw * 0.18, py + ph * 0.52, pw * 0.64, ph * 0.1);
+    // play button on the chest
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.moveTo(cx - s * 1.2, py + ph * 0.64); ctx.lineTo(cx - s * 1.2, py + ph * 0.76); ctx.lineTo(cx + s * 1.6, py + ph * 0.7); ctx.closePath(); ctx.fill();
+    // legs
+    ctx.fillStyle = '#3d2a96';
+    ctx.fillRect(px + pw * 0.26, py + ph * 0.8, pw * 0.16, ph * 0.12);
+    ctx.fillRect(px + pw * 0.58, py + ph * 0.8, pw * 0.16, ph * 0.12);
+    // head
+    ctx.fillStyle = '#6a4fe0';
+    ctx.beginPath(); ctx.arc(cx, py + ph * 0.26, pw * 0.27, 0, Math.PI * 2); ctx.fill();
+    // eyes, looking forward (the game mirrors the drawing when facing left)
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(cx + pw * 0.04, py + ph * 0.25, s * 1.5, 0, Math.PI * 2); ctx.arc(cx + pw * 0.16, py + ph * 0.25, s * 1.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#16121f';
+    ctx.beginPath(); ctx.arc(cx + pw * 0.06, py + ph * 0.255, s * 0.75, 0, Math.PI * 2); ctx.arc(cx + pw * 0.18, py + ph * 0.255, s * 0.75, 0, Math.PI * 2); ctx.fill();
+    // black and grey headphones: band over the top, ear cup on the near side
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#15161b'; ctx.lineWidth = s * 1.8;
+    ctx.beginPath(); ctx.arc(cx, py + ph * 0.27, pw * 0.31, Math.PI * 1.12, Math.PI * 1.88); ctx.stroke();
+    ctx.strokeStyle = '#5c606b'; ctx.lineWidth = s * 0.6;
+    ctx.beginPath(); ctx.arc(cx, py + ph * 0.27, pw * 0.34, Math.PI * 1.25, Math.PI * 1.75); ctx.stroke();
+    const ex = cx - pw * 0.1, ey = py + ph * 0.28;
+    ctx.fillStyle = '#15161b'; ctx.beginPath(); ctx.ellipse(ex, ey, s * 2.4, s * 3.1, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#3a3d46'; ctx.beginPath(); ctx.ellipse(ex, ey, s * 1.4, s * 2, 0, 0, Math.PI * 2); ctx.fill();
+    // little beat pulse above the headphones
+    const pulse = (Math.sin(t * 6) + 1) / 2;
+    ctx.globalAlpha = 0.35 + pulse * 0.4;
+    ctx.fillStyle = '#b79bff'; ctx.font = (s * 4) + 'px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('♪', cx + pw * 0.34, py + ph * 0.06 - pulse * s * 1.5);
+    ctx.restore();
+  };
+
+  // join the character list once the capsule system is ready
+  let tries = 0;
+  function hook() {
+    if (!window.injectCboxCharButtons || !window.CBOX_CHARS_DEF) { if (++tries < 80) setTimeout(hook, 100); return; }
+    if (!window.injectCboxCharButtons._pppPatch) {
+      const orig = window.injectCboxCharButtons;
+      window.injectCboxCharButtons = function () { if (isOwned()) register(); orig(); };
+      window.injectCboxCharButtons._pppPatch = true;
+    }
+    if (isOwned()) { register(); window.injectCboxCharButtons(); }
+  }
+  setTimeout(hook, 250);
+})();
+</script>
+<script>
 // Free mystery boxes and character capsules bought in the Press Play shop open one after another.
 // Each is taken from the shop only as it opens, so leaving mid-way keeps the rest for next time.
 (function(){
