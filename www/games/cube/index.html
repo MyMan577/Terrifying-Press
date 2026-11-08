@@ -315,15 +315,25 @@ var WEAPONS={
   wisp:{name:'Wisp Lantern',desc:'A wisp floats beside you and fires homing sparks by itself. Each tap makes it fire too.',dmg:1,reach:0.3,dash:9.6,kb:0.8,keep:0.6,
     pet:{every:0.8,range:8}},
   emberboots:{name:'Ember Boots',desc:'Every dash leaves a trail of fire that burns foes walking through it.',dmg:1,reach:0.3,dash:10.2,kb:0.8,keep:0.8,
-    trail:{life:1.8,dmg:1,cd:0.45}}
+    trail:{life:1.8,dmg:1,cd:0.45}},
+  quake:{name:'Quake Boots',desc:'Every landing sends a shockwave along the ground both ways. Each tap makes the next one bigger.',dmg:1,reach:0.3,dash:9.4,kb:0.9,keep:0.6,
+    quake:{spd:9,life:0.45,dmg:1}},
+  meteor:{name:'Meteor Charm',desc:'Meteors fall on foes ahead all by themselves. Each tap calls one down.',dmg:1,reach:0.3,dash:9.2,kb:0.8,keep:0.6,
+    rain:{every:1.6,range:9,dmg:2}},
+  vortex:{name:'Vortex Orb',desc:'A swirling orb ahead of you drags foes in and grinds them. Each tap makes it implode.',dmg:1,reach:0.3,dash:9.4,kb:0.8,keep:0.6,
+    vortex:{r:2.6,ahead:2.3,dmg:1}},
+  thorns:{name:'Thorn Mail',desc:'Spikes all over the cube hurt anything that touches it. Each tap bristles them outward.',dmg:1,reach:0.4,dash:9.2,kb:1,keep:0.65,
+    thorns:{r:0.25,dmg:1}},
+  beam:{name:'Prism Beam',desc:'Fires a rainbow beam ahead every second that cuts through every foe in line. Each tap fires it now.',dmg:1,reach:0.3,dash:9.2,kb:0.8,keep:0.6,
+    beam:{every:1.1,len:6.5,dmg:1}}
 };
 // which always-on kind a weapon is (or '')
-function wkind(wp){return wp.orb?'orb':wp.saw?'saw':wp.aura?'aura':wp.pet?'pet':wp.trail?'trail':'';}
+function wkind(wp){return wp.orb?'orb':wp.saw?'saw':wp.aura?'aura':wp.pet?'pet':wp.trail?'trail':wp.quake?'quake':wp.rain?'rain':wp.vortex?'vortex':wp.thorns?'thorns':wp.beam?'beam':'';}
 /* how far each weapon reaches from the hand (in its own scale) and how it is held at rest */
 var WLEN={sword:1,spear:2.05,hammer:1.15,axe:1.1,knives:0.84,bomb:0.7,gun:1.12,katana:1.02,mace:1.22,scythe:1.62,bow:1,rapier:1.65,trident:1.85,shuriken:0.62,crossbow:1.05,firestaff:1.44,
-  greatsword:1.42,flail:1.25,javelin:1.8,boomerang:0.65,icestaff:1.32,zapstaff:1.32,whip:2.0,pickaxe:1.05,morningstar:0.6,bladering:0.3,frostorbs:0.3,buzzsaw:0.9,tempest:0.3,wisp:0.3,emberboots:0.3};
+  greatsword:1.42,flail:1.25,javelin:1.8,boomerang:0.65,icestaff:1.32,zapstaff:1.32,whip:2.0,pickaxe:1.05,morningstar:0.6,bladering:0.3,frostorbs:0.3,buzzsaw:0.9,tempest:0.3,wisp:0.3,emberboots:0.3,quake:0.3,meteor:0.3,vortex:0.3,thorns:0.3,beam:0.3};
 var WREST={sword:-1.0,spear:-0.45,hammer:-1.2,axe:-1.1,knives:-0.9,bomb:-0.5,gun:-0.15,katana:-1.0,mace:-1.2,scythe:-0.9,bow:-0.1,rapier:-0.45,trident:-0.45,shuriken:-0.5,crossbow:-0.15,firestaff:-0.9,
-  greatsword:-1.05,flail:-1.1,javelin:-0.45,boomerang:-0.6,icestaff:-0.9,zapstaff:-0.9,whip:-0.25,pickaxe:-1.2,morningstar:-0.5,bladering:0,frostorbs:0,buzzsaw:0,tempest:0,wisp:0,emberboots:0};
+  greatsword:-1.05,flail:-1.1,javelin:-0.45,boomerang:-0.6,icestaff:-0.9,zapstaff:-0.9,whip:-0.25,pickaxe:-1.2,morningstar:-0.5,bladering:0,frostorbs:0,buzzsaw:0,tempest:0,wisp:0,emberboots:0,quake:0,meteor:0,vortex:0,thorns:0,beam:0};
 var WSWING={hammer:1,axe:1,mace:1,scythe:1,firestaff:1,greatsword:1,flail:1,pickaxe:1,icestaff:1,zapstaff:1};
 var WTHRUST={spear:1,rapier:1,trident:1,javelin:1,whip:1};
 /* st = base stats [Health, Speed, Power, Luck], each 1-5 */
@@ -331,28 +341,33 @@ var CHARS={
   page:{name:'Page',color:'#b98a5a',weapons:['none'],cost:0,st:[2,2,1,3]},
   knight:{name:'Knight',color:'#aab7c4',weapons:['sword','katana'],cost:30,st:[3,3,3,2]},
   lancer:{name:'Lancer',color:'#4a8fe0',weapons:['spear'],cost:40,st:[3,3,2,2]},
-  viking:{name:'Viking',color:'#8a6a4a',weapons:['axe','knives','scythe'],cost:60,st:[4,2,3,2]},
+  viking:{name:'Viking',color:'#8a6a4a',weapons:['axe','knives','scythe','morningstar'],cost:60,st:[4,2,3,2]},
   sapper:{name:'Sapper',color:'#3a3f52',weapons:['bomb'],cost:70,st:[2,3,3,3]},
-  crusader:{name:'Crusader',color:'#f4f0e6',weapons:['hammer','mace'],cost:90,st:[5,1,3,2]},
+  crusader:{name:'Crusader',color:'#f4f0e6',weapons:['hammer','mace','thorns'],cost:90,st:[5,1,3,2]},
   musketeer:{name:'Musketeer',color:'#7a4fb0',weapons:['gun','sword'],cost:110,st:[3,3,3,3]},
   prince:{name:'Prince',color:'#c63a3a',weapons:['sword','spear','bow'],cost:140,st:[3,3,3,4]},
-  ranger:{name:'Ranger',color:'#3f8a4a',weapons:['bow','crossbow'],cost:100,st:[2,4,2,3]},
+  ranger:{name:'Ranger',color:'#3f8a4a',weapons:['bow','crossbow','wisp'],cost:100,st:[2,4,2,3]},
   pirate:{name:'Pirate',color:'#2f6f8f',weapons:['rapier','gun'],cost:120,st:[3,4,2,4]},
-  ninja:{name:'Ninja',color:'#2b2f3a',weapons:['shuriken','katana'],cost:150,st:[2,5,3,2]},
+  ninja:{name:'Ninja',color:'#2b2f3a',weapons:['shuriken','katana','bladering'],cost:150,st:[2,5,3,2]},
   atlantean:{name:'Atlantean',color:'#1f9a9a',weapons:['trident','spear'],cost:160,st:[4,3,3,2]},
-  wizard:{name:'Wizard',color:'#6b3fa0',weapons:['firestaff','bomb'],cost:180,st:[2,3,4,3]},
+  wizard:{name:'Wizard',color:'#6b3fa0',weapons:['firestaff','bomb','meteor'],cost:180,st:[2,3,4,3]},
   paladin:{name:'Paladin',color:'#e9e4d4',weapons:['greatsword','flail','mace'],cost:200,st:[5,2,4,2]},
   valkyrie:{name:'Valkyrie',color:'#9fb3c8',weapons:['javelin','spear','sword'],cost:220,st:[4,4,3,2]},
-  dwarf:{name:'Dwarf',color:'#a0522d',weapons:['pickaxe','hammer','axe'],cost:240,st:[5,2,4,3]},
-  jester:{name:'Jester',color:'#e04a8a',weapons:['boomerang','knives','bomb'],cost:260,st:[2,5,2,5]},
-  witch:{name:'Witch',color:'#2f8f5a',weapons:['icestaff','firestaff'],cost:280,st:[2,3,4,4]},
-  druid:{name:'Druid',color:'#5a8f3a',weapons:['whip','boomerang'],cost:300,st:[3,4,3,4]},
-  stormsage:{name:'Storm Sage',color:'#3a6fd9',weapons:['zapstaff','icestaff'],cost:340,st:[2,3,5,3]},
+  dwarf:{name:'Dwarf',color:'#a0522d',weapons:['pickaxe','hammer','axe','quake'],cost:240,st:[5,2,4,3]},
+  jester:{name:'Jester',color:'#e04a8a',weapons:['boomerang','knives','bomb','buzzsaw'],cost:260,st:[2,5,2,5]},
+  witch:{name:'Witch',color:'#2f8f5a',weapons:['icestaff','firestaff','vortex'],cost:280,st:[2,3,4,4]},
+  druid:{name:'Druid',color:'#5a8f3a',weapons:['whip','boomerang','thorns'],cost:300,st:[3,4,3,4]},
+  stormsage:{name:'Storm Sage',color:'#3a6fd9',weapons:['zapstaff','icestaff','beam'],cost:340,st:[2,3,5,3]},
   gladiator:{name:'Gladiator',color:'#b5651d',weapons:['morningstar','mace','flail'],cost:320,st:[4,3,4,2]},
   tinker:{name:'Tinkerer',color:'#c9a227',weapons:['buzzsaw','bladering','bomb'],cost:360,st:[3,3,4,3]},
   warden:{name:'Frost Warden',color:'#7fc8f0',weapons:['frostorbs','icestaff','spear'],cost:380,st:[4,3,3,3]},
   shaman:{name:'Shaman',color:'#2a9d8f',weapons:['tempest','wisp','zapstaff'],cost:400,st:[2,3,5,4]},
   pyro:{name:'Fire Dancer',color:'#e8572a',weapons:['emberboots','firestaff','knives'],cost:420,st:[3,5,3,3]},
+  archmage:{name:'Archmage',color:'#2a3f9a',weapons:['meteor','vortex','firestaff'],cost:600,st:[3,3,5,5]},
+  warlord:{name:'Warlord',color:'#7a1f1f',weapons:['quake','greatsword','morningstar'],cost:750,st:[5,3,5,3]},
+  templar:{name:'Sun Templar',color:'#f2e6c2',weapons:['beam','thorns','hammer'],cost:900,st:[5,3,5,4]},
+  dragonknight:{name:'Dragon Knight',color:'#2f8a5a',weapons:['meteor','emberboots','trident'],cost:1100,st:[5,4,5,4]},
+  voidwalker:{name:'Void Walker',color:'#2a1840',weapons:['vortex','tempest','katana'],cost:1300,st:[4,5,5,5]},
   // Press Play exclusive: only from the Press Play shop, never sold for coins
   pressplay:{name:'Press Play Paladin',color:'#8b5cff',weapons:['zapstaff','katana','boomerang'],cost:0,ppp:true,st:[4,4,4,4]},
   pressplay2:{name:'Press Play Phantom',color:'#1f9a9a',weapons:['knives','shuriken','rapier'],cost:0,ppp:true,st:[3,5,3,5]},
@@ -661,7 +676,8 @@ function startStage(n,paused,fromCp){
     enemies:stg.enemies,parts:[],texts:[],waves:[],shots:[],ebombs:[],earrows:[],fireCd:0,boss:mkBoss(n,stg),
     banner:{t:2.2,text:fromCp?'Back at the flag':'Stage '+n,sub:fromCp?'':worldName(n)},
     pickups:0,hurt:false,bossHurt:false,runT:0,par:Math.round(stg.arenaX/3.4+35),fromCp:!!fromCp,cpHit:!!fromCp,combo:0,slow:0,onIce:false,zaps:[],
-    orbA:0,whirl:0,auraT:0,auraFx:0,petT:0,pet:{x:x0-0.6,y:y0+1.3},flames:[],flameD:0,bossFxCd:0,kills:0,bossKilled:false};
+    orbA:0,whirl:0,auraT:0,auraFx:0,petT:0,pet:{x:x0-0.6,y:y0+1.3},flames:[],flameD:0,bossFxCd:0,kills:0,bossKilled:false,
+    quakes:[],bigQuake:false,landed:false,meteors:[],rainT:0.6,vtx:{x:x0+2.3,y:y0+0.6},vtxA:0,vtxFx:0,beamT:0.5,beamOn:0,thornFx:0};
   applyLoadout();
   mode=paused?'title':'play';
 }
@@ -1347,6 +1363,19 @@ function tapPower(g,wp){
   if(wp.orb){g.whirl=0.55;}
   else if(wp.aura){if(g.auraT>0.25*q)g.auraT=0;}
   else if(wp.pet){petShoot(g);}
+  else if(wp.quake){g.bigQuake=true;}
+  else if(wp.rain){if(g.rainT<wp.rain.every*q-0.35){callMeteor(g,wp);g.rainT=wp.rain.every*q;}}
+  else if(wp.vortex){if(g.vtxFx<=0){g.vtxFx=0.35;gearHit(g,g.vtx.x,g.vtx.y,wp.vortex.r,wp.vortex.dmg,{cd:0.05,col:'#b07aff'});beep(180,.2,'sine',.06,.4);}}
+  else if(wp.thorns){g.thornFx=0.4;}
+  else if(wp.beam){if(g.beamOn<=0&&g.beamT<wp.beam.every*q-0.3){g.beamT=0;}}
+}
+function callMeteor(g,wp){
+  var p=g.p,t=nearestFoe(g,p.x+3*(p.face||1),p.y+1,wp.rain.range,1),b=g.boss,tx,ty;
+  if(t){tx=t.x;ty=t.y;}
+  else if(b&&g.arena&&!b.dead&&b.state!=='dying'){tx=b.x;ty=b.y;}
+  else{tx=p.x+4*(p.face||1);ty=p.y;}
+  g.meteors.push({x:tx-2,y:ty+9,vx:3.2,vy:-15.5,t:0});
+  beep(300,.3,'sawtooth',.03,.3);
 }
 function petShoot(g){
   var pt=g.pet,t=nearestFoe(g,pt.x,pt.y,WEAPONS[wkey()].pet.range,1);
@@ -1357,13 +1386,28 @@ function petShoot(g){
   beep(1250,.06,'sine',.035,1.4);
 }
 function updGear(g,wp,dt){
-  var p=g.p,cx=p.x,cy=p.y+p.h/2,q=g.fx.quiver?0.75:1,i;
+  var p=g.p,cx=p.x,cy=p.y+p.h/2,q=g.fx.quiver?0.75:1,i,landed=g.landed;
+  g.landed=false;
   if(g.whirl>0)g.whirl-=dt;
   // the wisp drifts after the knight whatever is held, so switching weapons looks smooth
   var tx=p.x-0.7*(p.face||1),ty=p.y+1.35+Math.sin(g.time*3)*0.15;
   g.pet.x+=(tx-g.pet.x)*Math.min(1,dt*6);g.pet.y+=(ty-g.pet.y)*Math.min(1,dt*6);
   // fire patches burn out whatever is held
   for(i=g.flames.length-1;i>=0;i--){var fl=g.flames[i];fl.t+=dt;if(fl.t>fl.life){g.flames.splice(i,1);continue;}if(!p.dead)gearHit(g,fl.x,fl.y+0.25,0.42,fl.dmg,{cd:fl.cd,col:'#ff8a1f'});}
+  // shockwaves and meteors already in flight finish whatever is held
+  for(i=g.quakes.length-1;i>=0;i--){var qk=g.quakes[i];qk.t+=dt;qk.x+=qk.dir*qk.spd*dt;if(qk.t>qk.life){g.quakes.splice(i,1);continue;}gearHit(g,qk.x,qk.y+0.3,0.42,qk.dmg,{kb:5,cd:0.4,col:'#c9a46a'});}
+  for(i=g.meteors.length-1;i>=0;i--){
+    var mt=g.meteors[i],hitM=false;mt.t+=dt;mt.x+=mt.vx*dt;mt.y+=mt.vy*dt;
+    if(Math.random()<0.7)g.parts.push({x:mt.x,y:mt.y,vx:(Math.random()-.5),vy:Math.random(),life:0.3,t:0,c:Math.random()<.5?'#ff8a1f':'#ffc233',s:0.13});
+    if(mt.y<=floorAt(g,mt.x,mt.y+0.5)+0.05)hitM=true;
+    for(var mj=0;mj<g.enemies.length&&!hitM;mj++){var me=g.enemies[mj];if(!me.gone&&!me.dying&&circRect(mt.x,mt.y,0.35,me.x-me.w/2,me.y,me.w,me.h))hitM=true;}
+    var mb=g.boss;if(!hitM&&mb&&!mb.dead&&mb.state!=='dying'&&circRect(mt.x,mt.y,0.35,mb.x-mb.w/2,mb.y,mb.w,mb.h))hitM=true;
+    if(hitM||mt.y<-6){
+      if(hitM){gearHit(g,mt.x,mt.y+0.3,1.6,WEAPONS.meteor.rain.dmg,{kb:6,cd:0.2,col:'#ff8a1f'});burst(g,mt.x,mt.y,'#ff8a1f',14,6);burst(g,mt.x,mt.y,'#3a3540',8,4);g.shake=Math.min(1,g.shake+0.3);beep(90,.3,'sawtooth',.07,.4);}
+      g.meteors.splice(i,1);
+    }
+  }
+  if(g.vtxFx>0)g.vtxFx-=dt;if(g.thornFx>0)g.thornFx-=dt;if(g.beamOn>0)g.beamOn-=dt;
   if(p.dead||g.wait)return;
   if(wp.orb){
     var o=wp.orb,w=g.whirl>0,sp=o.spd*(w?2.3:1)/q,rr=o.r*(w?1.25:1)+(g.fx.bracer?0.25:0);
@@ -1388,6 +1432,26 @@ function updGear(g,wp,dt){
     }
   }else if(wp.pet){
     g.petT-=dt;if(g.petT<=0){if(nearestFoe(g,g.pet.x,g.pet.y,wp.pet.range,1)||(g.boss&&g.arena))petShoot(g);else g.petT=0.2;}
+  }else if(wp.quake){
+    if(landed){
+      var big=g.bigQuake;g.bigQuake=false;
+      [-1,1].forEach(function(d){g.quakes.push({x:p.x,y:p.y,dir:d,spd:wp.quake.spd*(big?1.3:1),t:0,life:wp.quake.life*(big?1.8:1)*(g.fx.quiver?1.3:1),dmg:wp.quake.dmg+(big?1:0),big:big});});
+      puff(g,p.x,p.y,'#c9a46a',big?10:5);if(big){g.shake=Math.min(1,g.shake+0.25);beep(70,.2,'sawtooth',.06,.5);}
+    }
+  }else if(wp.rain){
+    g.rainT-=dt;if(g.rainT<=0){g.rainT=wp.rain.every*q;if(nearestFoe(g,p.x+3*(p.face||1),p.y+1,wp.rain.range,1)||(g.arena&&g.boss&&!g.boss.dead))callMeteor(g,wp);else g.rainT=0.25;}
+  }else if(wp.vortex){
+    var V=wp.vortex,fv=p.face||1,R=V.r+(g.fx.bracer?0.4:0);g.vtxA+=dt*(g.vtxFx>0?18:7);
+    g.vtx.x+=(p.x+fv*V.ahead-g.vtx.x)*Math.min(1,dt*8);g.vtx.y+=(p.y+0.6-g.vtx.y)*Math.min(1,dt*8);
+    for(i=0;i<g.enemies.length;i++){var ve=g.enemies[i];if(ve.gone||ve.dying||ET[ve.type].big||ve.frozen>0)continue;
+      var vdx=g.vtx.x-ve.x;if(Math.abs(vdx)<R&&Math.abs(ve.y+ve.h/2-g.vtx.y)<R)ve.vx+=clamp(vdx*(g.vtxFx>0?30:10),-30,30)*dt;}
+    gearHit(g,g.vtx.x,g.vtx.y,0.75,V.dmg,{cd:0.5*q,col:'#b07aff'});
+  }else if(wp.thorns){
+    gearHit(g,p.x,p.y+p.h/2,p.w/2+wp.thorns.r+(g.thornFx>0?0.6:0),wp.thorns.dmg,{kb:7,cd:0.4*q,col:'#5a8f3a'});
+  }else if(wp.beam){
+    g.beamT-=dt;
+    if(g.beamT<=0&&g.beamOn<=0){g.beamT=wp.beam.every*q;g.beamOn=0.3;beep(1800,.25,'sine',.04,.25);}
+    if(g.beamOn>0){var fb=p.face||1,L=wp.beam.len+(g.fx.bracer?1.2:0);for(var bx=0.6;bx<=L;bx+=0.5)gearHit(g,p.x+fb*bx,p.y+p.h*0.5,0.32,wp.beam.dmg,{cd:0.5,col:'#fff'});}
   }else if(wp.trail){
     // drop a patch every half-cube while moving fast
     if(Math.abs(p.vx)>3.5){g.flameD+=Math.abs(p.vx)*dt;if(g.flameD>0.5){g.flameD=0;var fy=p.grounded?p.y:Math.max(floorAt(g,p.x,p.y),p.y-3);if(fy>-50)g.flames.push({x:p.x,y:fy,t:0,life:wp.trail.life*(g.fx.quiver?1.3:1),dmg:wp.trail.dmg,cd:wp.trail.cd});if(g.flames.length>40)g.flames.shift();}}
@@ -1403,6 +1467,22 @@ function drawGear(g){
     ctx.fillStyle='#ffc233';ctx.beginPath();ctx.moveTo(x-S*0.11,y);ctx.quadraticCurveTo(x-S*0.1,y-h*0.35,x,y-h*0.6);ctx.quadraticCurveTo(x+S*0.1,y-h*0.35,x+S*0.11,y);ctx.closePath();ctx.fill();
   });
   ctx.globalAlpha=1;
+  // quake shockwaves: rock spikes bursting up along the ground
+  g.quakes.forEach(function(qk){
+    var k=1-qk.t/qk.life,x=sx(g,qk.x),y=sy(qk.y),h=S*(qk.big?0.75:0.5)*Math.sin(Math.min(1,qk.t/qk.life*1.2)*Math.PI+0.3);
+    ctx.globalAlpha=Math.min(1,k*2);ctx.fillStyle=qk.big?'#d9a057':'#b9946a';ctx.strokeStyle=INK;ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(x-S*0.3,y);ctx.lineTo(x-S*0.15,y-h*0.7);ctx.lineTo(x,y-h);ctx.lineTo(x+S*0.12,y-h*0.55);ctx.lineTo(x+S*0.3,y);ctx.closePath();ctx.fill();ctx.stroke();
+  });
+  ctx.globalAlpha=1;
+  // meteors: a burning rock with a tail
+  g.meteors.forEach(function(mt){
+    var x=sx(g,mt.x),y=sy(mt.y),r=S*0.28,a=Math.atan2(-mt.vy,mt.vx);
+    ctx.save();ctx.translate(x,y);ctx.rotate(a);
+    var tg=ctx.createLinearGradient(-S*1.6,0,0,0);tg.addColorStop(0,'rgba(255,138,31,0)');tg.addColorStop(1,'rgba(255,194,51,.9)');
+    ctx.fillStyle=tg;ctx.beginPath();ctx.moveTo(-S*1.6,0);ctx.lineTo(0,-r);ctx.lineTo(0,r);ctx.closePath();ctx.fill();ctx.restore();
+    ctx.fillStyle='#4a3a3a';ctx.strokeStyle=INK;ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(x,y,r,0,6.283);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#ff6a2e';ctx.beginPath();ctx.arc(x+r*0.25,y-r*0.2,r*0.35,0,6.283);ctx.fill();
+  });
   if(p.dead)return;
   ctx.lineJoin='round';
   if(wp.orb){
@@ -1444,6 +1524,32 @@ function drawGear(g){
     ctx.globalAlpha=0.5;ctx.strokeStyle='#ffe14a';ctx.lineWidth=2;ctx.setLineDash([S*0.18,S*0.14]);ctx.lineDashOffset=-g.time*S*2;ctx.beginPath();ctx.arc(cx,cy,R,0,6.283);ctx.stroke();ctx.setLineDash([]);
     if(g.auraFx>0){ctx.globalAlpha=g.auraFx*3;ctx.lineWidth=5;ctx.strokeStyle='#fff';ctx.beginPath();ctx.arc(cx,cy,R*(1.15-g.auraFx),0,6.283);ctx.stroke();}
     ctx.globalAlpha=1;
+  }else if(wp.vortex){
+    var vx=sx(g,g.vtx.x),vy=sy(g.vtx.y),R=(wp.vortex.r+(g.fx.bracer?0.4:0))*S,imp=g.vtxFx>0;
+    ctx.globalAlpha=imp?0.35:0.15;ctx.fillStyle='#b07aff';ctx.beginPath();ctx.arc(vx,vy,R*(imp?1:0.85),0,6.283);ctx.fill();
+    for(i=0;i<3;i++){ctx.globalAlpha=0.7;ctx.strokeStyle=i%2?'#ff5fd8':'#8b5cff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(vx,vy,S*(0.3+i*0.18),g.vtxA+i*2,g.vtxA+i*2+3.6);ctx.stroke();}
+    ctx.globalAlpha=1;ctx.fillStyle='#15101f';ctx.strokeStyle='#ff5fd8';ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(vx,vy,S*0.2,0,6.283);ctx.fill();ctx.stroke();
+  }else if(wp.thorns){
+    var ext=g.thornFx>0?S*0.3:0,hx=p.w*S/2,hy=p.h*S/2,tcx=cx,tcy=cy;
+    ctx.fillStyle='#5a8f3a';ctx.strokeStyle=INK;ctx.lineWidth=1.8;
+    for(i=0;i<12;i++){
+      var side=i%4,u=(Math.floor(i/4)+0.5)/3,bx2,by2,nx,ny;
+      if(side===0){bx2=tcx-hx+u*2*hx;by2=tcy-hy;nx=0;ny=-1;}else if(side===1){bx2=tcx+hx;by2=tcy-hy+u*2*hy;nx=1;ny=0;}
+      else if(side===2){bx2=tcx-hx+u*2*hx;by2=tcy+hy;nx=0;ny=1;}else{bx2=tcx-hx;by2=tcy-hy+u*2*hy;nx=-1;ny=0;}
+      var L2=S*0.2+ext;ctx.beginPath();ctx.moveTo(bx2-ny*S*0.07,by2+nx*S*0.07);ctx.lineTo(bx2+nx*L2,by2+ny*L2);ctx.lineTo(bx2+ny*S*0.07,by2-nx*S*0.07);ctx.closePath();ctx.fill();ctx.stroke();
+    }
+  }else if(wp.beam){
+    var fb=p.face||1,ex=cx+fb*(wp.beam.len+(g.fx.bracer?1.2:0))*S,y0=sy(p.y+p.h*0.5);
+    if(g.beamOn>0){
+      var k2=g.beamOn/0.3,cols=['#ff4d4d','#ffc233','#3ddc84','#39d5ff','#8b5cff'];
+      ctx.globalAlpha=0.35*k2;ctx.strokeStyle='#fff';ctx.lineWidth=S*0.5*k2;ctx.beginPath();ctx.moveTo(cx,y0);ctx.lineTo(ex,y0);ctx.stroke();
+      cols.forEach(function(c,j){ctx.globalAlpha=0.9*k2;ctx.strokeStyle=c;ctx.lineWidth=S*0.06;ctx.beginPath();ctx.moveTo(cx,y0+(j-2)*S*0.06);ctx.lineTo(ex,y0+(j-2)*S*0.06);ctx.stroke();});
+      ctx.globalAlpha=1;
+    }
+    // the prism itself floats above the knight
+    var px2=cx,py2=sy(p.y+p.h+0.45)+Math.sin(g.time*4)*S*0.05,pr=S*0.2;
+    ctx.fillStyle='#e8f6ff';ctx.strokeStyle=INK;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(px2,py2-pr);ctx.lineTo(px2+pr*0.9,py2+pr*0.6);ctx.lineTo(px2-pr*0.9,py2+pr*0.6);ctx.closePath();ctx.fill();ctx.stroke();
+    var ch2=1-clamp(g.beamT/(wp.beam.every*(g.fx.quiver?0.75:1)),0,1);ctx.fillStyle='#ff5fd8';ctx.globalAlpha=0.3+0.7*ch2;ctx.beginPath();ctx.arc(px2,py2+pr*0.15,pr*0.3,0,6.283);ctx.fill();ctx.globalAlpha=1;
   }else if(wp.pet){
     var px=sx(g,g.pet.x),py=sy(g.pet.y),pr=S*0.2,fl=0.85+Math.sin(g.time*20)*0.15;
     ctx.globalAlpha=0.3;ctx.fillStyle='#7af0ff';ctx.beginPath();ctx.arc(px,py,pr*2.2*fl,0,6.283);ctx.fill();ctx.globalAlpha=1;
@@ -1517,6 +1623,7 @@ function update(dt){
   if(land){
     var fo=onE?null:floorAt.o;
     if(!was&&p.vy<-5)puff(g,p.x,p.y,'#ffffff',5);
+    if(!was)g.landed=true;
     p.vy=0;p.grounded=true;
     if(fo){g.floorY=fo.y1;if(fo.kind==='isle'&&!p.dead&&p.x>fo.x0+0.8&&p.x<fo.x1-0.8)p.lastSafe={x:p.x,y:p.y};}
     g.onIce=!!(fo&&fo.ice);
@@ -1790,7 +1897,7 @@ function sizeSheet(){
   SH.L=(a.right-r.left)*d;SH.R=(b.left-r.left)*d;
 }
 function sheetSay(t){var m=$('#chMsg');m.textContent=t;clearTimeout(sheetSay.t);sheetSay.t=setTimeout(function(){m.textContent='';},2600);}
-function reachWord(wp){var gk=wkind(wp);if(gk)return {orb:'Always spinning',saw:'Always grinding',aura:'Pulses on its own',pet:'Fires on its own',trail:'Burning trail'}[gk];return wp.shot?'Ranged':wp.reach>=1.8?'Very long reach':wp.reach>=1.25?'Long reach':wp.reach>=0.9?'Medium reach':'Short reach';}
+function reachWord(wp){var gk=wkind(wp);if(gk)return {orb:'Always spinning',saw:'Always grinding',aura:'Pulses on its own',pet:'Fires on its own',trail:'Burning trail',quake:'Shakes on landing',rain:'Falls on its own',vortex:'Always pulling',thorns:'Hurts on touch',beam:'Fires on its own'}[gk];return wp.shot?'Ranged':wp.reach>=1.8?'Very long reach':wp.reach>=1.25?'Long reach':wp.reach>=0.9?'Medium reach':'Short reach';}
 function renderSheet(){
   var k=SH.k,d=CHARS[k],owned=save.chars.indexOf(k)>=0,eq=save.char===k;
   $('#chName').textContent=d.name;
@@ -1814,7 +1921,7 @@ function renderSheet(){
     b.addEventListener('click',function(){SH.w=i;if(owned){save.wsel[k]=i;persist();}beep(520,.05,'triangle',.04,1.3);renderSheet();});
     wb.appendChild(b);
   });
-  var wp=WEAPONS[d.weapons[SH.w]],dm=wp.shot==='jav'||wp.shot==='bolt'?2:wp.orb?wp.orb.dmg:wp.dmg;
+  var wp=WEAPONS[d.weapons[SH.w]],dm=wp.shot==='jav'||wp.shot==='bolt'?2:wp.orb?wp.orb.dmg:wp.rain?wp.rain.dmg:wp.dmg;
   $('#chWDesc').innerHTML='<b class="ol">'+wp.name+'</b><p>'+wp.desc+'</p><div class="tags"><span>Damage '+dm+'</span><span>'+reachWord(wp)+'</span></div>';
   // accessory sockets
   var sl=$('#chSlots'),gear=slotsOf(k);sl.innerHTML='';
@@ -2430,6 +2537,53 @@ function knightDraw(k,x0,y0,pw,ph,o){
     P('#2a4fa8',[[0.14,0.14],[0.5,-0.72],[0.86,0.14]]);
     R('#22408a',-0.16,0.1,1.32,0.12);
     P('#ffd23f',[[0.56,-0.46],[0.4,-0.2],[0.5,-0.2],[0.42,0.02],[0.62,-0.26],[0.52,-0.26],[0.62,-0.46]]);
+  }else if(k==='archmage'){
+    // deep blue robe scattered with stars, a tall hat with a moon, a long white beard
+    base('#2a3f9a');
+    ctx.fillStyle='#ffd23f';[[0.15,0.75],[0.82,0.68],[0.6,0.9],[0.3,0.92]].forEach(function(q,i){var r2=pw*(0.035+0.02*((i+Math.floor(o.t*3))%2));ctx.beginPath();ctx.arc(X(q[0]),Y(q[1]),r2,0,6.283);ctx.fill();});
+    R('#f2c9a0',0.15,0.24,0.7,0.24);E(0.25,0.28,0.17,0.14);E(0.58,0.28,0.17,0.14);
+    P('#f4f4f8',[[0.1,0.42],[0.9,0.42],[0.75,0.9],[0.5,1.1],[0.25,0.9]]);
+    P('#1a2a70',[[0.08,0.16],[0.62,-0.85],[0.92,0.16]]);R('#ffd23f',-0.12,0.1,1.24,0.1);
+    ctx.fillStyle='#ffd23f';ctx.beginPath();ctx.arc(X(0.55),Y(-0.3),pw*0.1,0,6.283);ctx.fill();ctx.fillStyle='#1a2a70';ctx.beginPath();ctx.arc(X(0.6),Y(-0.33),pw*0.08,0,6.283);ctx.fill();
+  }else if(k==='warlord'){
+    // blood-red plate, a horned helm with a T-visor and spiked pauldrons
+    P('#2a1a1a',[[0,0.12],[-(0.32+0.5*run),0.34+fl],[-(0.28+0.45*run),0.96+fl],[0,0.9]]);
+    base('#7a1f1f');
+    R('#4a4550',0,0,1,0.56);
+    P('#f4f0e6',[[0.05,0.08],[-0.25,-0.35],[0.25,0.02]]);P('#f4f0e6',[[0.95,0.08],[1.25,-0.35],[0.75,0.02]]);
+    R(INK,0.15,0.2,0.7,0.1);R(INK,0.45,0.2,0.1,0.3);
+    E(0.2,0.215,0.16,0.07,true);E(0.64,0.215,0.16,0.07,true);
+    [[-0.12,0.52],[0.92,0.52]].forEach(function(q){R('#4a4550',q[0],q[1],0.2,0.18);P('#c7d0d9',[[q[0],q[1]],[q[0]+0.1,q[1]-0.16],[q[0]+0.2,q[1]]]);});
+    R(GOLD,0,0.62,1,0.07);
+  }else if(k==='templar'){
+    // white and gold with a sun on the chest and a halo
+    P('#ffc233',[[0.05,0.1],[-(0.3+0.5*run),0.32+fl],[-(0.25+0.45*run),0.95+fl],[0.05,0.9]]);
+    base('#f2e6c2');
+    R('#f8f4e8',0,0,1,0.56);R(INK,0.18,0.24,0.64,0.1);R(INK,0.45,0.24,0.1,0.28);
+    E(0.24,0.255,0.15,0.06,true);E(0.6,0.255,0.15,0.06,true);
+    ctx.fillStyle=GOLD;ctx.beginPath();ctx.arc(X(0.5),Y(0.78),pw*0.13,0,6.283);ctx.fill();ctx.stroke();
+    for(var sr=0;sr<8;sr++){var sa2=sr*0.785;ctx.beginPath();ctx.moveTo(X(0.5)+Math.cos(sa2)*pw*0.16,Y(0.78)+Math.sin(sa2)*pw*0.16);ctx.lineTo(X(0.5)+Math.cos(sa2)*pw*0.24,Y(0.78)+Math.sin(sa2)*pw*0.24);ctx.stroke();}
+    ctx.strokeStyle=GOLD;ctx.lineWidth=lw*1.4;ctx.beginPath();ctx.ellipse(X(0.5),Y(-0.16+fl*0.3),pw*0.36,pw*0.1,0,0,6.283);ctx.stroke();ctx.lineWidth=lw;ctx.strokeStyle=INK;
+  }else if(k==='dragonknight'){
+    // green scale armour, a dragon-snout helm with horns, and small wings
+    P('#1f6a42',[[0.05,0.2],[-(0.35+0.3*run),-0.1-F*0.15],[-(0.15+0.2*run),0.25],[-(0.4+0.3*run),0.25-F*0.1],[0.05,0.55]]);
+    base('#2f8a5a');
+    ctx.fillStyle='#3fae72';for(var dr2=0;dr2<3;dr2++)for(var dc2=0;dc2<4;dc2++){ctx.beginPath();ctx.arc(X(0.14+dc2*0.24+(dr2%2)*0.12),Y(0.62+dr2*0.12),pw*0.07,0,Math.PI);ctx.fill();}
+    R('#2f8a5a',0,0,1,0.56);
+    P('#ffd23f',[[0.15,0.04],[0.02,-0.36],[0.35,0.0]]);P('#ffd23f',[[0.85,0.04],[0.98,-0.36],[0.65,0.0]]);
+    P('#1f6a42',[[0.62,0.18],[1.18,0.28],[1.18,0.44],[0.62,0.5]]);
+    R(INK,0.1,0.22,0.5,0.1);E(0.16,0.235,0.14,0.06,true);E(0.4,0.235,0.14,0.06,true);
+    ctx.fillStyle='#ff8a1f';ctx.beginPath();ctx.arc(X(1.12),Y(0.36),pw*0.04,0,6.283);ctx.fill();
+  }else if(k==='voidwalker'){
+    // a black-violet figure with one big void eye and specks of the void drifting off it
+    P('#2a1840',[[0.05,0.1],[-(0.3+0.5*run),0.32+fl],[-(0.25+0.45*run),0.95+fl],[0.05,0.9]]);
+    base('#2a1840');
+    ctx.fillStyle='#b07aff';[[0.1,-0.2],[0.85,-0.1],[1.1,0.4],[-0.1,0.6]].forEach(function(q,i){var dy=((o.t*0.6+i*0.25)%1);ctx.globalAlpha=1-dy;ctx.fillRect(X(q[0]),Y(q[1]-dy*0.4),pw*0.06,pw*0.06);});ctx.globalAlpha=1;
+    ctx.fillStyle='#0a0612';ctx.beginPath();ctx.ellipse(X(0.5),Y(0.36),pw*0.3,ph*0.2,0,0,6.283);ctx.fill();ctx.stroke();
+    var vg=ctx.createRadialGradient(X(0.5),Y(0.36),0,X(0.5),Y(0.36),pw*0.22);vg.addColorStop(0,o.hurt?'#fff':'#ff5fd8');vg.addColorStop(1,'#5b3fd0');
+    ctx.fillStyle=vg;ctx.beginPath();ctx.ellipse(X(0.5),Y(0.36),pw*0.2,ph*0.12,0,0,6.283);ctx.fill();
+    ctx.fillStyle='#0a0612';ctx.fillRect(X(0.47),Y(0.27),pw*0.06,ph*0.18);
+    R('#5b3fd0',0,0.66,1,0.08);
   }else if(k==='gladiator'){
     base('#b5651d');
     R('#c9cfd6',0,0,1,0.56);
@@ -2946,6 +3100,29 @@ function gearIcon(wk,S2){
     ctx.fillStyle='#7af0ff';ctx.beginPath();ctx.moveTo(S2*0.6,-S2*0.4);ctx.quadraticCurveTo(S2*0.92,-S2*0.05,S2*0.6,S2*0.28);ctx.quadraticCurveTo(S2*0.28,-S2*0.05,S2*0.6,-S2*0.4);ctx.closePath();ctx.fill();ctx.stroke();
     ctx.fillStyle=INK;ctx.fillRect(S2*0.5,-S2*0.06,S2*0.06,S2*0.09);ctx.fillRect(S2*0.64,-S2*0.06,S2*0.06,S2*0.09);return true;
   }
+  if(wk==='quake'){
+    ctx.fillStyle='#b9946a';ctx.beginPath();ctx.moveTo(S2*0.05,S2*0.4);ctx.lineTo(S2*0.25,0);ctx.lineTo(S2*0.4,S2*0.25);ctx.lineTo(S2*0.6,-S2*0.35);ctx.lineTo(S2*0.8,S2*0.2);ctx.lineTo(S2*0.95,-S2*0.05);ctx.lineTo(S2*1.15,S2*0.4);ctx.closePath();ctx.fill();ctx.stroke();
+    ctx.fillStyle='#6b4a2a';ctx.fillRect(S2*0.42,S2*0.05,S2*0.3,S2*0.3);ctx.strokeRect(S2*0.42,S2*0.05,S2*0.3,S2*0.3);return true;
+  }
+  if(wk==='meteor'){
+    var tg=ctx.createLinearGradient(-S2*0.1,S2*0.45,S2*0.6,-S2*0.1);tg.addColorStop(0,'rgba(255,138,31,0)');tg.addColorStop(1,'#ffc233');
+    ctx.fillStyle=tg;ctx.beginPath();ctx.moveTo(-S2*0.05,S2*0.55);ctx.lineTo(S2*0.62,-S2*0.25);ctx.lineTo(S2*0.82,0);ctx.closePath();ctx.fill();
+    C('#4a3a3a',0.8,-0.15,0.26);C('#ff6a2e',0.86,-0.2,0.09);return true;
+  }
+  if(wk==='vortex'){
+    ctx.globalAlpha=0.3;ctx.fillStyle='#b07aff';ctx.beginPath();ctx.arc(S2*0.6,0,S2*0.48,0,6.283);ctx.fill();ctx.globalAlpha=1;
+    for(i=0;i<3;i++){ctx.strokeStyle=i%2?'#ff5fd8':'#8b5cff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(S2*0.6,0,S2*(0.16+i*0.11),i*2,i*2+3.8);ctx.stroke();}
+    ctx.strokeStyle='#ff5fd8';C('#15101f',0.6,0,0.1);ctx.strokeStyle=INK;return true;
+  }
+  if(wk==='thorns'){
+    ctx.fillStyle='#5a8f3a';
+    for(i=0;i<8;i++){var ta=i*0.785;ctx.beginPath();ctx.moveTo(S2*(0.6+Math.cos(ta+0.3)*0.24),S2*Math.sin(ta+0.3)*0.24);ctx.lineTo(S2*(0.6+Math.cos(ta)*0.48),S2*Math.sin(ta)*0.48);ctx.lineTo(S2*(0.6+Math.cos(ta-0.3)*0.24),S2*Math.sin(ta-0.3)*0.24);ctx.closePath();ctx.fill();ctx.stroke();}
+    ctx.fillStyle='#8a6a4a';ctx.fillRect(S2*0.4,-S2*0.2,S2*0.4,S2*0.4);ctx.strokeRect(S2*0.4,-S2*0.2,S2*0.4,S2*0.4);return true;
+  }
+  if(wk==='beam'){
+    ['#ff4d4d','#ffc233','#3ddc84','#39d5ff','#8b5cff'].forEach(function(c,j){ctx.strokeStyle=c;ctx.lineWidth=S2*0.05;ctx.beginPath();ctx.moveTo(S2*0.6,S2*(0.05+j*0.04));ctx.lineTo(S2*1.2,S2*(-0.1+j*0.09));ctx.stroke();});
+    ctx.strokeStyle=INK;ctx.lineWidth=2.5;ctx.fillStyle='#e8f6ff';ctx.beginPath();ctx.moveTo(S2*0.45,-S2*0.3);ctx.lineTo(S2*0.75,S2*0.25);ctx.lineTo(S2*0.15,S2*0.25);ctx.closePath();ctx.fill();ctx.stroke();return true;
+  }
   if(wk==='emberboots'){
     ctx.fillStyle='#ff4d2e';ctx.beginPath();ctx.moveTo(S2*0.3,S2*0.1);ctx.quadraticCurveTo(S2*0.35,-S2*0.35,S2*0.55,-S2*0.55);ctx.quadraticCurveTo(S2*0.6,-S2*0.2,S2*0.8,-S2*0.4);ctx.quadraticCurveTo(S2*0.95,-S2*0.05,S2*0.9,S2*0.1);ctx.closePath();ctx.fill();ctx.stroke();
     ctx.fillStyle='#6b3a1e';ctx.fillRect(S2*0.35,0,S2*0.3,S2*0.35);ctx.strokeRect(S2*0.35,0,S2*0.3,S2*0.35);ctx.fillRect(S2*0.35,S2*0.25,S2*0.55,S2*0.15);ctx.strokeRect(S2*0.35,S2*0.25,S2*0.55,S2*0.15);
@@ -2956,7 +3133,7 @@ function gearIcon(wk,S2){
 function wicon(cvs,wk){
   var c=cvs.getContext('2d'),oc=ctx,w=cvs.width;
   var sc={sword:0.7,spear:0.33,hammer:0.6,axe:0.68,knives:0.85,bomb:1.3,gun:0.58,katana:0.72,mace:0.62,scythe:0.45,bow:0.7,rapier:0.5,trident:0.33,shuriken:1.1,crossbow:0.6,firestaff:0.55,
-    greatsword:0.5,flail:0.55,javelin:0.38,boomerang:1.0,icestaff:0.52,zapstaff:0.52,whip:0.36,pickaxe:0.68,morningstar:0.75,bladering:0.75,frostorbs:0.75,buzzsaw:0.8,tempest:0.7,wisp:0.85,emberboots:0.8};
+    greatsword:0.5,flail:0.55,javelin:0.38,boomerang:1.0,icestaff:0.52,zapstaff:0.52,whip:0.36,pickaxe:0.68,morningstar:0.75,bladering:0.75,frostorbs:0.75,buzzsaw:0.8,tempest:0.7,wisp:0.85,emberboots:0.8,quake:0.7,meteor:0.85,vortex:0.75,thorns:0.75,beam:0.7};
   ctx=c;c.clearRect(0,0,w,w);
   if(wkind(WEAPONS[wk])){c.save();c.translate(w*0.5-w*(sc[wk]||0.6)*0.6,w*0.5);weaponShape(wk,w*(sc[wk]||0.6));c.restore();}
   else{c.save();c.translate(w*0.2,w*0.78);c.rotate(-0.8);weaponShape(wk,w*(sc[wk]||0.6));c.restore();}
