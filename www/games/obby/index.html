@@ -39687,11 +39687,50 @@ window._claimLBro = function() {
     ctx.fillStyle = '#b79bff'; ctx.font = (s * 4) + 'px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('♪', cx + pw * 0.34, py + ph * 0.06 - pulse * s * 1.5);
     ctx.restore();
+    synthWave(ctx, cx, py + ph / 2, performance.now() / 1000);
   };
 
   // ---- Bass Drop: the Prodigy's special (S on PC, the ⚔️ button on mobile; both call performSlash) ----
   const BD_CD = 1.4, BD_RANGE = 3.2, BD_DMG = 20;
-  let bdReadyAt = 0;
+  let bdReadyAt = 0, bdFx = null;
+  const BD_FX_LEN = 0.6;
+  // Bass Drop look: an oscilloscope wave sweeping out both sides plus a ring whose
+  // edge ripples like a sine wave, in layered teal / violet / pink, fading as it spreads.
+  function synthWave(ctx, cx, cy, now) {
+    if (!bdFx) return;
+    const age = now - bdFx.t0;
+    if (age > BD_FX_LEN || age < 0) { bdFx = null; return; }
+    const k = age / BD_FX_LEN, ease = 1 - Math.pow(1 - k, 3), R = bdFx.range * ease, fade = 1 - k;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    const layers = [['#6ee7d0', -1.5, 0], ['#8b5cff', 0, 0.6], ['#ff5fd8', 1.5, 1.2]];
+    // oscilloscope line: a sine carrier with a saw-like harmonic, loudest in the middle
+    for (const [col, off, ph] of layers) {
+      ctx.strokeStyle = col; ctx.globalAlpha = 0.85 * fade; ctx.lineWidth = 3;
+      ctx.shadowColor = col; ctx.shadowBlur = 10;
+      ctx.beginPath();
+      for (let x = -R; x <= R; x += 3) {
+        const env = Math.max(0, 1 - Math.abs(x) / (R + 1));
+        const y = (Math.sin(x * 0.12 - age * 40 + ph) + 0.35 * Math.sin(x * 0.36 - age * 55 + ph)) * 22 * env * (0.4 + 0.6 * fade);
+        if (x === -R) ctx.moveTo(cx + x, cy + y + off); else ctx.lineTo(cx + x, cy + y + off);
+      }
+      ctx.stroke();
+    }
+    // ripple ring at the edge of the blast
+    ctx.lineWidth = 2.5;
+    for (const [col, off, ph] of layers) {
+      ctx.strokeStyle = col; ctx.globalAlpha = 0.7 * fade; ctx.shadowColor = col; ctx.shadowBlur = 8;
+      ctx.beginPath();
+      for (let i = 0; i <= 96; i++) {
+        const a = i / 96 * Math.PI * 2, r = R + off * 2 + Math.sin(a * 12 + age * 30 + ph) * 5 * fade;
+        const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * 0.75;
+        if (!i) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   const _prevSlash = window.performSlash;
   window.performSlash = function () {
     if (window.selectedCharacter !== ID) { if (_prevSlash) return _prevSlash.apply(this, arguments); return; }
@@ -39701,16 +39740,9 @@ window._claimLBro = function() {
     if (now < bdReadyAt) { msg('🎧 Bass Drop in ' + (bdReadyAt - now).toFixed(1) + 's'); return; }
     bdReadyAt = now + BD_CD;
     const px = p.x + p.w / 2, py = p.y + p.h / 2;
-    // shockwave rings in Press Play colours
-    const cols = ['#6ee7d0', '#8b5cff', '#ff5fd8', '#ffffff'];
-    for (let ring = 0; ring < 3; ring++) {
-      const n = 18 + ring * 6, sp = 5 + ring * 3;
-      for (let i = 0; i < n; i++) {
-        const a = i / n * Math.PI * 2;
-        ptcl.push({ x: px * TILE, y: py * TILE, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.7, life: 0.35 + ring * 0.1, color: cols[(i + ring) % cols.length], size: 3 + Math.random() * 2 });
-      }
-    }
-    for (let i = 0; i < 4; i++) ptcl.push({ x: px * TILE + (Math.random() - .5) * 30, y: py * TILE - 20, vx: (Math.random() - .5) * 2, vy: -3 - Math.random() * 2, life: 0.8, color: '#b79bff', size: 6 });
+    // the look is a synth sound wave, drawn with the character (see synthWave below)
+    bdFx = { t0: now, range: BD_RANGE * TILE };
+    for (let i = 0; i < 6; i++) ptcl.push({ x: px * TILE + (Math.random() - .5) * 20, y: py * TILE - 16, vx: (Math.random() - .5) * 2, vy: -2.5 - Math.random() * 2, life: 0.7, color: ['#6ee7d0', '#b79bff', '#ff5fd8'][i % 3], size: 3 });
     window._screenShake = (window._screenShake || 0) + 4;
     // hit everything in range
     let hits = 0;
