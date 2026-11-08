@@ -13436,6 +13436,7 @@ function startRoguelite() {
   window._rlEchoQueue = [];
   window._blackHoleActive = null;
   RL.tokens += PPHub.take('tokens');   // Token Pouch bought in the Press Play shop
+  if (PPHub.has('seed')) RL.tokens += 25;   // Seed Money perk
   {   // Charm Crates and the Press Play Encore from the Press Play shop
     let nc = PPHub.take('charm');
     while (nc-- > 0) {

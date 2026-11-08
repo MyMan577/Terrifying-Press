@@ -26033,6 +26033,8 @@ function resolveCollisions(axis, dt) {
     { id:'cs21', name:'Cosmic Coin Trail',  icon:'✨', cost:0,  desc:'A shimmering cosmic trail - proof of a secret found', category:'trail', _secret: true },
     { id:'cs22', name:'Press Play Wave',    icon:'▶️', cost:0,  desc:'Press Play exclusive: a teal-to-pink sound wave trail and orbiting music notes', category:'aura', _ppp: true },
     { id:'cs23', name:'Press Play Equalizer', icon:'🎚️', cost:0,  desc:'Press Play exclusive: a little sound equalizer that dances around you in teal, violet and pink', category:'aura', _ppp: true },
+    { id:'cs24', name:'Press Play Vinyl Spin', icon:'💿', cost:0,  desc:'Press Play exclusive: a spinning vinyl record of light circles you as you move', category:'aura', _ppp: true },
+    { id:'cs25', name:'Press Play Bass Pulse', icon:'🔊', cost:0,  desc:'Press Play exclusive: a bass shockwave ring rolls out every time you land', category:'aura', _ppp: true },
   ];
   window._WARDROBE_COSMETICS = COSMETICS;
 
@@ -26044,6 +26046,13 @@ function resolveCollisions(axis, dt) {
     localStorage.setItem('obby_cosmetics', JSON.stringify([...unlockedCosmetics]));
     localStorage.setItem('obby_cosm_active', JSON.stringify([...activeCosmetics]));
   }
+  [['vinyl', 'cs24'], ['pulse', 'cs25']].forEach(function (pr) {
+    if (PPHub.take(pr[0]) && !unlockedCosmetics.has(pr[1])) {
+      unlockedCosmetics.add(pr[1]); activeCosmetics.add(pr[1]);
+      localStorage.setItem('obby_cosmetics', JSON.stringify([...unlockedCosmetics]));
+      localStorage.setItem('obby_cosm_active', JSON.stringify([...activeCosmetics]));
+    }
+  });
   if (PPHub.take('wave') && !unlockedCosmetics.has('cs22')) {
     unlockedCosmetics.add('cs22'); activeCosmetics.add('cs22');
     localStorage.setItem('obby_cosmetics', JSON.stringify([...unlockedCosmetics]));
@@ -26134,6 +26143,10 @@ function resolveCollisions(axis, dt) {
       const t22 = Date.now() / 120;
       for (let i=0;i<6;i++) { const k=i/5; particles.push({x:px-i*3,y:py+Math.sin(t22+i*0.9)*7,vx:-1-Math.random(),vy:(Math.random()-.5)*0.6,life:.55,color:['#6ee7d0','#8b5cff','#ff5fd8'][Math.floor(k*2.99)],size:3+Math.random()*2}); }
     }
+    if (cosmeticActive('cs24')) {   // Press Play Vinyl Spin: three points of light orbiting you
+      const a24 = Date.now() / 90;
+      for (let i = 0; i < 3; i++) { const a = a24 + i * 2.094; particles.push({x:px+Math.cos(a)*14,y:py+Math.sin(a)*6,vx:0,vy:0,life:.22,color:['#6ee7d0','#8b5cff','#ff5fd8'][i],size:3}); }
+    }
     if (cosmeticActive('cs23')) {   // Press Play Equalizer: five little bars dancing around you
       const t23 = Date.now() / 140;
       for (let i = 0; i < 5; i++) {
@@ -26162,6 +26175,10 @@ function resolveCollisions(axis, dt) {
       if (Math.random() < 0.6)
         particles.push({x:px+(Math.random()-.5)*8,y:py+8+(Math.random()-.5)*4,vx:(Math.random()-.5)*1.5,vy:-(Math.random())*1,life:.3,color:`hsl(${(hue+Math.random()*60)%360},100%,60%)`,size:2+Math.random()*2});
     }
+    if (cosmeticActive('cs24')) {   // Press Play Vinyl Spin: three points of light orbiting you
+      const a24 = Date.now() / 90;
+      for (let i = 0; i < 3; i++) { const a = a24 + i * 2.094; particles.push({x:px+Math.cos(a)*14,y:py+Math.sin(a)*6,vx:0,vy:0,life:.22,color:['#6ee7d0','#8b5cff','#ff5fd8'][i],size:3}); }
+    }
     if (cosmeticActive('cs23') && Math.random() < 0.5) {   // Press Play Equalizer while you walk: little bars at your feet
       const b23 = Math.floor(Math.random() * 4), h23 = 1 + Math.floor(Math.abs(Math.sin(Date.now() / 140 + b23 * 1.7)) * 3);
       for (let j = 0; j < h23; j++) particles.push({x:px+(b23-1.5)*6,y:py+6-j*5,vx:0,vy:-0.3,life:.2,color:['#6ee7d0','#8b5cff','#ff5fd8'][Math.min(2,j)],size:3});
@@ -26178,6 +26195,9 @@ function resolveCollisions(axis, dt) {
   };
 
   window.cosmeticOnLand = function(px, py) {
+    if (cosmeticActive('cs25')) {   // Press Play Bass Pulse: two rings of light rolling out from your feet
+      for (let r = 0; r < 2; r++) for (let i = 0; i < 14; i++) { const a = i / 14 * Math.PI * 2; particles.push({x:px+Math.cos(a)*4,y:py+Math.sin(a)*2,vx:Math.cos(a)*(4+r*3),vy:Math.sin(a)*1.2,life:.35+r*.1,color:['#6ee7d0','#8b5cff','#ff5fd8'][(i+r)%3],size:3}); }
+    }
     if (cosmeticActive('cs5')) { 
       for (let i=0;i<8;i++) { const a=i/8*Math.PI*2; particles.push({x:px,y:py,vx:Math.cos(a)*4,vy:Math.sin(a)*2-3,life:.5,color:'#ffe066',size:3+Math.random()*2}); }
     }
