@@ -11115,6 +11115,84 @@ function resetPlayer() {
     'SPIN SWEEP':    { windup:0.16, active:0.12, endlag:0.30, push:3,  tip:[1.8, 3.0], sweetDmg:2, sweetKb:1.5, sweetStop:0.12, sweetShake:14 },
   };
   let _sluggerViaStrike = false;
+
+  // ---- Phantom Ace, Arch Mage, Conduit and Form Switcher: windup, sweet spot and hit-stop per move ----
+  // These already have their own end lag and cooldowns per move, so the strike engine adds the windup,
+  // the sweet spot and the hit-stop, and its own end lag stays 0 (Phantom Ace, which had none, gets one).
+  const ACE_FD = {
+    slash: { windup:0.06, active:0.10, endlag:0.28, push:3, tip:[1.4, 2.6], sweetDmg:1, sweetKb:1.4 },
+    burst: { windup:0.16, sweet:0.08, active:0.2, endlag:0.36, push:2, sweetDmg:2, sweetKb:1.5, sweetStop:0.12, sweetShake:14 },
+  };
+  const ARCHMAGE_FD = {
+    ground_up:      { windup:0.16, sweet:0.08, active:0.25, endlag:0, sweetDmg:2, sweetStop:0.12, sweetShake:12 },   // Ice Pillar
+    ground_down:    { windup:0.10, sweet:0.08, active:0.20, endlag:0, sweetDmg:1 },                                   // Wall (1st and 2nd)
+    ground_down3:   { windup:0.20, sweet:0.10, active:0.25, endlag:0, sweetDmg:2, sweetKb:1.6, sweetStop:0.13, sweetShake:14 },   // FINAL WALL
+    ground_fwd:     { windup:0.14, sweet:0.10, active:0.30, endlag:0, sweetDmg:2, sweetKb:1.6, sweetStop:0.11 },      // Rocket Drive
+    ground_neutral: { windup:0.08, sweet:0.06, active:0.30, endlag:0, sweetDmg:1 },                                   // Fire Spear
+    air_up:         { windup:0.10, sweet:0,    active:0.20, endlag:0 },                                               // Spirit Bomb (summon)
+    air_launch:     { windup:0.06, sweet:0,    active:1.50, endlag:0, stop:0.08, shake:6 },                           // Spirit Bomb launch
+    air_fwd:        { windup:0.12, sweet:0.10, active:0.50, endlag:0, sweetDmg:1 },                                   // Arcane Burst
+    air_down:       { windup:0.10, sweet:0,    active:0.80, endlag:0, stop:0.06 },                                    // Spear Plummet
+    air_neutral:    { windup:0.20, sweet:0,    active:0,    endlag:0 },                                               // Arrow Overdrive
+  };
+  const CONDUIT_FD = {
+    ground_up:      { key:'overchargeBurst', windup:0.14, sweet:0.08, active:0.20, endlag:0, sweetDmg:3, sweetStop:0.12, sweetShake:13 },
+    ground_down:    { key:'spikeTide',       windup:0.12, sweet:0,    active:0.50, endlag:0 },
+    ground_fwd:     { key:'surgeDash',       windup:0.05, sweet:0.08, active:0.20, endlag:0, sweetDmg:1, sweetKb:1.4 },
+    ground_neutral: { key:'arcStream',       windup:0.06, sweet:0,    active:0.40, endlag:0 },
+    air_up:         { key:'liftCurrent',     windup:0.06, sweet:0,    active:0.30, endlag:0 },
+    air_down:       { key:'groundPulse',     windup:0.08, sweet:0,    active:1.00, endlag:0, stop:0.06 },
+    air_fwd:        { key:'boltDash',        windup:0.05, sweet:0,    active:0.50, endlag:0 },
+    air_neutral:    { key:'scatterShot',     windup:0.08, sweet:0.06, active:0.40, endlag:0, sweetDmg:1 },
+  };
+  // Form Switcher: each form has its own weight (frost is quick, stone is heavy) and each direction its own
+  // windup; follow-ups come out twice as fast so its combos still flow
+  const FS_FORM_FD = {
+    flame: { base:0.08, sweetDmg:1, sweetKb:1.4 },
+    frost: { base:0.05, sweetDmg:1, sweetKb:1.2 },
+    storm: { base:0.06, sweetDmg:1, sweetKb:1.3, sweetStun:0.8 },
+    stone: { base:0.13, sweetDmg:2, sweetKb:1.6, sweetStop:0.13, sweetShake:14 },
+  };
+  const FS_DIR_MUL = { neutral:1, fwd:1.15, up:1.35, down:1.5 };
+  const _NOFD = { windup:0, sweet:0, active:0, endlag:0 };   // let the move run as it would (e.g. to show "cooling down")
+  function _strikeDirs() {
+    const up = keys.has('arrowup') || keys.has('w') || mobileKeys.up, down = keys.has('arrowdown') || mobileKeys.down;
+    const dir = player.lastMoveDir || player.dashDir || 1;
+    const fwd = (dir > 0 && (keys.has('d') || keys.has('arrowright') || mobileKeys.right)) || (dir < 0 && (keys.has('a') || keys.has('arrowleft') || mobileKeys.left));
+    return { d: up ? 'up' : down ? 'down' : fwd ? 'fwd' : 'neutral', dir, st: player.onGround ? 'ground' : 'air' };
+  }
+  // which move a press would make, and its frame data (null: the character would ignore the press anyway)
+  const STRIKE_PICK = {
+    phantomace() {
+      if (aceSlashCooldown > 0.08) return null;
+      const burst = hasUpgrade('pa3') && (aceSlashCount + 1) % 5 === 0;
+      return { fd: burst ? ACE_FD.burst : ACE_FD.slash, dir: player.dashDir || player.lastMoveDir || 1, color: '#ffe566' };
+    },
+    archmage() {
+      if (archmageSpellEndlag > 0) return null;
+      const k = _strikeDirs();
+      let key = k.st + '_' + k.d;
+      if (archmageFlameBomb && !archmageFlameBomb.launched) key = 'air_launch';
+      else if (key === 'ground_down' && archmageWallCount >= 2) key = 'ground_down3';
+      return { fd: ARCHMAGE_FD[key] || _NOFD, dir: k.dir, color: '#a78bfa' };
+    },
+    conduit() {
+      if (conduitAttackEndlag > 0) return null;
+      const k = _strikeDirs(), fd = CONDUIT_FD[k.st + '_' + k.d];
+      if (!fd || ((conduitAttackCooldowns[fd.key] || 0) > 0 && !((conduitActiveForms.resonance || 0) > 0))) return { fd: _NOFD, dir: k.dir };
+      return { fd, dir: k.dir, color: '#7cdbff' };
+    },
+    formSwitcher() {
+      if (fsAttackEndlag > 0) return null;
+      const k = _strikeDirs(), form = FORM_SWITCHER_FORMS[formSwitcherIndex], ff = FS_FORM_FD[form.id] || FS_FORM_FD.flame;
+      const w = ff.base * FS_DIR_MUL[k.d] * (k.st === 'air' ? 0.8 : 1) * (fsFollowUpWindow > 0 ? 0.5 : 1);
+      return { fd: { windup: w, sweet: 0.07, active: 0.3, endlag: 0, sweetDmg: ff.sweetDmg, sweetKb: ff.sweetKb, sweetStun: ff.sweetStun, sweetStop: ff.sweetStop, sweetShake: ff.sweetShake },
+        dir: k.dir, color: form.color || '#ff6b35' };
+    },
+  };
+  const STRIKE_CHARGE = { phantomace: true };   // the Ace's sword slash can be charged; spells keep their own timing
+  let _strikeViaFire = false;
+
   function performAttackAction() {
     if (mode !== 'play') return;
     
@@ -11715,6 +11793,15 @@ function resetPlayer() {
       return;
     }
 
+    if (window.PPStrike && !_strikeViaFire && STRIKE_PICK[selectedCharacter]) {
+      const ch = selectedCharacter;
+      window.PPStrike.press(() => {
+        if (selectedCharacter !== ch || mode !== 'play') return null;
+        const pk = STRIKE_PICK[ch](); if (!pk) return null;
+        return { fd: pk.fd, dir: pk.dir, color: pk.color, fire: () => { _strikeViaFire = true; try { performAttackAction(); } finally { _strikeViaFire = false; } } };
+      }, !!STRIKE_CHARGE[ch]);
+      return;
+    }
     if (window._trackSlash) _trackSlash(); window.performSlash(); performPunch(); performUniversalPunch(); performArchmageSpell(); performFormSwitcherAttack(); performConduitAttack(); if (window.performDrifterAtk) window.performDrifterAtk(); if (window.performPrestigeAtk) window.performPrestigeAtk(); if (window.performSluggerAtk) window.performSluggerAtk(); } 
 
   window.addEventListener('keydown', e => {
@@ -38090,10 +38177,43 @@ window._claimLBro = function() {
   }
 
   
+  // Chroma's frame data comes from each move's family (a lob or a burst winds up longer than a quick streak),
+  // stretched for slow moves (long cooldown) and ★ signature moves. Its own cooldown is its end lag.
+  const CHAM_FAMILY_FD = {
+    streak:  { windup:0.05, sweet:0.06, active:0.30, sweetDmg:1, sweetKb:1.3 },
+    grapple: { windup:0.07, sweet:0.08, active:0.40, sweetDmg:1, sweetKb:1.4 },
+    burst:   { windup:0.12, sweet:0.06, active:0.20, sweetDmg:2, sweetKb:1.5, sweetStop:0.11, sweetShake:12 },
+    lob:     { windup:0.09, sweet:0,    active:0.80 },
+    drop:    { windup:0.08, sweet:0,    active:0.80 },
+    orbit:   { windup:0.08, sweet:0,    active:0.40 },
+    wall:    { windup:0.10, sweet:0.08, active:0.30, sweetDmg:1 },
+    web:     { windup:0.08, sweet:0,    active:0.20 },
+    puddle:  { windup:0.08, sweet:0,    active:0.20 },
+    link:    { windup:0.10, sweet:0.06, active:0.30, sweetDmg:1 },
+  };
+  let _chFiring = false;
+  function chamFD(move) {
+    const b = CHAM_FAMILY_FD[move.family] || CHAM_FAMILY_FD.streak;
+    const slow = Math.max(0, Math.min(0.08, ((move.cd || 0.9) - 0.9) * 0.08)) + (/★/.test(move.name || '') ? 0.03 : 0);
+    return Object.assign({}, b, { windup: b.windup + slow, endlag: 0 });
+  }
   const _prevChSlash = window.performSlash;
   window.performSlash = function () {
     if (window.selectedCharacter !== CHAM_ID) { if (_prevChSlash) _prevChSlash(); return; }
     if (_chAtkCD > 0) return;
+    if (window.PPStrike && !_chFiring) {
+      window.PPStrike.press(() => {
+        const p = window._gamePlayer; if (!p || window.selectedCharacter !== CHAM_ID || _chAtkCD > 0) return null;
+        const k = window._gameKeys || new Set(), mk = window.mobileKeys || {};
+        const up = k.has('arrowup') || k.has('w') || !!mk.up, dn = k.has('arrowdown') || !!mk.down;
+        const side = k.has('arrowright') || k.has('d') || k.has('arrowleft') || k.has('a') || !!mk.left || !!mk.right;
+        const move = MOVESET[curForm().id][p.onGround ? 'ground' : 'air'][(dn && !up) ? 'down' : (up && !dn) ? 'up' : side ? 'side' : 'neutral'];
+        if (!move) return null;
+        const pDir = (k.has('arrowright') || k.has('d') || mk.right) ? 1 : (k.has('arrowleft') || k.has('a') || mk.left) ? -1 : (p.dashDir || p.lastMoveDir || 1);
+        return { fd: chamFD(move), dir: pDir, color: curForm().color, fire: () => { _chFiring = true; try { window.performSlash(); } finally { _chFiring = false; } } };
+      }, false);
+      return;
+    }
     const p = window._gamePlayer || window.player;
     const keys = window._gameKeys || new Set();
     const msg = window._setMessage || (() => {});
