@@ -1,4 +1,5 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="utf-8"><script src="../pp-hub.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Blob Barrage</title>
 <style>
@@ -594,7 +595,7 @@ function aiWalk(w){const t=ai.bw;if(!t||t.hp<=0||--ai.bwt<=0||ai.bk>3){ai.bw=nul
  const d=t.x<w.x?-1:1;if(edge(w,d)){ai.bw=null;ai.bk=0;return 0}
  crawl(w,d);if(++ai.c%30==0){if(Math.abs(w.x-ai.lx)<4){w.aim=60;w.jq={p:.7,t:14};ai.bk++}ai.lx=w.x}return 1}
 function nextTurn(){teams.forEach(t=>t.w.forEach(w=>{if(w.dfz>0)detonate(w)}));grace=0;gw=null;lk=null;lsn=0;endTgt();vic=null;pend=null;pl=null;teams.forEach(t=>t.w=t.w.filter(w=>w.hp>0));teams.forEach(t=>t.w.forEach(w=>{if(!(w.tkn>0))earnEvt(w,'untouched',1);if(w.hp<30)earnEvt(w,'lowhp',1);if(w.hp>=CFG.hp)earnEvt(w,'full',1);w.tkn=0;w.kt=0;w.dt=0;w.dtf=0}));tc++;teams.forEach(t=>t.w.forEach(w=>earnEvt(w,'turn',1)));teams.forEach(t=>t.w.forEach(w=>w.gs=0));if(CFG.cmax>0&&R()*100<CFG.cdrop)for(let n=1+(R()*CFG.cmax|0);n-->0&&cr.length<CFG.cmap;)spawnCr();teams.forEach(t=>t.w.forEach(w=>{if(w.sh>0&&tc>=w.sht)w.sh=0;if(w.am>0&&tc>=w.am)w.am=0;if(w.iv>0&&tc>=w.iv)w.iv=0;w.gp=0;w.rps=0;w.mset=0;w.gset=0;w.fd=0;w.jc=0;w.jq=0;w.lh=0;w.jp=0;w.jr=0;w.dyn=0;w.dr=0;w.hw=0;w.wu=0;w.wuGo=0;w.bo=0;w.bf=0;w.bl=0;w.bpBan=null;w.bpt=0;w.bps=0}));const alv=teams.filter(t=>t.w.length);
- if(alv.length<=1){msg=alv.length?alv[0].n+' wins!':'Draw!';state='over';return}
+ if(alv.length<=1){msg=alv.length?alv[0].n+' wins!':'Draw!';state='over';{const bt=[];for(let t=0;t<CFG.nt;t++)for(let i=0;i<CFG.nw;i++)bt.push(!!(CFG.bots[t]&&CFG.bots[t][i]));if(bt.includes(true)&&bt.includes(false)){PPHub.event('match');if(alv.length&&alv[0].w.some(w=>!w.bot))PPHub.event('win')}}return}
  {let c=cur;do c=(c+1)%teams.length;while(!teams[c].w.length);cur=c}wi[cur]=(wi[cur]+1)%teams[cur].w.length;wind=Math.round((R()*10-5)*CFG.wnd*10)/10;timer=CFG.tt*60;pw=0;pan=0;keys.fire=0;state='aim';
  {const m=me();if(m&&m.hp>0&&m.rg>0){m.rg--;healW(m,15)}}ai=isBot(me())?plan():null;wp=ai?0:lw[cur]|0;if(WPN[wp]&&WPN[wp].u&&!(me()[WPN[wp].u]>0))wp=0}
 const blk=(x,y)=>solid(x,y-3)||solid(x,y-6)||solid(x,y-9);
