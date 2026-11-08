@@ -174,5 +174,6 @@
   }
   function r2(v){ return Math.round((v || 0) * 100) / 100; }
 
-  window.__obbyNet = { frame: frame };
+  // role while linked ('host' or 'guest'), so the course autosave can leave a friend's course alone
+  window.__obbyNet = { frame: frame, get role(){ return conn ? role : null; } };
 })();

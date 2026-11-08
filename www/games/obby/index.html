@@ -32600,7 +32600,7 @@ function resolveCollisions(axis, dt) {
 
   setTimeout(renderCharTutList, 200);
 
-  window._charTutorials = { list: CHAR_TUTORIALS, combatTest: COMBAT_TEST, renderCharTutList, exitCharTutorial };
+  window._charTutorials = { list: CHAR_TUTORIALS, combatTest: COMBAT_TEST, renderCharTutList, exitCharTutorial, isActive: () => activeCharTut !== null };
 })();
 </script>
 
@@ -40781,6 +40781,57 @@ window._claimLBro = function() {
 })();
 </script>
 <script>
+// ===== Your course survives a reload =====
+// While you build, the course is saved to this phone every couple of seconds (only when it changed), and when
+// the app goes to the background. On the next start it is put back. Nothing is saved while a story level, a
+// character tutorial or a friend's course (online play) is loaded, so those never replace your own course.
+// Whether the course was an untouched import is kept too, so speedruns still work on it after a reload.
+(function () {
+  'use strict';
+  const KEY = 'obby_course_autosave';
+  let lastSig = null, restored = false;
+  const G = () => window.__obby;
+  function locked() {
+    try {
+      if (window._storyMode && window._storyMode.isActive && window._storyMode.isActive()) return true;
+      if (window._charTutorials && window._charTutorials.isActive && window._charTutorials.isActive()) return true;
+      if (window.__obbyNet && window.__obbyNet.role === 'guest') return true;
+      if (window._gtActive || window._srActive) return true;
+    } catch (e) {}
+    return false;
+  }
+  function save(force) {
+    const g = G(); if (!g || !restored || g.mode !== 'build' || locked()) return;
+    let json;
+    try { json = g.exportLevel(); } catch (e) { return; }
+    // the export has a time-stamped name: compare only the course itself
+    let data; try { data = JSON.parse(json); } catch (e) { return; }
+    const imported = !!window._levelIsImported && !window._srLevelDirty;
+    const sig = JSON.stringify([data.world, data.movers, imported]);
+    if (!force && sig === lastSig) return;
+    lastSig = sig;
+    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, at: Date.now(), imported, level: data })); } catch (e) {}
+  }
+  function restore() {
+    const g = G();
+    if (!g || !g.importLevel) { setTimeout(restore, 200); return; }
+    restored = true;
+    let saved = null; try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
+    if (!saved || !saved.level || !saved.level.world || locked() || g.mode !== 'build') { save(true); return; }
+    if (g.importLevel(JSON.stringify(saved.level))) {
+      if (!saved.imported) { window._levelIsImported = false; window._srImportSnapshot = null; }
+      lastSig = JSON.stringify([saved.level.world, saved.level.movers, !!saved.imported]);
+      if (window._setMessage) window._setMessage('💾 Your course is back, just as you left it (' + saved.level.world.tiles.length + ' blocks)');
+    }
+  }
+  setTimeout(restore, 900);
+  setInterval(() => save(false), 2000);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) save(false); });
+  window.addEventListener('pagehide', () => save(false));
+  window._obbyAutosave = { save: () => save(true), key: KEY };
+})();
+</script>
+<script>
 // ===== Emotes: wave, dance, laugh, flex, bow (+ Press Play shop: air guitar, headbang, mic drop) =====
 // Z or the 😀 button opens the emote wheel (1-8 pick on a keyboard). The character performs the move with
 // its whole body, and gets two floating hands for it: characters that already have hands get matching ones
@@ -40799,6 +40850,14 @@ window._claimLBro = function() {
     { id: 'guitar',   icon: '🎸', name: 'Air Guitar', len: 0, beat: true, shop: 'emguitar' },
     { id: 'headbang', icon: '🤘', name: 'Headbang',   len: 0, beat: true, shop: 'emheadbang' },
     { id: 'mic',      icon: '🎤', name: 'Mic Drop',   len: 2.8, shop: 'emmic' },
+    { id: 'cheer',    icon: '🙌', name: 'Cheer',      len: 2.2 },
+    { id: 'clap',     icon: '👏', name: 'Clap',       len: 2.0, beat: true },
+    { id: 'facepalm', icon: '🤦', name: 'Facepalm',   len: 2.2 },
+    { id: 'shrug',    icon: '🤷', name: 'Shrug',      len: 1.8 },
+    { id: 'sleep',    icon: '😴', name: 'Sleep',      len: 0 },
+    { id: 'comeon',   icon: '🫴', name: 'Come On',    len: 2.0 },
+    { id: 'robot',    icon: '🤖', name: 'Robot',      len: 0, beat: true, shop: 'emrobot' },
+    { id: 'dj',       icon: '🎧', name: 'DJ Scratch', len: 0, beat: true, shop: 'emdj' },
   ];
   // shop emotes bought in the Press Play shop
   function owned() { try { return JSON.parse(localStorage.getItem(OWN_KEY) || '[]'); } catch (e) { return []; } }
@@ -40871,6 +40930,41 @@ window._claimLBro = function() {
         }
         const u = (t - 1.3);
         return { pose: { lean: -0.18 * ease(u / 0.3) }, hands: [{ x: 1.25, y: 0.3, open: true }, { x: 0.3, y: 0.55 }], dropT: u };
+      }
+      case 'cheer': {   // jumping with both hands up and waving
+        const j = Math.abs(Math.sin(t * 7.5)), k = 1 - ease((t - 1.9) / 0.3);
+        return { pose: { oy: -0.22 * j * k, sy: 1 + 0.06 * j * k - 0.08 * (1 - j) * k, sx: 1 - 0.04 * j * k },
+          hands: [{ x: 1.1 + 0.08 * Math.sin(t * 15), y: -0.32 - 0.08 * j, open: true }, { x: -0.1 - 0.08 * Math.sin(t * 15), y: -0.32 - 0.08 * j, open: true }], stars: k > 0.3 };
+      }
+      case 'clap': {    // claps in front, on the beat
+        const c = Math.pow(Math.abs(Math.cos(Math.PI * beat)), 6), gap = 0.06 + 0.22 * (1 - c);
+        return { pose: { oy: -0.04 * hop, sy: 1 - 0.04 * c }, hands: [{ x: 0.95 + gap, y: 0.4 }, { x: 0.95 - gap, y: 0.4 }], clap: c > 0.85 };
+      }
+      case 'facepalm': {   // a hand slapped to the face, then a slow head shake
+        const slap = ease(t / 0.3), shake = t > 0.45 ? Math.sin((t - 0.45) * 7) * (1 - ease((t - 1.7) / 0.5)) : 0;
+        return { pose: { lean: 0.12 * slap + 0.06 * shake, sy: 1 - 0.05 * slap }, hands: [{ x: 0.95 - 0.15 * slap, y: 0.65 - 0.4 * slap, open: true }, { x: 0.1, y: 0.68 }], smack: t > 0.28 && t < 0.5 };
+      }
+      case 'shrug': {   // shoulders up, palms out
+        const k = Math.sin(Math.min(1, t / 1.6) * Math.PI);
+        return { pose: { sy: 1 + 0.08 * k, sx: 1 - 0.04 * k, oy: -0.03 * k }, hands: [{ x: 1.3, y: 0.42 - 0.18 * k, open: true }, { x: -0.3, y: 0.42 - 0.18 * k, open: true }], q: k > 0.5 };
+      }
+      case 'sleep': {   // sinks down and breathes slowly, Z's drifting up
+        const sink = ease(t / 0.8), br = Math.sin(t * 2.2) * 0.04 * sink;
+        return { pose: { sy: 1 - 0.14 * sink + br, sx: 1 + 0.08 * sink - br * 0.5, lean: -0.08 * sink }, hands: [{ x: 0.85, y: 0.78 }, { x: 0.15, y: 0.8 }], zzz: sink > 0.6 };
+      }
+      case 'comeon': {   // a beckoning hand: come at me
+        const b2 = Math.sin(t * 12), k = 1 - ease((t - 1.8) / 0.2);
+        return { pose: { lean: -0.1 * k, oy: -0.02 * Math.abs(b2) * k }, hands: [{ x: 1.25 - 0.12 * Math.max(0, b2) * k, y: 0.38 - 0.05 * b2 * k, open: b2 > 0 }, { x: 0.05, y: 0.62 }] };
+      }
+      case 'robot': {   // stiff moves that snap on every beat
+        const step = n % 4, snap = Math.min(1, b * 8), sides = [[1, -0.1, 0.4], [-1, 0.5, -0.1], [1, 0.5, 0.5], [-1, -0.1, -0.1]][step];
+        return { pose: { lean: 0.12 * sides[0] * snap, oy: -0.04 * snap * (step % 2), sx: 1, sy: 1 },
+          hands: [{ x: 1.15, y: sides[1] }, { x: -0.15, y: sides[2] }], robot: true };
+      }
+      case 'dj': {   // scratching a record to the beat, other hand on the headphones
+        const sc = Math.sin(Math.PI * 2 * beat * 2);
+        return { pose: { oy: 0.03 * hop, lean: 0.06 * Math.sin(Math.PI * beat) }, decks: true, deckSpin: beat * 2,
+          hands: [{ x: 1.05 + 0.12 * sc, y: 0.72 }, { x: 0.2, y: 0.12 }] };
       }
     }
     return null;
@@ -40971,6 +41065,19 @@ window._claimLBro = function() {
       if (st.text) { ctx.font = 'bold ' + Math.round(W * 0.42) + 'px sans-serif'; ctx.fillStyle = '#ffe066'; for (let i = 0; i < 2; i++) { const ph = (st.t * 1.6 + i * 0.5) % 1; ctx.globalAlpha = 1 - ph; ctx.fillText('HA', W * (0.9 + i * 0.4), -H * (0.1 + ph * 0.6)); } ctx.globalAlpha = 1; }
       if (st.sparkle) { ctx.fillStyle = '#ffffff'; for (let i = 0; i < 4; i++) { const a = st.t * 4 + i * 1.6; ctx.globalAlpha = 0.5 + 0.5 * Math.sin(st.t * 12 + i); ctx.beginPath(); ctx.arc(W / 2 + Math.cos(a) * W * 0.9, H * 0.3 + Math.sin(a) * H * 0.5, 1.8, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1; }
       if (st.notes || st.guitar) { ctx.font = Math.round(W * 0.45) + 'px sans-serif'; ctx.fillStyle = '#b79bff'; for (let i = 0; i < 2; i++) { const ph = (st.t * 0.9 + i * 0.5) % 1; ctx.globalAlpha = 1 - ph; ctx.fillText('♪', W * (1.1 + 0.3 * i) , H * (0.1 - ph * 0.8)); } ctx.globalAlpha = 1; }
+      if (st.stars) { ctx.fillStyle = '#ffe066'; for (let i = 0; i < 5; i++) { const ph = (st.t * 1.4 + i * 0.2) % 1; ctx.globalAlpha = 1 - ph; ctx.beginPath(); ctx.arc(W * (0.5 + Math.cos(i * 1.3) * (0.6 + ph)), -H * (0.2 + ph * 0.7), 2, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1; }
+      if (st.clap) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i - 2) * 0.5; ctx.beginPath(); ctx.moveTo(W * 0.95 + Math.cos(a) * r * 1.6, H * 0.4 + Math.sin(a) * r * 1.6); ctx.lineTo(W * 0.95 + Math.cos(a) * r * 2.6, H * 0.4 + Math.sin(a) * r * 2.6); ctx.stroke(); } }
+      if (st.smack) { ctx.font = 'bold ' + Math.round(W * 0.34) + 'px sans-serif'; ctx.fillStyle = '#ffe066'; ctx.fillText('SMACK', W * 1.3, -H * 0.05); }
+      if (st.q) { ctx.font = 'bold ' + Math.round(W * 0.5) + 'px sans-serif'; ctx.fillStyle = '#ffffff'; ctx.fillText('?', W * 0.5, -H * 0.2); }
+      if (st.zzz) { ctx.fillStyle = '#b7c8ff'; for (let i = 0; i < 3; i++) { const ph = (st.t * 0.45 + i / 3) % 1; ctx.globalAlpha = Math.min(1, (1 - ph) * 1.5); ctx.font = 'bold ' + Math.round(W * (0.25 + 0.2 * ph)) + 'px sans-serif'; ctx.fillText('Z', W * (0.8 + 0.5 * ph), -H * (0.05 + 0.7 * ph)); } ctx.globalAlpha = 1; }
+      if (st.robot) { ctx.strokeStyle = 'rgba(160,220,255,0.7)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]); for (const h of st.hands) { ctx.beginPath(); ctx.moveTo(W * 0.5, H * 0.45); ctx.lineTo(h.x * W, H * 0.45); ctx.lineTo(h.x * W, h.y * H); ctx.stroke(); } ctx.setLineDash([]); }
+      if (st.decks) {   // a little turntable in front, its record spinning
+        const dx = W * 1.05, dy = H * 0.86;
+        ctx.fillStyle = '#26272e'; ctx.fillRect(dx - W * 0.42, dy - H * 0.04, W * 0.84, H * 0.16);
+        ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(dx, dy - H * 0.04, W * 0.32, W * 0.1, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#ff5fd8'; ctx.lineWidth = 1.5; const sp = st.deckSpin * Math.PI; ctx.beginPath(); ctx.ellipse(dx, dy - H * 0.04, W * 0.2, W * 0.06, 0, sp, sp + 1.2); ctx.stroke();
+        ctx.font = Math.round(W * 0.4) + 'px sans-serif'; ctx.fillStyle = '#6ee7d0'; const ph = (st.t * 0.9) % 1; ctx.globalAlpha = 1 - ph; ctx.fillText('♪', W * 1.5, H * (0.2 - ph * 0.6)); ctx.globalAlpha = 1;
+      }
       if (st.dropT != null) {   // the mic falls from the open hand, bounces once, and lands with a BOOM
         const u = st.dropT, g = 9 * H;
         let my = H * 0.3 + 0.5 * g * u * u, mx = W * 1.3; let boom = 0;
@@ -41026,11 +41133,14 @@ window._claimLBro = function() {
       #ppEmoteWheel .em .shop { position:absolute; right:5px; top:4px; font:800 8px sans-serif; padding:1px 4px; border-radius:6px; background:#8b5cff; }
       #ppEmoteWheel .mid { position:absolute; width:90px; margin:-14px 0 0 -45px; text-align:center; color:#fff; font:800 12px sans-serif; text-shadow:0 1px 3px #000; }
       #ppEmoteWheel .mid span { display:block; font-weight:400; font-size:10px; opacity:.75; margin-top:2px; }
+      #ppEmoteWheel .mid .pg { display:flex; justify-content:center; gap:10px; margin-top:6px; }
+      #ppEmoteWheel .mid .pg button { width:34px; height:34px; border-radius:50%; border:2px solid rgba(255,255,255,.75); background:#2a2150; color:#fff; font:800 18px sans-serif; padding:0; cursor:pointer; }
       @media (max-height: 500px) { #ppEmoteBtn { top:98px; right:72px; transform:scale(.85); } }
     `;
     document.head.appendChild(sty);
   }
-  let btn = null, btnCanvas = null, wheel = null, wheelOpen = false, previews = [], openedAt = 0, raf = 0;
+  let btn = null, btnCanvas = null, wheel = null, wheelOpen = false, previews = [], openedAt = 0, raf = 0, page = 0;
+  const PER = 8, PAGES = Math.ceil(EMOTES.length / PER);
   const DPR = Math.min(3, window.devicePixelRatio || 1);
   function sized(cv, w, h) { cv.width = Math.round(w * DPR); cv.height = Math.round(h * DPR); cv.style.width = w + 'px'; cv.style.height = h + 'px'; return cv; }
   // draw the character doing emote `id`, `t` seconds in, into a canvas of w x h CSS pixels
@@ -41058,10 +41168,14 @@ window._claimLBro = function() {
       document.body.appendChild(wheel);
     }
     const ring = wheel.querySelector('.ring'), R = Math.min(132, Math.min(innerWidth, innerHeight) * 0.36);
-    ring.innerHTML = '<div class="mid">EMOTES<span>tap one, or 1-8</span></div>';
+    ring.innerHTML = '<div class="mid">EMOTES<span>' + (page + 1) + ' / ' + PAGES + '</span><div class="pg"><button data-d="-1">‹</button><button data-d="1">›</button></div></div>';
+    for (const pb of ring.querySelectorAll('.pg button')) {
+      const flip = ev => { ev.preventDefault(); ev.stopPropagation(); page = (page + (+pb.dataset.d) + PAGES) % PAGES; openWheel(); };
+      pb.addEventListener('touchstart', flip, { passive: false }); pb.addEventListener('mousedown', flip);
+    }
     previews = [];
-    EMOTES.forEach((em, i) => {
-      const a = -Math.PI / 2 + i * Math.PI * 2 / EMOTES.length, b = document.createElement('button');
+    EMOTES.slice(page * PER, page * PER + PER).forEach((em, i) => {
+      const a = -Math.PI / 2 + i * Math.PI * 2 / PER, b = document.createElement('button');
       const lock = !unlocked(em);
       b.className = 'em' + (lock ? ' locked' : '');
       b.style.left = Math.cos(a) * R + 'px'; b.style.top = Math.sin(a) * R + 'px';
@@ -41098,7 +41212,8 @@ window._claimLBro = function() {
     const k = e.key.toLowerCase();
     if (k === 'z' && playing()) { if (wheelOpen) closeWheel(); else openWheel(); }
     else if (k === 'escape' && wheelOpen) closeWheel();
-    else if (wheelOpen && /^[1-8]$/.test(k)) { closeWheel(); API.play(EMOTES[+k - 1].id); }
+    else if (wheelOpen && /^[1-8]$/.test(k)) { const em = EMOTES[page * PER + (+k - 1)]; if (em) { closeWheel(); API.play(em.id); } }
+    else if (wheelOpen && (k === 'arrowright' || k === 'arrowleft' || k === 'tab')) { e.preventDefault(); page = (page + (k === 'arrowleft' ? -1 : 1) + PAGES) % PAGES; openWheel(); }
   });
 })();
 </script>
