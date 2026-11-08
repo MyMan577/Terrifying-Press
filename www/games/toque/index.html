@@ -3967,6 +3967,48 @@ function drawCougarSpirit(t){
   sctx.restore();
 }
 
+// Press Play Panther - Press Play exclusive spirit: a charcoal panther in black
+// and grey headphones, with violet eyes and a violet spirit glow.
+function drawPantherSpirit(t){
+  if(beaver.active<=0) return;
+  const s = beaver.scale * beaver.active * 1.15;
+  const lunge = beaver.tailSlam;
+  sctx.save();
+  sctx.translate(beaver.x, beaver.y - beaver.hop);
+  sctx.scale(s,s);
+  // soft violet aura
+  sctx.save(); sctx.globalAlpha = 0.25 + Math.sin(t*0.004)*0.08; sctx.fillStyle = '#8b5cff';
+  sctx.beginPath(); sctx.ellipse(-lunge*8,-18,34,19,0,0,Math.PI*2); sctx.fill(); sctx.restore();
+  sctx.fillStyle = '#1c1d24';
+  sctx.beginPath(); sctx.ellipse(-lunge*8,-18,25,11,0,0,Math.PI*2); sctx.fill();
+  // legs
+  sctx.fillRect(-14,-6,6,16); sctx.fillRect(-2,-6,6,16); sctx.fillRect(10,-6,6,16);
+  // tail, curling with a slow sway
+  sctx.save(); sctx.translate(-22,-18); sctx.rotate(-0.4+Math.sin(t*0.003)*0.15+lunge*0.2);
+  sctx.strokeStyle = '#1c1d24'; sctx.lineWidth = 5; sctx.lineCap = 'round';
+  sctx.beginPath(); sctx.moveTo(0,0); sctx.quadraticCurveTo(-18,-4,-24,-18); sctx.stroke(); sctx.restore();
+  // grey sheen along the back
+  sctx.strokeStyle = 'rgba(140,145,160,0.45)'; sctx.lineWidth = 2;
+  sctx.beginPath(); sctx.ellipse(-lunge*8,-21,20,6,0,Math.PI*1.1,Math.PI*1.9); sctx.stroke();
+  // head
+  sctx.save(); sctx.translate(22+lunge*14,-24); sctx.rotate(lunge*0.2);
+  sctx.fillStyle = '#1c1d24';
+  sctx.beginPath(); sctx.ellipse(0,0,11,9,0,0,Math.PI*2); sctx.fill();
+  sctx.beginPath(); sctx.moveTo(-8,-5); sctx.lineTo(-6,-14); sctx.lineTo(-1,-7); sctx.fill();
+  sctx.beginPath(); sctx.moveTo(8,-5); sctx.lineTo(6,-14); sctx.lineTo(1,-7); sctx.fill();
+  // violet eyes
+  sctx.fillStyle = '#b79bff'; sctx.beginPath(); sctx.ellipse(-3.5,-1,1.8,2.4,0,0,Math.PI*2); sctx.ellipse(4.5,-1,1.8,2.4,0,0,Math.PI*2); sctx.fill();
+  // headphones: black band over the head, black and grey ear cup on the near side
+  sctx.strokeStyle = '#0d0e12'; sctx.lineWidth = 3;
+  sctx.beginPath(); sctx.arc(0,1,12,Math.PI*1.12,Math.PI*1.88); sctx.stroke();
+  sctx.strokeStyle = '#5c606b'; sctx.lineWidth = 1;
+  sctx.beginPath(); sctx.arc(0,1,13.2,Math.PI*1.25,Math.PI*1.75); sctx.stroke();
+  sctx.fillStyle = '#0d0e12'; sctx.beginPath(); sctx.ellipse(-10,1,4,5.5,0,0,Math.PI*2); sctx.fill();
+  sctx.fillStyle = '#3a3d46'; sctx.beginPath(); sctx.ellipse(-10,1,2.4,3.6,0,0,Math.PI*2); sctx.fill();
+  sctx.restore();
+  sctx.restore();
+}
+
 // Bandit Raccoon - Small, tricky scavenger.
 function drawEnemyRaccoon(t){
   if(enemy.dead>=1) return;
@@ -6647,6 +6689,16 @@ const SPIRIT_BONDS = {
     capDesc: 'Lax - a moderate gauge, fills at a steady pace.',
     draw: drawCougarSpirit
   },
+  ppp_panther: {
+    element: 'spirit',
+    name: 'Press Play Panther', short: 'Panther', icon: '🐆',
+    rgb: '139,92,255', particleColor: '#8b5cff',
+    dmgMin: 24, dmgMax: 32, spiritCap: 100,
+    callLog: 'The Press Play Panther drops in on the beat!',
+    unlockDesc: 'Press Play exclusive: bonded through the Press Play shop.',
+    capDesc: 'Lax - a moderate gauge, fills at a steady pace.',
+    draw: drawPantherSpirit
+  },
   raccoon: {
     element: 'normal',
     name: 'Raccoon Spirit', short: 'Raccoon', icon: '🦝',
@@ -7386,6 +7438,8 @@ const SPIRIT_BONDS = {
 // playerSpirit() right after the hit lands. Spirits not listed here (the
 // harder-hitting ones) rely on damage alone.
 const SPIRIT_SPECIALS = {
+  ppp_panther: { name: 'Encore', desc: 'Stuns the enemy and heals Kanata for 25% of the damage dealt.',
+    apply: (dmg)=>{ state.enemyStunned = true; const heal = Math.max(1, Math.floor(dmg*0.25)); state.heroHp = Math.min(state.heroMax, state.heroHp+heal); updateHud(); log(`Encore! The foe is stunned and Kanata recovers ${heal} HP.`); } },
   wolf: { name: 'Pack Howl', desc: "Weakens the enemy\'s next attack by 30%.",
     apply: ()=>{ state.enemyWeakenNext = 0.7; log('The pack howls - the foe hesitates!'); } },
   hawk: { name: 'Aerial Dive', desc: 'Guaranteed stun - the enemy skips their next turn.',
@@ -9739,6 +9793,21 @@ const KANATA_SKILLS = [
 ];
 
 const SPIRIT_SKILLS = {
+  ppp_panther: [
+    { id: 'drop_the_beat', element: 'spirit', name: 'Drop the Beat', lvl: 3, cost: 35, desc: 'Deals 3x spear damage with a 40% chance to stun.', action: (cb) => {
+      log('The Press Play Panther drops the beat!');
+      if (rollEnemyStun(0.4)) state.enemyStunned = true;
+      spawnParticles(hero.x, hero.y-60, 20, {color:'#8b5cff', speed:4, spread:6.28, size:2, up:2});
+      executeSpiritMove(kanataSkillDamage(3), cb);
+    }},
+    { id: 'replay', element: 'spirit', name: 'Replay', lvl: 7, cost: 55, desc: 'Deals 2.5x spear damage twice.', action: (cb) => {
+      log('The Press Play Panther hits replay!');
+      seq(
+        next => executeSpiritMove(kanataSkillDamage(2.5), next),
+        next => executeSpiritMove(kanataSkillDamage(2.5), cb)
+      );
+    }}
+  ],
   beaver: [
     { id: 'dam_build', element: 'spirit', name: 'Dam Build', lvl: 3, cost: 25, desc: 'Heals Kanata for 28% of Max HP.', action: (cb) => {
       log('The Beaver Spirit builds a protective barrier!');
@@ -14675,6 +14744,14 @@ function pppToqueRewards(){
   n = PPHub.take('rite');
   for (let i = 0; i < n; i++) { grantKanataXp(300); grantSpiritXp(state.spiritBond, 200); }
   if (n > 0) { log('Press Play shop: an Ancestor\'s Rite. Kanata gains XP, and so does his spirit.'); got = true; }
+  if (PPHub.take('panther') && !state.unlockedSpirits.ppp_panther) {
+    state.unlockedSpirits.ppp_panther = true;
+    if (!state.discoveredSpirits) state.discoveredSpirits = {};
+    state.discoveredSpirits.ppp_panther = true;
+    if (!state.spiritData) state.spiritData = {};
+    if (!state.spiritData.ppp_panther) state.spiritData.ppp_panther = { level: 1, xp: 0, xpNext: 80 };
+    log('The Press Play Panther has bonded with you! Choose it in the Spirit Den.'); got = true;
+  }
   if (PPHub.take('headphones') && !state.owned.ppp_headphones) {
     state.owned.ppp_headphones = true;
     state.atkBonus += 2; state.hpBonus += 12; state.chargeBonus += 10;
