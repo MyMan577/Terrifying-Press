@@ -11019,6 +11019,7 @@ function resetPlayer() {
   
   
   function _protagStartSlide(dir, dmg, speed, duration, stunAmt) {
+    player._protagSlideBox = null;
     player._protagSlideTimer = duration;
     player._protagSlideSpeed = speed;
     player._protagSlideDir = dir;
@@ -11027,6 +11028,23 @@ function resetPlayer() {
     player._protagSlideHits = new Set();
     player.dashInvuln = Math.max(player.dashInvuln || 0, duration);
   }
+  // Sword hit tests use the enemy's whole body against the same shape the swing is drawn with:
+  // an ellipse for arcs (the slash trail), a thin box for thrusts, a narrow column for the plunge.
+  function _pbRect(en, x0, x1, y0, y1) { return en.x < x1 && en.x + en.w > x0 && en.y < y1 && en.y + en.h > y0; }
+  function _pbEllipse(en, shape, reach, vReach, dir, dyOff) {
+    const cx = player.x + player.w / 2, cy = _moveCenterY() + (dyOff || 0);
+    let xl = en.x, xh = en.x + en.w, yl = en.y, yh = en.y + en.h;
+    if (shape === 'side') { if (dir > 0) xl = Math.max(xl, cx); else xh = Math.min(xh, cx); }
+    else if (shape === 'up') yh = Math.min(yh, cy);
+    if (xl > xh || yl > yh) return false;
+    const dx = Math.max(xl, Math.min(cx, xh)) - cx, dy = Math.max(yl, Math.min(cy, yh)) - cy;
+    return (dx * dx) / (reach * reach) + (dy * dy) / (vReach * vReach) <= 1;
+  }
+  function _pbThrust(en, reach, halfH, dir, dyOff) {
+    const cx = player.x + player.w / 2, cy = _moveCenterY() + (dyOff || 0);
+    return dir > 0 ? _pbRect(en, cx, cx + reach, cy - halfH, cy + halfH) : _pbRect(en, cx - reach, cx, cy - halfH, cy + halfH);
+  }
+  function _pbPlunge(en) { const cx = player.x + player.w / 2, cy = _moveCenterY(); return _pbRect(en, cx - 0.6, cx + 0.6, cy, cy + 2.4); }
   function _protagStrike(atk, dir, dmg, hitIndex, reckoning) {
     const chain = PROTAG_CHAINS[atk] || PROTAG_CHAINS.neutral;
     const step = chain[Math.min(hitIndex, chain.length - 1)];
@@ -11043,6 +11061,7 @@ function resetPlayer() {
     if (hitIndex === 0 && step.dash) {
       
       _protagStartSlide(dir, finalDmg, 15, 0.22, step.stun);
+      player._protagSlideBox = { reach: 1.6, halfH: 0.65, dy: atk === 'down' ? step.vReach * 0.4 : 0 };
       return { hits: 0, moveName: step.name };
     }
     
@@ -11061,9 +11080,8 @@ function resetPlayer() {
       if (en.dead) continue;
       const dx = (en.x + en.w/2) - (player.x + player.w/2);
       const dy = (en.y + en.h/2) - (_moveCenterY()) - (step.dyOffset || 0);
-      const inArc = step.shape === 'wide' ? (Math.abs(dx) < step.reach && Math.abs(dy) < step.vReach)
-        : step.shape === 'up' ? (Math.abs(dx) < step.reach && dy < 0 && dy > -step.vReach)
-        : (Math.sign(dx || dir) === dir && Math.abs(dx) < step.reach && Math.abs(dy) < step.vReach);
+      const inArc = step.anim === 'thrust' ? _pbThrust(en, step.reach, 0.55, dir, step.dyOffset)
+        : _pbEllipse(en, step.shape, step.reach, step.vReach, dir, step.dyOffset);
       if (inArc) hitEnemies.add(en);
     }
     
@@ -11668,9 +11686,9 @@ function resetPlayer() {
         _hbStep = chain[Math.min(ac ? ac.idx : 0, chain.length - 1)]; key = _hbStep.name; aim = atk; _hbAtk = atk;
       } else { aim = _holdUp ? 'up' : _holdDn ? 'down' : _holdSide ? 'side' : 'neutral'; key = 'air_' + aim; }
       const _fdP = PROTAG_SWORD_FD[key] || { windup:0.06, endlag:0.1 };
-      const _AIRHB = { neutral:{ shape:'wide', reach:2.6, vReach:1.9 }, side:{ shape:'wide', reach:2.6, vReach:1.9 }, up:{ shape:'up', reach:2.8, vReach:3.4 }, down:{ shape:'below', reach:1.4, vReach:2.4 } };
+      const _AIRHB = { neutral:{ shape:'wide', reach:2.6, vReach:1.9 }, side:{ shape:'wide', reach:2.6, vReach:1.9 }, up:{ shape:'up', reach:2.8, vReach:3.4 }, down:{ shape:'below', reach:0.6, vReach:2.4 } };
       const _hit = _hbStep
-        ? { shape:_hbStep.shape, reach:_hbStep.reach, vReach:_hbStep.vReach, thrust:_hbStep.anim === 'thrust', low:_hbAtk === 'down', tip:_fdP.tip, tipAny:_fdP.tipAny }
+        ? { shape:_hbStep.shape, reach:_hbStep.dash ? 1.6 : _hbStep.reach, vReach:_hbStep.vReach, thrust:_hbStep.anim === 'thrust', low:_hbAtk === 'down', tip:_fdP.tip, tipAny:_fdP.tipAny }
         : Object.assign({ tip:_fdP.tip, tipAny:_fdP.tipAny }, _AIRHB[aim] || _AIRHB.neutral);
       window.PPStrike.start({ fd: _fdP, dir: _pDir, color: '#cfe8ff', aim, hit: _hit,
         fire: () => { player._protagHB = _hit; _protagViaStrike = true; try { performAttackAction(); } finally { _protagViaStrike = false; } } });
@@ -11775,7 +11793,7 @@ function resetPlayer() {
           if (en.dead) continue;
           const dx = (en.x + en.w/2) - (player.x + player.w/2);
           const dy = (en.y + en.h/2) - (_moveCenterY());
-          if (Math.abs(dx) < 2.8 && dy < 0 && dy > -3.4) {
+          if (_pbEllipse(en, 'up', 2.8, 3.4, _pDir)) {
             en.hp = Math.max(0, (en.hp || 1) - dmg - (_upMv.dmgAdd || 0));
             en.vy = _upMv.extraLaunch ? -12 : -8; en.stunTimer = Math.max(en.stunTimer || 0, 0.4);
             en.hitFlash = 0.25;
@@ -11797,7 +11815,7 @@ function resetPlayer() {
           if (en.dead) continue;
           const dx = (en.x + en.w/2) - (player.x + player.w/2);
           const dy = (en.y + en.h/2) - (_moveCenterY());
-          if (Math.abs(dx) < 1.4 && dy > 0 && dy < 2.4) {
+          if (_pbPlunge(en)) {
             en.hp = Math.max(0, (en.hp || 1) - dmg - (_dnMv.dmgAdd || 0));
             en.stunTimer = Math.max(en.stunTimer || 0, 0.4);
             en.hitFlash = 0.25;
@@ -11812,7 +11830,7 @@ function resetPlayer() {
             if (en.dead) continue;
             const dx = (en.x + en.w/2) - (player.x + player.w/2);
             const dy = (en.y + en.h/2) - (_moveCenterY());
-            if (Math.hypot(dx, dy) < 3.2 && !(Math.abs(dx) < 1.4 && dy > 0 && dy < 2.4)) {
+            if (Math.hypot(dx, dy) < 3.2 && !_pbPlunge(en)) {
               if (_dnMv.groundPulse) en.hp = Math.max(0, (en.hp || 1) - 1);
               en.stunTimer = Math.max(en.stunTimer || 0, _dnMv.stunWave ? 1.2 : 0.4);
               en.hitFlash = 0.25;
@@ -11833,7 +11851,7 @@ function resetPlayer() {
           if (en.dead) continue;
           const dx = (en.x + en.w/2) - (player.x + player.w/2);
           const dy = (en.y + en.h/2) - (_moveCenterY());
-          if (Math.abs(dx) < 2.6 && Math.abs(dy) < 1.9) {
+          if (_pbEllipse(en, 'wide', 2.6, 1.9, _pDir)) {
             en.hp = Math.max(0, (en.hp || 1) - dmg - (_neutMv.dmgAdd || 0));
             en.vx = Math.sign(dx || _pDir) * 5; en.vy = -2;
             en.stunTimer = Math.max(en.stunTimer || 0, 0.3);
@@ -13762,7 +13780,7 @@ function applyTileEffect(tile) {
             if (en.dead || (player._protagSlideHits && player._protagSlideHits.has(en))) continue;
             const dx = (en.x + en.w/2) - (player.x + player.w/2);
             const dy = (en.y + en.h/2) - (_moveCenterY());
-            if (Math.abs(dx) < 1.3 && Math.abs(dy) < 1.3) {
+            if (player._protagSlideBox ? _pbThrust(en, player._protagSlideBox.reach, player._protagSlideBox.halfH, player._protagSlideDir, player._protagSlideBox.dy) : (Math.abs(dx) < 1.3 && Math.abs(dy) < 1.3)) {
               en.hp = Math.max(0, (en.hp || 1) - player._protagSlideDmg);
               en.vx = player._protagSlideDir * 6; en.vy = -2;
               en.stunTimer = Math.max(en.stunTimer || 0, player._protagSlideStun || 0.5);
@@ -31147,7 +31165,7 @@ function resolveCollisions(axis, dt) {
           if (_kind === 'thrust') { if (!_hb.low) _hbX = -9 * u; }
           else if (_kind === 'plunge') { _hbY = -7 * u; swordAngle = _rest - 0.1 * u; }
         } else if (_ppS.ph === 'live') {
-          const k = _eo(_ppS.t / 0.055), ek = Math.min(1, _ppS.t / 0.03);
+          const k = _eo(_ppS.t / 0.035), ek = Math.min(1, _ppS.t / 0.03);
           if (_kind === 'arc') { const q = _ang(_rg[0] + (_rg[1] - _rg[0]) * k); swordAngle = q.a; _extLen = Math.max(0, q.L - 28) * ek; }
           else { swordAngle = _p1.a; _extLen = Math.max(0, _p1.L - 28) * ek; if (_kind === 'plunge') _hbY = -7 * (1 - ek); else if (!_hb.low) _hbX = -9 * (1 - ek); }
         } else {
@@ -40263,32 +40281,7 @@ window._claimLBro = function() {
       live: (st, W) => { const k = strikeK(st), h = st.hv; return { lean: st.d * 0.24 * h * k, sx: 1 + 0.22 * h * k, sy: 1 - 0.08 * h * k, ox: st.d * W * 0.22 * h * k }; },
       endlag: (st, W) => { const k = 1 - ease(st.u), h = st.hv; return { lean: st.d * 0.12 * h * k, sy: 1 - 0.06 * h * Math.sin(Math.min(1, st.u * 1.3) * Math.PI), ox: st.d * W * 0.08 * h * k }; },
       fx(ctx, st, X) {
-        const hb = st.hit;
-        if (hb) {
-          // the windup outlines the exact hitbox, with the sweet spot lit; the cut flashes it
-          const T = X.T, rx = hb.reach * T, ry = hb.vReach * T, d = st.d;
-          let bx0 = X.x - rx, bx1 = X.x + rx, by0 = X.y - ry, by1 = X.y + ry;
-          if (hb.shape === 'side') { bx0 = d > 0 ? X.x : X.x - rx; bx1 = bx0 + rx; }
-          else if (hb.shape === 'up') by1 = X.y;
-          else if (hb.shape === 'below') by0 = X.y;
-          const box = () => { ctx.beginPath(); ctx.rect(bx0, by0, bx1 - bx0, by1 - by0); };
-          if (st.ph === 'windup') {
-            const u = ease(st.u);
-            glow(ctx, '#cfe8ff', 0.12 + 0.3 * u); ctx.lineWidth = 2; ctx.setLineDash([6, 6]); box(); ctx.stroke(); ctx.setLineDash([]);
-            ctx.globalAlpha = 0.04 + 0.08 * u; box(); ctx.fill();
-            if (hb.tip) {
-              ctx.save(); box(); ctx.clip();
-              glow(ctx, '#ffe066', 0.12 + 0.3 * u);
-              if (hb.tipAny) { ctx.beginPath(); ctx.arc(X.x, X.y, hb.tip[1] * T, 0, Math.PI * 2); ctx.arc(X.x, X.y, hb.tip[0] * T, 0, Math.PI * 2, true); ctx.fill('evenodd'); }
-              else { const s0 = X.x + d * hb.tip[0] * T, s1 = X.x + d * hb.tip[1] * T; ctx.fillRect(Math.min(s0, s1), by0, Math.abs(s1 - s0), by1 - by0); }
-              ctx.restore();
-            }
-          } else if (st.ph === 'live' && st.t < 0.12) {
-            const a = 1 - st.t / 0.12;
-            glow(ctx, '#ffffff', 0.5 * a); ctx.lineWidth = 2; box(); ctx.stroke(); ctx.globalAlpha = 0.12 * a; box(); ctx.fill();
-          }
-          return;
-        }
+        if (st.hit) return;   // the blade and slash trail are the visual; no hitbox overlay
         const T = X.T, up = st.aim === 'up', dn = st.aim === 'down';
         if (st.ph === 'windup' || st.ph === 'charge') {
           // he already holds his sword: the windup traces the path the cut will take as a faint arc behind
