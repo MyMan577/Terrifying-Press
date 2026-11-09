@@ -393,7 +393,10 @@
     // keep the hidden opponent in the enemy list and mirror its body
     var ent = foe.ent;
     if (g.enemies.indexOf(ent) < 0) g.enemies.push(ent);
-    ent.dead = false; ent.hp = BIG; ent.vx = 0; ent.vy = 0; ent.stunTimer = 0; ent._held = true; ent._thrown = false;
+    // hits from the strike engine land in the rAF-hub tick, which runs AFTER post() and BEFORE this pre().
+    // Read them now, or the reset below throws them away (that was why almost nothing connected).
+    harvestHit(foe);
+    ent._held = true; ent._thrown = false;
     var fp = foePos(); ent.x = fp.x; ent.y = fp.y; ent.w = fp.w; ent.h = fp.h; ent.hitFlash = 0; ent._preFlash = 0;
     foe._hp0 = BIG;
     P.hp = P.maxHp; P.hpInvuln = Math.max(P.hpInvuln || 0, 0.01);
@@ -591,10 +594,9 @@
     return { x: foe.x, y: foe.y, w: foe.w, h: foe.h };
   }
 
-  // turn what the game's attack code did to the hidden enemy into percent + launch
-  function readHit(g, P, dt) {
-    var f = foe, e = f.ent;
-    f.hitLock = Math.max(0, f.hitLock - dt);
+  // collect whatever the game's attack code did to the hidden enemy since the last harvest, then reset it
+  function harvestHit(f) {
+    var e = f && f.ent; if (!e) return;
     var drop = BIG - e.hp;
     var flash = e.hitFlash >= 0.2;
     if (drop > 0 || flash) {
@@ -603,6 +605,13 @@
       if (Math.abs(e.vx) + Math.abs(e.vy) > 0.01) { a.ix = e.vx; a.iy = e.vy; }
     }
     e.hp = BIG; e.vx = 0; e.vy = 0; e.hitFlash = 0; e.stunTimer = 0; e.dead = false;
+  }
+
+  // turn what the game's attack code did to the hidden enemy into percent + launch
+  function readHit(g, P, dt) {
+    var f = foe, e = f.ent;
+    f.hitLock = Math.max(0, f.hitLock - dt);
+    harvestHit(f);
     if (f.acc && f.hitLock <= 0) {
       var A = f.acc; f.acc = null;
       var cm = ch(me.char);
