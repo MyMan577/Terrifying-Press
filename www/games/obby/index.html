@@ -3404,7 +3404,7 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
     localStorage.setItem('obby_upgrades', JSON.stringify([...unlockedUpgrades]));
   }
 
-  function hasUpgrade(id) { return unlockedUpgrades.has(id); }
+  function hasUpgrade(id) { const fp = window._fighterPass; if (fp && fp.ups) return fp.ups.has(id); return unlockedUpgrades.has(id); }   // a second fighter has its own upgrades
   window.hasUpgrade = hasUpgrade; 
 
   
@@ -5266,6 +5266,9 @@ let srEchoFrames = [];
       for (const k in mobileKeys) mobileKeys[k] = !!F.mk[k];
       selectedCharacter = F.char; jumpCount = F.jc; jumpPressed = F.jp; jumpJustPressed = F.jjp; turboCharging = F.turbo;
       enemies.push(...F.targets);
+      // the Protagonist's own progress: hero level, equipped moves and abilities
+      const keepPt = { lv: protagLevel, mv: protagEquippedMoves, ab: protagEquippedAbilities };
+      if (F.protag) { protagLevel = F.protag.level; protagEquippedMoves = F.protag.moves; protagEquippedAbilities = F.protag.abilities; }
       if (window.PPStrike && window.PPStrike._swap) F._realStrike = window.PPStrike._swap(F.strike);
       // plugins with their own per-player state register in window._fighterPlugins: { name, swap(state) -> old, tick(dt) }
       const plugs = window._fighterPlugins || [], keepPlug = {}; F.plug = F.plug || {};
@@ -5279,6 +5282,7 @@ let srEchoFrames = [];
         F._realStrike = null;
         F.st = {}; for (const k of Object.keys(player)) F.st[k] = player[k];
         F.jc = jumpCount; F.jp = jumpPressed; F.jjp = jumpJustPressed; F.turbo = turboCharging;
+        protagLevel = keepPt.lv; protagEquippedMoves = keepPt.mv; protagEquippedAbilities = keepPt.ab;
         enemies.splice(0); enemies.push(...keepEn);
         for (const k of Object.keys(player)) player[k] = (k in keepP) ? keepP[k] : undefined;
         keys.clear(); keepKeys.forEach(k => keys.add(k));
@@ -5292,6 +5296,25 @@ let srEchoFrames = [];
     fighterUpdate(dt) { update(dt); if (window.PPStrike && window.PPStrike._tick) window.PPStrike._tick(dt); },
     fighterAttack() { performAttackAction(); },
     fighterRelease() { if (window.PPStrike) window.PPStrike.release(); },   // S let go: charged/strike-engine attacks fire on release
+    // S down / S up exactly as the keyboard handler does them (the Protagonist charges on S down and acts on S up)
+    fighterPressS() {
+      if (selectedCharacter === 'cb_protagonist') { if (!player._protagAtkCharging) { player._protagAtkCharging = true; player._protagAtkChargeStart = performance.now(); } }
+      else performAttackAction();
+    },
+    fighterReleaseS(heldMs) {
+      if (window.PPStrike) window.PPStrike.release();
+      if (player._protagAtkCharging) { player._protagAtkCharging = false; performProtagAttackRelease(heldMs); }
+    },
+    // the Protagonist's ability keys: Q Whirlwind Slash, C Guardian's Counter
+    fighterKey(k) {
+      if (selectedCharacter !== 'cb_protagonist') return;
+      if (k === 'q' && hasUpgrade('pt1') && protagAbilityEquipped('ab_whirlwind')) protagWhirlwindSlash();
+      if (k === 'c' && hasUpgrade('pt1') && protagAbilityEquipped('ab_retaliate')) protagActivateRetaliate();
+    },
+    // a hit landed during Guardian's Counter: negate it and fire the counter slash, as takeDamage does for you
+    fighterCounter() { player._protagRetaliateTimer = 0; protagFireRetaliateCounter(); },
+    // what a fighter can have: its upgrades and the Protagonist's move / ability lists
+    fighterDefs(char) { return { ups: (UPGRADE_DEFS[char] || []).map(u => u.id), protagMoves: PROTAG_MOVE_DEFS, protagAbilities: PROTAG_ABILITY_DEFS, protagMaxLevel: PROTAG_MAX_LEVEL }; },
     fighterDash() { if (player.dashCharges > 0 && player.dashCooldown <= 0) activateDash(); },
     fighterJump() { jumpJustPressed = true; jumpPressed = true; },
     fighterDraw(F) {
