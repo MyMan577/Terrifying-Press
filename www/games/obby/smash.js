@@ -46,7 +46,9 @@
     maxPctHit: 40,       // cap on one registered hit
     kbBase: 0.42,        // launch = soft-capped hit strength * (kbBase + kbGrow * percent) / weight
     kbGrow: 0.02,        // knockback leans on percent: strong hits still kill, just later (charged ~90%+, not 50%)
-    kbSoft: 22,          // hit strength soft cap: huge charged impulses from the game get squashed toward this
+    kbSoft: 22,
+    minLaunchAng: 0.66,  // radians (~38 deg): sideways hits still launch upward, like a fighting game, not along the floor
+    stunGrav: 0.4,       // gravity share while in hitstun: launched fighters carry along their arc instead of sagging          // hit strength soft cap: huge charged impulses from the game get squashed toward this
     minImp: 5,           // weakest hit strength counted
     maxLaunch: 46,       // tiles/s
     decayAir: 3.5,       // horizontal slow-down while launched (tiles/s^2)
@@ -185,6 +187,10 @@
     var dx, dy;
     if (mag < 0.01) { dx = sgn(victimX - fromX) * 0.9; dy = -0.45; mag = BAL.minImp; var n = Math.hypot(dx, dy); dx /= n; dy /= n; }
     else { dx = ix / mag; dy = iy / mag; }
+    // everything except a downward spike leaves at least minLaunchAng above horizontal
+    if (!(iy > 7 && iy > Math.abs(ix) * 1.1) && -dy < Math.sin(BAL.minLaunchAng)) {
+      var sx = sgn(dx) || sgn(victimX - fromX) || 1; dx = sx * Math.cos(BAL.minLaunchAng); dy = -Math.sin(BAL.minLaunchAng);
+    }
     // soft cap: small hits keep their size, giant ones (charged attacks hand us 40-60+) level off near kbSoft
     var S = BAL.kbSoft * (1 - Math.exp(-Math.max(mag, BAL.minImp) / BAL.kbSoft));
     var L = S * (BAL.kbBase + BAL.kbGrow * pct) * (kMul || 1) / (weight || 1);
@@ -440,6 +446,14 @@
     if (me.hitstun > 0) {
       P.vx = me.kvx;
       me.kvx = approach(me.kvx, 0, (P.onGround ? BAL.decayGround : BAL.decayAir) * dt);
+    } else if (me.kvx !== 0) {
+      // after hitstun you keep drifting along the launch (the game's air friction used to stop you dead
+      // and drop you straight down). Holding against it brakes; landing, a ledge or a dodge ends it.
+      if (P.onGround || me.ledge || me.dodge > 0 || Math.abs(me.kvx) < 2) me.kvx = 0;
+      else {
+        var brake = dirIn() === -sgn(me.kvx) ? 16 : 0;
+        P.vx = me.kvx; me.kvx = approach(me.kvx, 0, (BAL.decayAir * 2 + brake) * dt);
+      }
     }
     if (me.dodge > 0) {
       if (me.dodgeAir) { // directional air dodge: fly along the chosen direction, eases out near the end
@@ -532,6 +546,8 @@
     if (m.hitstun > 0) {
       m.hitstun -= dt;
       // wall bounce
+      // lighter gravity in hitstun: undo most of the pull the game just applied (not on spikes, not on landing)
+      if (!m.spiked && !P.onGround) { var gv = P.vy - m._prevVy; if (gv > 0 && gv < 80 * dt + 0.5) P.vy = m._prevVy + gv * BAL.stunGrav; }
       if (Math.abs(m.kvx) > 8 && Math.abs(P.vx) < Math.abs(m.kvx) * 0.4) { m.kvx = -m.kvx * 0.45; P.vx = m.kvx; g.shake(3); addFx('ring', P.x + P.w / 2, P.y + P.h / 2, '#fff'); }
       else P.vx = m.kvx;
       // floor bounce after a hard downward launch
@@ -833,7 +849,7 @@
     var b = stage.blast, dt = 0.05, t = 0, T = stun + 0.55, mg = 1e9;
     while (t < T) {
       x += vx * dt; y += vy * dt;
-      vx = approach(vx, 0, BAL.decayAir * dt); vy = Math.min(BAL.fall * 1.3, vy + BAL.grav * dt);
+      vx = approach(vx, 0, BAL.decayAir * dt); vy = Math.min(BAL.fall * 1.3, vy + BAL.grav * dt * (t < stun ? BAL.stunGrav : 1));
       mg = Math.min(mg, x - b.left, b.right - x, b.bottom - y, y - b.top);
       if (mg <= 0) return mg;
       if (vy > 0) { var gy = groundBelow(x, y - 0.4, 40); if (gy !== null && y + 0.46 >= gy) return mg; }
@@ -985,7 +1001,7 @@
     if (f.hitstun > 0) {
       f.hitstun -= dt;
       f.vx = f.kvx; f.kvx = approach(f.kvx, 0, (f.onGround ? BAL.decayGround : BAL.decayAir) * dt);
-      f.vy = Math.min(BAL.fall * 1.3, f.vy + BAL.grav * dt);
+      f.vy = Math.min(BAL.fall * 1.3, f.vy + BAL.grav * dt * (f.spiked ? 1 : BAL.stunGrav));
       var pv = f.vy; moveBody(f, dt, true);
       if (f.wallHit && Math.abs(f.kvx) > 8) { f.kvx = -f.kvx * 0.45; g.shake(3); }
       if (f.onGround && pv > (f.spiked ? 10 : 16)) { f.vy = -pv * (f.spiked ? BAL.spikeBounce : 0.45); f.onGround = false; if (f.spiked) { g.shake(6); addFx('ring', f.x + f.w / 2, f.y + f.h, '#ff3b6b'); } f.spiked = false; }
