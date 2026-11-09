@@ -1014,14 +1014,15 @@
     if (roof && below > -0.5) return;                                     // a jump here would just hit the ceiling
     var far = Math.abs(clearX - cx);
     // real-moves CPU: Meteor Fist (side special) carries it across a gap, once per trip
-    if (f.F && !busy && !f.act && !f.recSide && far > 2.6 && below < 2.5 && f.vy > -3) { f.recSide = true; f.act = { type: 'charge', v: 'side', hold: 0.24, dir: sgn(clearX - cx), t: 0 }; return; }
+    if (f.F && kit(f).sideRec && !busy && !f.act && !f.recSide && far > 2.6 && below < 2.5 && f.vy > -3) { f.recSide = true; f.act = { type: 'charge', v: 'side', hold: 0.24, dir: sgn(clearX - cx), t: 0 }; return; }
     // how high one more jump can still take us: jump when the ledge is about to go out of reach
     var need = below + 0.4, reachJ = 2.1, late = need > reachJ * 0.45 - (f.F && f.jumps <= 0 ? 1.4 : 0) || (far > 3 && f.vy > 3);   // a charged up special needs a head start
     if (f.vy > -1 && (late || (below > 0.4))) {
       if (f.jumps > 0) { f.jumps--; if (f.F) f.recJump = true; else f.vy = -13.5; }   // real-moves CPU: the game's own jump
       else if (f.burst > 0) {
         var dd = sgn(dxl || f.face); f.burst--;
-        if (f.F) { if (busy) { f.burst++; return; } f.act = { type: 'charge', v: 'up', hold: 0.24, dir: dd, t: 0 }; }   // the real Rising Dragon (once its last move is done)
+        if (f.F && !kit(f).upRec) { f.vy = Math.min(f.vy, -2); }       // no special that lifts it: just the jumps it has
+        else if (f.F) { if (busy) { f.burst++; return; } f.act = { type: 'charge', v: 'up', hold: 0.24, dir: dd, t: 0 }; }   // the real Rising Dragon (once its last move is done)
         else { f.vy = -15; f.vx = dd * 7; f.face = dd; }   // last resort
       }
     }
@@ -1262,7 +1263,20 @@
   // own player state, held keys and strike-engine state, presses the same buttons you do, and its attacks
   // are the real ones. Its target is a stand-in for you; whatever the attack does to it becomes your
   // percent and launch. Knockback, ledges, dodges and respawns stay with this file, synced both ways.
-  var REAL_CPU = { brawler: 1 };
+  var REAL_CPU = { brawler: 1, cb_slugger: 1 };
+  // what each real-moves fighter's kit is good for (all of it is pressed with the same buttons you use)
+  //  sideRec / upRec: its side / up special moves it (usable to get back)   dash: dash-then-S attacks
+  //  airThrow: S in the air throws something that travels (range in tiles)   groundOnly: specials only on the ground
+  var KIT = {
+    brawler:    { sideRec: 1, upRec: 1, dash: 1 },
+    cb_slugger: { groundOnly: 1, airThrow: 6 }
+  };
+  function kit(f) { return KIT[f.char] || {}; }
+  // post-draw: the CPU's own plugin ticks (Slugger's gloves fly, hit and are drawn here, like yours are)
+  (window.__fighterHubs = window.__fighterHubs || []).push(function (dt) {
+    if (!SM.active || !foe || !foe.F || SM.phase !== 'fight' || foe.respawnHold > 0) return;
+    G().fighterHub(foe.F, Math.min(dt, 0.033));
+  });
   // stop whatever its strike engine is doing, keeping its bookkeeping (an empty state would read as a
   // character change and cancel the next thing it presses)
   function realCancel(f) {
@@ -1281,16 +1295,20 @@
   //  up RISING DRAGON, down EARTHQUAKE; longer hold = stronger), dash then S = a dash attack.
   function realPick(f, L, dir, dx, dy, adx) {
     if (f.act) return false;
-    var killy = me.pct > 85, air = !f.onGround, r = Math.random();
+    var killy = me.pct > 85, air = !f.onGround, r = Math.random(), K = kit(f);
     var A = null;
-    if (adx < 1.6 && dy < -1.4 && dy > -4.5) A = { type: 'charge', v: 'up', hold: killy ? 0.75 : rnd(0.25, 0.5) };            // you're above: Rising Dragon
+    if (air && K.airThrow) {                                                              // in the air: throw (straight, or down at you)
+      if (adx < K.airThrow && dy > -1.2 && (Math.abs(dy) < 1.5 || dy > 1)) A = { type: 'tap', v: dy > 1.2 ? 'down' : '' };
+    }
+    else if (air && K.groundOnly) A = null;
+    else if (adx < 1.6 && dy < -1.4 && dy > -4.5) A = { type: 'charge', v: 'up', hold: killy ? 0.75 : rnd(0.25, 0.5) };            // you're above: Rising Dragon
     else if (adx < 2.4 && Math.abs(dy) < 1.8) {
       if (!air && (killy || r < 0.12 + 0.1 * L.kill)) A = { type: 'charge', v: Math.random() < 0.5 ? 'down' : 'side', hold: killy ? rnd(0.6, 0.8) : rnd(0.3, 0.55) };
       else A = { type: 'tap', v: dy < -1.1 ? 'up' : (dy > 1.1 && air ? 'down' : '') };                                      // the combo
     }
     else if (!air && adx < 5 && Math.abs(dy) < 1.2) {
       if (r < 0.35) A = { type: 'charge', v: 'side', hold: killy ? 0.7 : rnd(0.25, 0.45) };                                   // Meteor Fist covers the gap
-      else if (r < 0.65 && f.F.st.dashCharges > 0) A = { type: 'dash' };                                                      // dash in, punch out of it
+      else if (r < 0.65 && K.dash && f.F.st.dashCharges > 0) A = { type: 'dash' };                                                      // dash in, punch out of it
     }
     if (!A) return false;
     A.dir = dir; A.t = 0; f.act = A;
@@ -1320,6 +1338,7 @@
       if (A.v === 'up') F.keys.add('arrowup'); else if (A.v === 'down') F.keys.add('arrowdown'); else if (A.v === 'side' && (A.type !== 'charge' || release)) d = A.dir;   // read at the moment S is let go
     }
     if (d > 0) F.keys.add('d'); else if (d < 0) F.keys.add('a');
+    realHarvest(f, P);                                                     // hits from the post-draw tick (thrown gloves)
     var t = f.tgt; t.x = P.x; t.y = P.y; t.w = P.w; t.h = P.h; t.hp = BIG; t.vx = 0; t.vy = 0; t.hitFlash = 0; t.dead = false; t.stunTimer = 0;
     var jump = (inp.jump || f.recJump) && !(A && A.type === 'charge'); f.recJump = false;   // the game counts its own jumps
     g.fighterRun(F, function () {
@@ -1334,15 +1353,19 @@
     f.x = st.x; f.y = st.y; f.vx = st.vx; f.vy = st.vy; f.onGround = !!st.onGround; f.w = st.w || f.w; f.h = st.h || f.h;
     if (st.lastMoveDir) f.face = st.lastMoveDir;
     if (f.onGround) f.jumps = 2; else if (jump) f.jumps = Math.max(0, f.jumps - 1);
-    // what its attack did to the stand-in is what it does to you
     f.tgtLock = Math.max(0, f.tgtLock - dt);
-    var dmg = BIG - t.hp;
+    realHarvest(f, P);
+  }
+  // what its attack did to the stand-in is what it does to you
+  function realHarvest(f, P) {
+    var t = f.tgt, L = LV[f.lvl] || LV[2], cm = ch(f.char), dmg = BIG - t.hp;
     if ((dmg > 0 || t.hitFlash >= 0.2) && f.tgtLock <= 0 && SM.phase === 'fight') {
       var fx0 = f.x + f.w / 2, pct = Math.min(BAL.maxPctHit, Math.max(BAL.flinch, dmg * BAL.pctPerDmg) * cm.d * L.dmg);
       var ix = t.vx, iy = t.vy; if (!ix && !iy) { ix = sgn(P.x + P.w / 2 - fx0) * 3; iy = -2; }
       f.tgtLock = BAL.rehit;
       hitMe({ pct: pct, ix: ix, iy: iy, fromX: fx0, k: cm.k });
     }
+    t.hp = BIG; t.vx = 0; t.vy = 0; t.hitFlash = 0; t.dead = false;
   }
   var TAUNTS = ['Too easy!', 'Come on!', '😤', 'Is that all?', '💪', 'Nice try!', '😎', 'Catch me!', '🥱', 'Ha!'];
   function startTaunt() {
