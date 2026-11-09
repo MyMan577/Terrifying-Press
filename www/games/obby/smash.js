@@ -1312,7 +1312,7 @@
   // own player state, held keys and strike-engine state, presses the same buttons you do, and its attacks
   // are the real ones. Its target is a stand-in for you; whatever the attack does to it becomes your
   // percent and launch. Knockback, ledges, dodges and respawns stay with this file, synced both ways.
-  var REAL_CPU = { brawler: 1, cb_slugger: 1, cb_protagonist: 1, cb_chameleon: 1, cb_pressplay: 1, cb_pp_mixtape: 1 };
+  var REAL_CPU = { brawler: 1, cb_slugger: 1, cb_protagonist: 1, cb_chameleon: 1, cb_pressplay: 1, cb_pp_mixtape: 1, archmage: 1, phantomace: 1, formSwitcher: 1, conduit: 1 };
   // what each real-moves fighter's kit is good for (all of it is pressed with the same buttons you use)
   //  sideRec / upRec: its side / up special moves it (usable to get back)   dash: dash-then-S attacks
   //  airThrow: S in the air throws something that travels (range in tiles)   groundOnly: specials only on the ground
@@ -1331,7 +1331,12 @@
     cb_pressplay: { prod: 1, upTapRec: 1 },
     // Press Play Mixtape: Tape Whip / Fast-Forward Dash / Spool Launch / Tangle on the ground, Ribbon Lash / Tape Zip /
     // Rewind Climb / Eject Slam in the air, K = FAST FORWARD when the Tape meter is full, G = flip the tape's side
-    cb_pp_mixtape: { mix: 1, upTapRec: 1 }
+    cb_pp_mixtape: { mix: 1, upTapRec: 1 },
+    // The base fighters: direction + S picks the move (range = how far its side / neutral move reaches), held S = specials
+    archmage:     { gen: 8 },                                   // up ice, down walls, side rocket, neutral fire
+    phantomace:   { gen: 7, dash: 1, sideRec: 1, upRec: 1 },    // shockwave slashes, 3 dashes, PHANTOM BLITZ / ASCENDING STAR to get back
+    formSwitcher: { gen: 6, formKey: '0' },                     // each element's own moves; 0 = next element
+    conduit:      { gen: 8 }                                    // Arc Stream, Lift Current, spikes, bolts
   };
   function plugInfo(name) { var pl = (window._fighterPlugins || []).filter(function (q) { return q.name === name; })[0]; return pl && pl.info ? pl.info() : null; }
   function kit(f) { return KIT[f.char] || {}; }
@@ -1384,6 +1389,14 @@
     if (f.act) return false;
     var killy = me.pct > 85, air = !f.onGround, r = Math.random(), K = kit(f);
     var A = null;
+    if (K.gen && !A) {
+      var R = K.gen;
+      if (K.formKey && f.lvl >= 2 && (f.eqT = (f.eqT || 0) - 0.05) < 0 && Math.random() < 0.2) { f.eqT = rnd(7, 14); A = { type: 'key', key: K.formKey }; }
+      else if (!air && (killy || r < 0.12) && adx < 6 && Math.abs(dy) < 1.4) A = { type: 'charge', v: adx < 2.4 ? (dy < -1 ? 'up' : 'down') : 'side', hold: killy ? rnd(0.55, 0.8) : rnd(0.3, 0.5) };
+      else if (K.dash && !air && adx > 2.5 && adx < 5 && Math.abs(dy) < 1.2 && r < 0.3 && f.F.st.dashCharges > 0) A = { type: 'dash' };
+      else if (air) A = dy < -0.8 && adx < 2.5 ? { type: 'tap', v: 'up' } : dy > 0.8 && adx < 2 ? { type: 'tap', v: 'down' } : adx < R && Math.abs(dy) < 1.5 ? { type: 'tap', v: Math.random() < 0.5 ? 'side' : '' } : null;
+      else A = dy < -1.2 && adx < 3 ? { type: 'tap', v: 'up' } : adx < 2 && Math.abs(dy) < 1.4 ? { type: 'tap', v: Math.random() < 0.6 ? '' : 'down' } : adx < R && Math.abs(dy) < 1.4 ? { type: 'tap', v: Math.random() < 0.6 ? 'side' : '' } : null;
+    }
     if (K.mix && !A) {
       var ms = f.F.plug && f.F.plug.mixtape;
       if (ms && ms.tape >= 10 && !ms.ff && adx < 6) A = { type: 'key', key: 'k' };                                // FAST FORWARD
