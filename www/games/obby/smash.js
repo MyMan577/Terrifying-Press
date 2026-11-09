@@ -1350,7 +1350,9 @@
       '#smMenu .chip.on{border-color:#ffb347;background:rgba(255,179,71,.2)}' +
       '#smMenu .chip small{display:block;font:500 10px system-ui;opacity:.7;margin-top:2px}' +
       '#smMenu .go,#smResult .go{width:100%;margin-top:14px;border:0;border-radius:12px;padding:12px;background:linear-gradient(#ff9d3d,#ff6a2a);color:#fff;font:900 16px system-ui}' +
-      '#smMenu .x,#smResult .x{width:100%;margin-top:8px;border:0;border-radius:12px;padding:9px;background:rgba(255,255,255,.1);color:#fff;font:700 13px system-ui}';
+      '#smMenu .x,#smResult .x{width:100%;margin-top:8px;border:0;border-radius:12px;padding:9px;background:rgba(255,255,255,.1);color:#fff;font:700 13px system-ui}' +
+      // landscape phone: bigger shield button, in the bottom row just left of the action buttons
+      '@media (orientation: landscape) and (max-height: 500px) and (pointer: coarse){#smGuard{bottom:max(14px,calc(env(safe-area-inset-bottom) + 8px));right:calc(env(safe-area-inset-right) + 348px);width:68px;height:68px;font-size:30px}}';
     document.head.appendChild(s);
   }
   function buildHud() {
