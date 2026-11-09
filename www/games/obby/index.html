@@ -40756,7 +40756,7 @@ window._claimLBro = function() {
   let teleported = false;
   function zap(e, dmg, o) {
     if (!e || e.dead) return;
-    e.hp = Math.max(0, (e.hp || 1) - dmg); e.hitFlash = 0.5;
+    e.hp = Math.max(0, (e.hp || 1) - dmg); e.hitFlash = o.dot ? Math.max(e.hitFlash || 0, 0.12) : 0.5;   // a damage-over-time tick only flickers (Smash reads a full flash as a real hit)
     if (!e._noKnockback) { if (o.kx != null) e.vx = o.kx; if (o.ky != null) e.vy = o.ky; }
     if (o.stun) e.stunTimer = Math.max(e.stunTimer || 0, o.stun);
     if (o.slow) e.slowTimer = Math.max(e.slowTimer || 0, o.slow);
@@ -40919,7 +40919,7 @@ window._claimLBro = function() {
       }
     }
     for (const e of foes()) {
-      if (e._ppBurn > 0) { e._ppBurn -= dt; e._ppBurnT = (e._ppBurnT || 0) - dt; if (e._ppBurnT <= 0) { e._ppBurnT = 0.5; zap(e, 1, {}); } }
+      if (e._ppBurn > 0) { e._ppBurn -= dt; e._ppBurnT = (e._ppBurnT || 0) - dt; if (e._ppBurnT <= 0) { e._ppBurnT = 0.5; zap(e, 1, { dot: true }); } }
       if (e._ppFrozen > 0) { e._ppFrozen -= dt; e.vx = 0; }
     }
     for (let i = sfx.length - 1; i >= 0; i--) { sfx[i].t += dt; if (sfx[i].t >= sfx[i].life) sfx.splice(i, 1); }
