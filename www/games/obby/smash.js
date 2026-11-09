@@ -1292,7 +1292,7 @@
   //  airThrow: S in the air throws something that travels (range in tiles)   groundOnly: specials only on the ground
   var KIT = {
     brawler:    { sideRec: 1, upRec: 1, dash: 1 },
-    cb_slugger: { groundOnly: 1, airThrow: 6 },
+    cb_slugger: { airThrow: 6, slAir: 1, upRec: 1 },   // aerials: up Sky Hook, down Hammer Drop, side Corkscrew, neutral glove jabs; up special lifts
     // Protagonist: S tap = his sword strings (ground and air, with direction), S held = his charged attack,
     // dash = Blade Dash (also gets him back across a gap), up+S in the air = Skybound Slash (lifts with some moves),
     // Q = Whirlwind Slash, C = Guardian's Counter (when equipped)
@@ -1350,6 +1350,13 @@
       if (ab.indexOf('ab_whirlwind') >= 0 && !(pst._protagWhirlwindCD > 0) && adx < 2.4 && Math.abs(dy) < 1.8 && Math.random() < 0.35) A = { type: 'key', key: 'q' };   // Whirlwind Slash: you're in its circle
     }
     if (A) {}
+    else if (air && K.slAir) {                                                                  // Slugger's aerials, picked by where you are
+      if (killy && adx < 2.4 && Math.abs(dy) < 1.4 && Math.random() < 0.4) A = { type: 'charge', v: 'side', hold: rnd(0.5, 0.75) };   // HOME RUN in the air
+      else if (adx < 1.4 && dy < -0.8 && dy > -2.8) A = { type: 'tap', v: 'up' };                // Sky Hook
+      else if (adx < 1.3 && dy > 0.6 && dy < 2.6) A = { type: 'tap', v: 'down' };                // Hammer Drop: spike
+      else if (adx < 2.6 && Math.abs(dy) < 1.1) A = { type: 'tap', v: 'side' };                 // Corkscrew
+      else if (adx < K.airThrow && Math.abs(dy) < 1.5) A = { type: 'tap', v: '' };               // glove jabs at range
+    }
     else if (air && K.airThrow) {                                                              // in the air: throw (straight, or down at you)
       if (adx < K.airThrow && dy > -1.2 && (Math.abs(dy) < 1.5 || dy > 1)) A = { type: 'tap', v: dy > 1.2 ? 'down' : '' };
     }
