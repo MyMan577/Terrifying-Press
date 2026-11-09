@@ -47,6 +47,8 @@
     kbBase: 0.42,        // launch = soft-capped hit strength * (kbBase + kbGrow * percent) / weight
     kbGrow: 0.02,        // knockback leans on percent: strong hits still kill, just later (charged ~90%+, not 50%)
     kbSoft: 22,
+    chipK: 0.35,         // damage with no knockback (poison, burns, beam ticks): this share of normal percent, no launch
+    chipMax: 3.5,        // ...and at most this much percent per second from it
     minLaunchAng: 0.66,  // radians (~38 deg): sideways hits still launch upward, like a fighting game, not along the floor
     stunGrav: 0.4,       // gravity share while in hitstun: launched fighters carry along their arc instead of sagging          // hit strength soft cap: huge charged impulses from the game get squashed toward this
     minImp: 5,           // weakest hit strength counted
@@ -681,7 +683,8 @@
     if (drop > 0 || flash) {
       var a = f.acc || (f.acc = { dmg: 0, ix: 0, iy: 0, n: 0 });
       a.dmg += Math.max(0, drop); a.n++;
-      if (Math.abs(e.vx) + Math.abs(e.vy) > 0.01) { a.ix = e.vx; a.iy = e.vy; }
+      if (Math.abs(e.vx) + Math.abs(e.vy) > 0.01) { a.ix = e.vx; a.iy = e.vy; a.kb = true; }
+      if (flash) a.kb = true;
     }
     e.hp = BIG; e.vx = 0; e.vy = 0; e.hitFlash = 0; e.stunTimer = 0; e.dead = false;
   }
@@ -694,6 +697,7 @@
     if (f.acc && f.hitLock <= 0) {
       var A = f.acc; f.acc = null;
       var cm = ch(me.char);
+      if (!A.kb) { chip(f, A.dmg * cm.d); return; }                     // poison / burn / beam tick: percent only
       var pct = Math.max(BAL.flinch, A.dmg * BAL.pctPerDmg) * cm.d;
       pct = Math.min(BAL.maxPctHit, pct);
       var ix = A.ix, iy = A.iy;
@@ -719,6 +723,15 @@
     }
   }
 
+  // damage over time and beam ticks: a little percent, no launch and no hitstun (they used to relaunch
+  // the victim every tick: Chroma's venom and Conduit's Arc Stream kept people flying and stun-locked)
+  function chip(s, dmg) {
+    if (SM.phase !== 'fight' || !(dmg > 0)) return;
+    if (s.chipT !== clock) { s.chipBank = Math.min(BAL.chipMax, (s.chipBank == null ? BAL.chipMax : s.chipBank) + (clock - (s.chipT || clock)) * BAL.chipMax); s.chipT = clock; }
+    var add = Math.min(dmg * BAL.pctPerDmg * BAL.chipK, s.chipBank);
+    if (add <= 0) return;
+    s.chipBank -= add; s.pct = Math.min(999, s.pct + add); s.flash = Math.max(s.flash || 0, 0.06);
+  }
   function hitFoe(g, P, pct, ix, iy, k) {
     var f = foe;
     if (SM.phase !== 'fight') return;
@@ -1422,6 +1435,7 @@
   // what its attack did to the stand-in is what it does to you
   function realHarvest(f, P) {
     var t = f.tgt, L = LV[f.lvl] || LV[2], cm = ch(f.char), dmg = BIG - t.hp;
+    if (dmg > 0 && t.hitFlash < 0.2 && !t.vx && !t.vy) { chip(me, dmg * cm.d * L.dmg); t.hp = BIG; return; }   // its poison / beam ticks on you
     if ((dmg > 0 || t.hitFlash >= 0.2) && f.tgtLock <= 0 && SM.phase === 'fight') {
       var fx0 = f.x + f.w / 2, pct = Math.min(BAL.maxPctHit, Math.max(BAL.flinch, dmg * BAL.pctPerDmg) * cm.d * L.dmg);
       var ix = t.vx, iy = t.vy; if (!ix && !iy) { ix = sgn(P.x + P.w / 2 - fx0) * 3; iy = -2; }
