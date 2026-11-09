@@ -1801,6 +1801,16 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
   #cosplayerFormBtn { top: 6px; }
   #formSwitcherBtn { top: 52px; }
 }
+
+/* Phone in landscape: the short-screen rule above made the main buttons 40px (portrait gets 50px),
+   but landscape has plenty of width, so make them the biggest instead and lift what sits above them. */
+@media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
+  #mobileControls { bottom: max(6px, env(safe-area-inset-bottom)); left: env(safe-area-inset-left); right: env(safe-area-inset-right); }
+  .mc-group { gap: 14px; padding: 8px 14px; }
+  .mc-btn { width: 68px; height: 68px; font-size: 22px; }
+  #abilityBtnGroup { bottom: 96px; }
+  #cameraControls { bottom: 96px; }
+}
   </style>
 </head>
 <body>
