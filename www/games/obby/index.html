@@ -5170,6 +5170,15 @@ let srEchoFrames = [];
     get mode() { return mode; }, setMode: m => setMode(m),
     get won() { return won; },
     get char() { return selectedCharacter; },
+    // --- Smash mode (smash.js) ---
+    get enemies() { return enemies; },
+    get keys() { return keys; },
+    get mobileKeys() { return mobileKeys; },
+    get ctx() { return ctx; },
+    get viewW() { return viewW; },
+    get viewH() { return viewH; },
+    get jumpCount() { return jumpCount; }, set jumpCount(v) { jumpCount = v; },
+    shake(n) { screenShake = Math.max(screenShake, n); },
     player, cam,
     exportLevel: () => exportLevel(), importLevel: j => importLevel(j),
     resetPlayer: () => resetPlayer(),
@@ -13004,6 +13013,7 @@ function applyTileEffect(tile) {
 }
 
   function dieAndRespawn(text) {
+    if (window.__smash && window.__smash.active && window.__smash.onDie(text)) return;
     
     if (selectedCharacter === 'pl_grand_pebble' && window._gpPebbleShield) {
       window._gpPebbleShield = false;
@@ -13075,6 +13085,7 @@ function applyTileEffect(tile) {
   }
 
   function takeDamage(text) {
+    if (window.__smash && window.__smash.active) { window.__smash.onEnvDamage(text); return; }
     if (player.hpInvuln > 0 || player.dashInvuln > 0) return;
     
     if (selectedCharacter === 'cb_protagonist' && typeof protagAbilityEquipped === 'function' && protagAbilityEquipped('ab_retaliate') && (player._protagRetaliateTimer || 0) > 0) {
@@ -22936,6 +22947,7 @@ function resolveCollisions(axis, dt) {
     }
 
     drawParticles(); drawConduitEffects(); if (window.__obbyNet) window.__obbyNet.frame(); drawPlayer();
+    if (window.__smash && window.__smash.active) window.__smash.draw();
     if (window._drawSelectionOverlay) window._drawSelectionOverlay();
     
     if (window.drifterDrawHook) window.drifterDrawHook(ctx, Date.now()*0.001, cam);
@@ -24588,7 +24600,7 @@ function resolveCollisions(axis, dt) {
 
     
     for (const e of enemies) {
-      if (e.dead) continue;
+      if (e.dead || e._smashHidden) continue;
       const ex = e.x * TILE - cam.x;
       const ey = e.y * TILE - cam.y;
       const ew = e.w * TILE;
@@ -26306,7 +26318,10 @@ function resolveCollisions(axis, dt) {
     if (window._ppHitstop > 0) { window._ppHitstop -= dt; draw(); _hubLastMs = t; requestAnimationFrame(loop); return; }
     
     if (mode !== _lastMode) { _rebuildTileTypeIndex(); _lastMode = mode; }
-    update(dt); draw(); _sharedRafHub(t);
+    if (window.__smash) window.__smash.pre(dt);
+    update(dt);
+    if (window.__smash) window.__smash.post(dt);
+    draw(); _sharedRafHub(t);
     if (window._tutEnemyWatchTick) window._tutEnemyWatchTick();
     requestAnimationFrame(loop);
   }
@@ -39999,6 +40014,7 @@ window._claimLBro = function() {
 </script>
 <script src="../qrlink/qrlink.js"></script>
 <script src="online.js"></script>
+<script src="smash.js"></script>
 <script>
 // ===== Strike engine: attack weight for the fighters, modelled on the Protagonist's shield form =====
 // Each move carries its own frame data:
