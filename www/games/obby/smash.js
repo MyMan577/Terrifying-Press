@@ -1300,7 +1300,7 @@
   // own player state, held keys and strike-engine state, presses the same buttons you do, and its attacks
   // are the real ones. Its target is a stand-in for you; whatever the attack does to it becomes your
   // percent and launch. Knockback, ledges, dodges and respawns stay with this file, synced both ways.
-  var REAL_CPU = { brawler: 1, cb_slugger: 1, cb_protagonist: 1, cb_chameleon: 1 };
+  var REAL_CPU = { brawler: 1, cb_slugger: 1, cb_protagonist: 1, cb_chameleon: 1, cb_pressplay: 1 };
   // what each real-moves fighter's kit is good for (all of it is pressed with the same buttons you use)
   //  sideRec / upRec: its side / up special moves it (usable to get back)   dash: dash-then-S attacks
   //  airThrow: S in the air throws something that travels (range in tiles)   groundOnly: specials only on the ground
@@ -1313,8 +1313,12 @@
     cb_protagonist: { dash: 1, dashRec: 1, upTapRec: 1, protag: 1 },
     // Chroma: each form's S moves (direction picks them; ground and air differ), K = Tongue Chain (twice for the
     // finisher), 0 = next form, held S = PRISM BEAM / COLOUR GEYSER / PAINT BOMB
-    cb_chameleon: { cham: 1 }
+    cb_chameleon: { cham: 1 },
+    // Press Play Prodigy: each EQ mode's S moves by direction (ground and air), presses on the beat for Hype
+    // (Lv2+), K = THE DROP when Hype is full, G = next EQ mode, up in the air lifts once per jump
+    cb_pressplay: { prod: 1, upTapRec: 1 }
   };
+  function plugInfo(name) { var pl = (window._fighterPlugins || []).filter(function (q) { return q.name === name; })[0]; return pl && pl.info ? pl.info() : null; }
   function kit(f) { return KIT[f.char] || {}; }
   // post-draw: the CPU's own plugin ticks (Slugger's gloves fly, hit and are drawn here, like yours are)
   (window.__fighterHubs = window.__fighterHubs || []).push(function (dt) {
@@ -1365,6 +1369,15 @@
     if (f.act) return false;
     var killy = me.pct > 85, air = !f.onGround, r = Math.random(), K = kit(f);
     var A = null;
+    if (K.prod && !A) {
+      var ps = f.F.plug && f.F.plug.prodigy;
+      if (ps && ps.hype >= 10 && adx < 7 && Math.abs(dy) < 3) A = { type: 'key', key: 'k' };                    // THE DROP
+      else if (f.lvl >= 2 && (f.eqT = (f.eqT || 0) - 0.05) < 0 && Math.random() < 0.2) { f.eqT = rnd(7, 14); A = { type: 'key', key: 'g' }; }
+      else if (!air && (killy || r < 0.12) && adx < 6 && Math.abs(dy) < 1.4) A = { type: 'charge', v: adx < 2.2 ? (dy < -1 ? 'up' : 'down') : 'side', hold: killy ? rnd(0.55, 0.8) : rnd(0.3, 0.5) };   // BASS CANNON / RISER BLAST / SUB DROP
+      else if (air) A = dy < -0.8 && adx < 2 && !(ps && ps.airUpUsed) ? { type: 'tap', v: 'up' } : dy > 0.8 && adx < 2 ? { type: 'tap', v: 'down' } : adx < 6 && Math.abs(dy) < 1.5 ? { type: 'tap', v: Math.random() < 0.6 ? '' : 'side' } : null;
+      else A = dy < -1.2 && adx < 3 ? { type: 'tap', v: 'up' } : adx < 1.8 && Math.abs(dy) < 1.4 ? { type: 'tap', v: Math.random() < 0.5 ? '' : 'down' } : adx < 6 && Math.abs(dy) < 1.4 ? { type: 'tap', v: Math.random() < 0.5 ? 'side' : '' } : null;
+      if (A && (A.type === 'tap' || A.type === 'charge') && f.lvl >= 2) A.beat = true;                         // wait for the beat for Hype
+    }
     if (K.cham && !A) {
       var tg = f.F.plug && f.F.plug.chamTongue, dist = Math.hypot(dx, dy);
       if (tg && tg.ph === 2) A = { type: 'key', key: 'k' };                                                    // finish the tongue combo
@@ -1414,6 +1427,11 @@
     var A = f.act, press = false, release = false, dash = false, d = inp.dir;
     F.keys.clear();
     var heldMs = 0;
+    if (A && A.beat && A.t === 0) {
+      var bi = plugInfo('prodigy'); A.wait = (A.wait || 0) + dt;
+      if (bi && !bi.onBeat && A.wait < 0.5) { A = null; }              // not this frame: wait for the beat
+    }
+    A = A || null;
     if (A) {
       A.t += dt; d = 0; heldMs = A.t * 1000;
       if (A.t <= dt + 1e-6) { st.lastMoveDir = A.dir; st.dashDir = A.dir; }
