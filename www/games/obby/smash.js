@@ -24,15 +24,15 @@
   // Capsule fighters only show up once you own them.
   var FIGHTERS = [
     { id: 'brawler',        n: 'Brawler',      e: '🥊' },
-    { id: 'swordsman',      n: 'Swordsman',    e: '⚔️' },
-    { id: 'necromancer',    n: 'Necromancer',  e: '💀' },
     { id: 'archmage',       n: 'Arch Mage',    e: '🧙' },
     { id: 'phantomace',     n: 'Phantom Ace',  e: '🃏' },
     { id: 'formSwitcher',   n: 'Elem. Spirit', e: '🌀' },
     { id: 'conduit',        n: 'Conduit',      e: '⚡' },
     { id: 'cb_slugger',     n: 'Slugger',      e: '🥊', cap: 1 },
     { id: 'cb_protagonist', n: 'Protagonist',  e: '🗡️', cap: 1 },
-    { id: 'cb_ironclad',    n: 'Ironclad',     e: '🛡️', cap: 1 }
+    { id: 'cb_pressplay',   n: 'Press Play Prodigy', e: '🎧', cap: 1 },
+    { id: 'cb_pp_mixtape',  n: 'Press Play Mixtape', e: '📼', cap: 1 },
+    { id: 'cb_chameleon',   n: 'Chroma',       e: '🦎', cap: 1 }
   ];
   function owned(id) { try { return JSON.parse(localStorage.getItem('obby_cbox_owned') || '[]').indexOf(id) >= 0; } catch (e) { return false; } }
   function roster() { return FIGHTERS.filter(function (f) { return !f.cap || owned(f.id); }); }
@@ -58,20 +58,42 @@
     respawnInv: 2.2, respawnHold: 2.6,
     shieldMax: 60, shieldDrain: 14, shieldRegen: 9, shieldBreakStun: 1.6,
     dodgeT: 0.32, dodgeInv: 0.26, dodgeSpeed: 14, airDodgeT: 0.35,
-    ledgeInv: 1.0, ledgeMax: 3.0, ledgeCD: 0.55
+    ledgeInv: 1.0, ledgeMax: 3.0, ledgeCD: 0.55,
+    spikeK: 1.18,        // meteor hits (launch straight down) on an airborne victim: extra downward speed
+    spikeBounce: 0.8,    // a spiked victim that hits the floor bounces back up with this share of the speed
+    popUp: 13,           // a meteor hit on a grounded victim pops them up instead (tiles/s)
+    liftK: 1.12,         // launchers (launch straight up): extra height, less sideways drift
+    hopV: 11, hopCD: 0.9 // a launcher below kill range lets the attacker hop after the victim (juggle)
   };
   // per fighter: w = weight (heavier flies less), d = damage dealt multiplier, k = knockback dealt multiplier
   var CH = {
-    brawler:        { w: 1.10, d: 1.00, k: 1.00 },
-    swordsman:      { w: 0.95, d: 1.00, k: 1.00 },
-    necromancer:    { w: 0.95, d: 1.00, k: 1.00 },
-    archmage:       { w: 0.85, d: 1.00, k: 1.00 },
-    phantomace:     { w: 0.90, d: 1.00, k: 1.00 },
-    formSwitcher:   { w: 0.95, d: 1.00, k: 1.00 },
-    conduit:        { w: 0.90, d: 1.00, k: 1.00 },
-    cb_slugger:     { w: 1.05, d: 1.00, k: 1.00 },
-    cb_protagonist: { w: 1.00, d: 1.00, k: 1.00 },
-    cb_ironclad:    { w: 1.25, d: 1.00, k: 1.00 }
+    brawler:        { w: 1.10, d: 1.00, k: 1.00, mv: {
+      meteor: { ix: 0, iy: 17, d: 1.1, bounce: 1 },                       // STOMP: spikes, and he pogos off them
+      launch: { ix: 2, iy: -18, d: 1.2 } } },                             // UPPERCUT: heavy launcher
+    archmage:       { w: 0.85, d: 1.00, k: 1.00, mv: {
+      meteor: { ix: 0, iy: 15, d: 1.0, sweet: 1 },                        // SPEAR PLUMMET: only the tip spikes
+      launch: { ix: 1, iy: -20, d: 1.0 } } },                             // ICE PILLAR: tall launch
+    phantomace:     { w: 0.90, d: 1.00, k: 1.00, mv: {
+      meteor: { ix: 3, iy: 16, d: 0.9, bounce: 1 },                       // CARD DROP: slanted spike, he bounces off
+      launch: { ix: 4, iy: -16, d: 1.0, rocket: 1 } } },                  // ACE RISER: launches and he rides up after
+    formSwitcher:   { w: 0.95, d: 1.00, k: 1.00, mv: {
+      meteor: { ix: 0, iy: 14, d: 1.0 },
+      launch: { ix: 1, iy: -17, d: 1.0 } } },
+    conduit:        { w: 0.90, d: 0.95, k: 1.00, mv: {
+      meteor: { ix: 0, iy: 19, d: 1.0, sweet: 1 } } },                    // GROUND PULSE: strongest spike, tiny sweet spot
+    cb_slugger:     { w: 1.05, d: 1.00, k: 1.00, mv: {
+      launch: { ix: 1, iy: -21, d: 1.3 } } },                             // GUT UPPERCUT: biggest launcher, no spike
+    cb_protagonist: { w: 1.00, d: 1.00, k: 1.00, mv: {
+      meteor: { ix: 0, iy: 16, d: 1.0, bounce: 1 },                       // PLUNGE STAB: bounces him back up
+      launch: { ix: 2, iy: -17, d: 1.0, rocket: 1 } } },                  // SKY UPPERCUT: he follows the launch
+    cb_pressplay:   { w: 1.00, d: 0.95, k: 1.00, mv: {
+      launch: { ix: 0, iy: -18, d: 1.0 } } },                             // RISER BLAST
+    cb_pp_mixtape:  { w: 0.95, d: 0.95, k: 0.95, mv: {
+      meteor: { ix: 0, iy: 15, d: 0.9 },                                  // SPOOL SNARE: on the ground it pops them up
+      launch: { ix: 0, iy: -15, d: 0.9, rocket: 1 } } },                  // TAPE TORNADO
+    cb_chameleon:   { w: 0.85, d: 0.90, k: 0.90, mv: {
+      meteor: { ix: 0, iy: 14, d: 0.9, sweet: 1 } }                       // SKY TONGUE: tongue tip spikes
+    }
   };
   function ch(id) { return CH[id] || { w: 1, d: 1, k: 1 }; }
 
@@ -95,7 +117,12 @@
     dash:  { wind: .10, act: .20, rec: .38, box: { dx: 0,   dy: -.4,  w: 1.8, h: .8  }, d: 2,   ix: 14, iy: -4,  lunge: 13 },
     nair:  { wind: .06, act: .16, rec: .14, air: 1, box: { dx: -.9, dy: -.9, w: 1.8, h: 1.5 }, d: 1.2, ix: 5, iy: -4 },
     uair:  { wind: .08, act: .12, rec: .16, air: 1, box: { dx: -.7, dy: -1.7, w: 1.4, h: 1.4 }, d: 1.6, ix: 1.5, iy: -13 },
-    dair:  { wind: .14, act: .14, rec: .22, air: 1, box: { dx: -.6, dy: .4,  w: 1.2, h: 1.3 }, d: 2,   ix: 1,  iy: 14 }
+    dair:  { wind: .14, act: .14, rec: .22, air: 1, box: { dx: -.6, dy: .4,  w: 1.2, h: 1.3 }, d: 2,   ix: 1,  iy: 14 },
+    // launchers and meteors
+    usmash: { wind: .34, act: .14, rec: .50, box: { dx: -.8, dy: -2.3, w: 1.6, h: 2.1 }, d: 2.8, ix: 2, iy: -19 },            // slow ground launcher, kills upward
+    rise:   { wind: .07, act: .16, rec: .34, air: 1, hop: -12, box: { dx: -.7, dy: -2.0, w: 1.4, h: 1.9 }, d: 1.8, ix: 1.5, iy: -15 }, // hopping uppercut, carries the user up too
+    meteor: { wind: .18, act: .18, rec: .30, air: 1, dive: 9, box: { dx: -.5, dy: .45, w: 1.0, h: 1.3 }, d: 2.4, ix: 0, iy: 18 },     // hovers, then dives feet first: a committed spike
+    bair:   { wind: .09, act: .10, rec: .18, air: 1, back: 1, box: { dx: .1, dy: -.8, w: 1.7, h: 1.3 }, d: 2, ix: 13, iy: -5 }          // back air, hits behind
   };
 
   // ---------------------------------------------------------------- stages
@@ -161,6 +188,28 @@
     L = clampv(L, 3, BAL.maxLaunch);
     if (grounded && dy > -0.2 && L > 14) { dy = -0.32; var m2 = Math.hypot(dx, dy); dx /= m2; dy /= m2; }
     return { vx: dx * L, vy: dy * L, L: L, stun: clampv(L * BAL.stunK, BAL.stunMin, BAL.stunMax) };
+  }
+
+  // meteor = hit that sends the victim straight down, lift = hit that sends them straight up
+  function classify(ix, iy) {
+    var ax = Math.abs(ix);
+    if (iy > 7 && iy > ax * 1.1) return 'meteor';
+    if (iy < -8 && -iy > ax * 1.1) return 'lift';
+    return '';
+  }
+  function styleLaunch(Ln, kind, grounded, v) {
+    if (kind === 'meteor') {
+      if (grounded) { Ln.vx *= 0.3; Ln.vy = -BAL.popUp; Ln.stun += 0.12; v.spiked = false; return 'pop'; }
+      Ln.vy = Math.min(BAL.maxLaunch, Ln.vy * BAL.spikeK); Ln.vx *= 0.55; Ln.stun += 0.08; v.spiked = true; return 'spike';
+    }
+    if (kind === 'lift') { Ln.vy *= BAL.liftK; Ln.vx *= 0.6; Ln.stun *= 1.1; return 'lift'; }
+    return '';
+  }
+  function flair(kind, b) {
+    var x = b.x + b.w / 2, y = b.y + b.h / 2;
+    if (kind === 'spike') { addFx('ring', x, y, '#ff3b6b'); addFx('burst', x, y + 0.3, '#ff3b6b', 24); }
+    else if (kind === 'pop') { addFx('ring', x, y + b.h / 2, '#ffd23b'); }
+    else if (kind === 'lift') { addFx('ring', x, y, '#6bd0ff'); addFx('burst', x, y - 0.3, '#6bd0ff', 20); }
   }
 
   // ---------------------------------------------------------------- body physics (CPU)
@@ -402,6 +451,7 @@
     }
     me.pct = Math.min(999, me.pct + h.pct);
     var Ln = launch(h.ix, h.iy, me.pct, ch(me.char).w, h.k, h.fromX, P.x + P.w / 2, P.onGround);
+    var kind = styleLaunch(Ln, classify(h.ix, h.iy), P.onGround, me);
     // survival DI: holding up/down/sideways bends the launch a little (max ~12 degrees)
     var di = (held('w') || held('arrowup') ? -1 : 0) + (held('arrowdown') ? 1 : 0);
     if (di !== 0 || dirIn() !== 0) {
@@ -416,6 +466,8 @@
     releaseLedge(me); me.dodge = 0; me.guarding = false;
     P.isDashing = false;
     addFx('burst', P.x + P.w / 2, P.y + P.h / 2, pctColor(me.pct), Ln.L);
+    if (kind) flair(kind, P);
+    if (kind === 'lift' && foe && foe.lvl > 0 && me.pct < 100 && clock - (foe.hopAt || -9) > BAL.hopCD) { foe.hopAt = clock; foe.vy = -BAL.hopV; foe.onGround = false; }
     g.shake(Math.min(9, 2 + Ln.L * 0.18));
     if (Ln.L > 20) window._ppHitstop = Math.max(window._ppHitstop || 0, Math.min(0.12, 0.03 + Ln.L * 0.0018));
     return true;
@@ -437,8 +489,8 @@
       if (Math.abs(m.kvx) > 8 && Math.abs(P.vx) < Math.abs(m.kvx) * 0.4) { m.kvx = -m.kvx * 0.45; P.vx = m.kvx; g.shake(3); addFx('ring', P.x + P.w / 2, P.y + P.h / 2, '#fff'); }
       else P.vx = m.kvx;
       // floor bounce after a hard downward launch
-      if (P.onGround && m._prevVy > 16) { P.vy = -m._prevVy * 0.45; P.onGround = false; g.shake(4); addFx('ring', P.x + P.w / 2, P.y + P.h, '#fff'); }
-      if (m.hitstun <= 0) { m.hitstun = 0; }
+      if (P.onGround && m._prevVy > (m.spiked ? 10 : 16)) { P.vy = -m._prevVy * (m.spiked ? BAL.spikeBounce : 0.45); P.onGround = false; g.shake(m.spiked ? 6 : 4); addFx('ring', P.x + P.w / 2, P.y + P.h, m.spiked ? '#ff3b6b' : '#fff'); m.spiked = false; }
+      if (m.hitstun <= 0) { m.hitstun = 0; m.spiked = false; }
     }
     if (P.onGround) { m.airDodged = false; }
     // shield + dodge (X key / on-screen button)
@@ -558,8 +610,24 @@
       pct = Math.min(BAL.maxPctHit, pct);
       var ix = A.ix, iy = A.iy;
       if (ix === 0 && iy === 0) { ix = sgn(f.x - P.x) * 3; iy = -2; }
+      // this fighter's own meteor (down + attack in the air) and launcher (up + attack)
+      var mvT = cm.mv, mvM = null, mvGood = true, mvMeteor = false;
+      if (mvT) {
+        var toward = sgn(f.x - P.x), dnH = held('arrowdown'), upH = held('arrowup') || held('w');
+        mvM = (dnH && !P.onGround && mvT.meteor) ? mvT.meteor : (upH && mvT.launch) ? mvT.launch : null;
+        if (mvM) {
+          mvMeteor = mvM === mvT.meteor;
+          if (mvMeteor && mvM.sweet) mvGood = (f.y + f.h / 2) - (P.y + P.h / 2) > 0.5 && Math.abs((f.x + f.w / 2) - (P.x + P.w / 2)) < 0.9;
+          ix = (mvM.ix || 0) * toward; iy = mvGood ? mvM.iy : mvM.iy * 0.4;
+          pct = Math.min(BAL.maxPctHit, pct * (mvM.d || 1) * (mvGood ? 1 : 0.8));
+        }
+      }
       f.hitLock = BAL.rehit;
       hitFoe(g, P, pct, ix, iy, cm.k);
+      if (mvM && mvGood) {
+        if (mvMeteor && mvM.bounce) { P.vy = -12; P.onGround = false; addFx('ring', P.x + P.w / 2, P.y + P.h, '#ffd23b'); }
+        else if (!mvMeteor && mvM.rocket) { P.vy = -14; P.onGround = false; addFx('ring', P.x + P.w / 2, P.y + P.h, '#6bd0ff'); }
+      }
     }
   }
 
@@ -576,11 +644,14 @@
     }
     f.pct = Math.min(999, f.pct + pct);
     var Ln = launch(ix, iy, f.pct, 1.0, k, P.x + P.w / 2, f.x + f.w / 2, f.onGround);
+    var kind = styleLaunch(Ln, classify(ix, iy), f.onGround, f);
     if (f.lvl >= 2 && stage) cpuDI(Ln, f, LV[f.lvl] || LV[2]);
     f.kvx = Ln.vx; f.vx = Ln.vx; f.vy = Ln.vy; f.hitstun = Ln.stun; f.flash = 0.14; f.atk = null; f.guarding = false;
     if (Ln.vy < -2 || Ln.L > 14) { f.onGround = false; f.y -= 0.06; }
     releaseLedge(f);
     addFx('burst', f.x + f.w / 2, f.y + f.h / 2, pctColor(f.pct), Ln.L);
+    if (kind) flair(kind, f);
+    if (kind === 'lift' && f.pct < 100 && clock - (me.hopAt || -9) > BAL.hopCD) { me.hopAt = clock; P.vy = -BAL.hopV; P.onGround = false; }
     g.shake(Math.min(8, 2 + Ln.L * 0.16));
     if (Ln.L > 20) window._ppHitstop = Math.max(window._ppHitstop || 0, Math.min(0.12, 0.03 + Ln.L * 0.0018));
   }
@@ -707,9 +778,10 @@
   }
 
   // ---- choosing a move
-  var GROUND_MOVES = ['jab', 'ftilt', 'smash', 'utilt', 'dash'], AIR_MOVES = ['nair', 'uair', 'dair'];
+  var GROUND_MOVES = ['jab', 'ftilt', 'smash', 'utilt', 'dash', 'usmash'], AIR_MOVES = ['nair', 'uair', 'dair', 'rise', 'meteor', 'bair'];
   function moveEval(name, dir, f, P, L) {
     var d = MOVES[name], c = { x: f.x + f.w / 2, y: f.y + f.h / 2 }, bx = d.box;
+    var fdir = dir; if (d.back) dir = -dir;
     var tHit = d.wind + d.act * 0.5;
     // invulnerable for the whole swing: wasted
     var inv = Math.max(me.invuln, me.ledgeInv, me.respawnHold > 0 ? 9 : 0, me.dodge > 0 ? me.dodge + 0.05 : 0);
@@ -830,7 +902,8 @@
       f.vy = Math.min(BAL.fall * 1.3, f.vy + BAL.grav * dt);
       var pv = f.vy; moveBody(f, dt, true);
       if (f.wallHit && Math.abs(f.kvx) > 8) { f.kvx = -f.kvx * 0.45; g.shake(3); }
-      if (f.onGround && pv > 16) { f.vy = -pv * 0.45; f.onGround = false; }
+      if (f.onGround && pv > (f.spiked ? 10 : 16)) { f.vy = -pv * (f.spiked ? BAL.spikeBounce : 0.45); f.onGround = false; if (f.spiked) { g.shake(6); addFx('ring', f.x + f.w / 2, f.y + f.h, '#ff3b6b'); } f.spiked = false; }
+      if (f.hitstun <= 0) f.spiked = false;
       if (f.onGround) { f.jumps = 2; f.airDodged = false; }
       f.chasing = false; f.threatAt = 0;
       checkFoeKO(g);
@@ -970,7 +1043,7 @@
     }
   }
   function startAtk(name, dir) {
-    var f = foe, d = MOVES[name]; f.atk = { name: name, d: d, t: 0, hit: false, dir: dir }; f.face = dir; f.think = 0.05;
+    var f = foe, d = MOVES[name]; f.atk = { name: name, d: d, t: 0, hit: false, dir: d.back ? -dir : dir }; f.face = dir; f.think = 0.05;
   }
   function cpuAttack(g, P, dt) {
     var f = foe, a = f.atk, d = a.d, L = LV[f.lvl] || LV[2];
@@ -979,6 +1052,8 @@
     if (d.lunge && inAct) f.vx = a.dir * d.lunge; else f.vx = approach(f.vx, 0, 60 * dt);
     if (d.lunge && a.t < d.wind) f.vx = 0;
     f.vy = Math.min(BAL.fall, f.vy + BAL.grav * dt * (d.air ? 0.85 : 1));
+    if (d.hop && inAct && !a.hopped) { a.hopped = true; f.vy = d.hop; }
+    if (d.dive) { if (inAct) f.vy = Math.max(f.vy, d.dive); else if (a.t < d.wind) f.vy *= 0.2; }
     moveBody(f, dt);
     if (inAct && !a.hit) {
       var c = { x: f.x + f.w / 2, y: f.y + f.h / 2 }, bx = d.box;
