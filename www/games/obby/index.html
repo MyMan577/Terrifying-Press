@@ -3014,6 +3014,7 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
   const canvas = document.getElementById('c');
   let ctx = canvas.getContext('2d');
   const hud = document.getElementById('hud');
+  let _hudLast = null, _hudCc = 0, _hudCcAt = -1e9;
   const message = document.getElementById('message');
   const toolsEl = document.getElementById('tools');
   const buildBtn = document.getElementById('buildBtn');
@@ -25908,54 +25909,54 @@ function resolveCollisions(axis, dt) {
     const heartsDisplay = Array.from({length: player.maxHp}, (_, i) => i < player.hp ? '❤️' : '🖤').join('');
     const hpInvulnIndicator = player.hpInvuln > 0 ? ` <span style="color:#ffd166;font-size:10px">✨</span>` : '';
 
-    hud.innerHTML = `${heartsDisplay}${hpInvulnIndicator}<br>Mode: <b>${modeText}</b>${charInfo}${cosplayerInfo}${formSwitcherInfo}${conduitInfo}${dashInfo}${mooseInfo}${refillInfo}${floatInfo}${wallSlideInfo}${spawnInfo}${keyInfo}${coinRunInfo}${swordInfo}${chaosInfo}`;
+    let _hudH = `${heartsDisplay}${hpInvulnIndicator}<br>Mode: <b>${modeText}</b>${charInfo}${cosplayerInfo}${formSwitcherInfo}${conduitInfo}${dashInfo}${mooseInfo}${refillInfo}${floatInfo}${wallSlideInfo}${spawnInfo}${keyInfo}${coinRunInfo}${swordInfo}${chaosInfo}`;
 
     
     const _noPunch = ['brawler','swordsman','necromancer','archmage','formSwitcher','conduit','gc_selene_architect','gc_solarius_forge','gc_vespera_voidbloom','cb_mario_ref','cb_peach_ref'];
     if (!_noPunch.includes(selectedCharacter) && mode === 'play') {
       if (player.uPunchCooldown > 0) {
-        hud.innerHTML += `<br>👊 Punch: <span style="color:#94a3b8">(${player.uPunchCooldown.toFixed(1)}s)</span>`;
+        _hudH += `<br>👊 Punch: <span style="color:#94a3b8">(${player.uPunchCooldown.toFixed(1)}s)</span>`;
       } else {
-        hud.innerHTML += `<br>👊 Punch: <span style="color:#fbbf24">READY</span>`;
+        _hudH += `<br>👊 Punch: <span style="color:#fbbf24">READY</span>`;
       }
     }
 
     
     if (selectedCharacter === 'cloner' && clonerClones.length > 0) {
-      hud.innerHTML += `<br>🧬 Clones: <b>${clonerClones.length}</b>`;
+      _hudH += `<br>🧬 Clones: <b>${clonerClones.length}</b>`;
     }
     
     if (selectedCharacter === 'commander') {
-      hud.innerHTML += `<br>🎯 Drones: <b>${commanderDrones.length}/3</b>`;
-      if (commanderDrones.length > 0) hud.innerHTML += ` <span style="color:#f97316">(FTGH control)</span>`;
+      _hudH += `<br>🎯 Drones: <b>${commanderDrones.length}/3</b>`;
+      if (commanderDrones.length > 0) _hudH += ` <span style="color:#f97316">(FTGH control)</span>`;
     }
     
     if (selectedCharacter === 'quarry' && quarryBlocks.length > 0) {
-      hud.innerHTML += `<br>🪨 Blocks: <b>${quarryBlocks.filter(b=>b.state==='landed').length} landed</b>`;
+      _hudH += `<br>🪨 Blocks: <b>${quarryBlocks.filter(b=>b.state==='landed').length} landed</b>`;
     }
     
     if (selectedCharacter === 'frostqueen' && frostBlocks.length > 0) {
       const minTimer = Math.min(...frostBlocks.map(f=>f.timer));
-      hud.innerHTML += `<br>❄️ Ice: <b>${frostBlocks.length} blocks</b> (${Math.ceil(minTimer)}s)`;
+      _hudH += `<br>❄️ Ice: <b>${frostBlocks.length} blocks</b> (${Math.ceil(minTimer)}s)`;
     }
     
     if (selectedCharacter === 'necromancer') {
       const cdText = necroSummonCooldown > 0 ? `⏳ ${necroSummonCooldown.toFixed(1)}s` : '✅ Ready';
       const lockText = necroLocked ? `<b style="color:#fbbf24">🔒 LOCKED</b>` : `<span style="color:#86efac">🔓 Free</span>`;
-      hud.innerHTML += `<br>💀 Skeletons: <b>${necroSkeletons.length}/5</b> ${cdText} · ${lockText} <span style="color:#94a3b8">[I]</span>`;
+      _hudH += `<br>💀 Skeletons: <b>${necroSkeletons.length}/5</b> ${cdText} · ${lockText} <span style="color:#94a3b8">[I]</span>`;
       if (necroThrowWindow > 0 && necroThrowTarget && !necroThrowTarget.dead) {
         
         const clingNow = (necroThrowTarget._clingSkelList || []).length;
         const windowColor = necroThrowWindow > 1.5 ? '#c4b5fd' : necroThrowWindow > 0.7 ? '#f97316' : '#ef4444';
-        hud.innerHTML += `<br>🎬 <b style="color:${windowColor}">SLOW MO!</b> Hurl skeletons: <b style="color:#a78bfa">${clingNow}/${NECRO_SKEL_THROW_NEEDED}</b> · <span style="color:#fbbf24">[F] Throw</span> · ${necroThrowWindow.toFixed(1)}s left`;
-        if (clingNow >= NECRO_SKEL_THROW_NEEDED) hud.innerHTML += `<br>💀 <b style="color:#f97316">PLUMMET READY!</b>`;
+        _hudH += `<br>🎬 <b style="color:${windowColor}">SLOW MO!</b> Hurl skeletons: <b style="color:#a78bfa">${clingNow}/${NECRO_SKEL_THROW_NEEDED}</b> · <span style="color:#fbbf24">[F] Throw</span> · ${necroThrowWindow.toFixed(1)}s left`;
+        if (clingNow >= NECRO_SKEL_THROW_NEEDED) _hudH += `<br>💀 <b style="color:#f97316">PLUMMET READY!</b>`;
       } else if (necroLocked) {
         const carryPow = necroSkeletons.length * 3;
         if (necroHeldEnemy && !necroHeldEnemy.dead) {
           const h = necroHeldEnemy;
-          hud.innerHTML += `<br>🤲 Holding: <b style="color:#c4b5fd">${h.type.replace('enemy_','')}</b> HP:${h.hp}/${h.maxHp} · <span style="color:#fbbf24">[S] Throw</span>`;
+          _hudH += `<br>🤲 Holding: <b style="color:#c4b5fd">${h.type.replace('enemy_','')}</b> HP:${h.hp}/${h.maxHp} · <span style="color:#fbbf24">[S] Throw</span>`;
         } else {
-          hud.innerHTML += `<br>🤲 Carry power: <b>${carryPow}</b> · <span style="color:#94a3b8">[S] Grab nearest</span>`;
+          _hudH += `<br>🤲 Carry power: <b>${carryPow}</b> · <span style="color:#94a3b8">[S] Grab nearest</span>`;
         }
       }
     }
@@ -25969,13 +25970,13 @@ function resolveCollisions(axis, dt) {
       if (necroHeldEnemy && !necroHeldEnemy.dead) {
         const h = necroHeldEnemy;
         const itemMsg = armedItem ? ` <span style="color:#ffe94d">${armedItem.icon} Armed!</span>` : ` <span style="color:#94a3b8">No item - S+dir to arm!</span>`;
-        hud.innerHTML += `<br>🎪 ${modeLabel} Holding: <b style="color:#ff3caa">${h.type.replace('enemy_','')}</b> HP:${h.hp}/${h.maxHp} · [F] Throw${itemMsg}`;
+        _hudH += `<br>🎪 ${modeLabel} Holding: <b style="color:#ff3caa">${h.type.replace('enemy_','')}</b> HP:${h.hp}/${h.maxHp} · [F] Throw${itemMsg}`;
       } else {
         const itemDisp = armedItem ? `<span style="color:#ffe94d">${armedItem.icon} ${armedItem.name} ready</span>` : `<span style="color:#94a3b8">No item - S+dir to arm!</span>`;
         const fAction = grabMode ? '[F] Grab enemy' : (armedItem ? `[F] Throw ${armedItem.icon}` : '[F] Throw item');
-        hud.innerHTML += `<br>🎪 ${modeLabel} · ${itemDisp} · ${fAction} · [Shift] swap mode`;
+        _hudH += `<br>🎪 ${modeLabel} · ${itemDisp} · ${fAction} · [Shift] swap mode`;
       }
-      hud.innerHTML += `<br>🎪 Juggle: ${gaugeBar} <span style="font-size:10px;color:#ff3caa">${gauge}/4 → SHOWSTOPPER!</span>`;
+      _hudH += `<br>🎪 Juggle: ${gaugeBar} <span style="font-size:10px;color:#ff3caa">${gauge}/4 → SHOWSTOPPER!</span>`;
     }
     
     if (selectedCharacter === 'phantomace') {
@@ -25984,10 +25985,10 @@ function resolveCollisions(axis, dt) {
         ? `<span style="color:#ffe566">READY</span>`
         : `<span style="color:#94a3b8">(${aceSlashCooldown.toFixed(1)}s)</span>`;
       const burstProgress = hasUpgrade('pa3') ? ` · Burst: <b style="color:#a78bfa">${5-(aceSlashCount%5)}/5</b>` : '';
-      hud.innerHTML += `<br>⚡ Slash: ${slashText}${burstProgress}`;
+      _hudH += `<br>⚡ Slash: ${slashText}${burstProgress}`;
       const regenText = hasUpgrade('pa1') ? ` · Regen: <b style="color:#7cdbff">${(4-aceDashRegenTimer).toFixed(1)}s</b>` : '';
-      hud.innerHTML += `<br>🌟 Dashes: <b>${player.dashCharges}/${player.maxDashes}</b>${regenText}`;
-      if (aceShockwaves.length > 0) hud.innerHTML += ` · <span style="color:#ffe566">⚡ Shockwave active!</span>`;
+      _hudH += `<br>🌟 Dashes: <b>${player.dashCharges}/${player.maxDashes}</b>${regenText}`;
+      if (aceShockwaves.length > 0) _hudH += ` · <span style="color:#ffe566">⚡ Shockwave active!</span>`;
     }
     
     if (selectedCharacter === 'brawler') {
@@ -26008,37 +26009,39 @@ function resolveCollisions(axis, dt) {
         : (comboReady
           ? `<span style='color:#22c55e'>READY</span>`
           : `<span style='color:#f97316'>(${Math.max(player.punchCooldown, 0).toFixed(1)}s)</span>`);
-      hud.innerHTML += `<br>${modeLabel} <span style='color:#94a3b8'>${varLabel}</span>: ${comboStr}`;
+      _hudH += `<br>${modeLabel} <span style='color:#94a3b8'>${varLabel}</span>: ${comboStr}`;
       const alive = enemies.filter(e=>!e.dead).length;
-      if (alive > 0) hud.innerHTML += `<br>👾 Enemies: <b>${alive}</b>`;
+      if (alive > 0) _hudH += `<br>👾 Enemies: <b>${alive}</b>`;
     }
 
     
     if (selectedCharacter === 'archmage') {
       const inAir = !player.onGround;
       const maxWiz = hasUpgrade('am2') ? 7 : 5;
-      hud.innerHTML += `<br>🧙 Wizards: <b style='color:#a78bfa'>${archmageWizards.length}/${maxWiz}</b>`;
-      if (archmageFlameBombCooldown > 0) hud.innerHTML += ` · 🔥 Bomb: <span style='color:#f97316'>${archmageFlameBombCooldown.toFixed(1)}s</span>`;
-      else if (archmageFlameBomb && !archmageFlameBomb.launched) hud.innerHTML += ` · <span style='color:#ffd166'>🔥 BOMB READY - cast ↑S again!</span>`;
-      else hud.innerHTML += ` · 🔥 Bomb: <span style='color:#22c55e'>READY</span>`;
-      if (archmageWallCount > 0) hud.innerHTML += ` · <span style='color:#a3e635'>🧱 Wall ${archmageWallCount}/3</span>`;
-      if (archmageSpearFollowUp) hud.innerHTML += ` · <span style='color:#ef4444'>🔱 Triple ready!</span>`;
+      _hudH += `<br>🧙 Wizards: <b style='color:#a78bfa'>${archmageWizards.length}/${maxWiz}</b>`;
+      if (archmageFlameBombCooldown > 0) _hudH += ` · 🔥 Bomb: <span style='color:#f97316'>${archmageFlameBombCooldown.toFixed(1)}s</span>`;
+      else if (archmageFlameBomb && !archmageFlameBomb.launched) _hudH += ` · <span style='color:#ffd166'>🔥 BOMB READY - cast ↑S again!</span>`;
+      else _hudH += ` · 🔥 Bomb: <span style='color:#22c55e'>READY</span>`;
+      if (archmageWallCount > 0) _hudH += ` · <span style='color:#a3e635'>🧱 Wall ${archmageWallCount}/3</span>`;
+      if (archmageSpearFollowUp) _hudH += ` · <span style='color:#ef4444'>🔱 Triple ready!</span>`;
       
       if (archmageWizards.length > 0 && !archmageSacrificeCutscene) {
         if (archmageWizards.length >= 5) {
-          hud.innerHTML += `<br><span style='color:#ffd700;font-weight:bold'>⚡ [F] GRAND SACRIFICE - ${archmageWizards.length} wizards! Devastating cutscene!</span>`;
+          _hudH += `<br><span style='color:#ffd700;font-weight:bold'>⚡ [F] GRAND SACRIFICE - ${archmageWizards.length} wizards! Devastating cutscene!</span>`;
         } else {
-          hud.innerHTML += `<br><span style='color:#a78bfa'>[F] Sacrifice ${archmageWizards.length} wizard${archmageWizards.length>1?'s':''} → ${archmageWizards.length*5} arrows (1 dmg, 1s stun)</span>`;
+          _hudH += `<br><span style='color:#a78bfa'>[F] Sacrifice ${archmageWizards.length} wizard${archmageWizards.length>1?'s':''} → ${archmageWizards.length*5} arrows (1 dmg, 1s stun)</span>`;
         }
       }
-      if (archmageSacrificeCutscene) hud.innerHTML += `<br><span style='color:#ffd700;font-weight:bold'>⚡ GRAND SACRIFICE IN PROGRESS...</span>`;
+      if (archmageSacrificeCutscene) _hudH += `<br><span style='color:#ffd700;font-weight:bold'>⚡ GRAND SACRIFICE IN PROGRESS...</span>`;
       const alive = enemies.filter(e=>!e.dead).length;
-      if (alive > 0) hud.innerHTML += `<br>👾 Enemies: <b>${alive}</b>`;
+      if (alive > 0) _hudH += `<br>👾 Enemies: <b>${alive}</b>`;
     }
 
     
-    { const _cc = parseInt(localStorage.getItem('obby_cosmic_coins') || '0');
-      if (_cc > 0) hud.innerHTML += `<br><span style="color:#9060b0;font-size:11px">✨🪙 ${_cc} cosmic</span>`; }
+    { const _nowMs = performance.now(); if (_nowMs - _hudCcAt > 1000) { _hudCcAt = _nowMs; _hudCc = parseInt(localStorage.getItem('obby_cosmic_coins') || '0'); } const _cc = _hudCc;
+      if (_cc > 0) _hudH += `<br><span style="color:#9060b0;font-size:11px">✨🪙 ${_cc} cosmic</span>`; }
+    // build the HUD as one string and only hand it to the DOM when it changed (it was re-parsed ~30x a frame)
+    if (_hudH !== _hudLast) { _hudLast = _hudH; hud.innerHTML = _hudH; }
 
     if (dashFlash > 0) {
       ctx.save();
@@ -42545,9 +42548,11 @@ window._claimLBro = function() {
   // the beat clock for anyone who wants it (emote dances): beats since start, following the song when locked
   window.PPBeat = { info: () => ({ beat: beatClock / BEAT, bpm: 60 / BEAT, locked: SYNC.locked && SYNC.bpm > 0 }) };
   // song sync runs while you play as the Prodigy, while someone dances, or while the Settings panel is open (for tap-along)
-  let statusT = 0;
+  let statusT = 0, _ppSyncVisT = 0, _ppSyncShown = false;
   (window._rafHubTickers = window._rafHubTickers || []).push(function _ppSongSyncTick(dt) {
-    const panel = document.getElementById('ppBeatSync'), shown = !!(panel && panel.offsetParent);
+    // offsetParent forces a layout; checking it every frame cost time on every frame of every mode
+    if ((_ppSyncVisT -= dt) <= 0) { _ppSyncVisT = 0.3; const panel = document.getElementById('ppBeatSync'); _ppSyncShown = !!(panel && panel.offsetParent); }
+    const shown = _ppSyncShown;
     const asProdigy = window.selectedCharacter === ID && (!window._gameMode || window._gameMode() === 'play');
     const dancing = window.PPEmote && window.PPEmote.wantsBeat();
     if (!asProdigy && !shown && !SYNC.taps && !dancing) return;
