@@ -794,7 +794,7 @@
     f.mem = cpuMemInit(); f.airDodged = false; f.lastMove = ''; f.threatAt = 0; f.punishUntil = 0; f.punishOK = false; f.comboOK = false;
     f.chasing = false; f.recT = 0; f.recMiss = 0; f.recWas = false; f.navPl = null; f.navT = 0; f.jumpCD = 0; f.ledgeWait = 0;
     f.taunt = 0; f.tauntQ = false; f.tauntTxt = ''; f.wanderX = null; f.preShieldCD = 0;
-    f.sp = null; f.spCD = 1.5; f.form = null; f.spNameT = 0;
+    f.sp = null; f.spCD = 1.5; f.form = null; f.spNameT = 0; f.ptSet = null;
   }
   function tendency(m) {
     var tot = m.shieldN + m.rollN + m.atkN + m.airN + 3;
@@ -1152,7 +1152,7 @@
     // 1. react to a swing we noticed, after a reaction delay
     if (f.threatAt > 0 && now >= f.threatAt) {
       f.threatAt = 0;
-      if (SP_LOCAL[f.char] && SP_LOCAL[f.char].counter && (f.spCD || 0) <= 0 && Math.random() < 0.25 + 0.35 * L.read && cpuTrySpecial(P, L, sgn(dx || f.face))) { inp.dir = 0; return; }
+      if (spSet(f) && spSet(f).counter && (f.spCD || 0) <= 0 && Math.random() < 0.25 + 0.35 * L.read && cpuTrySpecial(P, L, sgn(dx || f.face))) { inp.dir = 0; return; }
       if (cpuDefend(L, T, dx, dy, adx, P)) { inp.dir = 0; return; }
     }
     // 2. where will they be? (a short look-ahead on their movement)
@@ -1288,7 +1288,51 @@
     }
   };
   var SP_THEMES = { blade: ['#cfe8ff', '#ffffff'] };
+  // The CPU Protagonist rolls a loadout from his real move system (window.PPProtag): one variant per slot,
+  // fancier unlocks at higher CPU levels, plus equipped actives, and a hero level that adds damage.
+  var PROTAG_SHAPES = {
+    side__default:   ['dash', { len: 4, dmg: 3, kx: 9, ky: -4 }],
+    side__reach:     ['vortex', { dmg: 4, r: 2.4 }],
+    side__blitz:     ['dash', { len: 4, dmg: 5, kx: 8, ky: -5 }],
+    up__default:     ['pillar', { dmg: 3, launch: 14, w: 1.2, h: 3.5 }],
+    up__skyfall:     ['pillar', { dmg: 5, launch: 16, rise: 13, w: 1.3, h: 4.2 }],
+    up__comet:       ['pillar', { dmg: 6, launch: 20, w: 1.3, h: 4.6 }],
+    down__default:   ['beam', { len: 2.2, w: 0.6, dmg: 3, kx: 6, ky: -3 }],
+    down__quake:     ['ring', { dmg: 5, r: 2.6, kx: 9, ky: -8 }],
+    down__cataclysm: ['ring', { dmg: 4, r: 2.2, waves: 2, kx: 2, ky: -3, stun: 1.2 }],
+    dash__default:   ['dash', { len: 5, dmg: 3, kx: 10, ky: -5 }],
+    dash__ronin:     ['dash', { len: 5, dmg: 4, kx: 10, ky: -5 }],
+    dash__phantom:   ['dash', { len: 5.5, dmg: 5, kx: 10, ky: -5 }]
+  };
+  function protagLoadout(f) {
+    var PP = window.PPProtag, lvl = f.lvl || 2, set = {}, maxCost = lvl <= 1 ? 0 : lvl === 2 ? 2 : 3;
+    var heroLv = PP ? Math.round((PP.maxLevel || 8) * (lvl <= 1 ? 0.25 : lvl === 2 ? 0.6 : 1)) : 1;
+    var dmgK = 1 + 0.04 * heroLv;
+    function pick(slot) {
+      var list = (PP && PP.moves[slot]) || [], ok = list.filter(function (m) { return (m.cost || 0) <= maxCost && PROTAG_SHAPES[m.id]; });
+      var m = ok.length ? ok[Math.floor(Math.random() * ok.length)] : null;
+      if (lvl >= 3 && ok.length > 1 && Math.random() < 0.6) m = ok[ok.length - 1];          // a maxed hero likes his best unlocks
+      return m;
+    }
+    function add(key, m, theme) {
+      if (!m) return; var sh = PROTAG_SHAPES[m.id], o = Object.assign({}, sh[1]); o.dmg = Math.round(o.dmg * dmgK * 10) / 10;
+      SP_THEMES['pt_' + m.id] = [m.color || '#cfe8ff', '#ffffff'];
+      set[key] = [m.name.toUpperCase(), sh[0], o, 'pt_' + m.id];
+    }
+    add('side', pick('dash'));            // the dash slot doubles as his way back to the stage
+    add('side2', pick('side'));
+    add('up', pick('up'));
+    add('down', pick('down'));
+    var acts = [];
+    if (lvl >= 2) acts = Math.random() < 0.5 ? ['ab_whirlwind'] : ['ab_retaliate'];
+    if (lvl >= 3) acts = ['ab_whirlwind', 'ab_retaliate'];
+    if (acts.indexOf('ab_whirlwind') >= 0) set.whirl = ['WHIRLWIND SLASH', 'ring', { dmg: Math.round(4 * dmgK), r: 2.4, kx: 12, ky: -8 }, 'blade'];
+    if (acts.indexOf('ab_retaliate') >= 0) set.counter = ["GUARDIAN'S COUNTER", 'counter', { dmg: Math.round(3 * dmgK), r: 2.6, kx: 12, ky: -9 }, 'blade'];
+    set._heroLv = heroLv;
+    return set;
+  }
   function spSet(f) {
+    if (f.char === 'cb_protagonist' && window.PPProtag) { if (!f.ptSet) f.ptSet = protagLoadout(f); return f.ptSet; }
     if (SP_LOCAL[f.char]) return SP_LOCAL[f.char];
     var S = window.PPSpecials && window.PPSpecials.specials[f.char]; if (!S) return null;
     if (!S.side) { var ks = Object.keys(S); if (!f.form || !S[f.form]) f.form = ks[Math.floor(Math.random() * ks.length)]; S = S[f.form]; } // Elemental Spirit: one form per stock
@@ -1321,7 +1365,7 @@
     var f = foe; if ((f.spCD || 0) > 0 || f.sp) return false;
     var S = spSet(f); if (!S) return false;
     var best = null, bs = 0;
-    ['side', 'up', 'down', 'counter'].forEach(function (slot) { if (!S[slot]) return; var s = spEval(S[slot], f, P, L, dir); if (s > bs) { bs = s; best = slot; } });
+    Object.keys(S).forEach(function (slot) { if (slot.charAt(0) === '_') return; if (!S[slot]) return; var s = spEval(S[slot], f, P, L, dir); if (s > bs) { bs = s; best = slot; } });
     if (!best || bs < 0.5 || Math.random() > (SP_CHANCE[f.lvl] || 0.45)) return false;
     var def = S[best], o = def[2] || {};
     f.sp = { slot: best, name: def[0], shape: def[1], o: o, th: def[3], cols: spCols(def[3]), dmg: o.dmg || 4, t: 0, wind: def[1] === 'counter' ? 0.01 : SP_WIND[f.lvl] || 0.32, dir: dir, fired: false, rec: def[1] === 'counter' ? 0.5 : f.lvl >= 3 ? 0.32 : 0.42 };
@@ -1598,7 +1642,7 @@
     }
     ctx.restore();
   };
-  function foeLabel() { return foe.kind === 'cpu' ? (foe.lvl ? 'CPU ' + foe.lvl : 'Dummy') : 'Friend'; }
+  function foeLabel() { return foe.kind === 'cpu' ? (foe.lvl ? 'CPU ' + foe.lvl + (foe.ptSet ? ' · Hero Lv' + foe.ptSet._heroLv : '') : 'Dummy') : 'Friend'; }
 
   // ---------------------------------------------------------------- HUD + menu
   var hudEl = null;

@@ -3945,6 +3945,8 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
                    { id:'dash__ronin',           icon:'🌸', name:"Ronin's Edge",       cost:2, desc:'+1 dmg on every Blade Dash form, and landing a hit refunds part of the dash cooldown.', dmgAdd:1, cooldownRefund:true, color:'#ff9dc4', anim:'petaltrail' },
                    { id:'dash__phantom',         icon:'👻', name:'Phantom Edge',       cost:3, desc:'+2 dmg on every Blade Dash form, and landing a hit grants a brief window of invulnerability.', dmgAdd:2, iframeOnHit:true, color:'#c9c9ff', anim:'ghosttrail' } ],
   };
+  // Smash mode's CPU Protagonist builds a loadout from these
+  window.PPProtag = { moves: PROTAG_MOVE_DEFS, abilities: PROTAG_ABILITY_DEFS, maxLevel: PROTAG_LEVEL_REWARDS.length };
   const PROTAG_SKILLXP_PER_POINT = 60;
 
   let protagSkillPoints = Math.max(0, parseInt(localStorage.getItem('obby_protag_skillpoints') || '0'));
