@@ -438,6 +438,9 @@
     harvestHit(foe);
     ent._held = true; ent._thrown = false;
     if (ent._chamPullFromX != null && foe.kind === 'cpu') { foe.x = ent.x; foe.y = ent.y; foe.vx = foe.vy = 0; }   // Chroma's tongue is reeling it in
+    if ((ent._liftHeld || 0) > 0 && foe.kind === 'cpu') {                // Conduit's Lift Current is holding it up: it can't act until the fling
+      ent._liftHeld -= dt; foe.x = ent.x; foe.y = ent.y; foe.vx = foe.vy = 0; foe.liftHold = 0.12; foe.onGround = false;
+    }
     var fp = foePos(); ent.x = fp.x; ent.y = fp.y; ent.w = fp.w; ent.h = fp.h; ent.hitFlash = 0; ent._preFlash = 0;
     foe._hp0 = BIG;
     P.hp = P.maxHp; P.hpInvuln = Math.max(P.hpInvuln || 0, 0.01);
@@ -770,7 +773,9 @@
     readHit(g, P, dt);
     if (SM.phase !== 'fight') { f.vx = 0; f.vy = 0; return; }
     cpuStep(g, P, dt);
-    var e = f.ent; e.x = f.x; e.y = f.y;
+    var e = f.ent;
+    if (f.liftHold > 0) { f.x = e.x; f.y = e.y; }                       // Lift Current moved it this frame: keep that
+    e.x = f.x; e.y = f.y;
   }
 
   function koFoe(g) {
@@ -1063,6 +1068,7 @@
     f.invuln = Math.max(0, f.invuln - dt); f.flash = Math.max(0, f.flash - dt); f.cd = Math.max(0, f.cd - dt);
     f.ledgeCD = Math.max(0, f.ledgeCD - dt); f.ledgeInv = Math.max(0, f.ledgeInv - dt); f.drop = Math.max(0, f.drop - dt);
     if (f.guardBreak > 0) f.guardBreak -= dt;
+    if (f.liftHold > 0) { f.liftHold -= dt; f.atk = null; f.act = null; f.guarding = false; return; }   // held by Lift Current
     var b = stage.blast, cx = f.x + f.w / 2, cy = f.y + f.h / 2;
     if (f.lvl > 0 && f.mem) cpuObserve(P, dt);
     if (f.respawnHold > 0) {
