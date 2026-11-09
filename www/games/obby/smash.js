@@ -44,8 +44,9 @@
     pctPerDmg: 4,        // percent gained per 1 point of the game's own damage
     flinch: 2,           // a hit that does no damage still adds this much
     maxPctHit: 40,       // cap on one registered hit
-    kbBase: 0.55,        // launch = hit strength * (kbBase + kbGrow * percent) / weight
-    kbGrow: 0.0105,
+    kbBase: 0.42,        // launch = soft-capped hit strength * (kbBase + kbGrow * percent) / weight
+    kbGrow: 0.02,        // knockback leans on percent: strong hits still kill, just later (charged ~90%+, not 50%)
+    kbSoft: 22,          // hit strength soft cap: huge charged impulses from the game get squashed toward this
     minImp: 5,           // weakest hit strength counted
     maxLaunch: 46,       // tiles/s
     decayAir: 3.5,       // horizontal slow-down while launched (tiles/s^2)
@@ -184,7 +185,9 @@
     var dx, dy;
     if (mag < 0.01) { dx = sgn(victimX - fromX) * 0.9; dy = -0.45; mag = BAL.minImp; var n = Math.hypot(dx, dy); dx /= n; dy /= n; }
     else { dx = ix / mag; dy = iy / mag; }
-    var L = Math.max(mag, BAL.minImp) * (BAL.kbBase + BAL.kbGrow * pct) * (kMul || 1) / (weight || 1);
+    // soft cap: small hits keep their size, giant ones (charged attacks hand us 40-60+) level off near kbSoft
+    var S = BAL.kbSoft * (1 - Math.exp(-Math.max(mag, BAL.minImp) / BAL.kbSoft));
+    var L = S * (BAL.kbBase + BAL.kbGrow * pct) * (kMul || 1) / (weight || 1);
     L = clampv(L, 3, BAL.maxLaunch);
     if (grounded && dy > -0.2 && L > 14) { dy = -0.32; var m2 = Math.hypot(dx, dy); dx /= m2; dy /= m2; }
     return { vx: dx * L, vy: dy * L, L: L, stun: clampv(L * BAL.stunK, BAL.stunMin, BAL.stunMax) };
