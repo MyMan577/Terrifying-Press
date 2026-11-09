@@ -291,6 +291,7 @@
 
   SM.start = function (cfg) {
     var g = G(); if (!g) return;
+    camS = null;
     cfg = Object.assign({ stage: 'battlefield', stocks: 3, time: 180, cpu: 2, cpuChar: 'random', char: g.char, online: false }, cfg || {});
     if (!isFighter(cfg.char)) cfg.char = 'brawler';
     var list = roster();
@@ -1225,15 +1226,23 @@
   }
 
   // ---------------------------------------------------------------- camera
+  var camS = null;
   function camera(g, P, dt) {
     var cam = g.cam, vw = g.viewW, vh = g.viewH, tw = vw / T, th = vh / T;
-    var mx = P.x + P.w / 2, my = P.y + P.h / 2, fx2 = foe.x + foe.w / 2, fy2 = foe.y + foe.h / 2, tx, ty;
-    var near = Math.abs(mx - fx2) < tw - 7 && Math.abs(my - fy2) < th - 5;
-    if (near) { tx = (mx + fx2) / 2; ty = (my + fy2) / 2; } else { tx = mx; ty = my; }
-    var wantX = tx * T - vw / 2, wantY = ty * T - vh * 0.5, k = 1 - Math.pow(0.002, dt);
-    cam.x += (wantX - cam.x) * k; cam.y += (wantY - cam.y) * k;
+    var mx = P.x + P.w / 2, my = P.y + P.h / 2, fx2 = foe.x + foe.w / 2, fy2 = foe.y + foe.h / 2;
+    // Frame both fighters while they fit, and fade smoothly toward just you as they drift apart
+    // (a hard on/off switch here made the view lurch).
+    var wx = clampv((tw - 7 - Math.abs(mx - fx2)) / 4 + 1, 0, 1), wy = clampv((th - 5 - Math.abs(my - fy2)) / 3 + 1, 0, 1), wN = wx * wy;
+    var tx = mx + (fx2 - mx) * 0.5 * wN, ty = my + (fy2 - my) * 0.5 * wN;
+    var wantX = tx * T - vw / 2, wantY = ty * T - vh * 0.5;
     var WW = window._WORLD_W * T, WH = window._WORLD_H * T;
-    cam.x = clampv(cam.x, 0, Math.max(0, WW - vw)); cam.y = clampv(cam.y, 0, Math.max(0, WH - vh));
+    wantX = clampv(wantX, 0, Math.max(0, WW - vw)); wantY = clampv(wantY, 0, Math.max(0, WH - vh));
+    // Smash keeps its own camera state. The game's follow-cam also moves cam every frame, and the two
+    // pulling against each other was the jitter, so we smooth from our own value and overwrite cam.
+    if (!camS) camS = { x: wantX, y: wantY };
+    var kx = 1 - Math.exp(-dt * 5.5), ky = 1 - Math.exp(-dt * 3.8);   // vertical is calmer, so jumps don't bob the view
+    camS.x += (wantX - camS.x) * kx; camS.y += (wantY - camS.y) * ky;
+    cam.x = camS.x; cam.y = camS.y;
   }
 
   // ---------------------------------------------------------------- effects + drawing
@@ -1389,14 +1398,21 @@
     fillCard(a, 'YOU · ' + fInfo(me.char).n, me, cfg.stocks);
     fillCard(b, (foe.kind === 'cpu' ? (foe.lvl ? 'CPU Lv' + foe.lvl : 'DUMMY') : 'FRIEND') + ' · ' + fInfo(foe.char).n, foe, cfg.stocks);
     var tm = document.getElementById('smTm');
-    tm.textContent = cfg.time > 0 ? Math.floor(matchT / 60) + ':' + ('0' + Math.floor(matchT % 60)).slice(-2) : '';
-    tm.style.display = cfg.time > 0 ? 'block' : 'none';
+    setTxt(tm, cfg.time > 0 ? Math.floor(matchT / 60) + ':' + ('0' + Math.floor(matchT % 60)).slice(-2) : '');
+    setSty(tm, 'display', cfg.time > 0 ? 'block' : 'none');
   }
+  // The HUD is redrawn every frame, so only touch the DOM when a value actually changed.
+  // Rewriting it every frame made the browser redo style + layout each frame (a real cost at 120 Hz).
+  function setTxt(el, v) { if (el._v !== v) { el._v = v; el.textContent = v; } }
+  function setHtml(el, v) { if (el._v !== v) { el._v = v; el.innerHTML = v; } }
+  function setSty(el, k, v) { var c = '_s' + k; if (el[c] !== v) { el[c] = v; el.style[k] = v; } }
   function fillCard(el, name, s, max) {
-    el.querySelector('.nm').textContent = name;
-    var pc = el.querySelector('.pc'); pc.innerHTML = Math.floor(s.pct) + '<small>%</small>'; pc.style.color = pctColor(s.pct);
-    el.querySelector('.st').textContent = stocksStr(s.stocks, max);
-    el.querySelector('.sh i').style.width = Math.max(0, s.shield / BAL.shieldMax * 100) + '%';
+    if (!el._q) el._q = { nm: el.querySelector('.nm'), pc: el.querySelector('.pc'), st: el.querySelector('.st'), sh: el.querySelector('.sh i') };
+    var q = el._q;
+    setTxt(q.nm, name);
+    setHtml(q.pc, Math.floor(s.pct) + '<small>%</small>'); setSty(q.pc, 'color', pctColor(s.pct));
+    setTxt(q.st, stocksStr(s.stocks, max));
+    setSty(q.sh, 'width', Math.round(Math.max(0, s.shield / BAL.shieldMax * 100)) + '%');
   }
   var bannerTO = 0;
   function showBanner(t, sec) {
