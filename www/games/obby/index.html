@@ -22721,21 +22721,39 @@ function resolveCollisions(axis, dt) {
       const _beamAngle = conduitBeam.trackAngle;
 
       if (_hasClps2) {
-        
-        for (let bIdx = 0; bIdx < 3; bIdx++) {
-          const _offset = (bIdx - 1) * 0.18;
-          
-          const _tDist = Math.sqrt((_tex2-_bpx)**2+(_tey2-_bpy)**2);
-          ctx.save();
-          ctx.strokeStyle = bIdx === 0 ? '#f87171' : '#fca5a5';
-          ctx.lineWidth = bIdx === 0 ? 3 : 1.5;
-          ctx.globalAlpha = 0.7 + 0.2 * _glow2;
-          ctx.shadowColor = '#f87171'; ctx.shadowBlur = 10;
-          ctx.beginPath();
-          ctx.moveTo(_bpx, _bpy);
-          ctx.lineTo(_bpx + Math.cos(_beamAngle + _offset) * _tDist, _bpy + Math.sin(_beamAngle + _offset) * _tDist);
-          ctx.stroke();
-          ctx.restore();
+        // TRIPLE BEAM: the main beam on the locked target, and the two side beams on the extra foes they really
+        // damage (within 12 tiles). With no extra foe a side beam arcs out and still lands on the target.
+        // All three are full layered beams with a light electric flicker (they used to be thin straight lines
+        // along the lagging aim angle, so they missed and stopped short).
+        const _beam3 = (x1, y1, x2, y2, bend, main) => {
+          const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1;
+          const cx = mx - dy / L * bend, cy = my + dx / L * bend;
+          for (let layer = 2; layer >= 0; layer--) {
+            ctx.save();
+            ctx.strokeStyle = layer === 0 ? '#ffffff' : layer === 1 ? '#f87171' : '#991b1b';
+            ctx.lineWidth = (layer === 0 ? 2 : layer === 1 ? 4 : 8) * (main ? 1 : 0.8);
+            ctx.globalAlpha = (layer === 0 ? 0.9 : layer === 1 ? 0.65 : 0.28) * (0.85 + 0.15 * _glow2);
+            ctx.shadowColor = '#f87171'; ctx.shadowBlur = layer === 1 ? 12 : 0; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(x1, y1);
+            const n = Math.max(6, Math.round(L / 28));
+            for (let i = 1; i <= n; i++) {
+              const t = i / n, u = 1 - t;
+              let x = u * u * x1 + 2 * u * t * cx + t * t * x2, y = u * u * y1 + 2 * u * t * cy + t * t * y2;
+              if (i < n && layer > 0) { const j = (Math.random() - 0.5) * 5; x += -dy / L * j; y += dx / L * j; }
+              ctx.lineTo(x, y);
+            }
+            ctx.stroke(); ctx.restore();
+          }
+        };
+        _beam3(_bpx, _bpy, _tex2, _tey2, 0, true);
+        const _pcx = player.x + player.w / 2, _pcy = _moveCenterY();
+        const _side = enemies.filter(e => e !== _tgt2 && !e.dead && Math.hypot(e.x + e.w / 2 - _pcx, e.y + e.h / 2 - _pcy) < 12)
+          .sort((a, b) => Math.hypot(a.x - _pcx, a.y - _pcy) - Math.hypot(b.x - _pcx, b.y - _pcy)).slice(0, 2);
+        const _tD = Math.hypot(_tex2 - _bpx, _tey2 - _bpy);
+        for (let k = 0; k < 2; k++) {
+          const e = _side[k];
+          if (e) _beam3(_bpx, _bpy, (e.x + e.w / 2) * TILE - cam.x, (e.y + e.h / 2) * TILE - cam.y, (k ? -1 : 1) * 12, false);
+          else _beam3(_bpx, _bpy, _tex2, _tey2, (k ? -1 : 1) * Math.min(90, _tD * 0.28), false);
         }
       } else {
         ctx.save();
