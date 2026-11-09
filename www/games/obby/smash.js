@@ -801,17 +801,25 @@
     //  aggro: rush in   neutral: footsies at mid range   bait: hang back for a whiff
     //  idle: breather, wander and maybe taunt   stand: plant your feet, shield and counter whatever walks in
     var prev = m.mood;
-    // Mostly wander and hop about like a party-game CPU; really chasing you down is the rare case.
-    var wA = 0.04 + 0.08 * L.aggr + (me.pct > 110 ? 0.06 : 0);
-    var wB = 0.03 + L.read * T.shield * 0.2;
-    var wN = 0.08 + 0.06 * L.aggr;
-    var wI = 0.45;
-    var wH = 0.22;
-    var wS = 0.14 + L.shield * 0.1;
-    if (prev === 'aggro') wA *= 0.3;
+    // Per level, like the party-game CPUs: Lv1 mostly wanders and hops and only fights back when you get close.
+    // Higher levels play the match: spacing, bursts of pressure, baiting, holding ground and the odd breather.
+    var MW = {
+      1: { a: 0.05, b: 0.03, n: 0.10, i: 0.45, h: 0.22, s: 0.15 },
+      2: { a: 0.26, b: 0.10, n: 0.34, i: 0.10, h: 0.04, s: 0.16 },
+      3: { a: 0.38, b: 0.12, n: 0.32, i: 0.04, h: 0.02, s: 0.12 }
+    }[foe.lvl] || { a: 0.16, b: 0.10, n: 0.32, i: 0.16, h: 0.08, s: 0.18 };
+    var wA = MW.a + (me.pct > 110 ? 0.08 : 0);                       // smells a KO: press
+    var wB = MW.b + L.read * T.shield * 0.2 + (foe.pct > 110 ? 0.06 : 0);
+    var wN = MW.n;
+    var wI = MW.i + (foe.pct > 120 ? 0.05 : 0);
+    var wH = MW.h;
+    var wS = MW.s + L.read * T.atk * 0.15;                           // you keep swinging: wait for you
+    if (prev === 'aggro') wA *= 0.4;
     var r = Math.random() * (wA + wB + wN + wI + wH + wS);
     m.mood = r < wA ? 'aggro' : (r -= wA) < wB ? 'bait' : (r -= wB) < wN ? 'neutral' : (r -= wN) < wI ? 'idle' : (r -= wI) < wH ? 'hop' : 'stand';
-    m.moodT = m.mood === 'aggro' ? rnd(1.2, 2.4) : m.mood === 'neutral' ? rnd(1.5, 3) : rnd(2.2, 4.5);
+    var hi = foe.lvl >= 2;
+    m.moodT = m.mood === 'aggro' ? rnd(1.2, 2.4) + (hi ? 0.6 : 0) : m.mood === 'neutral' ? rnd(1.5, 3) + (hi ? 1 : 0)
+      : (m.mood === 'idle' || m.mood === 'hop') && hi ? rnd(1, 2.2) : rnd(2.2, 4.5);   // higher levels: breathers are short
     m.taunted = false; foe.wanderX = null;
     m.navOK = L.nav >= 0.9 || Math.random() < L.nav;
   }
@@ -1104,7 +1112,8 @@
         f.wanderX = wx;
       }
       tdx = f.wanderX - cx; tadx = Math.abs(tdx); hold = 0.3; inp.speed = m.mood === 'hop' ? 0.75 : 0.5;
-      if (threatened) { tdx = qdx; tadx = qadx; hold = 1.2; inp.speed = 1; }  // you came over: square up
+      if (threatened && f.cd <= 0.05) { tdx = qdx; tadx = qadx; hold = 1.2; inp.speed = 1; }  // you came over: square up and swing
+      else if (threatened && Math.abs(f.wanderX - px) < 3.5) f.wanderX = null;            // swung already: wander off again
     }
     if (gp) { tdx = gp.x + (gp.side < 0 ? 1.15 : -1.15) - cx; tadx = Math.abs(tdx); hold = 0.3; }
     else if (oppOff && m.chaseOK && f.onGround && f.jumps >= 2) { f.chasing = true; hold = 0; }
@@ -1144,6 +1153,18 @@
       else if (dy < -1.8 && f.vy > 1 && f.jumps > 0 && adx < 4 && (follow || Math.random() < 0.5)) inp.jump = true;
       if (onNav && fFeet > f.navPl.y - 0.2) want = cx < f.navPl.x0 + 0.2 ? 1 : cx > f.navPl.x1 - 0.2 ? -1 : 0;
     }
+    // human-looking approaches at Lv2+: a stutter step now and then, and a mix of running in and jumping in,
+    // so it doesn't glide at you on rails
+    if (!calm && !urgent && f.lvl >= 2 && f.onGround && want === sgn(qdx) && me.hitstun <= 0) {
+      f.stutT = Math.max(0, (f.stutT || 0) - dt);
+      if (f.stutT > 0.12) want = 0;                                     // brief hesitation
+      else if (f.stutT <= 0 && qadx > 2.6 && qadx < 5.5 && Math.random() < dt * (0.5 + L.mix)) f.stutT = rnd(0.18, 0.4);
+      if (qadx > 2.4 && qadx < 4.2 && f.jumpCD <= 0 && Math.abs(dy) < 1.2 && Math.random() < dt * (0.6 + 0.6 * L.aggr) * (m.mood === 'aggro' ? 1.4 : 1)) {
+        inp.jump = true; f.jumpCD = rnd(0.7, 1.5);                       // jump in
+      }
+    }
+    // after a whiff it sometimes backs off instead of standing there
+    if (f.backOff > 0) { f.backOff -= dt; if (!urgent && me.hitstun <= 0 && f.onGround && groundAhead(f, -sgn(qdx))) want = -sgn(qdx); }
     inp.dir = want;
     // hop mood: jump around for no real reason, sometimes double jump, sometimes drop through a cloud
     if (calm && m.mood === 'hop' && !threatened) {
@@ -1199,6 +1220,7 @@
       f.atk = null;
       // a confirmed hit: stay on them. otherwise a normal breather
       f.cd = (a.landed && me.hitstun > 0) ? 0.03 : rnd(L.cd, L.cd * 1.8);
+      f.backOff = (!a.landed && f.lvl >= 2 && Math.random() < 0.45) ? rnd(0.2, 0.45) : 0;   // whiffed: sometimes step back out
     }
   }
 
