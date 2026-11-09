@@ -5273,7 +5273,7 @@ let srEchoFrames = [];
       // plugins with their own per-player state register in window._fighterPlugins: { name, swap(state) -> old, tick(dt) }
       const plugs = window._fighterPlugins || [], keepPlug = {}; F.plug = F.plug || {};
       for (const pl of plugs) keepPlug[pl.name] = pl.swap(F.plug[pl.name]);
-      window._fighterPass = F;
+      window._fighterPass = F; window._fighterRealChar = keep.sc;    // plugins sharing a clock with you need to know who you are
       try { fn(); }
       finally {
         window._fighterPass = null;
@@ -42529,7 +42529,8 @@ window._claimLBro = function() {
     fx.push({ k: 'ring', x: q.x, y: q.y, t: 0, life: 0.4, R: 1.6, flat: 1, c: PALETTE[2] });
     kick(0); tone(80, { type: 'sine', dur: 0.3, slide: 30, vol: 0.5 });
   }
-  (window._rafHubTickers = window._rafHubTickers || []).push(function _ppProdigyTick(dt) {
+  let _ppProdTickFn;
+  (window._rafHubTickers = window._rafHubTickers || []).push(_ppProdTickFn = function _ppProdigyTick(dt) {
     ensureBtns();
     const playing = window.selectedCharacter === ID && (!window._gameMode || window._gameMode() === 'play');
     if (!playing) { btn.style.display = 'none'; eqBtn.style.display = 'none'; if (active) resetKit(); active = false; return; }
@@ -43487,6 +43488,32 @@ window._claimLBro = function() {
     if (window.selectedCharacter !== ID) return;
     try { drawWorld(ctx, cam); } catch (e) {}
   };
+  // A second fighter (Smash CPU) playing the Prodigy keeps its own mode, Hype, streak, moves in progress and
+  // everything it has out. The beat clock follows the music, so it stays shared; your buttons stay yours.
+  (window._fighterPlugins = window._fighterPlugins || []).push({ name: 'prodigy', char: ID,
+    swap(s) {
+      const out = { modeIdx, PALETTE, active, atkCD, eqCD, hype, hypeFullSaid, streak, lastBeatIdx, dyn, airUpUsed, lastPX, lastPY, fallTop, wasAir, dash, stomp, beam, drop, riserT,
+        projs: projs.splice(0), subs: subs.splice(0), fields: fields.splice(0), orbs: orbs.splice(0), aftershocks: aftershocks.splice(0), shatterQ: shatterQ.splice(0), fx: fx.splice(0) };
+      if (!s) { const mi = Math.floor(Math.random() * MODES.length); s = { modeIdx: mi, PALETTE: MODES[mi].pal.slice(), active: true, hype: 0, lastBeatIdx: -99 }; }
+      modeIdx = s.modeIdx || 0; PALETTE = s.PALETTE || MODES[modeIdx].pal.slice(); active = !!s.active; atkCD = s.atkCD || 0; eqCD = s.eqCD || 0;
+      hype = s.hype || 0; hypeFullSaid = !!s.hypeFullSaid; streak = s.streak || 0; lastBeatIdx = s.lastBeatIdx != null ? s.lastBeatIdx : -99; dyn = s.dyn || 0;
+      airUpUsed = !!s.airUpUsed; lastPX = s.lastPX != null ? s.lastPX : null; lastPY = s.lastPY != null ? s.lastPY : null; fallTop = s.fallTop != null ? s.fallTop : null; wasAir = !!s.wasAir;
+      dash = s.dash || null; stomp = s.stomp || null; beam = s.beam || null; drop = s.drop || null; riserT = s.riserT || 0;
+      for (const [k, a] of [['projs', projs], ['subs', subs], ['fields', fields], ['orbs', orbs], ['aftershocks', aftershocks], ['shatterQ', shatterQ], ['fx', fx]]) if (s[k]) a.push(...s[k]);
+      return out;
+    },
+    tick: dt => {
+      if (window.selectedCharacter !== ID) return;
+      ensureBtns();
+      const keep = [btn, eqBtn].map(b => b && { d: b.style.display, h: b.innerHTML, c: b.className, t: b.title });
+      if (window._fighterRealChar === ID) beatClock -= dt;   // your tick already moved the shared beat clock this frame
+      try { _ppProdTickFn(dt); }
+      finally { [btn, eqBtn].forEach((b, i) => { const k = keep[i]; if (b && k) { b.style.display = k.d; b.innerHTML = k.h; b.className = k.c; b.title = k.t; } }); }
+    },
+    draw: (ctx, now2, cam) => { if (window.selectedCharacter === ID) drawWorld(ctx, cam); },
+    keys: { k: () => pressDrop(), g: () => pressEQ() },
+    info: () => ({ hype, hypeMax: HYPE_MAX, onBeat: beatInfo().on, beatLeft: BEAT - (beatClock % BEAT), mode: curMode().id, airUpUsed })
+  });
 
   // join the character list once the capsule system is ready
   let tries = 0;
