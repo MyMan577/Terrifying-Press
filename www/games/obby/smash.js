@@ -722,6 +722,9 @@
   function hitFoe(g, P, pct, ix, iy, k) {
     var f = foe;
     if (SM.phase !== 'fight') return;
+    if (f.F && f.F.st._protagRetaliateTimer > 0) {                       // its Guardian's Counter eats the hit and slashes back (the game's own counter)
+      g.fighterRun(f.F, function () { g.fighterCounter(); }); realHarvest(f, P); return;
+    }
     if (f.kind === 'remote') { if (SM.net && SM.net.sendHit) SM.net.sendHit(pct, ix, iy, P.x + P.w / 2, k); f.flash = 0.12; addFx('burst', f.x + f.w / 2, f.y + f.h / 2, '#fff', 10); return; }
     if (f.invuln > 0 || f.dodge > 0 || f.ledgeInv > 0 || f.respawnHold > 0 && f.lvl > 0 && false) return;
     if (f.respawnHold > 0) return;
@@ -1014,6 +1017,7 @@
     if (roof && below > -0.5) return;                                     // a jump here would just hit the ceiling
     var far = Math.abs(clearX - cx);
     // real-moves CPU: Meteor Fist (side special) carries it across a gap, once per trip
+    if (f.F && kit(f).dashRec && !busy && !f.act && !f.recSide && far > 2.6 && below < 2.5 && f.vy > -3 && f.F.st.dashCharges > 0) { f.recSide = true; f.act = { type: 'dash', dir: sgn(clearX - cx), t: 0, noFollow: 1 }; return; }   // Blade Dash across
     if (f.F && kit(f).sideRec && !busy && !f.act && !f.recSide && far > 2.6 && below < 2.5 && f.vy > -3) { f.recSide = true; f.act = { type: 'charge', v: 'side', hold: 0.24, dir: sgn(clearX - cx), t: 0 }; return; }
     // how high one more jump can still take us: jump when the ledge is about to go out of reach
     var need = below + 0.4, reachJ = 2.1, late = need > reachJ * 0.45 - (f.F && f.jumps <= 0 ? 1.4 : 0) || (far > 3 && f.vy > 3);   // a charged up special needs a head start
@@ -1021,7 +1025,8 @@
       if (f.jumps > 0) { f.jumps--; if (f.F) f.recJump = true; else f.vy = -13.5; }   // real-moves CPU: the game's own jump
       else if (f.burst > 0) {
         var dd = sgn(dxl || f.face); f.burst--;
-        if (f.F && !kit(f).upRec) { f.vy = Math.min(f.vy, -2); }       // no special that lifts it: just the jumps it has
+        if (f.F && kit(f).upTapRec) { if (busy) { f.burst++; return; } f.act = { type: 'tap', v: 'up', dir: dd, t: 0 }; }   // up+S in the air
+        else if (f.F && !kit(f).upRec) { f.vy = Math.min(f.vy, -2); }       // no special that lifts it: just the jumps it has
         else if (f.F) { if (busy) { f.burst++; return; } f.act = { type: 'charge', v: 'up', hold: 0.24, dir: dd, t: 0 }; }   // the real Rising Dragon (once its last move is done)
         else { f.vy = -15; f.vx = dd * 7; f.face = dd; }   // last resort
       }
@@ -1140,6 +1145,7 @@
     // 1. react to a swing we noticed, after a reaction delay
     if (f.threatAt > 0 && now >= f.threatAt) {
       f.threatAt = 0;
+      if (f.F && f.F.protag && f.F.protag.abilities.indexOf('ab_retaliate') >= 0 && !(f.F.st._protagRetaliateCD > 0) && !f.act && adx < 3 && Math.random() < 0.3 + 0.3 * L.read) { f.act = { type: 'key', key: 'c', dir: sgn(dx || f.face), t: 0 }; inp.dir = 0; return; }
       if (cpuDefend(L, T, dx, dy, adx, P)) { inp.dir = 0; return; }
     }
     // 2. where will they be? (a short look-ahead on their movement)
@@ -1263,13 +1269,17 @@
   // own player state, held keys and strike-engine state, presses the same buttons you do, and its attacks
   // are the real ones. Its target is a stand-in for you; whatever the attack does to it becomes your
   // percent and launch. Knockback, ledges, dodges and respawns stay with this file, synced both ways.
-  var REAL_CPU = { brawler: 1, cb_slugger: 1 };
+  var REAL_CPU = { brawler: 1, cb_slugger: 1, cb_protagonist: 1 };
   // what each real-moves fighter's kit is good for (all of it is pressed with the same buttons you use)
   //  sideRec / upRec: its side / up special moves it (usable to get back)   dash: dash-then-S attacks
   //  airThrow: S in the air throws something that travels (range in tiles)   groundOnly: specials only on the ground
   var KIT = {
     brawler:    { sideRec: 1, upRec: 1, dash: 1 },
-    cb_slugger: { groundOnly: 1, airThrow: 6 }
+    cb_slugger: { groundOnly: 1, airThrow: 6 },
+    // Protagonist: S tap = his sword strings (ground and air, with direction), S held = his charged attack,
+    // dash = Blade Dash (also gets him back across a gap), up+S in the air = Skybound Slash (lifts with some moves),
+    // Q = Whirlwind Slash, C = Guardian's Counter (when equipped)
+    cb_protagonist: { dash: 1, dashRec: 1, upTapRec: 1, protag: 1 }
   };
   function kit(f) { return KIT[f.char] || {}; }
   // post-draw: the CPU's own plugin ticks (Slugger's gloves fly, hit and are drawn here, like yours are)
@@ -1283,9 +1293,30 @@
     var s0 = f.F.strike;
     if (s0) { s0.cur = null; s0.charge = null; s0.buffered = null; } else f.F.strike = { lastChar: f.char };
   }
+  // its own progress, by CPU level: Lv1 a beginner, Lv2 part-way, Lv3 everything
+  function realProgress(f) {
+    var g = G(), D = g.fighterDefs ? g.fighterDefs(f.char) : { ups: [] }, lvl = f.lvl || 2, F = f.F;
+    var share = lvl <= 1 ? 0 : lvl === 2 ? 0.5 : 1;
+    F.ups = new Set(D.ups.slice(0, Math.round(D.ups.length * share)));
+    if (f.char === 'cb_protagonist' && D.protagMoves) {
+      var hero = lvl <= 1 ? 2 : lvl === 2 ? 5 : D.protagMaxLevel || 7, maxCost = lvl <= 1 ? 0 : lvl === 2 ? 2 : 3;
+      for (var i = 1; i <= Math.min(6, hero); i++) F.ups.add('pt' + i);                                  // level rewards
+      var moves = {};
+      Object.keys(D.protagMoves).forEach(function (slot) {
+        var ok = D.protagMoves[slot].filter(function (m) { return (m.cost || 0) <= maxCost; });
+        var m = lvl >= 3 && Math.random() < 0.6 ? ok[ok.length - 1] : ok[Math.floor(Math.random() * ok.length)];
+        moves[slot] = (m || D.protagMoves[slot][0]).id;
+      });
+      var ab = [];
+      if (lvl >= 2) ab.push(Math.random() < 0.5 ? 'ab_whirlwind' : 'ab_retaliate');
+      if (lvl >= 3) ab = ['ab_whirlwind', 'ab_retaliate', 'ab_doublejump'];
+      F.protag = { level: hero, moves: moves, abilities: ab };
+    }
+  }
   function realSetup(f) {
     var g = G();
     f.F = g.fighterNew(f.char, f.x, f.y);
+    realProgress(f);
     f.tgt = mkEnt(); f.F.targets = [f.tgt];
     f.w = f.F.st.w || f.w; f.h = f.F.st.h || f.h;
     f.act = null; f.tgtLock = 0;
@@ -1297,7 +1328,12 @@
     if (f.act) return false;
     var killy = me.pct > 85, air = !f.onGround, r = Math.random(), K = kit(f);
     var A = null;
-    if (air && K.airThrow) {                                                              // in the air: throw (straight, or down at you)
+    if (K.protag && !A) {
+      var pst = f.F.st, ab = (f.F.protag && f.F.protag.abilities) || [];
+      if (ab.indexOf('ab_whirlwind') >= 0 && !(pst._protagWhirlwindCD > 0) && adx < 2.4 && Math.abs(dy) < 1.8 && Math.random() < 0.35) A = { type: 'key', key: 'q' };   // Whirlwind Slash: you're in its circle
+    }
+    if (A) {}
+    else if (air && K.airThrow) {                                                              // in the air: throw (straight, or down at you)
       if (adx < K.airThrow && dy > -1.2 && (Math.abs(dy) < 1.5 || dy > 1)) A = { type: 'tap', v: dy > 1.2 ? 'down' : '' };
     }
     else if (air && K.groundOnly) A = null;
@@ -1324,15 +1360,17 @@
     // the action in progress decides which buttons are down this frame
     var A = f.act, press = false, release = false, dash = false, d = inp.dir;
     F.keys.clear();
+    var heldMs = 0;
     if (A) {
-      A.t += dt; d = 0;
+      A.t += dt; d = 0; heldMs = A.t * 1000;
       if (A.t <= dt + 1e-6) { st.lastMoveDir = A.dir; st.dashDir = A.dir; }
-      if (A.type === 'tap') { if (A.t <= dt + 1e-6) press = true; else { release = true; f.act = null; } }
+      if (A.type === 'key') { f.act = null; }
+      else if (A.type === 'tap') { if (A.t <= dt + 1e-6) press = true; else { release = true; f.act = null; } }
       else if (A.type === 'charge') {
         if (A.t <= dt + 1e-6) press = true;
         if (A.t >= A.hold) { release = true; f.act = null; }
       } else if (A.type === 'dash') {
-        if (A.t <= dt + 1e-6) dash = true; else if (A.t > 0.12) { f.act = { type: 'tap', v: '', dir: A.dir, t: 0 }; }
+        if (A.t <= dt + 1e-6) dash = true; else if (A.t > 0.12) { f.act = A.noFollow ? null : { type: 'tap', v: '', dir: A.dir, t: 0 }; }
       }
       // direction held while S is down picks the variant / which special
       if (A.v === 'up') F.keys.add('arrowup'); else if (A.v === 'down') F.keys.add('arrowdown'); else if (A.v === 'side' && (A.type !== 'charge' || release)) d = A.dir;   // read at the moment S is let go
@@ -1344,8 +1382,9 @@
     g.fighterRun(F, function () {
       if (jump) g.fighterJump();
       if (dash) g.fighterDash();
-      if (press) g.fighterAttack();
-      if (release) g.fighterRelease();
+      if (press) g.fighterPressS();
+      if (release) g.fighterReleaseS(A && A.type === 'tap' ? 30 : heldMs);
+      if (A && A.key && A.t <= dt + 1e-6) g.fighterKey(A.key);
       g.fighterUpdate(dt);
     });
     F.jp = false;
