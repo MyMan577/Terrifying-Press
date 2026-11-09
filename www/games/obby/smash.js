@@ -437,6 +437,7 @@
     // Read them now, or the reset below throws them away (that was why almost nothing connected).
     harvestHit(foe);
     ent._held = true; ent._thrown = false;
+    if (ent._chamPullFromX != null && foe.kind === 'cpu') { foe.x = ent.x; foe.y = ent.y; foe.vx = foe.vy = 0; }   // Chroma's tongue is reeling it in
     var fp = foePos(); ent.x = fp.x; ent.y = fp.y; ent.w = fp.w; ent.h = fp.h; ent.hitFlash = 0; ent._preFlash = 0;
     foe._hp0 = BIG;
     P.hp = P.maxHp; P.hpInvuln = Math.max(P.hpInvuln || 0, 0.01);
@@ -1299,7 +1300,7 @@
   // own player state, held keys and strike-engine state, presses the same buttons you do, and its attacks
   // are the real ones. Its target is a stand-in for you; whatever the attack does to it becomes your
   // percent and launch. Knockback, ledges, dodges and respawns stay with this file, synced both ways.
-  var REAL_CPU = { brawler: 1, cb_slugger: 1, cb_protagonist: 1 };
+  var REAL_CPU = { brawler: 1, cb_slugger: 1, cb_protagonist: 1, cb_chameleon: 1 };
   // what each real-moves fighter's kit is good for (all of it is pressed with the same buttons you use)
   //  sideRec / upRec: its side / up special moves it (usable to get back)   dash: dash-then-S attacks
   //  airThrow: S in the air throws something that travels (range in tiles)   groundOnly: specials only on the ground
@@ -1309,13 +1310,19 @@
     // Protagonist: S tap = his sword strings (ground and air, with direction), S held = his charged attack,
     // dash = Blade Dash (also gets him back across a gap), up+S in the air = Skybound Slash (lifts with some moves),
     // Q = Whirlwind Slash, C = Guardian's Counter (when equipped)
-    cb_protagonist: { dash: 1, dashRec: 1, upTapRec: 1, protag: 1 }
+    cb_protagonist: { dash: 1, dashRec: 1, upTapRec: 1, protag: 1 },
+    // Chroma: each form's S moves (direction picks them; ground and air differ), K = Tongue Chain (twice for the
+    // finisher), 0 = next form, held S = PRISM BEAM / COLOUR GEYSER / PAINT BOMB
+    cb_chameleon: { cham: 1 }
   };
   function kit(f) { return KIT[f.char] || {}; }
   // post-draw: the CPU's own plugin ticks (Slugger's gloves fly, hit and are drawn here, like yours are)
   (window.__fighterHubs = window.__fighterHubs || []).push(function (dt) {
     if (!SM.active || !foe || !foe.F || SM.phase !== 'fight' || foe.respawnHold > 0) return;
+    var st0 = foe.F.st, bx = st0.x, by = st0.y;
     G().fighterHub(foe.F, Math.min(dt, 0.033));
+    var st1 = foe.F.st;                                                   // a plugin moved it (Chroma's tongue pull): keep that
+    if (Math.abs(st1.x - bx) > 1e-4 || Math.abs(st1.y - by) > 1e-4) { foe.x = st1.x; foe.y = st1.y; foe.vx = st1.vx; foe.vy = st1.vy; }
   });
   // stop whatever its strike engine is doing, keeping its bookkeeping (an empty state would read as a
   // character change and cancel the next thing it presses)
@@ -1358,6 +1365,15 @@
     if (f.act) return false;
     var killy = me.pct > 85, air = !f.onGround, r = Math.random(), K = kit(f);
     var A = null;
+    if (K.cham && !A) {
+      var tg = f.F.plug && f.F.plug.chamTongue, dist = Math.hypot(dx, dy);
+      if (tg && tg.ph === 2) A = { type: 'key', key: 'k' };                                                    // finish the tongue combo
+      else if ((!tg || (!(tg.cd > 0) && !tg.ph)) && dist > 1.8 && dist < 5.6 && Math.random() < 0.3) A = { type: 'key', key: 'k' };   // Tongue Chain
+      else if (f.lvl >= 2 && (f.formT = (f.formT || 0) - 0.05) < 0 && Math.random() < 0.2) { f.formT = rnd(6, 12); A = { type: 'key', key: '0' }; }   // switch form now and then
+      else if (!air && (killy || r < 0.15) && adx < 6 && Math.abs(dy) < 1.4) A = { type: 'charge', v: adx < 2.4 ? (dy < -1 ? 'up' : 'down') : 'side', hold: killy ? rnd(0.55, 0.8) : rnd(0.3, 0.5) };
+      else if (air) A = dy > 0.8 && adx < 1.6 ? { type: 'tap', v: Math.random() < 0.5 ? '' : 'down' } : dy < -0.8 && adx < 1.8 ? { type: 'tap', v: 'up' } : adx < 7 && Math.abs(dy) < 1.4 ? { type: 'tap', v: 'side' } : null;
+      else A = dy < -1.2 && adx < 4 ? { type: 'tap', v: 'up' } : adx < 1.8 && Math.abs(dy) < 1.4 ? { type: 'tap', v: 'down' } : adx < 7 && Math.abs(dy) < 1.4 ? { type: 'tap', v: Math.random() < 0.5 ? '' : 'side' } : null;
+    }
     if (K.protag && !A) {
       var pst = f.F.st, ab = (f.F.protag && f.F.protag.abilities) || [];
       if (ab.indexOf('ab_whirlwind') >= 0 && !(pst._protagWhirlwindCD > 0) && adx < 2.4 && Math.abs(dy) < 1.8 && Math.random() < 0.35) A = { type: 'key', key: 'q' };   // Whirlwind Slash: you're in its circle
@@ -1414,7 +1430,9 @@
     }
     if (d > 0) F.keys.add('d'); else if (d < 0) F.keys.add('a');
     realHarvest(f, P);                                                     // hits from the post-draw tick (thrown gloves)
-    var t = f.tgt; t.x = P.x; t.y = P.y; t.w = P.w; t.h = P.h; t.hp = BIG; t.vx = 0; t.vy = 0; t.hitFlash = 0; t.dead = false; t.stunTimer = 0;
+    var t = f.tgt;
+    if (t._chamPullFromX != null) { P.x = t.x; P.y = t.y; P.vx = P.vy = 0; }   // its tongue is reeling you in
+    t.x = P.x; t.y = P.y; t.w = P.w; t.h = P.h; t.hp = BIG; t.vx = 0; t.vy = 0; t.hitFlash = 0; t.dead = false; t.stunTimer = 0;
     var jump = (inp.jump || f.recJump) && !(A && A.type === 'charge'); f.recJump = false;   // the game counts its own jumps
     g.fighterRun(F, function () {
       if (jump) g.fighterJump();

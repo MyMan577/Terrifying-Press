@@ -5307,6 +5307,7 @@ let srEchoFrames = [];
     },
     // the Protagonist's ability keys: Q Whirlwind Slash, C Guardian's Counter
     fighterKey(k) {
+      for (const pl of (window._fighterPlugins || [])) if (pl.keys && pl.keys[k] && (!pl.char || pl.char === selectedCharacter)) { pl.keys[k](); return; }   // a plugin's own keys (Chroma: 0 form, K tongue)
       if (selectedCharacter !== 'cb_protagonist') return;
       if (k === 'q' && hasUpgrade('pt1') && protagAbilityEquipped('ab_whirlwind')) protagWhirlwindSlash();
       if (k === 'c' && hasUpgrade('pt1') && protagAbilityEquipped('ab_retaliate')) protagActivateRetaliate();
@@ -5322,6 +5323,7 @@ let srEchoFrames = [];
       this.fighterRun(F, () => {
         try { drawPlayer(); } catch (e) {}
         try { if (window.PPStrike && window.PPStrike._draw) window.PPStrike._draw(ctx, performance.now() / 1000, cam); } catch (e) {}
+        for (const pl of (window._fighterPlugins || [])) if (pl.draw) { try { pl.draw(ctx, performance.now() / 1000, cam); } catch (e) {} }
       });
       ctx = keepCtx;
     },
@@ -38712,7 +38714,8 @@ window._claimLBro = function() {
   };
 
   
-  (window._rafHubTickers = window._rafHubTickers || []).push(function _chamTick(dt) {
+  let _chamTickFn;
+  (window._rafHubTickers = window._rafHubTickers || []).push(_chamTickFn = function _chamTick(dt) {
     const btn = ensureChamBtn();
     if (window.selectedCharacter !== CHAM_ID) {
       btn.style.display = 'none';
@@ -38912,6 +38915,20 @@ window._claimLBro = function() {
   });
 
   
+  // a second fighter (Smash CPU) playing Chroma keeps its own form, cooldowns, shots, hazards and walls
+  (window._fighterPlugins = window._fighterPlugins || []).push({ name: 'cham', char: CHAM_ID,
+    swap(s) {
+      const out = { form: _chamFormIdx, scd: _chamSwitchCD, boost: _chamBoostT, acd: _chAtkCD, firing: _chFiring,
+        pr: _chProjs.splice(0), hz: _chHazards.splice(0), fu: _chFuses.splice(0), wa: _chWalls.splice(0), lk: _chLinkFX.splice(0) };
+      s = s || {};
+      _chamFormIdx = s.form || 0; _chamSwitchCD = s.scd || 0; _chamBoostT = s.boost || 0; _chAtkCD = s.acd || 0; _chFiring = !!s.firing;
+      if (s.pr) _chProjs.push(...s.pr); if (s.hz) _chHazards.push(...s.hz); if (s.fu) _chFuses.push(...s.fu); if (s.wa) _chWalls.push(...s.wa); if (s.lk) _chLinkFX.push(...s.lk);
+      return out;
+    },
+    tick: dt => { if (window.selectedCharacter === CHAM_ID) _chamTickFn(dt); },
+    draw: (ctx, now2, cam) => { if (window.selectedCharacter === CHAM_ID) _drawChamWorld(ctx, now2, cam); },
+    keys: { '0': () => cycleChamForm() },
+    form: () => CHAM_FORMS[_chamFormIdx] && CHAM_FORMS[_chamFormIdx].id });
   const _prevChDrifter = window.drifterDrawHook;
   window.drifterDrawHook = function (ctx, now2, cam) {
     if (_prevChDrifter) _prevChDrifter(ctx, now2, cam);
@@ -39196,9 +39213,10 @@ window._claimLBro = function() {
   function chamTongueBlocked(x, y, w, h) {
     const world = window._gameWorld;
     if (world && world.tiles) {
-      for (const t of world.tiles.values()) {
-        if (!CHAM_TONGUE_SOLIDS.has(t.type)) continue;
-        if (x < t.x+1 && x+w > t.x && y < t.y+1 && y+h > t.y) return true;
+      // only the cells the box covers (it used to scan every tile in the world, every frame)
+      for (let ty = Math.floor(y); ty <= Math.floor(y + h - 1e-4); ty++) for (let tx = Math.floor(x); tx <= Math.floor(x + w - 1e-4); tx++) {
+        const t = world.tiles.get(tx + ',' + ty);
+        if (t && CHAM_TONGUE_SOLIDS.has(t.type)) return true;
       }
     }
     const WORLD_H = window._WORLD_H || 72;
@@ -39211,14 +39229,21 @@ window._claimLBro = function() {
     _tPhase = 0; _tTimer = 0; _tWindow = 0; _tTarget = null; _tVisual = null;
   }
 
+  // the best thing to grab: in range, with a clear line to it, and preferably in front of you
+  // (Smash's opponent counts even though Smash marks it as held)
   function findTongueTarget(p) {
     const enms = window._gameEnemies || [];
-    let best = null, bestDist = TONGUE_RANGE;
+    const cx = p.x + p.w / 2, cy = _moveCenterY(p), face = p.lastMoveDir || p.dashDir || 1;
+    let best = null, bestScore = 1e9;
     for (const e of enms) {
-      if (e.dead || e._held) continue;
-      const dx = (e.x+(e.w||1)/2) - (p.x+p.w/2), dy = (e.y+(e.h||1)/2) - (_moveCenterY(p));
-      const d = Math.hypot(dx, dy);
-      if (d < bestDist) { bestDist = d; best = e; }
+      if (e.dead || (e._held && !e._smashFoe)) continue;
+      const ex = e.x + (e.w || 1) / 2, ey = e.y + (e.h || 1) / 2, dx = ex - cx, dy = ey - cy, d = Math.hypot(dx, dy);
+      if (d > TONGUE_RANGE) continue;
+      let clear = true;
+      for (let k = 1; k < 8 && clear; k++) { const f = k / 8; if (chamTongueBlocked(cx + dx * f - 0.1, cy + dy * f - 0.1, 0.2, 0.2)) clear = false; }
+      if (!clear) continue;
+      const score = d + (Math.sign(dx) === Math.sign(face) || Math.abs(dx) < 0.5 ? 0 : 2.5);
+      if (score < bestScore) { bestScore = score; best = e; }
     }
     return best;
   }
@@ -39300,7 +39325,8 @@ window._claimLBro = function() {
   }
 
   
-  (window._rafHubTickers = window._rafHubTickers || []).push(function _chamTongueTick(dt) {
+  let _chamTongueTickFn;
+  (window._rafHubTickers = window._rafHubTickers || []).push(_chamTongueTickFn = function _chamTongueTick(dt) {
     const btn = ensureTongueBtn();
     if (window.selectedCharacter !== CHAM_ID) {
       btn.style.display = 'none';
@@ -39333,7 +39359,10 @@ window._claimLBro = function() {
       const npy = _tFromY + uy*travel*t;
       
       
+      // slide along walls instead of stopping dead when one axis is blocked
       if (!chamTongueBlocked(npx, npy, p.w, p.h)) { p.x = npx; p.y = npy; }
+      else if (!chamTongueBlocked(npx, p.y, p.w, p.h)) p.x = npx;
+      else if (!chamTongueBlocked(p.x, npy, p.w, p.h)) p.y = npy;
       p.vx = 0; p.vy = 0; p.onGround = false;
       _tVisual = { x1:(p.x+p.w/2), y1:(_moveCenterY(p)), x2:tx, y2:ty };
       if (_tTimer <= 0) {
@@ -39368,6 +39397,8 @@ window._claimLBro = function() {
       
       
       if (!chamTongueBlocked(ntx, nty, target.w||1, target.h||1)) { target.x = ntx; target.y = nty; }
+      else if (!chamTongueBlocked(ntx, target.y, target.w||1, target.h||1)) target.x = ntx;
+      else if (!chamTongueBlocked(target.x, nty, target.w||1, target.h||1)) target.y = nty;
       _tVisual = { x1:px, y1:py, x2:target.x+(target.w||1)/2, y2:target.y+(target.h||1)/2 };
       if (_tTimer <= 0) {
         
@@ -39389,18 +39420,46 @@ window._claimLBro = function() {
   const _prevTongueDrifter = window.drifterDrawHook;
   window.drifterDrawHook = function (ctx, now2, cam) {
     if (_prevTongueDrifter) _prevTongueDrifter(ctx, now2, cam);
-    if (window.selectedCharacter !== CHAM_ID || !_tVisual) return;
+    _drawTongue(ctx, now2, cam);
+  };
+  (window._fighterPlugins = window._fighterPlugins || []).push({ name: 'chamTongue', char: CHAM_ID,
+    swap(s) {
+      const out = { ph: _tPhase, t: _tTimer, w: _tWindow, cd: _tCD, tg: _tTarget, fx: _tFromX, fy: _tFromY, v: _tVisual };
+      s = s || {};
+      _tPhase = s.ph || 0; _tTimer = s.t || 0; _tWindow = s.w || 0; _tCD = s.cd || 0; _tTarget = s.tg || null; _tFromX = s.fx || 0; _tFromY = s.fy || 0; _tVisual = s.v || null;
+      return out;
+    },
+    tick: dt => { if (window.selectedCharacter === CHAM_ID) _chamTongueTickFn(dt); },
+    draw: (ctx, now2, cam) => _drawTongue(ctx, now2, cam),
+    keys: { k: () => chamTonguePress() },
+    ready: () => _tCD <= 0 && _tPhase === 0 });
+  // a real tongue: thick at the mouth, tapering, sagging a little, with a sticky tip;
+  // and in the follow-up window a pulsing mark on the target that says "press again"
+  function _drawTongue(ctx, now2, cam) {
+    if (window.selectedCharacter !== CHAM_ID) return;
     try {
       const TILE = window._TILE || 40;
       const camX = cam ? cam.x : 0, camY = cam ? cam.y : 0;
-      ctx.save();
-      ctx.strokeStyle = '#ff4d6d'; ctx.lineWidth = 5; ctx.lineCap = 'round';
-      ctx.shadowBlur = 10; ctx.shadowColor = '#ff9bb0';
-      ctx.beginPath();
-      ctx.moveTo(_tVisual.x1*TILE-camX, _tVisual.y1*TILE-camY);
-      ctx.lineTo(_tVisual.x2*TILE-camX, _tVisual.y2*TILE-camY);
-      ctx.stroke();
-      ctx.shadowBlur = 0;
+      if (_tPhase === 2 && _tTarget && !_tTarget.dead) {
+        const tx = (_tTarget.x + (_tTarget.w || 1) / 2) * TILE - camX, ty = _tTarget.y * TILE - camY - 10, pu = 0.5 + 0.5 * Math.sin((now2 || 0) * 14);
+        ctx.save(); ctx.globalAlpha = 0.6 + 0.4 * pu; ctx.strokeStyle = '#ffe040'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(tx, ty, 8 + 4 * pu, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+      }
+      if (!_tVisual) return;
+      const x1 = _tVisual.x1 * TILE - camX, y1 = _tVisual.y1 * TILE - camY, x2 = _tVisual.x2 * TILE - camX, y2 = _tVisual.y2 * TILE - camY;
+      const L = Math.hypot(x2 - x1, y2 - y1) || 1, sag = Math.min(18, L * 0.12);
+      const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2 + sag;
+      const N = 14, pts = [];
+      for (let i = 0; i <= N; i++) { const t = i / N, u = 1 - t; pts.push([u * u * x1 + 2 * u * t * cx + t * t * x2, u * u * y1 + 2 * u * t * cy + t * t * y2]); }
+      ctx.save(); ctx.lineCap = 'round'; ctx.shadowBlur = 8; ctx.shadowColor = '#ff9bb0';
+      for (let i = 0; i < N; i++) {
+        const t = i / N; ctx.strokeStyle = i % 2 ? '#ff4d6d' : '#ff5c79'; ctx.lineWidth = 7 - 3.5 * t;
+        ctx.beginPath(); ctx.moveTo(pts[i][0], pts[i][1]); ctx.lineTo(pts[i + 1][0], pts[i + 1][1]); ctx.stroke();
+      }
+      ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(255,190,205,.8)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1] - 1.5); for (let i = 1; i <= N; i++) ctx.lineTo(pts[i][0], pts[i][1] - 1.5); ctx.stroke();
+      ctx.fillStyle = '#ff2f58'; ctx.beginPath(); ctx.arc(x2, y2, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,220,230,.9)'; ctx.beginPath(); ctx.arc(x2 - 2, y2 - 2, 2, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     } catch(e) {}
   };
