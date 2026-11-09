@@ -328,12 +328,13 @@
     cpuReset(foe); foe.cd = 1; foe.think = 0; foe.atk = null; foe.jumps = 2; foe.burst = 1; foe.guardLeft = 0; foe.drop = 0; foe.rx = 0; foe.ry = 0; foe.stun2 = 0; foe.nav = 0;
     if (cfg.online && SM.net && SM.net.role === 'guest') { var t0 = stage.spawns[0]; stage.spawns[0] = stage.spawns[1]; stage.spawns[1] = t0; }
     placeAt(me, stage.spawns[0]); placeAt(foe, stage.spawns[1]);
+    if (foe.kind === 'cpu' && foe.lvl > 0 && REAL_CPU[foe.char] && g.fighterNew) realSetup(foe);
     foe.face = stage.spawns[1].x < stage.spawns[0].x ? -1 : 1;
     var P = g.player; P.x = stage.spawns[0].x - P.w / 2; P.y = stage.spawns[0].y - P.h + 0.95 - 0.95; P.dashDir = foe.x > P.x ? 1 : -1;
     P.x = stage.spawns[0].x - P.w / 2; P.y = stage.spawns[0].y - P.h - 0.01; P.vx = P.vy = 0;
     if (g.enemies.indexOf(foe.ent) < 0 && foe.kind === 'cpu') g.enemies.push(foe.ent);
     if (foe.kind === 'remote') g.enemies.push(foe.ent);
-    fx = []; spFx = []; matchT = cfg.time || 0; clock = 0; banner = null;
+    fx = []; matchT = cfg.time || 0; clock = 0; banner = null;
     SM.active = true; SM.phase = 'countdown'; SM.cd = 3.2; SM.over = null; SM.lastCount = 4;
     buildHud(); showHud(true);
     g.setMessage('🥊 Smash! Hold 🛡️/X to guard. Hold it + a direction (or drag it) to roll / air dodge.');
@@ -721,12 +722,6 @@
   function hitFoe(g, P, pct, ix, iy, k) {
     var f = foe;
     if (SM.phase !== 'fight') return;
-    if (f.kind === 'cpu' && f.sp && f.sp.shape === 'counter' && f.sp.fired && f.sp.t < 0.5) {   // Guardian's Counter: eat the hit, slash back
-      var c0 = ctr(f), o = f.sp.o, pc = ctr(P);
-      if (Math.hypot(pc.x - c0.x, pc.y - c0.y) < (o.r || 2.6)) spHit(o.dmg || 3, sgn(pc.x - c0.x || f.face) * (o.kx || 12), o.ky || -9, c0.x, 0);
-      spFx.push({ k: 'ring', x: c0.x, fy: f.y + f.h, R: o.r || 2.6, t: 0, life: 0.4, cols: f.sp.cols }); addFx('ring', c0.x, c0.y, '#ffffff');
-      f.spName = f.sp.name; f.spNameT = 1; f.sp.t = 0.5; g.shake(6); return;
-    }
     if (f.kind === 'remote') { if (SM.net && SM.net.sendHit) SM.net.sendHit(pct, ix, iy, P.x + P.w / 2, k); f.flash = 0.12; addFx('burst', f.x + f.w / 2, f.y + f.h / 2, '#fff', 10); return; }
     if (f.invuln > 0 || f.dodge > 0 || f.ledgeInv > 0 || f.respawnHold > 0 && f.lvl > 0 && false) return;
     if (f.respawnHold > 0) return;
@@ -739,7 +734,8 @@
     var Ln = launch(ix, iy, f.pct, 1.0, k, P.x + P.w / 2, f.x + f.w / 2, f.onGround);
     var kind = styleLaunch(Ln, classify(ix, iy), f.onGround, f);
     if (f.lvl >= 2 && stage) cpuDI(Ln, f, LV[f.lvl] || LV[2]);
-    f.kvx = Ln.vx; f.vx = Ln.vx; f.vy = Ln.vy; f.hitstun = Ln.stun; f.flash = 0.14; f.atk = null; f.guarding = false; f.taunt = 0; f.sp = null;
+    f.kvx = Ln.vx; f.vx = Ln.vx; f.vy = Ln.vy; f.hitstun = Ln.stun; f.flash = 0.14; f.atk = null; f.guarding = false; f.taunt = 0;
+    if (f.F) { f.F.strike = null; f.F.st.punchTimer = 0; f.F.st.comboCount = 0; f.relPending = false; }
     if (Ln.vy < -2 || Ln.L > 14) { f.onGround = false; f.y -= 0.06; }
     releaseLedge(f);
     addFx('burst', f.x + f.w / 2, f.y + f.h / 2, pctColor(f.pct), Ln.L);
@@ -757,7 +753,6 @@
     readHit(g, P, dt);
     if (SM.phase !== 'fight') { f.vx = 0; f.vy = 0; return; }
     cpuStep(g, P, dt);
-    spTick(g, P, dt);
     var e = f.ent; e.x = f.x; e.y = f.y;
   }
 
@@ -773,7 +768,6 @@
     f.respawnHold = f.lvl > 0 ? 2.0 : 1.0; f.invuln = BAL.respawnInv; f.shield = BAL.shieldMax; f.guardBreak = 0; f.dodge = 0;
     f.jumps = 2; f.burst = 1;
     f.chasing = false; f.threatAt = 0; f.punishUntil = 0; f.airDodged = false; f.recWas = false; f.atk = null; f.taunt = 0; f.tauntQ = false;
-    f.sp = null; f.form = null;                                       // Elemental Spirit picks a new form each stock
   }
 
   // -------- CPU brain
@@ -794,7 +788,6 @@
     f.mem = cpuMemInit(); f.airDodged = false; f.lastMove = ''; f.threatAt = 0; f.punishUntil = 0; f.punishOK = false; f.comboOK = false;
     f.chasing = false; f.recT = 0; f.recMiss = 0; f.recWas = false; f.navPl = null; f.navT = 0; f.jumpCD = 0; f.ledgeWait = 0;
     f.taunt = 0; f.tauntQ = false; f.tauntTxt = ''; f.wanderX = null; f.preShieldCD = 0;
-    f.sp = null; f.spCD = 1.5; f.form = null; f.spNameT = 0; f.ptSet = null;
   }
   function tendency(m) {
     var tot = m.shieldN + m.rollN + m.atkN + m.airN + 3;
@@ -991,12 +984,6 @@
   function overVoid(f) { var y = f.y + f.h - 0.1; return groundBelow(f.x + 0.05, y, 24) === null && groundBelow(f.x + f.w / 2, y, 24) === null && groundBelow(f.x + f.w - 0.05, y, 24) === null; }
   // Getting back: go around the stage's lip (never up into its underside), kick off walls, grab the ledge,
   // and spend jumps while there's still room to make it instead of after it's already too low.
-  // a special used to get back (fast wind-up, still hits if you're in the way)
-  function spRecover(def, dir) {
-    var f = foe, o = def[2] || {};
-    f.sp = { slot: 'rec', name: def[0], shape: def[1], o: o, th: def[3], cols: spCols(def[3]), dmg: o.dmg || 4, t: 0, wind: 0.06, dir: dir, fired: false, rec: 0.18, recov: true };
-    f.spName = def[0]; f.spNameT = 0.9; f.face = dir;
-  }
   function cpuRecover(g, P, dt, L, inp, cx, cy) {
     var f = foe, tgt = nearestLedge(cx, cy);
     if (!f.recWas) { f.recWas = true; f.recMiss = Math.random() > L.recover ? rnd(0.1, 0.3) : 0; f.recT = 0; }   // low levels sometimes hesitate
@@ -1021,27 +1008,17 @@
     f.recT = Math.max(0.04, L.react * 0.35 * (0.6 + Math.random() * 0.8));
     if (roof && below > -0.5) return;                                     // a jump here would just hit the ceiling
     var far = Math.abs(clearX - cx);
-    var S = spSet(f), sd = S && S.side, su = S && S.up;
-    // a dashing side special covers distance without falling: use it when the stage is still far away
-    if (sd && sd[1] === 'dash' && !f.recSide && far > 2.6 && below < 3 && f.vy > -3) {
-      f.recSide = true; spRecover(sd, sgn(clearX - cx)); return;
-    }
     // how high one more jump can still take us: jump when the ledge is about to go out of reach
     var need = below + 0.4, reachJ = 2.1, late = need > reachJ * 0.45 || (far > 3 && f.vy > 3);
     if (f.vy > -1 && (late || (below > 0.4))) {
       if (f.jumps > 0) { f.vy = -13.5; f.jumps--; }
-      else if (f.burst > 0) {                                             // last resort: an up special that lifts you, else a plain burst
-        var dd = sgn(dxl || f.face); f.burst--;
-        if (su && su[1] === 'pillar' && su[2] && su[2].rise) { spRecover(su, dd); return; }
-        f.vy = -15; f.vx = dd * 7; f.face = dd;
-        if (su) { f.spName = su[0]; f.spNameT = 0.8; spFx.push({ k: 'pillar', x: cx, fy: f.y + f.h + 0.5, w: 1.2, h: 3, t: 0, life: 0.4, cols: spCols(su[3]) }); }
-      }
+      else if (f.burst > 0) { var dd = sgn(dxl || f.face); f.burst--; f.vy = -15; f.vx = dd * 7; f.face = dd; }   // last resort
     }
   }
 
   function cpuStep(g, P, dt) {
     var f = foe, L = LV[f.lvl] || LV[2];
-    f.invuln = Math.max(0, f.invuln - dt); f.flash = Math.max(0, f.flash - dt); f.cd = Math.max(0, f.cd - dt); f.spCD = Math.max(0, (f.spCD || 0) - dt);
+    f.invuln = Math.max(0, f.invuln - dt); f.flash = Math.max(0, f.flash - dt); f.cd = Math.max(0, f.cd - dt);
     f.ledgeCD = Math.max(0, f.ledgeCD - dt); f.ledgeInv = Math.max(0, f.ledgeInv - dt); f.drop = Math.max(0, f.drop - dt);
     if (f.guardBreak > 0) f.guardBreak -= dt;
     var b = stage.blast, cx = f.x + f.w / 2, cy = f.y + f.h / 2;
@@ -1101,7 +1078,6 @@
       checkFoeKO(g); return;
     }
     // --- attack in progress
-    if (f.sp) { cpuSpecial(g, P, dt); checkFoeKO(g); return; }
     if (f.atk) { cpuAttack(g, P, dt); checkFoeKO(g); return; }
     // --- recovery: below the stage or outside it
     // offstage = nothing under us to land on (also true under the stage's lip, where the old check
@@ -1120,10 +1096,10 @@
     } else {
       f.recWas = false;
       cpuBrain(g, P, dt, L, inp, dx, dy, adx, cx, cy, px, py);
-      if (f.sp) { cpuSpecial(g, P, dt); return; }
       if (f.atk) { cpuAttack(g, P, dt); return; }
     }
     // --- apply movement
+    if (f.F) { realMove(g, P, dt, inp); checkFoeKO(g); return; }      // a real-moves CPU presses the game's buttons instead
     var air = !f.onGround, acc = air ? 28 : 70, run = 8.2 * (inp.speed || 1);
     f.vx = approach(f.vx, inp.dir * run, acc * dt);
     if (inp.dir !== 0) f.face = inp.dir;
@@ -1152,7 +1128,6 @@
     // 1. react to a swing we noticed, after a reaction delay
     if (f.threatAt > 0 && now >= f.threatAt) {
       f.threatAt = 0;
-      if (spSet(f) && spSet(f).counter && (f.spCD || 0) <= 0 && Math.random() < 0.25 + 0.35 * L.read && cpuTrySpecial(P, L, sgn(dx || f.face))) { inp.dir = 0; return; }
       if (cpuDefend(L, T, dx, dy, adx, P)) { inp.dir = 0; return; }
     }
     // 2. where will they be? (a short look-ahead on their movement)
@@ -1263,254 +1238,59 @@
       (f.cd <= 0 && Math.random() < dt * 9 * L.aggr * moodK);
     if (gate && Math.random() >= L.err * (follow ? 0.3 : 1)) {
       var dir = sgn(qdx || f.face);
-      if (cpuTrySpecial(P, L, dir)) { inp.dir = 0; return; }
-      var pick = chooseMove(P, L, dir, !f.onGround);
-      if (pick) { startAtk(pick.name, dir); f.lastMove = pick.name; inp.dir = 0; }
+      if (f.F) {                                                         // real moves: press S when you're in reach (up/down pick the variant)
+        if (adx < 2.4 && Math.abs(dy) < 2) { f.wantAtk = { dir: dir, v: dy < -1.1 ? 'up' : (dy > 1.1 && !f.onGround ? 'down' : '') }; inp.dir = 0; f.cd = rnd(L.cd * 0.35, L.cd * 0.8); }
+      } else {
+        var pick = chooseMove(P, L, dir, !f.onGround);
+        if (pick) { startAtk(pick.name, dir); f.lastMove = pick.name; inp.dir = 0; }
+      }
     }
   }
 
-  // ---------------------------------------------------------------- CPU specials
-  // The CPU uses the same three specials (side / up / down) its fighter has in the main game
-  // (window.PPSpecials, from the strike engine): same names, shapes, ranges, damage and colours.
-  // They are re-created here so they can hit you, with a short, readable wind-up and the name called out.
-  var spFx = [];                                       // visuals + delayed hits (they outlive the cast)
-  var SP_CHANCE = { 1: 0.35, 2: 0.55, 3: 0.7 };        // when it decides to attack, how often a usable special wins
-  var SP_WIND = { 1: 0.42, 2: 0.32, 3: 0.26 };
-  function ctr(b) { return { x: b.x + b.w / 2, y: b.y + b.h / 2 }; }
-  // The Protagonist's specials aren't in the strike engine's table: his kit lives in his own move/ability
-  // system (Blade Dash, Skyfall Divide, Whirlwind Slash, Guardian's Counter), so it's described here.
-  var SP_LOCAL = {
-    cb_protagonist: {
-      side: ['BLADE DASH', 'dash', { len: 5, dmg: 4, kx: 11, ky: -5 }, 'blade'],
-      up: ['SKYFALL DIVIDE', 'pillar', { dmg: 4, launch: 17, rise: 13, w: 1.3, h: 4.2 }, 'blade'],
-      down: ['WHIRLWIND SLASH', 'ring', { dmg: 4, r: 2.4, kx: 12, ky: -8 }, 'blade'],
-      counter: ["GUARDIAN'S COUNTER", 'counter', { dmg: 3, r: 2.6, kx: 12, ky: -9 }, 'blade']
-    }
-  };
-  var SP_THEMES = { blade: ['#cfe8ff', '#ffffff'] };
-  // The CPU Protagonist rolls a loadout from his real move system (window.PPProtag): one variant per slot,
-  // fancier unlocks at higher CPU levels, plus equipped actives, and a hero level that adds damage.
-  var PROTAG_SHAPES = {
-    side__default:   ['dash', { len: 4, dmg: 3, kx: 9, ky: -4 }],
-    side__reach:     ['vortex', { dmg: 4, r: 2.4 }],
-    side__blitz:     ['dash', { len: 4, dmg: 5, kx: 8, ky: -5 }],
-    up__default:     ['pillar', { dmg: 3, launch: 14, w: 1.2, h: 3.5 }],
-    up__skyfall:     ['pillar', { dmg: 5, launch: 16, rise: 13, w: 1.3, h: 4.2 }],
-    up__comet:       ['pillar', { dmg: 6, launch: 20, w: 1.3, h: 4.6 }],
-    down__default:   ['beam', { len: 2.2, w: 0.6, dmg: 3, kx: 6, ky: -3 }],
-    down__quake:     ['ring', { dmg: 5, r: 2.6, kx: 9, ky: -8 }],
-    down__cataclysm: ['ring', { dmg: 4, r: 2.2, waves: 2, kx: 2, ky: -3, stun: 1.2 }],
-    dash__default:   ['dash', { len: 5, dmg: 3, kx: 10, ky: -5 }],
-    dash__ronin:     ['dash', { len: 5, dmg: 4, kx: 10, ky: -5 }],
-    dash__phantom:   ['dash', { len: 5.5, dmg: 5, kx: 10, ky: -5 }]
-  };
-  function protagLoadout(f) {
-    var PP = window.PPProtag, lvl = f.lvl || 2, set = {}, maxCost = lvl <= 1 ? 0 : lvl === 2 ? 2 : 3;
-    var heroLv = PP ? Math.round((PP.maxLevel || 8) * (lvl <= 1 ? 0.25 : lvl === 2 ? 0.6 : 1)) : 1;
-    var dmgK = 1 + 0.04 * heroLv;
-    function pick(slot) {
-      var list = (PP && PP.moves[slot]) || [], ok = list.filter(function (m) { return (m.cost || 0) <= maxCost && PROTAG_SHAPES[m.id]; });
-      var m = ok.length ? ok[Math.floor(Math.random() * ok.length)] : null;
-      if (lvl >= 3 && ok.length > 1 && Math.random() < 0.6) m = ok[ok.length - 1];          // a maxed hero likes his best unlocks
-      return m;
-    }
-    function add(key, m, theme) {
-      if (!m) return; var sh = PROTAG_SHAPES[m.id], o = Object.assign({}, sh[1]); o.dmg = Math.round(o.dmg * dmgK * 10) / 10;
-      SP_THEMES['pt_' + m.id] = [m.color || '#cfe8ff', '#ffffff'];
-      set[key] = [m.name.toUpperCase(), sh[0], o, 'pt_' + m.id];
-    }
-    add('side', pick('dash'));            // the dash slot doubles as his way back to the stage
-    add('side2', pick('side'));
-    add('up', pick('up'));
-    add('down', pick('down'));
-    var acts = [];
-    if (lvl >= 2) acts = Math.random() < 0.5 ? ['ab_whirlwind'] : ['ab_retaliate'];
-    if (lvl >= 3) acts = ['ab_whirlwind', 'ab_retaliate'];
-    if (acts.indexOf('ab_whirlwind') >= 0) set.whirl = ['WHIRLWIND SLASH', 'ring', { dmg: Math.round(4 * dmgK), r: 2.4, kx: 12, ky: -8 }, 'blade'];
-    if (acts.indexOf('ab_retaliate') >= 0) set.counter = ["GUARDIAN'S COUNTER", 'counter', { dmg: Math.round(3 * dmgK), r: 2.6, kx: 12, ky: -9 }, 'blade'];
-    set._heroLv = heroLv;
-    return set;
+  // ---------------------------------------------------------------- real-moves CPU
+  // Fighters listed here are played through the game's own code (index.html fighterRun): the CPU gets its
+  // own player state, held keys and strike-engine state, presses the same buttons you do, and its attacks
+  // are the real ones. Its target is a stand-in for you; whatever the attack does to it becomes your
+  // percent and launch. Knockback, ledges, dodges and respawns stay with this file, synced both ways.
+  var REAL_CPU = { brawler: 1 };
+  function realSetup(f) {
+    var g = G();
+    f.F = g.fighterNew(f.char, f.x, f.y);
+    f.tgt = mkEnt(); f.F.targets = [f.tgt];
+    f.w = f.F.st.w || f.w; f.h = f.F.st.h || f.h;
+    f.relPending = false; f.tgtLock = 0;
   }
-  function spSet(f) {
-    if (f.char === 'cb_protagonist' && window.PPProtag) { if (!f.ptSet) f.ptSet = protagLoadout(f); return f.ptSet; }
-    if (SP_LOCAL[f.char]) return SP_LOCAL[f.char];
-    var S = window.PPSpecials && window.PPSpecials.specials[f.char]; if (!S) return null;
-    if (!S.side) { var ks = Object.keys(S); if (!f.form || !S[f.form]) f.form = ks[Math.floor(Math.random() * ks.length)]; S = S[f.form]; } // Elemental Spirit: one form per stock
-    return S;
-  }
-  function spCols(th) { var t = SP_THEMES[th] || (window.PPSpecials && window.PPSpecials.themes[th]); return t || ['#ffcf40', '#ef4444']; }
-  function spEval(def, f, P, L, dir) {
-    var shape = def[1], o = def[2] || {}, c = ctr(f), p = ctr(P), dx = p.x - c.x, dy = p.y - c.y, adx = Math.abs(dx), dist = Math.hypot(dx, dy);
-    if (Math.max(me.invuln, me.ledgeInv, me.respawnHold > 0 ? 9 : 0) > 0.45) return 0;
-    var sc = 0, kill = false;
-    if (shape === 'beam') { sc = adx > 1.2 && adx < (o.len || 5) && Math.abs(dy) < Math.max(0.9, (o.w || 0.8) * 0.9) ? 1 : 0; kill = (o.kx || 0) >= 12; }
-    else if (shape === 'dash') sc = f.onGround && adx > 1.5 && adx < (o.len || 4.5) + 0.5 && Math.abs(dy) < 1 && groundBelow(c.x + dir * (o.len || 4.5), f.y + f.h - 0.2, 3) !== null ? 1 : 0;
-    else if (shape === 'pillar') { sc = adx < (o.w || 1.6) / 2 + 1.1 && dy < 0.6 && dy > -(o.h || 4) ? (P.onGround ? 0.9 : 1.3) : 0; kill = true; }
-    else if (shape === 'ring') { var R = o.r || 3; sc = f.onGround ? (adx < R && Math.abs(dy) < 1.4 ? 1 : 0) : (dy > 0 && dy < 6 && adx < R ? 0.8 : 0); kill = (o.kx || 8) >= 9; }
-    else if (shape === 'meteor') { sc = Math.abs(adx - (o.dist || 4)) < 1.6 && Math.abs(dy) < 2 ? 1 : 0; kill = true; }
-    else if (shape === 'strikes') sc = dist < (o.r || 7) && adx > 2 ? 0.9 : 0;
-    else if (shape === 'vortex') { sc = adx < 3.6 && Math.abs(dy) < 2 ? 1 : 0; kill = true; }
-    else if (shape === 'counter') sc = f.onGround && f.mem && f.mem.oppAtk && adx < 2.6 && Math.abs(dy) < 1.8 ? 1.5 : 0;   // you're swinging at it right now
-    else if (shape === 'volley') {
-      if (o.radial) sc = dist < 3.5 ? 1 : 0;
-      else if (o.roll) sc = f.onGround && adx > 1.5 && adx < 9 && Math.abs(dy) < 1.2 ? 1 : 0;
-      else sc = adx > 1.5 && adx < (o.speed || 16) * (o.life || 0.6) && Math.abs(dy) < 1.5 ? 1 : 0;
-    }
-    if (!sc) return 0;
-    if (kill && me.pct > 90) sc += 0.6 * L.kill;                     // the big ones finish stocks
-    if (me.guarding && me.shield > 35) sc *= 0.4;
-    return sc * (0.7 + Math.random() * 0.6);
-  }
-  function cpuTrySpecial(P, L, dir) {
-    var f = foe; if ((f.spCD || 0) > 0 || f.sp) return false;
-    var S = spSet(f); if (!S) return false;
-    var best = null, bs = 0;
-    Object.keys(S).forEach(function (slot) { if (slot.charAt(0) === '_') return; if (!S[slot]) return; var s = spEval(S[slot], f, P, L, dir); if (s > bs) { bs = s; best = slot; } });
-    if (!best || bs < 0.5 || Math.random() > (SP_CHANCE[f.lvl] || 0.45)) return false;
-    var def = S[best], o = def[2] || {};
-    f.sp = { slot: best, name: def[0], shape: def[1], o: o, th: def[3], cols: spCols(def[3]), dmg: o.dmg || 4, t: 0, wind: def[1] === 'counter' ? 0.01 : SP_WIND[f.lvl] || 0.32, dir: dir, fired: false, rec: def[1] === 'counter' ? 0.5 : f.lvl >= 3 ? 0.32 : 0.42 };
-    f.spName = def[0]; f.spNameT = 1.1; f.face = dir; f.vx = 0;
-    f.spCD = rnd(1.3, 2.8) * (f.lvl <= 1 ? 1.6 : 1);
-    return true;
-  }
-  function spHit(pctDmg, ix, iy, srcX, stun) {
-    var f = foe, L = LV[f.lvl] || LV[2], cm = ch(f.char);
-    var pct = Math.min(BAL.maxPctHit, pctDmg * BAL.pctPerDmg * 0.8 * L.dmg * cm.d);
-    return hitMe({ pct: pct, ix: ix, iy: iy, fromX: srcX, k: cm.k, stun: stun || 0 });
-  }
-  function overlapP(x, y, w, h) { var P = G().player; return x < P.x + P.w && x + w > P.x && y < P.y + P.h && y + h > P.y; }
-  function cpuSpecial(g, P, dt) {
-    var f = foe, s = f.sp, o = s.o, c = ctr(f);
-    s.t += dt;
-    if (!s.fired && s.t < s.wind) {                                  // wind-up: plant (or hang in the air a moment)
-      f.vx = approach(f.vx, 0, 60 * dt);
-      f.vy = f.onGround ? Math.min(BAL.fall, f.vy + BAL.grav * dt) : Math.min(2, f.vy + BAL.grav * dt * 0.3);
-      moveBody(f, dt); return;
-    }
-    if (!s.fired) { s.fired = true; s.t = 0; spFire(g, P, s, f, c); }
-    if (s.shape === 'dash' && s.t < 0.22) {
-      f.vx = s.dir * (o.len || 4.5) / 0.22; f.vy = 0; moveBody(f, dt); f.invuln = Math.max(f.invuln, 0.02);
-      if (!s.hit && overlapP(f.x - 0.3, f.y - 0.1, f.w + 0.6, f.h + 0.2)) { s.hit = true; spHit(s.dmg, s.dir * (o.kx || 10), o.ky != null ? o.ky : -5, c.x, o.stun); }
-      spFx.push({ k: 'trail', x: c.x, y: c.y, t: 0, life: 0.25, cols: s.cols });
-      return;
-    }
-    if (s.ringWait) {                                                // ring from the air: dive, then the shockwave on landing
-      f.vy = 25; moveBody(f, dt);
-      if (f.onGround || s.t > 1.2) { s.ringWait = false; s.t = 0; spRing(s, f); }
-      return;
-    }
-    f.vx = approach(f.vx, 0, (f.onGround ? 40 : 10) * dt); f.vy = Math.min(BAL.fall, f.vy + BAL.grav * dt); moveBody(f, dt);
-    if (s.t >= s.rec) f.sp = null;
-  }
-  function spRing(s, f) {
-    var o = s.o, x0 = f.x + f.w / 2, fy = f.y + f.h, R = o.r || 3;
-    for (var wv = 0; wv < (o.waves || 1); wv++) spFx.push({ k: 'ringT', at: clock + wv * 0.2, x: x0, fy: fy, R: R * (1 + wv * 0.35), dmg: wv ? Math.ceil(s.dmg * 0.6) : s.dmg, o: o, cols: s.cols, t: 0, life: 9 });
-  }
-  function spFire(g, P, s, f, c) {
-    var o = s.o, d = s.dir, cast = { hit: false };
-    g.shake(4);
-    if (s.shape === 'beam') {
-      var len = o.len || 5, h = Math.max(0.6, (o.w || 0.8) * 1.1), x0 = d > 0 ? c.x : c.x - len;
-      if (overlapP(x0, c.y - h / 2, len, h)) spHit(s.dmg, d * (o.kx || 9), o.ky != null ? o.ky : -4, c.x, o.stun || o.freeze);
-      spFx.push({ k: 'beam', x: x0, y: c.y - h / 2, w: len, h: h, t: 0, life: 0.3, cols: s.cols });
-    } else if (s.shape === 'pillar') {
-      var cx = c.x + d * 0.6, w = o.w || 1.6, hh = o.h || 4, fy = f.y + f.h;
-      if (overlapP(cx - w / 2 - 0.3, fy - hh, w + 0.6, hh + 0.3)) spHit(s.dmg, d * 2, -(o.launch || 14), c.x, o.stun || o.freeze);
-      if (o.rise) { f.vy = -(s.recov ? Math.max(15.5, o.rise * 1.2) : o.rise); f.vx = s.recov ? s.dir * 4 : f.vx; f.onGround = false; }
-      spFx.push({ k: 'pillar', x: cx, fy: fy, w: w, h: hh, t: 0, life: 0.5, cols: s.cols });
-    } else if (s.shape === 'ring') {
-      if (!f.onGround) { s.ringWait = true; return; }
-      spRing(s, f);
-    } else if (s.shape === 'meteor') {
-      var tx = c.x + d * (o.dist || 4), gy = groundBelow(tx, f.y - 2, 16); if (gy === null) gy = f.y + f.h;
-      spFx.push({ k: 'meteorT', at: clock + 0.42, x: tx, gy: gy, R: o.r || 2.4, dmg: s.dmg, cols: s.cols, t: 0, life: 9 });
-    } else if (s.shape === 'strikes') {
-      for (var i = 0; i < (o.n || 3); i++) spFx.push({ k: 'strikeT', aimAt: clock + i * 0.25, at: clock + i * 0.25 + 0.38, x: null, dmg: s.dmg, o: o, cols: s.cols, t: 0, life: 9 });
-    } else if (s.shape === 'vortex') {
-      spFx.push({ k: 'vortex', x: c.x + d * 1.6, y: c.y - 0.2, R: o.r || 2.8, dmg: s.dmg, cols: s.cols, t: 0, life: 0.85 });
-    } else if (s.shape === 'volley') {
-      var n = o.n || 5, sp = o.speed || 16;
-      for (var j = 0; j < n; j++) {
-        var ang = o.radial ? j * Math.PI * 2 / n : (d > 0 ? 0 : Math.PI) + (j - (n - 1) / 2) * (o.spread || 0.16);
-        spFx.push({ k: 'proj', x: c.x, y: o.roll ? f.y + f.h - (o.size || 0.35) : c.y, vx: Math.cos(ang) * sp, vy: o.roll ? 0 : Math.sin(ang) * sp, r: o.size || 0.35,
-          dmg: s.dmg * (n > 1 ? 0.6 : 1), cast: cast, cols: s.cols, t: 0, life: o.life || 0.6 });
-      }
-    }
-  }
-  // advance effects and land the delayed hits
-  function spTick(g, P, dt) {
-    var p = ctr(P);
-    for (var i = spFx.length - 1; i >= 0; i--) {
-      var e = spFx[i]; e.t += dt;
-      if (e.k === 'ringT' && clock >= e.at) {
-        var dx = p.x - e.x;
-        if (Math.abs(dx) < e.R && Math.abs(P.y + P.h - e.fy) < 1.6 && SM.phase === 'fight') spHit(e.dmg, sgn(dx || 1) * (e.o.kx != null ? e.o.kx : 8), e.o.ky != null ? e.o.ky : -8, e.x, e.o.stun || e.o.freeze);
-        spFx.splice(i, 1); spFx.push({ k: 'ring', x: e.x, fy: e.fy, R: e.R, t: 0, life: 0.45, cols: e.cols }); g.shake(5); continue;
-      }
-      if (e.k === 'meteorT' && clock >= e.at) {
-        if (Math.hypot(p.x - e.x, p.y - (e.gy - 0.5)) < e.R) spHit(e.dmg, sgn(p.x - e.x || 1) * 9, -10, e.x, 0);
-        spFx.splice(i, 1); spFx.push({ k: 'ring', x: e.x, fy: e.gy, R: e.R, t: 0, life: 0.5, cols: e.cols }); g.shake(9); continue;
-      }
-      if (e.k === 'strikeT') {
-        if (e.x === null && clock >= e.aimAt) { e.x = p.x; var gy2 = groundBelow(p.x, P.y, 12); e.gy = gy2 === null ? P.y + P.h : gy2; }  // marks where you are, hits a moment later
-        if (e.x !== null && clock >= e.at) {
-          if (Math.abs(p.x - e.x) < 0.9 && P.y + P.h > e.gy - 6) spHit(e.dmg, 0, -9, e.x, e.o.stun);
-          spFx.splice(i, 1); spFx.push({ k: 'bolt', x: e.x, gy: e.gy, t: 0, life: 0.3, cols: e.cols }); g.shake(4); continue;
-        }
-      }
-      if (e.k === 'vortex') {
-        var vd = Math.hypot(p.x - e.x, p.y - e.y);
-        if (vd < e.R * 1.4 && me.hitstun <= 0 && SM.phase === 'fight') P.x += clampv(e.x - p.x, -1, 1) * 5 * dt;   // pulls you in
-        if (e.t >= e.life) { if (vd < e.R) spHit(e.dmg, sgn(p.x - e.x || 1) * 2, -14, e.x, 0); }
-      }
-      if (e.k === 'proj') {
-        e.x += e.vx * dt; e.y += e.vy * dt;
-        if (!e.cast.hit && overlapP(e.x - e.r, e.y - e.r, e.r * 2, e.r * 2)) { e.cast.hit = true; spHit(e.dmg, sgn(e.vx || 1) * 8, -5, e.x - e.vx * 0.05, 0); e.t = e.life; }
-      }
-      if (e.t >= e.life) spFx.splice(i, 1);
-    }
-    if (foe.spNameT > 0) foe.spNameT -= dt;
-  }
-  function drawSpecials(ctx, cam) {
-    var f = foe;
-    // wind-up: a glow in the move's colours and the move's name over the fighter
-    if (f.sp && !f.sp.fired) {
-      var k = f.sp.t / f.sp.wind, c = ctr(f), x = c.x * T - cam.x, y = c.y * T - cam.y;
-      ctx.save(); ctx.globalAlpha = 0.35 + 0.45 * k; ctx.strokeStyle = f.sp.cols[0]; ctx.lineWidth = 4;
-      ctx.beginPath(); ctx.arc(x, y, 34 - 14 * k, 0, 6.3); ctx.stroke(); ctx.restore();
-    }
-    if (f.sp && f.sp.shape === 'counter' && f.sp.fired && f.sp.t < 0.5) {     // counter stance: a steady guard shimmer
-      var cs = ctr(f); ctx.save(); ctx.globalAlpha = 0.6 + 0.3 * Math.sin(clock * 40); ctx.strokeStyle = f.sp.cols[0]; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(cs.x * T - cam.x, cs.y * T - cam.y, 26, 0, 6.3); ctx.stroke(); ctx.restore();
-    }
-    if (f.spNameT > 0 && f.spName) {
-      var cc = ctr(f), nx = cc.x * T - cam.x, ny = f.y * T - cam.y - 18 - (f.taunt > 0 ? 30 : 0);
-      ctx.save(); ctx.globalAlpha = Math.min(1, f.spNameT / 0.25); ctx.font = '900 14px system-ui'; ctx.textAlign = 'center';
-      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.75)'; ctx.strokeText(f.spName + '!', nx, ny);
-      ctx.fillStyle = (f.sp && f.sp.cols[0]) || '#fff'; ctx.fillText(f.spName + '!', nx, ny); ctx.restore();
-    }
-    spFx.forEach(function (e) {
-      var u = Math.min(1, e.t / (e.life || 1)), c0 = e.cols[0], c1 = e.cols[1];
-      ctx.save();
-      if (e.k === 'beam') { ctx.globalAlpha = 1 - u; ctx.fillStyle = c0; ctx.fillRect(e.x * T - cam.x, e.y * T - cam.y, e.w * T, e.h * T); ctx.fillStyle = c1; ctx.fillRect(e.x * T - cam.x, (e.y + e.h * 0.35) * T - cam.y, e.w * T, e.h * 0.3 * T); }
-      else if (e.k === 'pillar') { ctx.globalAlpha = 0.8 * (1 - u); ctx.fillStyle = c0; ctx.fillRect((e.x - e.w / 2) * T - cam.x, (e.fy - e.h * Math.min(1, u * 4)) * T - cam.y, e.w * T, e.h * Math.min(1, u * 4) * T); ctx.fillStyle = c1; ctx.fillRect((e.x - e.w / 6) * T - cam.x, (e.fy - e.h * Math.min(1, u * 4)) * T - cam.y, e.w / 3 * T, e.h * Math.min(1, u * 4) * T); }
-      else if (e.k === 'ring') { ctx.globalAlpha = 1 - u; ctx.strokeStyle = c0; ctx.lineWidth = 5; ctx.beginPath(); ctx.ellipse(e.x * T - cam.x, e.fy * T - cam.y, Math.max(1, e.R * u) * T, Math.max(1, e.R * u * 0.35) * T, 0, 0, 6.3); ctx.stroke(); ctx.strokeStyle = c1; ctx.lineWidth = 2; ctx.stroke(); }
-      else if (e.k === 'ringT') { /* waiting for its wave */ }
-      else if (e.k === 'meteorT') {                                    // a marker on the ground and the rock coming down
-        var w = Math.max(0, 1 - (e.at - clock) / 0.42), mx = e.x * T - cam.x, gy = e.gy * T - cam.y;
-        ctx.globalAlpha = 0.5; ctx.strokeStyle = c0; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(mx, gy, e.R * T, e.R * 0.3 * T, 0, 0, 6.3); ctx.stroke();
-        ctx.globalAlpha = 1; ctx.fillStyle = c0; ctx.beginPath(); ctx.arc(mx - (1 - w) * 60, gy - (1 - w) * 260 - 10, 12, 0, 6.3); ctx.fill();
-      }
-      else if (e.k === 'strikeT' && e.x !== null) { ctx.globalAlpha = 0.6; ctx.strokeStyle = c0; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(e.x * T - cam.x, e.gy * T - cam.y, 0.9 * T, 0.25 * T, 0, 0, 6.3); ctx.stroke(); }
-      else if (e.k === 'bolt') {
-        var bx = e.x * T - cam.x, by = e.gy * T - cam.y; ctx.globalAlpha = 1 - u; ctx.strokeStyle = c0; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(bx, by - 300);
-        for (var s = 1; s <= 6; s++) ctx.lineTo(bx + (s % 2 ? 12 : -12), by - 300 + s * 50); ctx.stroke(); ctx.strokeStyle = c1; ctx.lineWidth = 2; ctx.stroke();
-      }
-      else if (e.k === 'vortex') { ctx.globalAlpha = 0.7; ctx.strokeStyle = c0; ctx.lineWidth = 3; for (var r = 0; r < 3; r++) { ctx.beginPath(); ctx.arc(e.x * T - cam.x, e.y * T - cam.y, e.R * T * (1 - ((e.t * 1.6 + r / 3) % 1)), 0, 6.3); ctx.stroke(); } }
-      else if (e.k === 'proj') { ctx.fillStyle = c0; ctx.beginPath(); ctx.arc(e.x * T - cam.x, e.y * T - cam.y, e.r * T, 0, 6.3); ctx.fill(); ctx.fillStyle = c1; ctx.beginPath(); ctx.arc(e.x * T - cam.x, e.y * T - cam.y, e.r * T * 0.45, 0, 6.3); ctx.fill(); }
-      else if (e.k === 'trail') { ctx.globalAlpha = 0.5 * (1 - u); ctx.fillStyle = c0; ctx.fillRect((e.x - 0.4) * T - cam.x, (e.y - 0.45) * T - cam.y, 0.8 * T, 0.9 * T); }
-      ctx.restore();
+  function realMove(g, P, dt, inp) {
+    var f = foe, F = f.F, st = F.st, L = LV[f.lvl] || LV[2], cm = ch(f.char);
+    st.x = f.x; st.y = f.y; st.vx = f.vx; st.vy = f.vy; st.onGround = f.onGround;      // knockback / ledge / recovery moved our body
+    var atk = f.wantAtk; f.wantAtk = null;
+    F.keys.clear();
+    var d = atk ? 0 : inp.dir;
+    if (d > 0) F.keys.add('d'); else if (d < 0) F.keys.add('a');
+    if (atk) { st.lastMoveDir = atk.dir; st.dashDir = atk.dir; if (atk.v === 'up') F.keys.add('w'); else if (atk.v === 'down') F.keys.add('arrowdown'); }
+    var t = f.tgt; t.x = P.x; t.y = P.y; t.w = P.w; t.h = P.h; t.hp = BIG; t.vx = 0; t.vy = 0; t.hitFlash = 0; t.dead = false; t.stunTimer = 0;
+    var jump = inp.jump && (f.onGround || f.jumps > 0), rel = f.relPending;
+    f.relPending = !!atk;
+    g.fighterRun(F, function () {
+      if (jump) g.fighterJump();
+      if (rel) g.fighterRelease();
+      if (atk) g.fighterAttack();
+      g.fighterUpdate(dt);
     });
+    F.jp = false;
+    st = F.st;
+    f.x = st.x; f.y = st.y; f.vx = st.vx; f.vy = st.vy; f.onGround = !!st.onGround; f.w = st.w || f.w; f.h = st.h || f.h;
+    if (st.lastMoveDir) f.face = st.lastMoveDir;
+    if (f.onGround) f.jumps = 2; else if (jump) f.jumps = Math.max(0, f.jumps - 1);
+    // what its attack did to the stand-in is what it does to you
+    f.tgtLock = Math.max(0, f.tgtLock - dt);
+    var dmg = BIG - t.hp;
+    if ((dmg > 0 || t.hitFlash >= 0.2) && f.tgtLock <= 0 && SM.phase === 'fight') {
+      var fx0 = f.x + f.w / 2, pct = Math.min(BAL.maxPctHit, Math.max(BAL.flinch, dmg * BAL.pctPerDmg) * cm.d * L.dmg);
+      var ix = t.vx, iy = t.vy; if (!ix && !iy) { ix = sgn(P.x + P.w / 2 - fx0) * 3; iy = -2; }
+      f.tgtLock = BAL.rehit;
+      hitMe({ pct: pct, ix: ix, iy: iy, fromX: fx0, k: cm.k });
+    }
   }
   var TAUNTS = ['Too easy!', 'Come on!', '😤', 'Is that all?', '💪', 'Nice try!', '😎', 'Catch me!', '🥱', 'Ha!'];
   function startTaunt() {
@@ -1593,7 +1373,12 @@
         if (f.hitstun > 0) { ctx.translate(cx, cy); ctx.rotate(clock * 14 * sgn(f.kvx || 1)); ctx.translate(-cx, -cy); }
         if (f.invuln > 0 && Math.floor(clock * 20) % 2) ctx.globalAlpha = 0.5;
         var hop = f.taunt > 0 ? Math.abs(Math.sin((f.tauntLen - f.taunt) * 11)) * 0.22 : 0;
-        g.drawAs({ x: f.x, y: f.y - hop, w: f.w, h: f.h, vx: f.vx, vy: f.vy, onGround: f.onGround, dashDir: f.face, isDashing: !!(f.atk && f.atk.d.lunge && f.atk.t > f.atk.d.wind),
+        if (f.F) {
+          var dst = f.F.st; dst.x = f.x; dst.y = f.y - hop; dst.vx = f.vx; dst.vy = f.vy; dst.onGround = f.onGround;
+          g.fighterDraw(f.F);
+          ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 3;
+          ctx.strokeText(foeLabel(), cx, f.y * T - cam.y - 8); ctx.fillText(foeLabel(), cx, f.y * T - cam.y - 8);
+        } else g.drawAs({ x: f.x, y: f.y - hop, w: f.w, h: f.h, vx: f.vx, vy: f.vy, onGround: f.onGround, dashDir: f.face, isDashing: !!(f.atk && f.atk.d.lunge && f.atk.t > f.atk.d.wind),
           char: f.char, slashTimer: f.atk ? 0.15 : 0, swordMode: 'blue', gravityFlipped: false, isWallSliding: false, onWall: false, wallSide: 0 }, foeLabel());
         ctx.restore();
         if (f.taunt > 0 && f.tauntTxt) {
@@ -1613,7 +1398,6 @@
         }
       }
     }
-    if (foe.kind === 'cpu') drawSpecials(ctx, cam);
     // shields
     [[me, P], [foe, foe]].forEach(function (pr) {
       var s = pr[0], b = pr[1]; if (s.guarding || (s.guardBreak > 0)) {
@@ -1642,7 +1426,7 @@
     }
     ctx.restore();
   };
-  function foeLabel() { return foe.kind === 'cpu' ? (foe.lvl ? 'CPU ' + foe.lvl + (foe.ptSet ? ' · Hero Lv' + foe.ptSet._heroLv : '') : 'Dummy') : 'Friend'; }
+  function foeLabel() { return foe.kind === 'cpu' ? (foe.lvl ? 'CPU ' + foe.lvl : 'Dummy') : 'Friend'; }
 
   // ---------------------------------------------------------------- HUD + menu
   var hudEl = null;
@@ -1826,11 +1610,13 @@
   SM.hitMe = hitMe;
   SM.koFromRemote = function (stocks) { foe.stocks = stocks; foe.pct = 0; };
   SM.onEnvDamage = function (text) {
+    if (window._fighterPass) return;                                   // the CPU's own pass, not you
     if (SM.phase !== 'fight' || me.invuln > 0 || me.hitstun > 0 || me.respawnHold > 0) return;
     hitMe({ pct: 8, ix: 0, iy: -10, fromX: G().player.x, k: 1 });
   };
   SM.onDie = function (text) {
     if (!SM.active) return false;
+    if (window._fighterPass) return true;
     if (/fell off|void/i.test(text || '')) return true;
     SM.onEnvDamage(text); return true;
   };
