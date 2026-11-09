@@ -5267,10 +5267,14 @@ let srEchoFrames = [];
       selectedCharacter = F.char; jumpCount = F.jc; jumpPressed = F.jp; jumpJustPressed = F.jjp; turboCharging = F.turbo;
       enemies.push(...F.targets);
       if (window.PPStrike && window.PPStrike._swap) F._realStrike = window.PPStrike._swap(F.strike);
+      // plugins with their own per-player state register in window._fighterPlugins: { name, swap(state) -> old, tick(dt) }
+      const plugs = window._fighterPlugins || [], keepPlug = {}; F.plug = F.plug || {};
+      for (const pl of plugs) keepPlug[pl.name] = pl.swap(F.plug[pl.name]);
       window._fighterPass = F;
       try { fn(); }
       finally {
         window._fighterPass = null;
+        for (const pl of plugs) F.plug[pl.name] = pl.swap(keepPlug[pl.name]);
         if (window.PPStrike && window.PPStrike._swap) F.strike = window.PPStrike._swap(F._realStrike);
         F._realStrike = null;
         F.st = {}; for (const k of Object.keys(player)) F.st[k] = player[k];
@@ -5283,6 +5287,8 @@ let srEchoFrames = [];
       }
     },
     // the game's own per-frame code and input actions, for use inside fighterRun()
+    // registered plugins' per-frame ticks for a second fighter; run after the main draw like everyone's are
+    fighterHub(F, dt) { this.fighterRun(F, () => { for (const pl of (window._fighterPlugins || [])) if (pl.tick) pl.tick(dt); }); },
     fighterUpdate(dt) { update(dt); if (window.PPStrike && window.PPStrike._tick) window.PPStrike._tick(dt); },
     fighterAttack() { performAttackAction(); },
     fighterRelease() { if (window.PPStrike) window.PPStrike.release(); },   // S let go: charged/strike-engine attacks fire on release
@@ -26413,6 +26419,7 @@ function resolveCollisions(axis, dt) {
     update(dt);
     if (window.__smash) window.__smash.post(dt);
     draw(); _sharedRafHub(t);
+    if (window.__fighterHubs) for (const fh of window.__fighterHubs) { try { fh(dt); } catch (e) {} }   // second fighters' plugin ticks (Smash CPU)
     if (window._tutEnemyWatchTick) window._tutEnemyWatchTick();
     requestAnimationFrame(loop);
   }
@@ -26716,13 +26723,13 @@ function resolveCollisions(axis, dt) {
 
   
   
+  Object.defineProperty(window, '_mboxSelChar', { get: () => selectedCharacter, set: () => {}, configurable: true });
   setInterval(() => {
     window._mboxPlayer    = player;
     window._mboxCam       = cam;
     window._mboxTILE      = TILE;
     window._mboxParticles = particles;
     window._mboxMode      = mode;
-    window._mboxSelChar   = selectedCharacter; 
     if (window._mboxCtx === undefined && typeof ctx !== 'undefined') window._mboxCtx = ctx;
   }, 16);
 
@@ -31791,7 +31798,8 @@ function resolveCollisions(axis, dt) {
   };
 
   let sluggerImpacts = []; 
-  (window._rafHubTickers = window._rafHubTickers || []).push(function _sluggerTick(dt) {
+  let _slTick;
+  (window._rafHubTickers = window._rafHubTickers || []).push(_slTick = function _sluggerTick(dt) {
     if (sluggerAirCooldown > 0) sluggerAirCooldown -= dt;
     const p = window._gamePlayer;
     if (p && p._sluggerThrowTimer > 0) p._sluggerThrowTimer -= dt;
@@ -31883,6 +31891,10 @@ function resolveCollisions(axis, dt) {
     }
     sluggerGloves = sluggerGloves.filter(g => g.life > 0);
   });
+  // a second fighter (Smash CPU) keeps its own gloves in flight
+  (window._fighterPlugins = window._fighterPlugins || []).push({ name: 'slugger',
+    swap(s) { const out = { g: sluggerGloves, i: sluggerImpacts, cd: sluggerAirCooldown }; s = s || {}; sluggerGloves = s.g || []; sluggerImpacts = s.i || []; sluggerAirCooldown = s.cd || 0; return out; },
+    tick: dt => _slTick(dt) });
 
   
   renderCboxPanel();
