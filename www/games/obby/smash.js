@@ -735,7 +735,7 @@
     var kind = styleLaunch(Ln, classify(ix, iy), f.onGround, f);
     if (f.lvl >= 2 && stage) cpuDI(Ln, f, LV[f.lvl] || LV[2]);
     f.kvx = Ln.vx; f.vx = Ln.vx; f.vy = Ln.vy; f.hitstun = Ln.stun; f.flash = 0.14; f.atk = null; f.guarding = false; f.taunt = 0;
-    if (f.F) { f.F.strike = null; f.F.st.punchTimer = 0; f.F.st.comboCount = 0; f.relPending = false; }
+    if (f.F) { realCancel(f); f.F.st.punchTimer = 0; f.F.st.comboCount = 0; f.act = null; }
     if (Ln.vy < -2 || Ln.L > 14) { f.onGround = false; f.y -= 0.06; }
     releaseLedge(f);
     addFx('burst', f.x + f.w / 2, f.y + f.h / 2, pctColor(f.pct), Ln.L);
@@ -987,7 +987,7 @@
   function cpuRecover(g, P, dt, L, inp, cx, cy) {
     var f = foe, tgt = nearestLedge(cx, cy);
     if (!f.recWas) { f.recWas = true; f.recMiss = Math.random() > L.recover ? rnd(0.1, 0.3) : 0; f.recT = 0; }   // low levels sometimes hesitate
-    if (f.ledgeCD <= 0 && tryGrab(g, f, f, false)) { f.vx = 0; return; }
+    if (f.ledgeCD <= 0 && tryGrab(g, f, f, false)) { f.vx = 0; if (f.F) { f.act = null; realCancel(f); } return; }
     var out = tgt ? (tgt.side < 0 ? -1 : 1) : sgn(cx - (stage.x0 + stage.x1) / 2) || 1;
     var ty = tgt ? tgt.top : stage.top, below = f.y - ty;                 // > 0: head is under the ledge top
     var hangX = tgt ? tgt.x + out * (0.25 + f.w / 2) : (stage.x0 + stage.x1) / 2;
@@ -998,6 +998,11 @@
     inp.dir = Math.abs(dxl) < 0.15 ? 0 : sgn(dxl);
     if (roof && below > 0) inp.dir = out;                                 // under the stage: get out from under it first
     if (f.recMiss > 0) { f.recMiss -= dt; return; }
+    if (f.F && f.act) return;                                             // let the special it's doing finish
+    if (f.F) {
+      var sk = f.F.strike, busy = !!(sk && (sk.cur || sk.charge));          // its last move is still playing out: a special pressed now would be lost
+      f.jumps = Math.max(0, 2 - (f.F.jc || 0));                           // the game's own jump count
+    }
     // wall jump: pushed into a wall while falling (the stage's side, a pillar): kick off it, up and away
     if (f.wallHit && f.vy > -3 && (f.wallJumps || 0) < 3 && (f.wjCD || 0) <= 0) {
       f.vy = -12.5; f.vx = -f.wallHit * 7; f.face = -f.wallHit; f.wallJumps = (f.wallJumps || 0) + 1; f.wjCD = 0.25; f.recT = 0.12;
@@ -1008,11 +1013,17 @@
     f.recT = Math.max(0.04, L.react * 0.35 * (0.6 + Math.random() * 0.8));
     if (roof && below > -0.5) return;                                     // a jump here would just hit the ceiling
     var far = Math.abs(clearX - cx);
+    // real-moves CPU: Meteor Fist (side special) carries it across a gap, once per trip
+    if (f.F && !busy && !f.act && !f.recSide && far > 2.6 && below < 2.5 && f.vy > -3) { f.recSide = true; f.act = { type: 'charge', v: 'side', hold: 0.24, dir: sgn(clearX - cx), t: 0 }; return; }
     // how high one more jump can still take us: jump when the ledge is about to go out of reach
-    var need = below + 0.4, reachJ = 2.1, late = need > reachJ * 0.45 || (far > 3 && f.vy > 3);
+    var need = below + 0.4, reachJ = 2.1, late = need > reachJ * 0.45 - (f.F && f.jumps <= 0 ? 1.4 : 0) || (far > 3 && f.vy > 3);   // a charged up special needs a head start
     if (f.vy > -1 && (late || (below > 0.4))) {
-      if (f.jumps > 0) { f.vy = -13.5; f.jumps--; }
-      else if (f.burst > 0) { var dd = sgn(dxl || f.face); f.burst--; f.vy = -15; f.vx = dd * 7; f.face = dd; }   // last resort
+      if (f.jumps > 0) { f.jumps--; if (f.F) f.recJump = true; else f.vy = -13.5; }   // real-moves CPU: the game's own jump
+      else if (f.burst > 0) {
+        var dd = sgn(dxl || f.face); f.burst--;
+        if (f.F) { if (busy) { f.burst++; return; } f.act = { type: 'charge', v: 'up', hold: 0.24, dir: dd, t: 0 }; }   // the real Rising Dragon (once its last move is done)
+        else { f.vy = -15; f.vx = dd * 7; f.face = dd; }   // last resort
+      }
     }
   }
 
@@ -1238,9 +1249,8 @@
       (f.cd <= 0 && Math.random() < dt * 9 * L.aggr * moodK);
     if (gate && Math.random() >= L.err * (follow ? 0.3 : 1)) {
       var dir = sgn(qdx || f.face);
-      if (f.F) {                                                         // real moves: press S when you're in reach (up/down pick the variant)
-        if (adx < 2.4 && Math.abs(dy) < 2) { f.wantAtk = { dir: dir, v: dy < -1.1 ? 'up' : (dy > 1.1 && !f.onGround ? 'down' : '') }; inp.dir = 0; f.cd = rnd(L.cd * 0.35, L.cd * 0.8); }
-      } else {
+      if (f.F) { if (realPick(f, L, dir, dx, dy, adx)) inp.dir = 0; }   // real moves: the same buttons you press
+      else {
         var pick = chooseMove(P, L, dir, !f.onGround);
         if (pick) { startAtk(pick.name, dir); f.lastMove = pick.name; inp.dir = 0; }
       }
@@ -1253,28 +1263,70 @@
   // are the real ones. Its target is a stand-in for you; whatever the attack does to it becomes your
   // percent and launch. Knockback, ledges, dodges and respawns stay with this file, synced both ways.
   var REAL_CPU = { brawler: 1 };
+  // stop whatever its strike engine is doing, keeping its bookkeeping (an empty state would read as a
+  // character change and cancel the next thing it presses)
+  function realCancel(f) {
+    var s0 = f.F.strike;
+    if (s0) { s0.cur = null; s0.charge = null; s0.buffered = null; } else f.F.strike = { lastChar: f.char };
+  }
   function realSetup(f) {
     var g = G();
     f.F = g.fighterNew(f.char, f.x, f.y);
     f.tgt = mkEnt(); f.F.targets = [f.tgt];
     f.w = f.F.st.w || f.w; f.h = f.F.st.h || f.h;
-    f.relPending = false; f.tgtLock = 0;
+    f.act = null; f.tgtLock = 0;
+  }
+  // Pick what to press, the way a player would with Brawler's kit:
+  //  tap S = the punch combo (up/down/back change it), hold S then let go = a special (side METEOR FIST,
+  //  up RISING DRAGON, down EARTHQUAKE; longer hold = stronger), dash then S = a dash attack.
+  function realPick(f, L, dir, dx, dy, adx) {
+    if (f.act) return false;
+    var killy = me.pct > 85, air = !f.onGround, r = Math.random();
+    var A = null;
+    if (adx < 1.6 && dy < -1.4 && dy > -4.5) A = { type: 'charge', v: 'up', hold: killy ? 0.75 : rnd(0.25, 0.5) };            // you're above: Rising Dragon
+    else if (adx < 2.4 && Math.abs(dy) < 1.8) {
+      if (!air && (killy || r < 0.12 + 0.1 * L.kill)) A = { type: 'charge', v: Math.random() < 0.5 ? 'down' : 'side', hold: killy ? rnd(0.6, 0.8) : rnd(0.3, 0.55) };
+      else A = { type: 'tap', v: dy < -1.1 ? 'up' : (dy > 1.1 && air ? 'down' : '') };                                      // the combo
+    }
+    else if (!air && adx < 5 && Math.abs(dy) < 1.2) {
+      if (r < 0.35) A = { type: 'charge', v: 'side', hold: killy ? 0.7 : rnd(0.25, 0.45) };                                   // Meteor Fist covers the gap
+      else if (r < 0.65 && f.F.st.dashCharges > 0) A = { type: 'dash' };                                                      // dash in, punch out of it
+    }
+    if (!A) return false;
+    A.dir = dir; A.t = 0; f.act = A;
+    f.cd = A.type === 'tap' ? rnd(L.cd * 0.35, L.cd * 0.8) : rnd(L.cd * 1.2, L.cd * 2.2);
+    return true;
   }
   function realMove(g, P, dt, inp) {
     var f = foe, F = f.F, st = F.st, L = LV[f.lvl] || LV[2], cm = ch(f.char);
-    st.x = f.x; st.y = f.y; st.vx = f.vx; st.vy = f.vy; st.onGround = f.onGround;      // knockback / ledge / recovery moved our body
-    var atk = f.wantAtk; f.wantAtk = null;
+    // knockback / ledge / respawn moved our body outside the game's code: tell its strike engine that was on
+    // purpose, or its "teleported?" check cancels the next thing pressed (usually the recovery special)
+    if (Math.abs(st.x - f.x) > 0.5 || Math.abs(st.y - f.y) > 0.5) { if (F.strike) F.strike.teleported = true; }
+    st.x = f.x; st.y = f.y; st.vx = f.vx; st.vy = f.vy; st.onGround = f.onGround;
+    // the action in progress decides which buttons are down this frame
+    var A = f.act, press = false, release = false, dash = false, d = inp.dir;
     F.keys.clear();
-    var d = atk ? 0 : inp.dir;
+    if (A) {
+      A.t += dt; d = 0;
+      if (A.t <= dt + 1e-6) { st.lastMoveDir = A.dir; st.dashDir = A.dir; }
+      if (A.type === 'tap') { if (A.t <= dt + 1e-6) press = true; else { release = true; f.act = null; } }
+      else if (A.type === 'charge') {
+        if (A.t <= dt + 1e-6) press = true;
+        if (A.t >= A.hold) { release = true; f.act = null; }
+      } else if (A.type === 'dash') {
+        if (A.t <= dt + 1e-6) dash = true; else if (A.t > 0.12) { f.act = { type: 'tap', v: '', dir: A.dir, t: 0 }; }
+      }
+      // direction held while S is down picks the variant / which special
+      if (A.v === 'up') F.keys.add('arrowup'); else if (A.v === 'down') F.keys.add('arrowdown'); else if (A.v === 'side' && (A.type !== 'charge' || release)) d = A.dir;   // read at the moment S is let go
+    }
     if (d > 0) F.keys.add('d'); else if (d < 0) F.keys.add('a');
-    if (atk) { st.lastMoveDir = atk.dir; st.dashDir = atk.dir; if (atk.v === 'up') F.keys.add('w'); else if (atk.v === 'down') F.keys.add('arrowdown'); }
     var t = f.tgt; t.x = P.x; t.y = P.y; t.w = P.w; t.h = P.h; t.hp = BIG; t.vx = 0; t.vy = 0; t.hitFlash = 0; t.dead = false; t.stunTimer = 0;
-    var jump = inp.jump && (f.onGround || f.jumps > 0), rel = f.relPending;
-    f.relPending = !!atk;
+    var jump = (inp.jump || f.recJump) && !(A && A.type === 'charge'); f.recJump = false;   // the game counts its own jumps
     g.fighterRun(F, function () {
       if (jump) g.fighterJump();
-      if (rel) g.fighterRelease();
-      if (atk) g.fighterAttack();
+      if (dash) g.fighterDash();
+      if (press) g.fighterAttack();
+      if (release) g.fighterRelease();
       g.fighterUpdate(dt);
     });
     F.jp = false;
