@@ -57,7 +57,7 @@
     blastX: 26, blastTop: 22, blastBot: 12,
     respawnInv: 2.2, respawnHold: 2.6,
     shieldMax: 60, shieldDrain: 14, shieldRegen: 9, shieldBreakStun: 1.6,
-    dodgeT: 0.32, dodgeInv: 0.26, dodgeSpeed: 14, airDodgeT: 0.35,
+    dodgeT: 0.32, dodgeInv: 0.26, dodgeSpeed: 14, airDodgeT: 0.35, airDodgeSpeed: 13,
     ledgeInv: 1.0, ledgeMax: 3.0, ledgeCD: 0.55,
     spikeK: 1.18,        // meteor hits (launch straight down) on an airborne victim: extra downward speed
     spikeBounce: 0.8,    // a spiked victim that hits the floor bounces back up with this share of the speed
@@ -326,7 +326,7 @@
     fx = []; matchT = cfg.time || 0; clock = 0; banner = null;
     SM.active = true; SM.phase = 'countdown'; SM.cd = 3.2; SM.over = null; SM.lastCount = 4;
     buildHud(); showHud(true);
-    g.setMessage('🥊 Smash! Hold X to guard. Roll with X + a direction.');
+    g.setMessage('🥊 Smash! Hold 🛡️/X to guard. Hold it + a direction (or drag it) to roll / air dodge.');
   };
   function placeAt(s, p) { if (s === me) return; s.x = p.x - s.w / 2; s.y = p.y - s.h - 0.01; s.vx = s.vy = 0; }
 
@@ -370,19 +370,46 @@
   window.addEventListener('blur', function () { down = {}; });
   function held(k) { return !!down[k]; }
   function pressed(k) { return !!down[k] && !prevDown[k]; }
-  function dirIn() { return (held('d') || held('arrowright') ? 1 : 0) - (held('a') || held('arrowleft') ? 1 : 0); }
-  function jumpIn() { return pressed('w') || pressed('arrowup') || pressed(' '); }
+
+  // Touch input. The on-screen buttons only write to the game's mobileKeys, and suppressKeys() wipes those,
+  // so Smash keeps its own copy of which buttons each finger is on (read straight from the touch list).
+  var tch = { left: false, right: false, jump: false, down: false }, prevTch = { left: false, right: false, jump: false, down: false };
+  var TBTN = { leftBtn: 'left', rightBtn: 'right', doubleJumpBtn: 'jump', jumpBtn: 'jump', crouchBtn: 'down' };
+  var gStick = { id: null, x0: 0, y0: 0, x: 0, y: 0 }; // drag on the shield button = a direction for rolls / air dodges
+  function scanTouches(e) {
+    var n = { left: false, right: false, jump: false, down: false }, ts = e.touches || [];
+    for (var i = 0; i < ts.length; i++) {
+      for (var el = ts[i].target; el && el.id !== undefined; el = el.parentNode) { if (TBTN[el.id]) { n[TBTN[el.id]] = true; break; } }
+    }
+    tch.left = n.left; tch.right = n.right; tch.jump = n.jump; tch.down = n.down;
+  }
+  ['touchstart', 'touchend', 'touchcancel'].forEach(function (t) { window.addEventListener(t, scanTouches, { capture: true, passive: true }); });
+  window.addEventListener('blur', function () { tch.left = tch.right = tch.jump = tch.down = false; gStick.id = null; gStick.x = gStick.y = 0; });
+  var STICK_DEAD = 0.45;
+  function dirIn() {
+    var d = (held('d') || held('arrowright') || tch.right ? 1 : 0) - (held('a') || held('arrowleft') || tch.left ? 1 : 0);
+    if (d === 0 && Math.abs(gStick.x) > STICK_DEAD) d = gStick.x > 0 ? 1 : -1;
+    return d;
+  }
+  function upIn() { return held('w') || held('arrowup') || tch.jump || gStick.y < -STICK_DEAD; }
+  function downIn() { return held('arrowdown') || held('s') || tch.down || gStick.y > STICK_DEAD; }
+  function vDirIn() { return (downIn() ? 1 : 0) - (upIn() ? 1 : 0); }
+  function jumpIn() { return pressed('w') || pressed('arrowup') || pressed(' ') || (tch.jump && !prevTch.jump); }
 
   function suppressKeys(g) {
-    if (saved) return;
-    saved = { keys: [], mk: Object.assign({}, g.mobileKeys) };
-    MOVE_KEYS.forEach(function (k) { if (g.keys.has(k)) { saved.keys.push(k); g.keys.delete(k); } });
-    ['left', 'right', 'up', 'down', 'jump', 'dash', 'slash'].forEach(function (k) { g.mobileKeys[k] = false; });
+    if (!saved) {
+      saved = { keys: [], mk: Object.assign({}, g.mobileKeys) };
+      MOVE_KEYS.forEach(function (k) { if (g.keys.has(k)) { saved.keys.push(k); g.keys.delete(k); } });
+    }
+    // every frame: the touch buttons write mobileKeys again on each press, which used to leak through
+    ['left', 'right', 'up', 'jump'].forEach(function (k) { g.mobileKeys[k] = false; });
   }
   function restoreKeys() {
     var g = G(); if (!g) return;
-    if (saved) { saved = null; }
+    saved = null;
     MOVE_KEYS.forEach(function (k) { if (down[k]) g.keys.add(k); });
+    // give back the touch buttons that are still being held, or you had to lift and re-press to move again
+    if (g.mobileKeys) { g.mobileKeys.left = tch.left; g.mobileKeys.right = tch.right; g.mobileKeys.jump = tch.jump; g.mobileKeys.up = tch.jump; }
   }
 
   // ---------------------------------------------------------------- per-frame hooks
@@ -410,8 +437,19 @@
       P.vx = me.kvx;
       me.kvx = approach(me.kvx, 0, (P.onGround ? BAL.decayGround : BAL.decayAir) * dt);
     }
-    if (me.dodge > 0) P.vx = me.dodgeDir * BAL.dodgeSpeed * (me.dodge / BAL.dodgeT * 0.6 + 0.4);
+    if (me.dodge > 0) {
+      if (me.dodgeAir) { // directional air dodge: fly along the chosen direction, eases out near the end
+        var k = me.dodge / BAL.airDodgeT * 0.7 + 0.3;
+        P.vx = me.dodgeVX * BAL.airDodgeSpeed * k; P.vy = me.dodgeVY * BAL.airDodgeSpeed * k;
+      } else P.vx = me.dodgeDir * BAL.dodgeSpeed * (me.dodge / BAL.dodgeT * 0.6 + 0.4);
+    }
     if (me.guarding || me.guardBreak > 0) { if (P.onGround) P.vx = 0; }
+    // a ledge jump carries you back over the stage, or the game's own walk code zeroed the push and you fell onto the same ledge
+    if (me.ledgeJumpT > 0) {
+      me.ledgeJumpT -= dt;
+      if (me.hitstun > 0 || me.dodge > 0 || dirIn() === -me.ledgeJumpDir) me.ledgeJumpT = 0;
+      else if (P.vx * me.ledgeJumpDir < 6) P.vx = me.ledgeJumpDir * 6;
+    }
   };
   function approach(v, t, d) { return v < t ? Math.min(t, v + d) : Math.max(t, v - d); }
 
@@ -433,6 +471,7 @@
     camera(g, P, dt);
     hud();
     for (var k in down) prevDown[k] = down[k];
+    for (var t in tch) prevTch[t] = tch[t];
   };
 
   function timeUp() {
@@ -456,7 +495,7 @@
     var Ln = launch(h.ix, h.iy, me.pct, ch(me.char).w, h.k, h.fromX, P.x + P.w / 2, P.onGround);
     var kind = styleLaunch(Ln, classify(h.ix, h.iy), P.onGround, me);
     // survival DI: holding up/down/sideways bends the launch a little (max ~12 degrees)
-    var di = (held('w') || held('arrowup') ? -1 : 0) + (held('arrowdown') ? 1 : 0);
+    var di = vDirIn();
     if (di !== 0 || dirIn() !== 0) {
       var ang = Math.atan2(Ln.vy, Ln.vx), perp = (Ln.vx * (di) * 0 + 0);
       var inX = dirIn(), inY = di;
@@ -498,9 +537,15 @@
     if (P.onGround) { m.airDodged = false; }
     // shield + dodge (X key / on-screen button)
     var wantG = (held('x') || guardBtn) && SM.phase === 'fight';
-    if (m.dodge > 0) { m.dodge -= dt; P.hpInvuln = 0.05; if (m.dodge <= 0) { m.dodge = 0; if (m.dodgeAir) P.vx *= 0.3; } }
+    guardTap = guardBtn && !prevGuardBtn;
+    if (P.onGround) m.airDodgeQ = 0;
+    if (m.dodge > 0) { m.dodge -= dt; P.hpInvuln = 0.05; if (m.dodge <= 0) { m.dodge = 0; if (m.dodgeAir) { P.vx *= 0.3; P.vy *= 0.3; } } }
     else if (m.hitstun <= 0 && !m.ledge && m.guardBreak <= 0 && m.respawnHold <= 0) {
-      if (wantG && !P.onGround && !m.airDodged && (pressed('x') || !prevGuardBtn)) { startDodge(P, dirIn(), true); }
+      if (wantG && !P.onGround && !m.airDodged && (pressed('x') || (guardBtn && !prevGuardBtn) || m.airDodgeQ)) {
+        // on touch, give a quick drag on the shield button a moment to pick the direction
+        if (guardBtn && !pressed('x') && dirIn() === 0 && vDirIn() === 0 && (m.airDodgeQ || 0) < 0.07) m.airDodgeQ = (m.airDodgeQ || 0) + dt + 1e-4;
+        else { m.airDodgeQ = 0; startDodge(P, dirIn(), true, vDirIn()); }
+      }
       else if (wantG && P.onGround) {
         if (!m.guarding && m.shield > 6) { m.guarding = true; m.guardT = 0; }
         if (m.guarding) {
@@ -511,7 +556,7 @@
         }
       } else { m.guarding = false; }
     }
-    if (!wantG) m.guarding = false;
+    if (!wantG) { m.guarding = false; m.airDodgeQ = 0; }
     if (!m.guarding && m.guardBreak <= 0) m.shield = Math.min(BAL.shieldMax, m.shield + BAL.shieldRegen * dt);
     prevGuardBtn = guardBtn;
     // ledge
@@ -520,19 +565,24 @@
     // respawn platform hold
     if (m.respawnHold > 0) {
       m.respawnHold -= dt; m.respawnAge += dt; P.vx = 0; P.vy = 0; P.x = stage.respawn.x - P.w / 2; P.y = stage.respawn.y; P.onGround = false;
-      var act = held('a') || held('d') || held('arrowleft') || held('arrowright') || held('w') || held('arrowup') || held('s') || held(' ') || held('shift') || held('arrowdown');
+      var act = held('a') || held('d') || held('arrowleft') || held('arrowright') || held('w') || held('arrowup') || held('s') || held(' ') || held('shift') || held('arrowdown') || tch.left || tch.right || tch.jump;
       if (m.respawnHold <= 0 || (act && m.respawnAge > 0.35)) { m.respawnHold = 0; }
     }
     // blast zones
     var cx = P.x + P.w / 2, cy = P.y + P.h / 2, b = stage.blast;
     if (SM.phase === 'fight' && m.respawnHold <= 0 && (cx < b.left || cx > b.right || cy > b.bottom || cy < b.top)) koMe(g, P);
   }
-  var prevGuardBtn = false;
+  var prevGuardBtn = false, guardTap = false;
 
-  function startDodge(P, d, air) {
+  function startDodge(P, d, air, v) {
     var m = me;
     m.guarding = false; m.dodge = air ? BAL.airDodgeT : BAL.dodgeT; m.dodgeDir = d; m.dodgeAir = air; m.shield = Math.max(0, m.shield - 6);
-    if (air) { m.airDodged = true; if (d === 0) { P.vx *= 0.2; P.vy *= 0.2; } }
+    if (air) {
+      m.airDodged = true; v = v || 0;
+      var len = Math.hypot(d, v) || 1; m.dodgeVX = d / len; m.dodgeVY = v / len; // 8 directions, or 0,0 = dodge in place
+      if (d === 0 && v === 0) { P.vx *= 0.2; P.vy *= 0.2; }
+      P.isDashing = false;
+    }
     addFx('ring', P.x + P.w / 2, P.y + P.h / 2, '#cfd8ff');
     m.invuln = Math.max(m.invuln, BAL.dodgeInv);
   }
@@ -575,15 +625,17 @@
     hangPos(b, L);
     var toward = -L.side, act = null, d = isMe ? dirIn() : (s.ledgeAct || 0);
     if (isMe) {
+      // touch: jump button = ledge jump, press toward the stage (or tap the shield) = climb, away / crouch = let go
       if (jumpIn() && s.ledge.t > 0.12) act = 'jump';
-      else if ((d === toward || held('arrowup') || held('w')) && s.ledge.t > 0.12) act = 'climb';
-      else if ((d === L.side || held('arrowdown')) && s.ledge.t > 0.12) act = 'drop';
+      else if ((d === toward || held('arrowup') || held('w') || guardTap) && s.ledge.t > 0.12) act = 'climb';
+      else if ((d === L.side || held('arrowdown') || tch.down) && s.ledge.t > 0.12) act = 'drop';
     } else { act = s.ledgeCmd || null; }
     if (s.ledge.t > BAL.ledgeMax) act = 'drop';
     if (!act) return;
     releaseLedge(s); s.ledgeCD = BAL.ledgeCD;
+    if (isMe && act === 'drop' && tch.down && window._setCrouchToggle) window._setCrouchToggle(false); // crouch was only used to let go
     if (act === 'climb') { b.x = L.side < 0 ? L.x + 0.15 : L.x - b.w - 0.15; b.y = L.top - b.h - 0.01; b.vx = 0; b.vy = 0; s.invuln = Math.max(s.invuln, 0.5); b.onGround = true; }
-    else if (act === 'jump') { b.vy = -15; b.vx = toward * 4; s.invuln = Math.max(s.invuln, 0.25); }
+    else if (act === 'jump') { b.vy = -15; b.vx = toward * 4; s.invuln = Math.max(s.invuln, 0.25); if (isMe) { g.jumpCount = 0; me.ledgeJumpT = 0.3; me.ledgeJumpDir = toward; } }
     else { b.vy = 1; b.vx = L.side * 2; }
     s.ledgeCmd = null;
   }
@@ -1199,8 +1251,28 @@
       document.body.appendChild(hudEl);
       var bn = document.createElement('div'); bn.id = 'smBanner'; document.body.appendChild(bn);
       var gb = document.createElement('button'); gb.id = 'smGuard'; gb.type = 'button'; gb.textContent = '🛡️'; document.body.appendChild(gb);
-      var on = function (e) { e.preventDefault(); guardBtn = true; }, off = function (e) { e.preventDefault(); guardBtn = false; };
-      gb.addEventListener('touchstart', on, { passive: false }); gb.addEventListener('touchend', off); gb.addEventListener('touchcancel', off);
+      var on = function (e) {
+        e.preventDefault(); guardBtn = true;
+        var t = e.changedTouches && e.changedTouches[0];
+        if (t) { gStick.id = t.identifier; gStick.x0 = t.clientX; gStick.y0 = t.clientY; gStick.x = gStick.y = 0; }
+      };
+      var off = function (e) {
+        e.preventDefault();
+        var ts = e.touches || [], still = false;
+        for (var i = 0; i < ts.length; i++) if (ts[i].target === gb) still = true;
+        if (!still) { guardBtn = false; gStick.id = null; gStick.x = gStick.y = 0; }
+      };
+      // drag from the shield button like a little stick: ~20px picks a direction
+      var mv = function (e) {
+        e.preventDefault();
+        var ts = e.changedTouches || [];
+        for (var i = 0; i < ts.length; i++) if (ts[i].identifier === gStick.id) {
+          var dx = ts[i].clientX - gStick.x0, dy = ts[i].clientY - gStick.y0, l = Math.hypot(dx, dy);
+          if (l < 20) { gStick.x = gStick.y = 0; } else { gStick.x = dx / l; gStick.y = dy / l; }
+        }
+      };
+      gb.addEventListener('touchstart', on, { passive: false }); gb.addEventListener('touchmove', mv, { passive: false });
+      gb.addEventListener('touchend', off); gb.addEventListener('touchcancel', off);
       gb.addEventListener('mousedown', on); window.addEventListener('mouseup', off);
       document.getElementById('smQuit').addEventListener('click', function () { if (SM.net && SM.net.quit) SM.net.quit(); else SM.stop(); });
     }
