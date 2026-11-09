@@ -106,7 +106,7 @@
     // cd: breather between attacks  dmg: damage multiplier  pred: aims at where you are going  combo/punish: follow-ups and punishes it takes
     // edge: edgeguarding  di: survival DI  read: how much it adapts to your habits  nav: climbs platforms  kill: goes for kill moves
     // air: air dodges  mix: unpredictability  err: chance to miss a chance
-    1: { react: 0.38, aggr: 0.35, shield: 0.15, recover: 0.65, cd: 0.80, dmg: 0.85, pred: 0.2, combo: 0.25, punish: 0.25, edge: 0,   di: 0,   read: 0,   nav: 0.6, kill: 0.3, air: 0,    mix: 0.5,  err: 0.18 },
+    1: { react: 0.38, aggr: 0.35, shield: 0.15, recover: 0.8, cd: 0.80, dmg: 0.85, pred: 0.2, combo: 0.25, punish: 0.25, edge: 0,   di: 0,   read: 0,   nav: 0.6, kill: 0.3, air: 0,    mix: 0.5,  err: 0.18 },
     2: { react: 0.22, aggr: 0.62, shield: 0.38, recover: 0.88, cd: 0.50, dmg: 1.00, pred: 0.6, combo: 0.6,  punish: 0.6,  edge: 0.3, di: 0.5, read: 0.5, nav: 0.9, kill: 0.7, air: 0.4,  mix: 0.35, err: 0.07 },
     3: { react: 0.13, aggr: 0.92, shield: 0.65, recover: 1.00, cd: 0.28, dmg: 1.10, pred: 1.0, combo: 0.9,  punish: 0.9,  edge: 0.7, di: 1,   read: 1,   nav: 1,   kill: 1,   air: 0.75, mix: 0.2,  err: 0.02 }
   };
@@ -637,7 +637,7 @@
       if (!okX || !okY) continue;
       s.ledge = { L: L, t: 0 }; L.occ = s; s.ledgeInv = BAL.ledgeInv;
       b.vx = 0; b.vy = 0; b.onGround = false;
-      if (isMe) { g.jumpCount = 0; P.dashCharges = P.maxDashes; me.airDodged = false; } else { s.jumps = 2; s.burst = 1; }
+      if (isMe) { g.jumpCount = 0; P.dashCharges = P.maxDashes; me.airDodged = false; } else { s.jumps = 2; s.burst = 1; s.wallJumps = 0; s.recSide = false; }
       hangPos(b, L);
       addFx('ring', b.x + b.w / 2, L.top, '#9ad1ff');
       return true;
@@ -721,6 +721,12 @@
   function hitFoe(g, P, pct, ix, iy, k) {
     var f = foe;
     if (SM.phase !== 'fight') return;
+    if (f.kind === 'cpu' && f.sp && f.sp.shape === 'counter' && f.sp.fired && f.sp.t < 0.5) {   // Guardian's Counter: eat the hit, slash back
+      var c0 = ctr(f), o = f.sp.o, pc = ctr(P);
+      if (Math.hypot(pc.x - c0.x, pc.y - c0.y) < (o.r || 2.6)) spHit(o.dmg || 3, sgn(pc.x - c0.x || f.face) * (o.kx || 12), o.ky || -9, c0.x, 0);
+      spFx.push({ k: 'ring', x: c0.x, fy: f.y + f.h, R: o.r || 2.6, t: 0, life: 0.4, cols: f.sp.cols }); addFx('ring', c0.x, c0.y, '#ffffff');
+      f.spName = f.sp.name; f.spNameT = 1; f.sp.t = 0.5; g.shake(6); return;
+    }
     if (f.kind === 'remote') { if (SM.net && SM.net.sendHit) SM.net.sendHit(pct, ix, iy, P.x + P.w / 2, k); f.flash = 0.12; addFx('burst', f.x + f.w / 2, f.y + f.h / 2, '#fff', 10); return; }
     if (f.invuln > 0 || f.dodge > 0 || f.ledgeInv > 0 || f.respawnHold > 0 && f.lvl > 0 && false) return;
     if (f.respawnHold > 0) return;
@@ -976,20 +982,60 @@
   }
 
   // ---- getting back to the stage
+  // a solid tile within h tiles straight above the body (the stage's underside, a platform)
+  function ceilingAbove(f, h) {
+    for (var y = Math.floor(f.y) - 1; y >= Math.floor(f.y - h); y--)
+      for (var x = Math.floor(f.x); x <= Math.floor(f.x + f.w - 1e-4); x++) if (solidRect(tileAt(x, y))) return true;
+    return false;
+  }
+  function overVoid(f) { var y = f.y + f.h - 0.1; return groundBelow(f.x + 0.05, y, 24) === null && groundBelow(f.x + f.w / 2, y, 24) === null && groundBelow(f.x + f.w - 0.05, y, 24) === null; }
+  // Getting back: go around the stage's lip (never up into its underside), kick off walls, grab the ledge,
+  // and spend jumps while there's still room to make it instead of after it's already too low.
+  // a special used to get back (fast wind-up, still hits if you're in the way)
+  function spRecover(def, dir) {
+    var f = foe, o = def[2] || {};
+    f.sp = { slot: 'rec', name: def[0], shape: def[1], o: o, th: def[3], cols: spCols(def[3]), dmg: o.dmg || 4, t: 0, wind: 0.06, dir: dir, fired: false, rec: 0.18, recov: true };
+    f.spName = def[0]; f.spNameT = 0.9; f.face = dir;
+  }
   function cpuRecover(g, P, dt, L, inp, cx, cy) {
     var f = foe, tgt = nearestLedge(cx, cy);
-    var tx = tgt ? tgt.x + (tgt.side < 0 ? -0.45 : 0.45) : (stage.x0 + stage.x1) / 2, ty = tgt ? tgt.top : stage.top;
     if (!f.recWas) { f.recWas = true; f.recMiss = Math.random() > L.recover ? rnd(0.1, 0.3) : 0; f.recT = 0; }   // low levels sometimes hesitate
-    var dxl = tx - cx, below = f.y - ty;
-    inp.dir = Math.abs(dxl) < 0.15 ? 0 : sgn(dxl);
     if (f.ledgeCD <= 0 && tryGrab(g, f, f, false)) { f.vx = 0; return; }
+    var out = tgt ? (tgt.side < 0 ? -1 : 1) : sgn(cx - (stage.x0 + stage.x1) / 2) || 1;
+    var ty = tgt ? tgt.top : stage.top, below = f.y - ty;                 // > 0: head is under the ledge top
+    var hangX = tgt ? tgt.x + out * (0.25 + f.w / 2) : (stage.x0 + stage.x1) / 2;
+    var clearX = tgt ? tgt.x + out * (0.9 + f.w / 2) : hangX;            // fully outside the lip
+    var roof = ceilingAbove(f, 3);
+    var tx = (below > -0.3 || roof) ? clearX : below < -1.4 ? (tgt ? tgt.x - out * 1.5 : hangX) : hangX;
+    var dxl = tx - cx;
+    inp.dir = Math.abs(dxl) < 0.15 ? 0 : sgn(dxl);
+    if (roof && below > 0) inp.dir = out;                                 // under the stage: get out from under it first
     if (f.recMiss > 0) { f.recMiss -= dt; return; }
+    // wall jump: pushed into a wall while falling (the stage's side, a pillar): kick off it, up and away
+    if (f.wallHit && f.vy > -3 && (f.wallJumps || 0) < 3 && (f.wjCD || 0) <= 0) {
+      f.vy = -12.5; f.vx = -f.wallHit * 7; f.face = -f.wallHit; f.wallJumps = (f.wallJumps || 0) + 1; f.wjCD = 0.25; f.recT = 0.12;
+      addFx('ring', f.wallHit > 0 ? f.x + f.w : f.x, f.y + f.h / 2, '#cfe8ff'); return;
+    }
     f.recT -= dt;
     if (f.recT > 0) return;
     f.recT = Math.max(0.04, L.react * 0.35 * (0.6 + Math.random() * 0.8));
-    if (f.vy > -1 && below > 0.4) {                      // falling past the ledge: use a jump now
+    if (roof && below > -0.5) return;                                     // a jump here would just hit the ceiling
+    var far = Math.abs(clearX - cx);
+    var S = spSet(f), sd = S && S.side, su = S && S.up;
+    // a dashing side special covers distance without falling: use it when the stage is still far away
+    if (sd && sd[1] === 'dash' && !f.recSide && far > 2.6 && below < 3 && f.vy > -3) {
+      f.recSide = true; spRecover(sd, sgn(clearX - cx)); return;
+    }
+    // how high one more jump can still take us: jump when the ledge is about to go out of reach
+    var need = below + 0.4, reachJ = 2.1, late = need > reachJ * 0.45 || (far > 3 && f.vy > 3);
+    if (f.vy > -1 && (late || (below > 0.4))) {
       if (f.jumps > 0) { f.vy = -13.5; f.jumps--; }
-      else if (f.burst > 0) { var dd = sgn(dxl || f.face); f.vy = -15; f.vx = dd * 9; f.face = dd; f.burst--; }
+      else if (f.burst > 0) {                                             // last resort: an up special that lifts you, else a plain burst
+        var dd = sgn(dxl || f.face); f.burst--;
+        if (su && su[1] === 'pillar' && su[2] && su[2].rise) { spRecover(su, dd); return; }
+        f.vy = -15; f.vx = dd * 7; f.face = dd;
+        if (su) { f.spName = su[0]; f.spNameT = 0.8; spFx.push({ k: 'pillar', x: cx, fy: f.y + f.h + 0.5, w: 1.2, h: 3, t: 0, life: 0.4, cols: spCols(su[3]) }); }
+      }
     }
   }
 
@@ -1045,7 +1091,8 @@
       return;
     }
     f.shield = Math.min(BAL.shieldMax, f.shield + BAL.shieldRegen * dt);
-    if (f.onGround) { f.jumps = 2; f.burst = 1; f.airDodged = false; }
+    if (f.onGround) { f.jumps = 2; f.burst = 1; f.airDodged = false; f.wallJumps = 0; f.recSide = false; }
+    f.wjCD = Math.max(0, (f.wjCD || 0) - dt);
     f.think -= dt;
     // --- taunting: stands there showing off (and wide open). Hard CPUs snap out of it if you rush them.
     if (f.taunt > 0) {
@@ -1057,8 +1104,9 @@
     if (f.sp) { cpuSpecial(g, P, dt); checkFoeKO(g); return; }
     if (f.atk) { cpuAttack(g, P, dt); checkFoeKO(g); return; }
     // --- recovery: below the stage or outside it
-    var onStageX = cx > stage.x0 - 0.2 && cx < stage.x1 + 0.2;
-    var offstage = !f.onGround && (cy > stage.top + 1.5 && !onStageX || cy > stage.bottom + 0.5);
+    // offstage = nothing under us to land on (also true under the stage's lip, where the old check
+    // thought it was onstage and kept jumping into the underside)
+    var offstage = !f.onGround && (overVoid(f) || cy > stage.bottom + 0.5);
     var inp = { dir: 0, jump: false, speed: 1 };
     if (offstage) {
       // a committed edgeguard: swing at them on the way out, then come back
@@ -1104,6 +1152,7 @@
     // 1. react to a swing we noticed, after a reaction delay
     if (f.threatAt > 0 && now >= f.threatAt) {
       f.threatAt = 0;
+      if (SP_LOCAL[f.char] && SP_LOCAL[f.char].counter && (f.spCD || 0) <= 0 && Math.random() < 0.25 + 0.35 * L.read && cpuTrySpecial(P, L, sgn(dx || f.face))) { inp.dir = 0; return; }
       if (cpuDefend(L, T, dx, dy, adx, P)) { inp.dir = 0; return; }
     }
     // 2. where will they be? (a short look-ahead on their movement)
@@ -1228,12 +1277,24 @@
   var SP_CHANCE = { 1: 0.35, 2: 0.55, 3: 0.7 };        // when it decides to attack, how often a usable special wins
   var SP_WIND = { 1: 0.42, 2: 0.32, 3: 0.26 };
   function ctr(b) { return { x: b.x + b.w / 2, y: b.y + b.h / 2 }; }
+  // The Protagonist's specials aren't in the strike engine's table: his kit lives in his own move/ability
+  // system (Blade Dash, Skyfall Divide, Whirlwind Slash, Guardian's Counter), so it's described here.
+  var SP_LOCAL = {
+    cb_protagonist: {
+      side: ['BLADE DASH', 'dash', { len: 5, dmg: 4, kx: 11, ky: -5 }, 'blade'],
+      up: ['SKYFALL DIVIDE', 'pillar', { dmg: 4, launch: 17, rise: 13, w: 1.3, h: 4.2 }, 'blade'],
+      down: ['WHIRLWIND SLASH', 'ring', { dmg: 4, r: 2.4, kx: 12, ky: -8 }, 'blade'],
+      counter: ["GUARDIAN'S COUNTER", 'counter', { dmg: 3, r: 2.6, kx: 12, ky: -9 }, 'blade']
+    }
+  };
+  var SP_THEMES = { blade: ['#cfe8ff', '#ffffff'] };
   function spSet(f) {
+    if (SP_LOCAL[f.char]) return SP_LOCAL[f.char];
     var S = window.PPSpecials && window.PPSpecials.specials[f.char]; if (!S) return null;
     if (!S.side) { var ks = Object.keys(S); if (!f.form || !S[f.form]) f.form = ks[Math.floor(Math.random() * ks.length)]; S = S[f.form]; } // Elemental Spirit: one form per stock
     return S;
   }
-  function spCols(th) { var t = window.PPSpecials && window.PPSpecials.themes[th]; return t || ['#ffcf40', '#ef4444']; }
+  function spCols(th) { var t = SP_THEMES[th] || (window.PPSpecials && window.PPSpecials.themes[th]); return t || ['#ffcf40', '#ef4444']; }
   function spEval(def, f, P, L, dir) {
     var shape = def[1], o = def[2] || {}, c = ctr(f), p = ctr(P), dx = p.x - c.x, dy = p.y - c.y, adx = Math.abs(dx), dist = Math.hypot(dx, dy);
     if (Math.max(me.invuln, me.ledgeInv, me.respawnHold > 0 ? 9 : 0) > 0.45) return 0;
@@ -1245,6 +1306,7 @@
     else if (shape === 'meteor') { sc = Math.abs(adx - (o.dist || 4)) < 1.6 && Math.abs(dy) < 2 ? 1 : 0; kill = true; }
     else if (shape === 'strikes') sc = dist < (o.r || 7) && adx > 2 ? 0.9 : 0;
     else if (shape === 'vortex') { sc = adx < 3.6 && Math.abs(dy) < 2 ? 1 : 0; kill = true; }
+    else if (shape === 'counter') sc = f.onGround && f.mem && f.mem.oppAtk && adx < 2.6 && Math.abs(dy) < 1.8 ? 1.5 : 0;   // you're swinging at it right now
     else if (shape === 'volley') {
       if (o.radial) sc = dist < 3.5 ? 1 : 0;
       else if (o.roll) sc = f.onGround && adx > 1.5 && adx < 9 && Math.abs(dy) < 1.2 ? 1 : 0;
@@ -1259,10 +1321,10 @@
     var f = foe; if ((f.spCD || 0) > 0 || f.sp) return false;
     var S = spSet(f); if (!S) return false;
     var best = null, bs = 0;
-    ['side', 'up', 'down'].forEach(function (slot) { if (!S[slot]) return; var s = spEval(S[slot], f, P, L, dir); if (s > bs) { bs = s; best = slot; } });
+    ['side', 'up', 'down', 'counter'].forEach(function (slot) { if (!S[slot]) return; var s = spEval(S[slot], f, P, L, dir); if (s > bs) { bs = s; best = slot; } });
     if (!best || bs < 0.5 || Math.random() > (SP_CHANCE[f.lvl] || 0.45)) return false;
     var def = S[best], o = def[2] || {};
-    f.sp = { slot: best, name: def[0], shape: def[1], o: o, th: def[3], cols: spCols(def[3]), dmg: o.dmg || 4, t: 0, wind: SP_WIND[f.lvl] || 0.32, dir: dir, fired: false, rec: f.lvl >= 3 ? 0.32 : 0.42 };
+    f.sp = { slot: best, name: def[0], shape: def[1], o: o, th: def[3], cols: spCols(def[3]), dmg: o.dmg || 4, t: 0, wind: def[1] === 'counter' ? 0.01 : SP_WIND[f.lvl] || 0.32, dir: dir, fired: false, rec: def[1] === 'counter' ? 0.5 : f.lvl >= 3 ? 0.32 : 0.42 };
     f.spName = def[0]; f.spNameT = 1.1; f.face = dir; f.vx = 0;
     f.spCD = rnd(1.3, 2.8) * (f.lvl <= 1 ? 1.6 : 1);
     return true;
@@ -1310,7 +1372,7 @@
     } else if (s.shape === 'pillar') {
       var cx = c.x + d * 0.6, w = o.w || 1.6, hh = o.h || 4, fy = f.y + f.h;
       if (overlapP(cx - w / 2 - 0.3, fy - hh, w + 0.6, hh + 0.3)) spHit(s.dmg, d * 2, -(o.launch || 14), c.x, o.stun || o.freeze);
-      if (o.rise) { f.vy = -o.rise; f.onGround = false; }
+      if (o.rise) { f.vy = -(s.recov ? Math.max(15.5, o.rise * 1.2) : o.rise); f.vx = s.recov ? s.dir * 4 : f.vx; f.onGround = false; }
       spFx.push({ k: 'pillar', x: cx, fy: fy, w: w, h: hh, t: 0, life: 0.5, cols: s.cols });
     } else if (s.shape === 'ring') {
       if (!f.onGround) { s.ringWait = true; return; }
@@ -1372,6 +1434,10 @@
       var k = f.sp.t / f.sp.wind, c = ctr(f), x = c.x * T - cam.x, y = c.y * T - cam.y;
       ctx.save(); ctx.globalAlpha = 0.35 + 0.45 * k; ctx.strokeStyle = f.sp.cols[0]; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.arc(x, y, 34 - 14 * k, 0, 6.3); ctx.stroke(); ctx.restore();
+    }
+    if (f.sp && f.sp.shape === 'counter' && f.sp.fired && f.sp.t < 0.5) {     // counter stance: a steady guard shimmer
+      var cs = ctr(f); ctx.save(); ctx.globalAlpha = 0.6 + 0.3 * Math.sin(clock * 40); ctx.strokeStyle = f.sp.cols[0]; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(cs.x * T - cam.x, cs.y * T - cam.y, 26, 0, 6.3); ctx.stroke(); ctx.restore();
     }
     if (f.spNameT > 0 && f.spName) {
       var cc = ctr(f), nx = cc.x * T - cam.x, ny = f.y * T - cam.y - 18 - (f.taunt > 0 ? 30 : 0);
