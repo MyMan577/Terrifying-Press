@@ -3945,8 +3945,6 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
                    { id:'dash__ronin',           icon:'🌸', name:"Ronin's Edge",       cost:2, desc:'+1 dmg on every Blade Dash form, and landing a hit refunds part of the dash cooldown.', dmgAdd:1, cooldownRefund:true, color:'#ff9dc4', anim:'petaltrail' },
                    { id:'dash__phantom',         icon:'👻', name:'Phantom Edge',       cost:3, desc:'+2 dmg on every Blade Dash form, and landing a hit grants a brief window of invulnerability.', dmgAdd:2, iframeOnHit:true, color:'#c9c9ff', anim:'ghosttrail' } ],
   };
-  // Smash mode's CPU Protagonist builds a loadout from these
-  window.PPProtag = { moves: PROTAG_MOVE_DEFS, abilities: PROTAG_ABILITY_DEFS, maxLevel: PROTAG_LEVEL_REWARDS.length };
   const PROTAG_SKILLXP_PER_POINT = 60;
 
   let protagSkillPoints = Math.max(0, parseInt(localStorage.getItem('obby_protag_skillpoints') || '0'));
@@ -5244,6 +5242,59 @@ let srEchoFrames = [];
         for (const k of F) player[k] = keep[k];
         cam.x = kcx; cam.y = kcy; ctx = keepCtx; c2d.restore();
       }
+    },
+    // ---- More than one fighter ----
+    // The whole game is written around one `player`, one set of held keys, one character and one
+    // enemy list. A second fighter (Smash's CPU) keeps its own copy of all of that; fighterRun()
+    // swaps it in, runs the game's own code for it, and swaps you back. Every move, hitbox and effect
+    // is then the real one, and the fighter's targets are whatever it is given (in Smash: you).
+    fighterNew(char, x, y) {
+      const st = {};
+      for (const k of Object.keys(player)) { const v = player[k]; st[k] = Array.isArray(v) ? v.slice(0, 0) : v; }
+      Object.assign(st, { x, y, vx: 0, vy: 0, onGround: false, isDashing: false, dashTimer: 0, dashCooldown: 0, dashCharges: player.maxDashes,
+        punchTimer: 0, punchCooldown: 0, comboCount: 0, comboExpiry: 0, slashTimer: 0, hpInvuln: 0, dashInvuln: 0, respawnTimer: 0,
+        hp: player.maxHp, lastMoveDir: 1, dashDir: 1 });
+      return { char, st, keys: new Set(), mk: {}, jc: 0, jp: false, jjp: false, turbo: false, strike: null, targets: [] };
+    },
+    fighterRun(F, fn) {
+      const keepP = {}; for (const k of Object.keys(player)) keepP[k] = player[k];
+      const keepKeys = [...keys], keepMk = Object.assign({}, mobileKeys), keepEn = enemies.splice(0);
+      const keep = { sc: selectedCharacter, jc: jumpCount, jp: jumpPressed, jjp: jumpJustPressed, turbo: turboCharging };
+      for (const k of Object.keys(player)) if (!(k in F.st)) player[k] = undefined;
+      Object.assign(player, F.st);
+      keys.clear(); F.keys.forEach(k => keys.add(k));
+      for (const k in mobileKeys) mobileKeys[k] = !!F.mk[k];
+      selectedCharacter = F.char; jumpCount = F.jc; jumpPressed = F.jp; jumpJustPressed = F.jjp; turboCharging = F.turbo;
+      enemies.push(...F.targets);
+      if (window.PPStrike && window.PPStrike._swap) F._realStrike = window.PPStrike._swap(F.strike);
+      window._fighterPass = F;
+      try { fn(); }
+      finally {
+        window._fighterPass = null;
+        if (window.PPStrike && window.PPStrike._swap) F.strike = window.PPStrike._swap(F._realStrike);
+        F._realStrike = null;
+        F.st = {}; for (const k of Object.keys(player)) F.st[k] = player[k];
+        F.jc = jumpCount; F.jp = jumpPressed; F.jjp = jumpJustPressed; F.turbo = turboCharging;
+        enemies.splice(0); enemies.push(...keepEn);
+        for (const k of Object.keys(player)) player[k] = (k in keepP) ? keepP[k] : undefined;
+        keys.clear(); keepKeys.forEach(k => keys.add(k));
+        Object.assign(mobileKeys, keepMk);
+        selectedCharacter = keep.sc; jumpCount = keep.jc; jumpPressed = keep.jp; jumpJustPressed = keep.jjp; turboCharging = keep.turbo;
+      }
+    },
+    // the game's own per-frame code and input actions, for use inside fighterRun()
+    fighterUpdate(dt) { update(dt); if (window.PPStrike && window.PPStrike._tick) window.PPStrike._tick(dt); },
+    fighterAttack() { performAttackAction(); },
+    fighterRelease() { if (window.PPStrike) window.PPStrike.release(); },   // S let go: charged/strike-engine attacks fire on release
+    fighterDash() { if (player.dashCharges > 0 && player.dashCooldown <= 0) activateDash(); },
+    fighterJump() { jumpJustPressed = true; jumpPressed = true; },
+    fighterDraw(F) {
+      const keepCtx = ctx;
+      this.fighterRun(F, () => {
+        try { drawPlayer(); } catch (e) {}
+        try { if (window.PPStrike && window.PPStrike._draw) window.PPStrike._draw(ctx, performance.now() / 1000, cam); } catch (e) {}
+      });
+      ctx = keepCtx;
     },
     // Draw the other player: borrow `player` and the character for one drawPlayer() call.
     drawAs(s, label) {
@@ -9927,7 +9978,7 @@ function resetPlayer() {
       }
     }
   }
-  function setMessage(text) { message.textContent = text; }
+  function setMessage(text) { if (window._fighterPass) return; message.textContent = text; }   // a second fighter's moves don't talk to you
 
   toolGroups.forEach(group => {
     const hdr = document.createElement('div');
@@ -13354,7 +13405,7 @@ function applyTileEffect(tile) {
     }
     
 
-    if (mode === 'play') {
+    if (mode === 'play' && !window._fighterPass) {   // world: once per frame, not in a second fighter's pass
       for (const m of movers) {
         const _mt = world.tiles.get(m.id);
         if (_mt && _mt.active === false) continue; 
@@ -13372,7 +13423,7 @@ function applyTileEffect(tile) {
     
     
     
-    for (const tile of [...getTilesByType('crumble'),...getTilesByType('sawH'),...getTilesByType('sawV'),...getTilesByType('plate'),...getTilesByType('switch')]) {
+    if (!window._fighterPass) for (const tile of [...getTilesByType('crumble'),...getTilesByType('sawH'),...getTilesByType('sawV'),...getTilesByType('plate'),...getTilesByType('switch')]) {
       if (tile.type === 'crumble') {
         if (tile.crumbleState === 'shaking') { tile.crumbleTimer -= dt; if (tile.crumbleTimer <= 0) { tile.crumbleState = 'gone'; tile.crumbleTimer = 2.5; } }
         else if (tile.crumbleState === 'gone') { tile.crumbleTimer -= dt; if (tile.crumbleTimer <= 0) tile.crumbleState = 'active'; }
@@ -13450,7 +13501,7 @@ function applyTileEffect(tile) {
       }
     }
 
-    screenShake = Math.max(0, screenShake - dt * 30);
+    if (!window._fighterPass) screenShake = Math.max(0, screenShake - dt * 30);
     if (window._settingScreenShake === false) screenShake = 0;
     shakeAngle += dt * 47; 
     if (dashFlash > 0) dashFlash -= dt * 5;
@@ -13462,7 +13513,7 @@ function applyTileEffect(tile) {
     if (!player.isDashing && player.onGround && Math.abs(player.vx) > 0.5 && mode === 'play' && window.cosmeticWalkTrail) {
       cosmeticWalkTrail(player.x*TILE, (player.y + player.h)*TILE);
     }
-    for (let i = particles.length - 1; i >= 0; i--) { 
+    if (!window._fighterPass) for (let i = particles.length - 1; i >= 0; i--) { 
       const p = particles[i]; 
       if (!isFinite(p.x) || !isFinite(p.y) || !isFinite(p.vx) || !isFinite(p.vy)) {
         particles.splice(i, 1);
@@ -15612,9 +15663,11 @@ if (grapple.active && grapple.mode === 'swing') {
            if (player._protagRetaliateTimer > 0) { player._protagRetaliateTimer = Math.max(0, player._protagRetaliateTimer - dt); }
          }
 
+         if (!window._fighterPass) {   // the camera follows you, not a second fighter
          const targetX = player.x * TILE - viewW * 0.5, targetY = player.y * TILE - viewH * 0.45;
          cam.x = lerp(cam.x, clamp(targetX, 0, WORLD_W * TILE - viewW), 0.12);
          cam.y = lerp(cam.y, clamp(targetY, 0, WORLD_H * TILE - viewH), 0.12);
+         }
       }
       
       
@@ -17591,7 +17644,7 @@ d.vy *= 0.85;
       }
  const SOLID_TYPES = new Set(['solid','mover','ice','crumble','half','oneWayL','oneWayR','oneWayD']);
       
-      for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
+      if (!window._fighterPass) for (let i = enemyProjectiles.length - 1; i >= 0; i--) {
         const proj = enemyProjectiles[i];
         proj.x += proj.vx * dt;
         proj.y += proj.vy * dt;
@@ -34317,6 +34370,7 @@ function resolveCollisions(axis, dt) {
   }
 
   function setMessage(text) {
+    if (window._fighterPass) return;   // a second fighter's moves don't talk to you
     if (window._setMessage) window._setMessage(text);
   }
 
@@ -40633,8 +40687,6 @@ window._claimLBro = function() {
       stone: { side: ['BOULDER ROLL', 'volley', { dmg: 6, n: 1, roll: true, speed: 11, life: 1.6, size: 0.6, pierce: 4, style: 'rock' }, 'stone'], up: ['STONE SPIRE', 'pillar', { dmg: 5, launch: 17, w: 1.4, style: 'rock' }, 'stone'], down: ['TECTONIC SLAM', 'ring', { dmg: 5, r: 3.6, waves: 2, kx: 10, style: 'rock' }, 'stone'] },
     },
   };
-  // Smash mode's CPU reads these to use the same specials (names, shapes, ranges, colours)
-  window.PPSpecials = { specials: SPECIALS, themes: THEMES };
   function specialFor(ch, s) {
     let set = SPECIALS[ch]; if (!set) return null;
     if (ch === 'formSwitcher') set = set[s.variant] || set.flame;
@@ -40817,6 +40869,15 @@ window._claimLBro = function() {
       ctx.translate(W / 2 + r.ox, H + r.oy); ctx.rotate(r.lean); ctx.scale(r.sx, r.sy); ctx.translate(-W / 2, -H);
     },
     cancel() { cur = null; buffered = null; charge = null; },
+    // A second fighter (Smash CPU) keeps its own copy of this engine's state: swap it in, run, swap back.
+    _swap(s) {
+      const out = { cur, buffered, charge, lastPX, lastPY, lastChar, teleported, fx: fx.splice(0), sfx: sfx.splice(0), timers: timers.splice(0), sprojs: sprojs.splice(0), vortexes: vortexes.splice(0) };
+      s = s || {};
+      cur = s.cur || null; buffered = s.buffered || null; charge = s.charge || null;
+      lastPX = s.lastPX != null ? s.lastPX : null; lastPY = s.lastPY != null ? s.lastPY : null; lastChar = s.lastChar != null ? s.lastChar : null; teleported = !!s.teleported;
+      if (s.fx) fx.push(...s.fx); if (s.sfx) sfx.push(...s.sfx); if (s.timers) timers.push(...s.timers); if (s.sprojs) sprojs.push(...s.sprojs); if (s.vortexes) vortexes.push(...s.vortexes);
+      return out;
+    },
     // some fighters (the Brawler) may jump out of their recovery
     cancelEndlag() { if (cur && cur.phase === 'endlag') cur = null; },
     chargePower() { return charge ? Math.max(0, Math.min(1, (nowS() - charge.start - CHARGE_MIN) / (CHARGE_FULL - CHARGE_MIN))) : 0; },
@@ -40825,7 +40886,7 @@ window._claimLBro = function() {
   };
   window.PPStrike = API;
 
-  (window._rafHubTickers = window._rafHubTickers || []).push(function _ppStrikeTick(dt) {
+  (window._rafHubTickers = window._rafHubTickers || []).push(API._tick = function _ppStrikeTick(dt) {
     const p = P();
     if (!p || !playing() || window.selectedCharacter !== lastChar) { lastChar = window.selectedCharacter; API.cancel(); lastPX = null; fx.length = 0; sfx.length = 0; timers.length = 0; sprojs.length = 0; vortexes.length = 0; return; }
     // respawned or teleported
@@ -40880,6 +40941,9 @@ window._claimLBro = function() {
   const _prevDraw = window.drifterDrawHook;
   window.drifterDrawHook = function (ctx, now2, cam) {
     if (_prevDraw) _prevDraw(ctx, now2, cam);
+    API._draw(ctx, now2, cam);
+  };
+  API._draw = function (ctx, now2, cam) {
     const p = P(); if (!p || !playing()) return;
     if (!cur && !charge && !fx.length && !sfx.length && !sprojs.length && !vortexes.length && !foes().some(e => e._ppBurn > 0 || e._ppFrozen > 0)) return;
     try {
