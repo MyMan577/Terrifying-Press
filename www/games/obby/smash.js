@@ -333,7 +333,7 @@
     P.x = stage.spawns[0].x - P.w / 2; P.y = stage.spawns[0].y - P.h - 0.01; P.vx = P.vy = 0;
     if (g.enemies.indexOf(foe.ent) < 0 && foe.kind === 'cpu') g.enemies.push(foe.ent);
     if (foe.kind === 'remote') g.enemies.push(foe.ent);
-    fx = []; matchT = cfg.time || 0; clock = 0; banner = null;
+    fx = []; spFx = []; matchT = cfg.time || 0; clock = 0; banner = null;
     SM.active = true; SM.phase = 'countdown'; SM.cd = 3.2; SM.over = null; SM.lastCount = 4;
     buildHud(); showHud(true);
     g.setMessage('🥊 Smash! Hold 🛡️/X to guard. Hold it + a direction (or drag it) to roll / air dodge.');
@@ -490,6 +490,10 @@
     hud();
     for (var k in down) prevDown[k] = down[k];
     for (var t in tch) prevTch[t] = tch[t];
+    // pre() sets a tiny hpInvuln so the game's own damage can't touch you during update(). Clear it again
+    // before drawing: the game draws any hpInvuln as the hurt-flash and the emotes read it as "just got hit",
+    // which made you flash all match and cancelled every emote.
+    if (P.hpInvuln > 0 && P.hpInvuln <= 0.011) P.hpInvuln = 0;
   };
 
   function timeUp() {
@@ -522,6 +526,7 @@
       var sp = Math.hypot(Ln.vx, Ln.vy); Ln.vx = Math.cos(ang) * sp; Ln.vy = Math.sin(ang) * sp;
     }
     me.kvx = Ln.vx; P.vx = Ln.vx; P.vy = Ln.vy; me.hitstun = Ln.stun; me.flash = 0.14;
+    if (h.stun) me.hitstun = Math.max(me.hitstun, Math.min(1.1, h.stun * 0.45));   // stun / freeze specials hold you a bit longer
     if (Ln.vy < -2 || Ln.L > 14) { P.onGround = false; P.y -= 0.06; }
     releaseLedge(me); me.dodge = 0; me.guarding = false;
     P.isDashing = false;
@@ -728,7 +733,7 @@
     var Ln = launch(ix, iy, f.pct, 1.0, k, P.x + P.w / 2, f.x + f.w / 2, f.onGround);
     var kind = styleLaunch(Ln, classify(ix, iy), f.onGround, f);
     if (f.lvl >= 2 && stage) cpuDI(Ln, f, LV[f.lvl] || LV[2]);
-    f.kvx = Ln.vx; f.vx = Ln.vx; f.vy = Ln.vy; f.hitstun = Ln.stun; f.flash = 0.14; f.atk = null; f.guarding = false; f.taunt = 0;
+    f.kvx = Ln.vx; f.vx = Ln.vx; f.vy = Ln.vy; f.hitstun = Ln.stun; f.flash = 0.14; f.atk = null; f.guarding = false; f.taunt = 0; f.sp = null;
     if (Ln.vy < -2 || Ln.L > 14) { f.onGround = false; f.y -= 0.06; }
     releaseLedge(f);
     addFx('burst', f.x + f.w / 2, f.y + f.h / 2, pctColor(f.pct), Ln.L);
@@ -746,6 +751,7 @@
     readHit(g, P, dt);
     if (SM.phase !== 'fight') { f.vx = 0; f.vy = 0; return; }
     cpuStep(g, P, dt);
+    spTick(g, P, dt);
     var e = f.ent; e.x = f.x; e.y = f.y;
   }
 
@@ -761,6 +767,7 @@
     f.respawnHold = f.lvl > 0 ? 2.0 : 1.0; f.invuln = BAL.respawnInv; f.shield = BAL.shieldMax; f.guardBreak = 0; f.dodge = 0;
     f.jumps = 2; f.burst = 1;
     f.chasing = false; f.threatAt = 0; f.punishUntil = 0; f.airDodged = false; f.recWas = false; f.atk = null; f.taunt = 0; f.tauntQ = false;
+    f.sp = null; f.form = null;                                       // Elemental Spirit picks a new form each stock
   }
 
   // -------- CPU brain
@@ -781,6 +788,7 @@
     f.mem = cpuMemInit(); f.airDodged = false; f.lastMove = ''; f.threatAt = 0; f.punishUntil = 0; f.punishOK = false; f.comboOK = false;
     f.chasing = false; f.recT = 0; f.recMiss = 0; f.recWas = false; f.navPl = null; f.navT = 0; f.jumpCD = 0; f.ledgeWait = 0;
     f.taunt = 0; f.tauntQ = false; f.tauntTxt = ''; f.wanderX = null; f.preShieldCD = 0;
+    f.sp = null; f.spCD = 1.5; f.form = null; f.spNameT = 0;
   }
   function tendency(m) {
     var tot = m.shieldN + m.rollN + m.atkN + m.airN + 3;
@@ -987,7 +995,7 @@
 
   function cpuStep(g, P, dt) {
     var f = foe, L = LV[f.lvl] || LV[2];
-    f.invuln = Math.max(0, f.invuln - dt); f.flash = Math.max(0, f.flash - dt); f.cd = Math.max(0, f.cd - dt);
+    f.invuln = Math.max(0, f.invuln - dt); f.flash = Math.max(0, f.flash - dt); f.cd = Math.max(0, f.cd - dt); f.spCD = Math.max(0, (f.spCD || 0) - dt);
     f.ledgeCD = Math.max(0, f.ledgeCD - dt); f.ledgeInv = Math.max(0, f.ledgeInv - dt); f.drop = Math.max(0, f.drop - dt);
     if (f.guardBreak > 0) f.guardBreak -= dt;
     var b = stage.blast, cx = f.x + f.w / 2, cy = f.y + f.h / 2;
@@ -1046,6 +1054,7 @@
       checkFoeKO(g); return;
     }
     // --- attack in progress
+    if (f.sp) { cpuSpecial(g, P, dt); checkFoeKO(g); return; }
     if (f.atk) { cpuAttack(g, P, dt); checkFoeKO(g); return; }
     // --- recovery: below the stage or outside it
     var onStageX = cx > stage.x0 - 0.2 && cx < stage.x1 + 0.2;
@@ -1063,6 +1072,7 @@
     } else {
       f.recWas = false;
       cpuBrain(g, P, dt, L, inp, dx, dy, adx, cx, cy, px, py);
+      if (f.sp) { cpuSpecial(g, P, dt); return; }
       if (f.atk) { cpuAttack(g, P, dt); return; }
     }
     // --- apply movement
@@ -1203,9 +1213,194 @@
     var gate = ((punish || follow) && f.cd <= 0.12) ||
       (f.cd <= 0 && Math.random() < dt * 9 * L.aggr * moodK);
     if (gate && Math.random() >= L.err * (follow ? 0.3 : 1)) {
-      var dir = sgn(qdx || f.face), pick = chooseMove(P, L, dir, !f.onGround);
+      var dir = sgn(qdx || f.face);
+      if (cpuTrySpecial(P, L, dir)) { inp.dir = 0; return; }
+      var pick = chooseMove(P, L, dir, !f.onGround);
       if (pick) { startAtk(pick.name, dir); f.lastMove = pick.name; inp.dir = 0; }
     }
+  }
+
+  // ---------------------------------------------------------------- CPU specials
+  // The CPU uses the same three specials (side / up / down) its fighter has in the main game
+  // (window.PPSpecials, from the strike engine): same names, shapes, ranges, damage and colours.
+  // They are re-created here so they can hit you, with a short, readable wind-up and the name called out.
+  var spFx = [];                                       // visuals + delayed hits (they outlive the cast)
+  var SP_CHANCE = { 1: 0.35, 2: 0.55, 3: 0.7 };        // when it decides to attack, how often a usable special wins
+  var SP_WIND = { 1: 0.42, 2: 0.32, 3: 0.26 };
+  function ctr(b) { return { x: b.x + b.w / 2, y: b.y + b.h / 2 }; }
+  function spSet(f) {
+    var S = window.PPSpecials && window.PPSpecials.specials[f.char]; if (!S) return null;
+    if (!S.side) { var ks = Object.keys(S); if (!f.form || !S[f.form]) f.form = ks[Math.floor(Math.random() * ks.length)]; S = S[f.form]; } // Elemental Spirit: one form per stock
+    return S;
+  }
+  function spCols(th) { var t = window.PPSpecials && window.PPSpecials.themes[th]; return t || ['#ffcf40', '#ef4444']; }
+  function spEval(def, f, P, L, dir) {
+    var shape = def[1], o = def[2] || {}, c = ctr(f), p = ctr(P), dx = p.x - c.x, dy = p.y - c.y, adx = Math.abs(dx), dist = Math.hypot(dx, dy);
+    if (Math.max(me.invuln, me.ledgeInv, me.respawnHold > 0 ? 9 : 0) > 0.45) return 0;
+    var sc = 0, kill = false;
+    if (shape === 'beam') { sc = adx > 1.2 && adx < (o.len || 5) && Math.abs(dy) < Math.max(0.9, (o.w || 0.8) * 0.9) ? 1 : 0; kill = (o.kx || 0) >= 12; }
+    else if (shape === 'dash') sc = f.onGround && adx > 1.5 && adx < (o.len || 4.5) + 0.5 && Math.abs(dy) < 1 && groundBelow(c.x + dir * (o.len || 4.5), f.y + f.h - 0.2, 3) !== null ? 1 : 0;
+    else if (shape === 'pillar') { sc = adx < (o.w || 1.6) / 2 + 1.1 && dy < 0.6 && dy > -(o.h || 4) ? (P.onGround ? 0.9 : 1.3) : 0; kill = true; }
+    else if (shape === 'ring') { var R = o.r || 3; sc = f.onGround ? (adx < R && Math.abs(dy) < 1.4 ? 1 : 0) : (dy > 0 && dy < 6 && adx < R ? 0.8 : 0); kill = (o.kx || 8) >= 9; }
+    else if (shape === 'meteor') { sc = Math.abs(adx - (o.dist || 4)) < 1.6 && Math.abs(dy) < 2 ? 1 : 0; kill = true; }
+    else if (shape === 'strikes') sc = dist < (o.r || 7) && adx > 2 ? 0.9 : 0;
+    else if (shape === 'vortex') { sc = adx < 3.6 && Math.abs(dy) < 2 ? 1 : 0; kill = true; }
+    else if (shape === 'volley') {
+      if (o.radial) sc = dist < 3.5 ? 1 : 0;
+      else if (o.roll) sc = f.onGround && adx > 1.5 && adx < 9 && Math.abs(dy) < 1.2 ? 1 : 0;
+      else sc = adx > 1.5 && adx < (o.speed || 16) * (o.life || 0.6) && Math.abs(dy) < 1.5 ? 1 : 0;
+    }
+    if (!sc) return 0;
+    if (kill && me.pct > 90) sc += 0.6 * L.kill;                     // the big ones finish stocks
+    if (me.guarding && me.shield > 35) sc *= 0.4;
+    return sc * (0.7 + Math.random() * 0.6);
+  }
+  function cpuTrySpecial(P, L, dir) {
+    var f = foe; if ((f.spCD || 0) > 0 || f.sp) return false;
+    var S = spSet(f); if (!S) return false;
+    var best = null, bs = 0;
+    ['side', 'up', 'down'].forEach(function (slot) { if (!S[slot]) return; var s = spEval(S[slot], f, P, L, dir); if (s > bs) { bs = s; best = slot; } });
+    if (!best || bs < 0.5 || Math.random() > (SP_CHANCE[f.lvl] || 0.45)) return false;
+    var def = S[best], o = def[2] || {};
+    f.sp = { slot: best, name: def[0], shape: def[1], o: o, th: def[3], cols: spCols(def[3]), dmg: o.dmg || 4, t: 0, wind: SP_WIND[f.lvl] || 0.32, dir: dir, fired: false, rec: f.lvl >= 3 ? 0.32 : 0.42 };
+    f.spName = def[0]; f.spNameT = 1.1; f.face = dir; f.vx = 0;
+    f.spCD = rnd(1.3, 2.8) * (f.lvl <= 1 ? 1.6 : 1);
+    return true;
+  }
+  function spHit(pctDmg, ix, iy, srcX, stun) {
+    var f = foe, L = LV[f.lvl] || LV[2], cm = ch(f.char);
+    var pct = Math.min(BAL.maxPctHit, pctDmg * BAL.pctPerDmg * 0.8 * L.dmg * cm.d);
+    return hitMe({ pct: pct, ix: ix, iy: iy, fromX: srcX, k: cm.k, stun: stun || 0 });
+  }
+  function overlapP(x, y, w, h) { var P = G().player; return x < P.x + P.w && x + w > P.x && y < P.y + P.h && y + h > P.y; }
+  function cpuSpecial(g, P, dt) {
+    var f = foe, s = f.sp, o = s.o, c = ctr(f);
+    s.t += dt;
+    if (!s.fired && s.t < s.wind) {                                  // wind-up: plant (or hang in the air a moment)
+      f.vx = approach(f.vx, 0, 60 * dt);
+      f.vy = f.onGround ? Math.min(BAL.fall, f.vy + BAL.grav * dt) : Math.min(2, f.vy + BAL.grav * dt * 0.3);
+      moveBody(f, dt); return;
+    }
+    if (!s.fired) { s.fired = true; s.t = 0; spFire(g, P, s, f, c); }
+    if (s.shape === 'dash' && s.t < 0.22) {
+      f.vx = s.dir * (o.len || 4.5) / 0.22; f.vy = 0; moveBody(f, dt); f.invuln = Math.max(f.invuln, 0.02);
+      if (!s.hit && overlapP(f.x - 0.3, f.y - 0.1, f.w + 0.6, f.h + 0.2)) { s.hit = true; spHit(s.dmg, s.dir * (o.kx || 10), o.ky != null ? o.ky : -5, c.x, o.stun); }
+      spFx.push({ k: 'trail', x: c.x, y: c.y, t: 0, life: 0.25, cols: s.cols });
+      return;
+    }
+    if (s.ringWait) {                                                // ring from the air: dive, then the shockwave on landing
+      f.vy = 25; moveBody(f, dt);
+      if (f.onGround || s.t > 1.2) { s.ringWait = false; s.t = 0; spRing(s, f); }
+      return;
+    }
+    f.vx = approach(f.vx, 0, (f.onGround ? 40 : 10) * dt); f.vy = Math.min(BAL.fall, f.vy + BAL.grav * dt); moveBody(f, dt);
+    if (s.t >= s.rec) f.sp = null;
+  }
+  function spRing(s, f) {
+    var o = s.o, x0 = f.x + f.w / 2, fy = f.y + f.h, R = o.r || 3;
+    for (var wv = 0; wv < (o.waves || 1); wv++) spFx.push({ k: 'ringT', at: clock + wv * 0.2, x: x0, fy: fy, R: R * (1 + wv * 0.35), dmg: wv ? Math.ceil(s.dmg * 0.6) : s.dmg, o: o, cols: s.cols, t: 0, life: 9 });
+  }
+  function spFire(g, P, s, f, c) {
+    var o = s.o, d = s.dir, cast = { hit: false };
+    g.shake(4);
+    if (s.shape === 'beam') {
+      var len = o.len || 5, h = Math.max(0.6, (o.w || 0.8) * 1.1), x0 = d > 0 ? c.x : c.x - len;
+      if (overlapP(x0, c.y - h / 2, len, h)) spHit(s.dmg, d * (o.kx || 9), o.ky != null ? o.ky : -4, c.x, o.stun || o.freeze);
+      spFx.push({ k: 'beam', x: x0, y: c.y - h / 2, w: len, h: h, t: 0, life: 0.3, cols: s.cols });
+    } else if (s.shape === 'pillar') {
+      var cx = c.x + d * 0.6, w = o.w || 1.6, hh = o.h || 4, fy = f.y + f.h;
+      if (overlapP(cx - w / 2 - 0.3, fy - hh, w + 0.6, hh + 0.3)) spHit(s.dmg, d * 2, -(o.launch || 14), c.x, o.stun || o.freeze);
+      if (o.rise) { f.vy = -o.rise; f.onGround = false; }
+      spFx.push({ k: 'pillar', x: cx, fy: fy, w: w, h: hh, t: 0, life: 0.5, cols: s.cols });
+    } else if (s.shape === 'ring') {
+      if (!f.onGround) { s.ringWait = true; return; }
+      spRing(s, f);
+    } else if (s.shape === 'meteor') {
+      var tx = c.x + d * (o.dist || 4), gy = groundBelow(tx, f.y - 2, 16); if (gy === null) gy = f.y + f.h;
+      spFx.push({ k: 'meteorT', at: clock + 0.42, x: tx, gy: gy, R: o.r || 2.4, dmg: s.dmg, cols: s.cols, t: 0, life: 9 });
+    } else if (s.shape === 'strikes') {
+      for (var i = 0; i < (o.n || 3); i++) spFx.push({ k: 'strikeT', aimAt: clock + i * 0.25, at: clock + i * 0.25 + 0.38, x: null, dmg: s.dmg, o: o, cols: s.cols, t: 0, life: 9 });
+    } else if (s.shape === 'vortex') {
+      spFx.push({ k: 'vortex', x: c.x + d * 1.6, y: c.y - 0.2, R: o.r || 2.8, dmg: s.dmg, cols: s.cols, t: 0, life: 0.85 });
+    } else if (s.shape === 'volley') {
+      var n = o.n || 5, sp = o.speed || 16;
+      for (var j = 0; j < n; j++) {
+        var ang = o.radial ? j * Math.PI * 2 / n : (d > 0 ? 0 : Math.PI) + (j - (n - 1) / 2) * (o.spread || 0.16);
+        spFx.push({ k: 'proj', x: c.x, y: o.roll ? f.y + f.h - (o.size || 0.35) : c.y, vx: Math.cos(ang) * sp, vy: o.roll ? 0 : Math.sin(ang) * sp, r: o.size || 0.35,
+          dmg: s.dmg * (n > 1 ? 0.6 : 1), cast: cast, cols: s.cols, t: 0, life: o.life || 0.6 });
+      }
+    }
+  }
+  // advance effects and land the delayed hits
+  function spTick(g, P, dt) {
+    var p = ctr(P);
+    for (var i = spFx.length - 1; i >= 0; i--) {
+      var e = spFx[i]; e.t += dt;
+      if (e.k === 'ringT' && clock >= e.at) {
+        var dx = p.x - e.x;
+        if (Math.abs(dx) < e.R && Math.abs(P.y + P.h - e.fy) < 1.6 && SM.phase === 'fight') spHit(e.dmg, sgn(dx || 1) * (e.o.kx != null ? e.o.kx : 8), e.o.ky != null ? e.o.ky : -8, e.x, e.o.stun || e.o.freeze);
+        spFx.splice(i, 1); spFx.push({ k: 'ring', x: e.x, fy: e.fy, R: e.R, t: 0, life: 0.45, cols: e.cols }); g.shake(5); continue;
+      }
+      if (e.k === 'meteorT' && clock >= e.at) {
+        if (Math.hypot(p.x - e.x, p.y - (e.gy - 0.5)) < e.R) spHit(e.dmg, sgn(p.x - e.x || 1) * 9, -10, e.x, 0);
+        spFx.splice(i, 1); spFx.push({ k: 'ring', x: e.x, fy: e.gy, R: e.R, t: 0, life: 0.5, cols: e.cols }); g.shake(9); continue;
+      }
+      if (e.k === 'strikeT') {
+        if (e.x === null && clock >= e.aimAt) { e.x = p.x; var gy2 = groundBelow(p.x, P.y, 12); e.gy = gy2 === null ? P.y + P.h : gy2; }  // marks where you are, hits a moment later
+        if (e.x !== null && clock >= e.at) {
+          if (Math.abs(p.x - e.x) < 0.9 && P.y + P.h > e.gy - 6) spHit(e.dmg, 0, -9, e.x, e.o.stun);
+          spFx.splice(i, 1); spFx.push({ k: 'bolt', x: e.x, gy: e.gy, t: 0, life: 0.3, cols: e.cols }); g.shake(4); continue;
+        }
+      }
+      if (e.k === 'vortex') {
+        var vd = Math.hypot(p.x - e.x, p.y - e.y);
+        if (vd < e.R * 1.4 && me.hitstun <= 0 && SM.phase === 'fight') P.x += clampv(e.x - p.x, -1, 1) * 5 * dt;   // pulls you in
+        if (e.t >= e.life) { if (vd < e.R) spHit(e.dmg, sgn(p.x - e.x || 1) * 2, -14, e.x, 0); }
+      }
+      if (e.k === 'proj') {
+        e.x += e.vx * dt; e.y += e.vy * dt;
+        if (!e.cast.hit && overlapP(e.x - e.r, e.y - e.r, e.r * 2, e.r * 2)) { e.cast.hit = true; spHit(e.dmg, sgn(e.vx || 1) * 8, -5, e.x - e.vx * 0.05, 0); e.t = e.life; }
+      }
+      if (e.t >= e.life) spFx.splice(i, 1);
+    }
+    if (foe.spNameT > 0) foe.spNameT -= dt;
+  }
+  function drawSpecials(ctx, cam) {
+    var f = foe;
+    // wind-up: a glow in the move's colours and the move's name over the fighter
+    if (f.sp && !f.sp.fired) {
+      var k = f.sp.t / f.sp.wind, c = ctr(f), x = c.x * T - cam.x, y = c.y * T - cam.y;
+      ctx.save(); ctx.globalAlpha = 0.35 + 0.45 * k; ctx.strokeStyle = f.sp.cols[0]; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(x, y, 34 - 14 * k, 0, 6.3); ctx.stroke(); ctx.restore();
+    }
+    if (f.spNameT > 0 && f.spName) {
+      var cc = ctr(f), nx = cc.x * T - cam.x, ny = f.y * T - cam.y - 18 - (f.taunt > 0 ? 30 : 0);
+      ctx.save(); ctx.globalAlpha = Math.min(1, f.spNameT / 0.25); ctx.font = '900 14px system-ui'; ctx.textAlign = 'center';
+      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.75)'; ctx.strokeText(f.spName + '!', nx, ny);
+      ctx.fillStyle = (f.sp && f.sp.cols[0]) || '#fff'; ctx.fillText(f.spName + '!', nx, ny); ctx.restore();
+    }
+    spFx.forEach(function (e) {
+      var u = Math.min(1, e.t / (e.life || 1)), c0 = e.cols[0], c1 = e.cols[1];
+      ctx.save();
+      if (e.k === 'beam') { ctx.globalAlpha = 1 - u; ctx.fillStyle = c0; ctx.fillRect(e.x * T - cam.x, e.y * T - cam.y, e.w * T, e.h * T); ctx.fillStyle = c1; ctx.fillRect(e.x * T - cam.x, (e.y + e.h * 0.35) * T - cam.y, e.w * T, e.h * 0.3 * T); }
+      else if (e.k === 'pillar') { ctx.globalAlpha = 0.8 * (1 - u); ctx.fillStyle = c0; ctx.fillRect((e.x - e.w / 2) * T - cam.x, (e.fy - e.h * Math.min(1, u * 4)) * T - cam.y, e.w * T, e.h * Math.min(1, u * 4) * T); ctx.fillStyle = c1; ctx.fillRect((e.x - e.w / 6) * T - cam.x, (e.fy - e.h * Math.min(1, u * 4)) * T - cam.y, e.w / 3 * T, e.h * Math.min(1, u * 4) * T); }
+      else if (e.k === 'ring') { ctx.globalAlpha = 1 - u; ctx.strokeStyle = c0; ctx.lineWidth = 5; ctx.beginPath(); ctx.ellipse(e.x * T - cam.x, e.fy * T - cam.y, Math.max(1, e.R * u) * T, Math.max(1, e.R * u * 0.35) * T, 0, 0, 6.3); ctx.stroke(); ctx.strokeStyle = c1; ctx.lineWidth = 2; ctx.stroke(); }
+      else if (e.k === 'ringT') { /* waiting for its wave */ }
+      else if (e.k === 'meteorT') {                                    // a marker on the ground and the rock coming down
+        var w = Math.max(0, 1 - (e.at - clock) / 0.42), mx = e.x * T - cam.x, gy = e.gy * T - cam.y;
+        ctx.globalAlpha = 0.5; ctx.strokeStyle = c0; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(mx, gy, e.R * T, e.R * 0.3 * T, 0, 0, 6.3); ctx.stroke();
+        ctx.globalAlpha = 1; ctx.fillStyle = c0; ctx.beginPath(); ctx.arc(mx - (1 - w) * 60, gy - (1 - w) * 260 - 10, 12, 0, 6.3); ctx.fill();
+      }
+      else if (e.k === 'strikeT' && e.x !== null) { ctx.globalAlpha = 0.6; ctx.strokeStyle = c0; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(e.x * T - cam.x, e.gy * T - cam.y, 0.9 * T, 0.25 * T, 0, 0, 6.3); ctx.stroke(); }
+      else if (e.k === 'bolt') {
+        var bx = e.x * T - cam.x, by = e.gy * T - cam.y; ctx.globalAlpha = 1 - u; ctx.strokeStyle = c0; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(bx, by - 300);
+        for (var s = 1; s <= 6; s++) ctx.lineTo(bx + (s % 2 ? 12 : -12), by - 300 + s * 50); ctx.stroke(); ctx.strokeStyle = c1; ctx.lineWidth = 2; ctx.stroke();
+      }
+      else if (e.k === 'vortex') { ctx.globalAlpha = 0.7; ctx.strokeStyle = c0; ctx.lineWidth = 3; for (var r = 0; r < 3; r++) { ctx.beginPath(); ctx.arc(e.x * T - cam.x, e.y * T - cam.y, e.R * T * (1 - ((e.t * 1.6 + r / 3) % 1)), 0, 6.3); ctx.stroke(); } }
+      else if (e.k === 'proj') { ctx.fillStyle = c0; ctx.beginPath(); ctx.arc(e.x * T - cam.x, e.y * T - cam.y, e.r * T, 0, 6.3); ctx.fill(); ctx.fillStyle = c1; ctx.beginPath(); ctx.arc(e.x * T - cam.x, e.y * T - cam.y, e.r * T * 0.45, 0, 6.3); ctx.fill(); }
+      else if (e.k === 'trail') { ctx.globalAlpha = 0.5 * (1 - u); ctx.fillStyle = c0; ctx.fillRect((e.x - 0.4) * T - cam.x, (e.y - 0.45) * T - cam.y, 0.8 * T, 0.9 * T); }
+      ctx.restore();
+    });
   }
   var TAUNTS = ['Too easy!', 'Come on!', '😤', 'Is that all?', '💪', 'Nice try!', '😎', 'Catch me!', '🥱', 'Ha!'];
   function startTaunt() {
@@ -1308,6 +1503,7 @@
         }
       }
     }
+    if (foe.kind === 'cpu') drawSpecials(ctx, cam);
     // shields
     [[me, P], [foe, foe]].forEach(function (pr) {
       var s = pr[0], b = pr[1]; if (s.guarding || (s.guardBreak > 0)) {

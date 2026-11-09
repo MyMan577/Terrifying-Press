@@ -40631,6 +40631,8 @@ window._claimLBro = function() {
       stone: { side: ['BOULDER ROLL', 'volley', { dmg: 6, n: 1, roll: true, speed: 11, life: 1.6, size: 0.6, pierce: 4, style: 'rock' }, 'stone'], up: ['STONE SPIRE', 'pillar', { dmg: 5, launch: 17, w: 1.4, style: 'rock' }, 'stone'], down: ['TECTONIC SLAM', 'ring', { dmg: 5, r: 3.6, waves: 2, kx: 10, style: 'rock' }, 'stone'] },
     },
   };
+  // Smash mode's CPU reads these to use the same specials (names, shapes, ranges, colours)
+  window.PPSpecials = { specials: SPECIALS, themes: THEMES };
   function specialFor(ch, s) {
     let set = SPECIALS[ch]; if (!set) return null;
     if (ch === 'formSwitcher') set = set[s.variant] || set.flame;
