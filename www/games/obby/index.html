@@ -44204,7 +44204,8 @@ window._claimLBro = function() {
     }
   }
 
-  (window._rafHubTickers = window._rafHubTickers || []).push(function _ppMixtapeTick(dt) {
+  let _ppMixTickFn;
+  (window._rafHubTickers = window._rafHubTickers || []).push(_ppMixTickFn = function _ppMixtapeTick(dt) {
     ensureBtns();
     const playing = window.selectedCharacter === ID && (!window._gameMode || window._gameMode() === 'play');
     if (!playing) {
@@ -44514,6 +44515,30 @@ window._claimLBro = function() {
     if (window.selectedCharacter !== ID) return;
     try { drawWorld(ctx, cam); } catch (e) {}
   };
+  // A second fighter (Smash CPU) playing the Mixtape keeps its own side, Tape meter, moves in progress,
+  // whoever it's holding and its yanks. Your buttons stay yours.
+  (window._fighterPlugins = window._fighterPlugins || []).push({ name: 'mixtape', char: ID,
+    swap(s) {
+      const out = { formIdx, PALETTE, active, atkCD, formCD, tape, tapeFullSaid, airUpUsed, lastPX, lastPY, prevJump, ff, aim, dash, stomp, cast, rope, fling, held, spinT,
+        yanks: yanks.splice(0), fx: fx.splice(0) };
+      if (!s) { const fi = Math.floor(Math.random() * FORMS.length); s = { formIdx: fi, PALETTE: FORMS[fi].pal.slice(), active: true }; }
+      formIdx = s.formIdx || 0; PALETTE = s.PALETTE || FORMS[formIdx].pal.slice(); active = !!s.active; atkCD = s.atkCD || 0; formCD = s.formCD || 0;
+      tape = s.tape || 0; tapeFullSaid = !!s.tapeFullSaid; airUpUsed = !!s.airUpUsed; lastPX = s.lastPX != null ? s.lastPX : null; lastPY = s.lastPY != null ? s.lastPY : null;
+      prevJump = !!s.prevJump; ff = s.ff || null; aim = s.aim || null; dash = s.dash || null; stomp = s.stomp || null; cast = s.cast || null; rope = s.rope || null; fling = s.fling || null; held = s.held || null; spinT = s.spinT || 0;
+      if (s.yanks) yanks.push(...s.yanks); if (s.fx) fx.push(...s.fx);
+      if (window._gtCharStatCache && window._gtCharStatCache[ID]) window._gtCharStatCache[ID] = formStats();   // speed / jump follow whoever's turn it is
+      return out;
+    },
+    tick: dt => {
+      if (window.selectedCharacter !== ID) return;
+      ensureBtns();
+      const bs = [btn, formBtn, aimBtn], keep = bs.map(b => b && { d: b.style.display, h: b.innerHTML, c: b.className, t: b.title });
+      try { _ppMixTickFn(dt); }
+      finally { bs.forEach((b, i) => { const k = keep[i]; if (b && k) { b.style.display = k.d; b.innerHTML = k.h; b.className = k.c; b.title = k.t; } }); }
+    },
+    draw: (ctx, now2, cam) => { if (window.selectedCharacter === ID) drawWorld(ctx, cam); },
+    keys: { k: () => pressSuper(), g: () => pressForm() }
+  });
 
   // join the character list once the capsule system is ready
   let tries = 0;

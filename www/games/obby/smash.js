@@ -437,15 +437,18 @@
     // Read them now, or the reset below throws them away (that was why almost nothing connected).
     harvestHit(foe);
     ent._held = true; ent._thrown = false;
-    if (ent._chamPullFromX != null && foe.kind === 'cpu') { foe.x = ent.x; foe.y = ent.y; foe.vx = foe.vy = 0; }   // Chroma's tongue is reeling it in
-    if ((ent._liftHeld || 0) > 0 && foe.kind === 'cpu') {                // Conduit's Lift Current is holding it up: it can't act until the fling
-      ent._liftHeld -= dt; foe.x = ent.x; foe.y = ent.y; foe.vx = foe.vy = 0; foe.liftHold = 0.12; foe.onGround = false;
+    // One of your moves moved the opponent itself (Chroma's tongue, Conduit's Lift Current, the Mixtape's yanks and
+    // holds, ...): it goes where the move put it and can't act while that's happening.
+    if (foe.kind === 'cpu' && foe._entX != null && (Math.abs(ent.x - foe._entX) > 0.01 || Math.abs(ent.y - foe._entY) > 0.01) && foe.respawnHold <= 0 && !foe.ledge && SM.phase === 'fight') {
+      foe.x = ent.x; foe.y = ent.y; foe.vx = foe.vy = 0; foe.liftHold = 0.12; foe.onGround = false;
     }
     var fp = foePos(); ent.x = fp.x; ent.y = fp.y; ent.w = fp.w; ent.h = fp.h; ent.hitFlash = 0; ent._preFlash = 0;
+    foe._entX = ent.x; foe._entY = ent.y;
     foe._hp0 = BIG;
     P.hp = P.maxHp; P.hpInvuln = Math.max(P.hpInvuln || 0, 0.01);
     // gate: when are you not allowed to act?
-    blocked = SM.phase !== 'fight' || me.hitstun > 0 || !!me.ledge || me.guardBreak > 0 || me.dodge > 0 || me.guarding;
+    if (me.heldT > 0) me.heldT -= dt;
+    blocked = SM.phase !== 'fight' || me.heldT > 0 || me.hitstun > 0 || !!me.ledge || me.guardBreak > 0 || me.dodge > 0 || me.guarding;
     if (blocked) suppressKeys(g); else if (saved) restoreKeys();
     if (SM.phase !== 'fight') { P.vx = 0; if (SM.phase === 'countdown') P.vy = Math.min(P.vy, 0); }
     // launched: we drive sideways speed ourselves
@@ -772,10 +775,13 @@
     if (f.kind === 'remote') { readHit(g, P, dt); return; }
     readHit(g, P, dt);
     if (SM.phase !== 'fight') { f.vx = 0; f.vy = 0; return; }
+    var e0 = f.ent;                                                      // moved during the game's update (a hold from the main game's code)
+    if (f._entX != null && (Math.abs(e0.x - f._entX) > 0.01 || Math.abs(e0.y - f._entY) > 0.01) && f.respawnHold <= 0 && !f.ledge) {
+      f.x = e0.x; f.y = e0.y; f.vx = f.vy = 0; f.liftHold = 0.12; f.onGround = false;
+    }
     cpuStep(g, P, dt);
     var e = f.ent;
-    if (f.liftHold > 0) { f.x = e.x; f.y = e.y; }                       // Lift Current moved it this frame: keep that
-    e.x = f.x; e.y = f.y;
+    e.x = f.x; e.y = f.y; f._entX = e.x; f._entY = e.y;                  // what Smash wrote: any change after this is one of your moves
   }
 
   function koFoe(g) {
@@ -1306,7 +1312,7 @@
   // own player state, held keys and strike-engine state, presses the same buttons you do, and its attacks
   // are the real ones. Its target is a stand-in for you; whatever the attack does to it becomes your
   // percent and launch. Knockback, ledges, dodges and respawns stay with this file, synced both ways.
-  var REAL_CPU = { brawler: 1, cb_slugger: 1, cb_protagonist: 1, cb_chameleon: 1, cb_pressplay: 1 };
+  var REAL_CPU = { brawler: 1, cb_slugger: 1, cb_protagonist: 1, cb_chameleon: 1, cb_pressplay: 1, cb_pp_mixtape: 1 };
   // what each real-moves fighter's kit is good for (all of it is pressed with the same buttons you use)
   //  sideRec / upRec: its side / up special moves it (usable to get back)   dash: dash-then-S attacks
   //  airThrow: S in the air throws something that travels (range in tiles)   groundOnly: specials only on the ground
@@ -1322,7 +1328,10 @@
     cb_chameleon: { cham: 1 },
     // Press Play Prodigy: each EQ mode's S moves by direction (ground and air), presses on the beat for Hype
     // (Lv2+), K = THE DROP when Hype is full, G = next EQ mode, up in the air lifts once per jump
-    cb_pressplay: { prod: 1, upTapRec: 1 }
+    cb_pressplay: { prod: 1, upTapRec: 1 },
+    // Press Play Mixtape: Tape Whip / Fast-Forward Dash / Spool Launch / Tangle on the ground, Ribbon Lash / Tape Zip /
+    // Rewind Climb / Eject Slam in the air, K = FAST FORWARD when the Tape meter is full, G = flip the tape's side
+    cb_pp_mixtape: { mix: 1, upTapRec: 1 }
   };
   function plugInfo(name) { var pl = (window._fighterPlugins || []).filter(function (q) { return q.name === name; })[0]; return pl && pl.info ? pl.info() : null; }
   function kit(f) { return KIT[f.char] || {}; }
@@ -1375,6 +1384,14 @@
     if (f.act) return false;
     var killy = me.pct > 85, air = !f.onGround, r = Math.random(), K = kit(f);
     var A = null;
+    if (K.mix && !A) {
+      var ms = f.F.plug && f.F.plug.mixtape;
+      if (ms && ms.tape >= 10 && !ms.ff && adx < 6) A = { type: 'key', key: 'k' };                                // FAST FORWARD
+      else if (f.lvl >= 2 && (f.eqT = (f.eqT || 0) - 0.05) < 0 && Math.random() < 0.2) { f.eqT = rnd(8, 15); A = { type: 'key', key: 'g' }; }
+      else if (!air && (killy || r < 0.1) && adx < 5 && Math.abs(dy) < 1.4) A = { type: 'charge', v: adx < 2.4 ? (dy < -1 ? 'up' : 'down') : 'side', hold: killy ? rnd(0.55, 0.8) : rnd(0.3, 0.5) };   // REWIND RUSH / TAPE TORNADO / SPOOL SNARE
+      else if (air) A = dy < -0.8 && adx < 2 && !(ms && ms.airUpUsed) ? { type: 'tap', v: 'up' } : dy > 0.8 && adx < 1.6 ? { type: 'tap', v: 'down' } : adx < 7 && Math.abs(dy) < 2.5 ? { type: 'tap', v: adx > 3 ? 'side' : '' } : null;
+      else A = dy < -1.2 && adx < 2.5 ? { type: 'tap', v: 'up' } : adx < 3 && Math.abs(dy) < 1.4 ? { type: 'tap', v: Math.random() < 0.7 ? '' : 'down' } : adx < 6 && Math.abs(dy) < 1.2 ? { type: 'tap', v: 'side' } : null;
+    }
     if (K.prod && !A) {
       var ps = f.F.plug && f.F.plug.prodigy;
       if (ps && ps.hype >= 10 && adx < 7 && Math.abs(dy) < 3) A = { type: 'key', key: 'k' };                    // THE DROP
@@ -1455,8 +1472,9 @@
     if (d > 0) F.keys.add('d'); else if (d < 0) F.keys.add('a');
     realHarvest(f, P);                                                     // hits from the post-draw tick (thrown gloves)
     var t = f.tgt;
-    if (t._chamPullFromX != null) { P.x = t.x; P.y = t.y; P.vx = P.vy = 0; }   // its tongue is reeling you in
-    t.x = P.x; t.y = P.y; t.w = P.w; t.h = P.h; t.hp = BIG; t.vx = 0; t.vy = 0; t.hitFlash = 0; t.dead = false; t.stunTimer = 0;
+    if (f._tgtX != null && (Math.abs(t.x - f._tgtX) > 0.01 || Math.abs(t.y - f._tgtY) > 0.01)) realGrab(P, t);   // moved after the last frame was drawn
+    t._held = true; t._thrown = false;
+    t.x = P.x; t.y = P.y; f._tgtX = t.x; f._tgtY = t.y; t.w = P.w; t.h = P.h; t.hp = BIG; t.vx = 0; t.vy = 0; t.hitFlash = 0; t.dead = false; t.stunTimer = 0;
     var jump = (inp.jump || f.recJump) && !(A && A.type === 'charge'); f.recJump = false;   // the game counts its own jumps
     g.fighterRun(F, function () {
       if (jump) g.fighterJump();
@@ -1472,7 +1490,13 @@
     if (st.lastMoveDir) f.face = st.lastMoveDir;
     if (f.onGround) f.jumps = 2; else if (jump) f.jumps = Math.max(0, f.jumps - 1);
     f.tgtLock = Math.max(0, f.tgtLock - dt);
+    if (Math.abs(t.x - f._tgtX) > 0.01 || Math.abs(t.y - f._tgtY) > 0.01) { realGrab(P, t); f._tgtX = t.x; f._tgtY = t.y; }
     realHarvest(f, P);
+  }
+  // one of its moves moved you (a tongue pull, a lift, a yank or a hold): you go where it put you and can't act meanwhile
+  function realGrab(P, t) {
+    if (SM.phase !== 'fight' || me.respawnHold > 0 || me.invuln > 0) return;
+    releaseLedge(me); P.x = t.x; P.y = t.y; P.vx = 0; P.vy = 0; P.onGround = false; me.heldT = 0.12; me.guarding = false;
   }
   // what its attack did to the stand-in is what it does to you
   function realHarvest(f, P) {
