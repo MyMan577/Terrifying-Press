@@ -588,6 +588,7 @@
   }
 
   function koMe(g, P) {
+    if (foe && foe.kind === 'cpu' && foe.lvl > 0 && Math.random() < 0.7) foe.tauntQ = true;
     me.stocks--; me.pct = 0; me.hitstun = 0; me.kvx = 0; releaseLedge(me);
     addFx('ko', Math.max(stage.blast.left + 1, Math.min(stage.blast.right - 1, P.x)), Math.max(stage.blast.top + 1, Math.min(stage.blast.bottom - 1, P.y)), '#ff4d4d');
     g.shake(12); window._ppHitstop = 0.22;
@@ -707,7 +708,7 @@
     var Ln = launch(ix, iy, f.pct, 1.0, k, P.x + P.w / 2, f.x + f.w / 2, f.onGround);
     var kind = styleLaunch(Ln, classify(ix, iy), f.onGround, f);
     if (f.lvl >= 2 && stage) cpuDI(Ln, f, LV[f.lvl] || LV[2]);
-    f.kvx = Ln.vx; f.vx = Ln.vx; f.vy = Ln.vy; f.hitstun = Ln.stun; f.flash = 0.14; f.atk = null; f.guarding = false;
+    f.kvx = Ln.vx; f.vx = Ln.vx; f.vy = Ln.vy; f.hitstun = Ln.stun; f.flash = 0.14; f.atk = null; f.guarding = false; f.taunt = 0;
     if (Ln.vy < -2 || Ln.L > 14) { f.onGround = false; f.y -= 0.06; }
     releaseLedge(f);
     addFx('burst', f.x + f.w / 2, f.y + f.h / 2, pctColor(f.pct), Ln.L);
@@ -739,7 +740,7 @@
     f.rx = stage.respawn.x - f.w / 2; f.ry = stage.respawn.y; f.x = f.rx; f.y = f.ry; f.vx = f.vy = 0;
     f.respawnHold = f.lvl > 0 ? 2.0 : 1.0; f.invuln = BAL.respawnInv; f.shield = BAL.shieldMax; f.guardBreak = 0; f.dodge = 0;
     f.jumps = 2; f.burst = 1;
-    f.chasing = false; f.threatAt = 0; f.punishUntil = 0; f.airDodged = false; f.recWas = false; f.atk = null;
+    f.chasing = false; f.threatAt = 0; f.punishUntil = 0; f.airDodged = false; f.recWas = false; f.atk = null; f.taunt = 0; f.tauntQ = false;
   }
 
   // -------- CPU brain
@@ -759,6 +760,7 @@
   function cpuReset(f) {
     f.mem = cpuMemInit(); f.airDodged = false; f.lastMove = ''; f.threatAt = 0; f.punishUntil = 0; f.punishOK = false; f.comboOK = false;
     f.chasing = false; f.recT = 0; f.recMiss = 0; f.recWas = false; f.navPl = null; f.navT = 0; f.jumpCD = 0; f.ledgeWait = 0;
+    f.taunt = 0; f.tauntQ = false; f.tauntTxt = ''; f.wanderX = null; f.preShieldCD = 0;
   }
   function tendency(m) {
     var tot = m.shieldN + m.rollN + m.atkN + m.airN + 3;
@@ -795,11 +797,22 @@
   function cpuMood(L, T, dt) {
     var m = foe.mem; m.moodT -= dt;
     if (m.moodT > 0) return;
-    m.moodT = rnd(2, 4.5);
-    var wA = 0.3 + 0.4 * L.aggr + (me.pct > 90 ? 0.25 : 0) - (foe.pct > 120 ? 0.2 : 0);
-    var wB = 0.08 + (foe.pct > 100 ? 0.25 : 0) + L.read * T.shield * 0.9 + L.mix * 0.1;
-    var wN = 0.4, r = Math.random() * (wA + wB + wN);
-    m.mood = r < wA ? 'aggro' : r < wA + wB ? 'bait' : 'neutral';
+    // A person doesn't press forward the whole match: they take breathers, hold their spot, and show off.
+    //  aggro: rush in   neutral: footsies at mid range   bait: hang back for a whiff
+    //  idle: breather, wander and maybe taunt   stand: plant your feet, shield and counter whatever walks in
+    var prev = m.mood;
+    // Mostly wander and hop about like a party-game CPU; really chasing you down is the rare case.
+    var wA = 0.04 + 0.08 * L.aggr + (me.pct > 110 ? 0.06 : 0);
+    var wB = 0.03 + L.read * T.shield * 0.2;
+    var wN = 0.08 + 0.06 * L.aggr;
+    var wI = 0.45;
+    var wH = 0.22;
+    var wS = 0.14 + L.shield * 0.1;
+    if (prev === 'aggro') wA *= 0.3;
+    var r = Math.random() * (wA + wB + wN + wI + wH + wS);
+    m.mood = r < wA ? 'aggro' : (r -= wA) < wB ? 'bait' : (r -= wB) < wN ? 'neutral' : (r -= wN) < wI ? 'idle' : (r -= wI) < wH ? 'hop' : 'stand';
+    m.moodT = m.mood === 'aggro' ? rnd(1.2, 2.4) : m.mood === 'neutral' ? rnd(1.5, 3) : rnd(2.2, 4.5);
+    m.taunted = false; foe.wanderX = null;
     m.navOK = L.nav >= 0.9 || Math.random() < L.nav;
   }
 
@@ -998,12 +1011,18 @@
     f.shield = Math.min(BAL.shieldMax, f.shield + BAL.shieldRegen * dt);
     if (f.onGround) { f.jumps = 2; f.burst = 1; f.airDodged = false; }
     f.think -= dt;
+    // --- taunting: stands there showing off (and wide open). Hard CPUs snap out of it if you rush them.
+    if (f.taunt > 0) {
+      f.taunt -= dt; f.vx = approach(f.vx, 0, 60 * dt); f.vy = Math.min(BAL.fall, f.vy + BAL.grav * dt); moveBody(f, dt);
+      if (f.lvl >= 2 && adx < 2 && Math.abs(dy) < 2 && f.taunt < 0.7) f.taunt = 0;
+      checkFoeKO(g); return;
+    }
     // --- attack in progress
     if (f.atk) { cpuAttack(g, P, dt); checkFoeKO(g); return; }
     // --- recovery: below the stage or outside it
     var onStageX = cx > stage.x0 - 0.2 && cx < stage.x1 + 0.2;
     var offstage = !f.onGround && (cy > stage.top + 1.5 && !onStageX || cy > stage.bottom + 0.5);
-    var inp = { dir: 0, jump: false };
+    var inp = { dir: 0, jump: false, speed: 1 };
     if (offstage) {
       // a committed edgeguard: swing at them on the way out, then come back
       if (f.chasing && f.cd <= 0 && f.jumps >= 2 && cy < stage.bottom - 3 && !f.atk) {
@@ -1019,7 +1038,7 @@
       if (f.atk) { cpuAttack(g, P, dt); return; }
     }
     // --- apply movement
-    var air = !f.onGround, acc = air ? 28 : 70, run = 8.2;
+    var air = !f.onGround, acc = air ? 28 : 70, run = 8.2 * (inp.speed || 1);
     f.vx = approach(f.vx, inp.dir * run, acc * dt);
     if (inp.dir !== 0) f.face = inp.dir;
     if (inp.jump && f.jumps > 0 && (f.onGround || f.vy > -2)) { f.vy = f.onGround ? -13.5 : -12.5; f.jumps--; f.onGround = false; }
@@ -1064,18 +1083,49 @@
     var follow = me.hitstun > 0 && f.comboOK;
     if (follow || punish) hold = 0.9;
     else if (me.guarding) hold = me.shield < 32 ? 1.3 : 2.9;           // pressure a weak shield, wait out a strong one
+    // calm moods (only when nothing urgent is going on)
+    var urgent = follow || punish || !!gp || f.chasing || oppOff;
+    var calm = !urgent && (m.mood === 'idle' || m.mood === 'hop' || m.mood === 'stand' || me.respawnHold > 0);
+    var wander = m.mood === 'idle' || m.mood === 'hop';
+    var threatened = adx < 2.6 && Math.abs(dy) < 2.2;           // you're in its face: it fights back
+    if (!urgent && me.respawnHold > 0) hold = 4.2;                      // don't camp the respawn platform
+    if (f.tauntQ && me.respawnHold <= 0 && adx < 4) f.tauntQ = false;        // the moment passed
+    // a quick taunt: after a KO, or now and then during a breather when you're far away
+    if (f.onGround && !f.atk && (f.tauntQ || (calm && wander && !m.taunted && adx > 4.5 && Math.random() < dt * 0.7))) {
+      if (f.tauntQ || (adx > 4.5 && me.hitstun <= 0)) { startTaunt(); return; }
+    }
+    f.preShieldCD = Math.max(0, (f.preShieldCD || 0) - dt);
     var tdx = qdx, tadx = qadx;
+    if (calm && wander && me.respawnHold <= 0) {
+      // wander somewhere on the stage, away from you, at a walk
+      if (f.wanderX === null || Math.abs(f.wanderX - cx) < 0.4 && Math.random() < dt * 0.8) {
+        var lo = stage.x0 + 1.5, hi = stage.x1 - 1.5, wx = rnd(lo, hi);
+        if (Math.abs(wx - px) < 3.5) wx = clampv(px + (wx < px ? -4 : 4), lo, hi);
+        f.wanderX = wx;
+      }
+      tdx = f.wanderX - cx; tadx = Math.abs(tdx); hold = 0.3; inp.speed = m.mood === 'hop' ? 0.75 : 0.5;
+      if (threatened) { tdx = qdx; tadx = qadx; hold = 1.2; inp.speed = 1; }  // you came over: square up
+    }
     if (gp) { tdx = gp.x + (gp.side < 0 ? 1.15 : -1.15) - cx; tadx = Math.abs(tdx); hold = 0.3; }
     else if (oppOff && m.chaseOK && f.onGround && f.jumps >= 2) { f.chasing = true; hold = 0; }
     var want = 0;
     if (tadx > hold + 0.25) want = sgn(tdx);
     else if (!gp && !f.chasing && qadx < hold - 0.7 && f.cd > 0.05 && me.hitstun <= 0) want = -sgn(qdx);
+    if (calm && m.mood === 'stand' && me.respawnHold <= 0) {
+      // hold the spot: only creep in if you're really far, and face you the whole time
+      want = qadx > 7 ? sgn(qdx) : 0; inp.speed = 0.5;
+      // you're walking in: put the shield up before you swing
+      var coming = sgn(P.vx) === -sgn(dx) && Math.abs(P.vx) > 2;
+      if (f.onGround && f.preShieldCD <= 0 && adx < 3 && Math.abs(dy) < 2 && coming && f.shield > 30 && Math.random() < dt * (2 + 4 * L.shield)) {
+        f.guarding = true; f.guardLeft = rnd(0.4, 0.9); f.preShieldCD = rnd(1, 2.2); inp.dir = 0; return;
+      }
+    }
     var retreat = want !== 0 && want !== sgn(qdx || f.face);
     // 4. terrain: platforms, walls, gaps
     var fFeet = f.y + f.h, tFeet = P.y + P.h;
     if (f.onGround) {
       var navved = false;
-      if (!gp && !f.chasing && tFeet < fFeet - 1.4 && m.navOK) { navved = navToward(f, cx, fFeet, px, tFeet, inp); if (navved) want = inp.dir; }
+      if (!gp && !f.chasing && !calm && tFeet < fFeet - 1.4 && m.navOK) { navved = navToward(f, cx, fFeet, px, tFeet, inp); if (navved) want = inp.dir; }
       if (!navved) {
         if (dy < -1.6 && adx < 2.4 && f.jumpCD <= 0 && (me.hitstun > 0 || Math.random() < 0.5)) { inp.jump = true; f.jumpCD = 0.35; }
         if (dy < -1.6 && adx >= 2.4 && want !== 0 && wallAhead(f, want)) inp.jump = true;
@@ -1095,13 +1145,31 @@
       if (onNav && fFeet > f.navPl.y - 0.2) want = cx < f.navPl.x0 + 0.2 ? 1 : cx > f.navPl.x1 - 0.2 ? -1 : 0;
     }
     inp.dir = want;
+    // hop mood: jump around for no real reason, sometimes double jump, sometimes drop through a cloud
+    if (calm && m.mood === 'hop' && !threatened) {
+      if (f.onGround && f.jumpCD <= 0 && Math.random() < dt * 1.6) { inp.jump = true; f.jumpCD = rnd(0.4, 1.1); }
+      else if (!f.onGround && f.jumps > 0 && f.vy > 1 && Math.random() < dt * 1.2) inp.jump = true;
+      if (f.onGround && Math.random() < dt * 0.5) { var un = tileAt(Math.floor(cx), Math.floor(f.y + f.h + 0.1)); if (un && un.type === 'cloud') f.drop = 0.3; }
+    }
+    // a CPU that's minding its own business still shields a swing it sees coming
+    if (calm && threatened && f.onGround && me.hitstun <= 0 && f.mem.oppAtk && f.shield > 25 && (f.preShieldCD || 0) <= 0 && Math.random() < 0.25 + L.shield * 0.5) {
+      f.guarding = true; f.guardLeft = rnd(0.3, 0.6); f.preShieldCD = rnd(0.8, 1.8); inp.dir = 0; return;
+    }
     // 5. attack
+    // calm moods only swing at you when you're right there (stand counters harder than idle)
+    var moodK = m.mood === 'aggro' ? 1.25 : m.mood === 'bait' ? 0.7 : 1;
+    if (calm) moodK = threatened ? (m.mood === 'stand' ? 1.6 : 1.2) : 0;
     var gate = ((punish || follow) && f.cd <= 0.12) ||
-      (f.cd <= 0 && Math.random() < dt * 9 * L.aggr * (m.mood === 'aggro' ? 1.25 : m.mood === 'bait' ? 0.7 : 1));
+      (f.cd <= 0 && Math.random() < dt * 9 * L.aggr * moodK);
     if (gate && Math.random() >= L.err * (follow ? 0.3 : 1)) {
       var dir = sgn(qdx || f.face), pick = chooseMove(P, L, dir, !f.onGround);
       if (pick) { startAtk(pick.name, dir); f.lastMove = pick.name; inp.dir = 0; }
     }
+  }
+  var TAUNTS = ['Too easy!', 'Come on!', '😤', 'Is that all?', '💪', 'Nice try!', '😎', 'Catch me!', '🥱', 'Ha!'];
+  function startTaunt() {
+    var f = foe; f.tauntQ = false; f.mem.taunted = true; f.vx = 0;
+    f.taunt = rnd(0.9, 1.3); f.tauntLen = f.taunt; f.tauntTxt = TAUNTS[Math.floor(Math.random() * TAUNTS.length)];
   }
   function startAtk(name, dir) {
     var f = foe, d = MOVES[name]; f.atk = { name: name, d: d, t: 0, hit: false, dir: d.back ? -dir : dir }; f.face = dir; f.think = 0.05;
@@ -1169,9 +1237,19 @@
         ctx.save();
         if (f.hitstun > 0) { ctx.translate(cx, cy); ctx.rotate(clock * 14 * sgn(f.kvx || 1)); ctx.translate(-cx, -cy); }
         if (f.invuln > 0 && Math.floor(clock * 20) % 2) ctx.globalAlpha = 0.5;
-        g.drawAs({ x: f.x, y: f.y, w: f.w, h: f.h, vx: f.vx, vy: f.vy, onGround: f.onGround, dashDir: f.face, isDashing: !!(f.atk && f.atk.d.lunge && f.atk.t > f.atk.d.wind),
+        var hop = f.taunt > 0 ? Math.abs(Math.sin((f.tauntLen - f.taunt) * 11)) * 0.22 : 0;
+        g.drawAs({ x: f.x, y: f.y - hop, w: f.w, h: f.h, vx: f.vx, vy: f.vy, onGround: f.onGround, dashDir: f.face, isDashing: !!(f.atk && f.atk.d.lunge && f.atk.t > f.atk.d.wind),
           char: f.char, slashTimer: f.atk ? 0.15 : 0, swordMode: 'blue', gravityFlipped: false, isWallSliding: false, onWall: false, wallSide: 0 }, foeLabel());
         ctx.restore();
+        if (f.taunt > 0 && f.tauntTxt) {
+          var a0 = Math.min(1, f.taunt / 0.2, (f.tauntLen - f.taunt) / 0.1);
+          ctx.save(); ctx.globalAlpha = a0; ctx.font = '800 15px system-ui'; ctx.textAlign = 'center';
+          var tw2 = ctx.measureText(f.tauntTxt).width + 16, bx2 = cx - tw2 / 2, by2 = f.y * T - cam.y - 46;
+          ctx.fillStyle = 'rgba(255,255,255,.95)'; ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(bx2, by2, tw2, 24, 10); else ctx.rect(bx2, by2, tw2, 24);
+          ctx.moveTo(cx - 5, by2 + 24); ctx.lineTo(cx, by2 + 31); ctx.lineTo(cx + 5, by2 + 24); ctx.fill();
+          ctx.fillStyle = '#16192b'; ctx.fillText(f.tauntTxt, cx, by2 + 17); ctx.restore();
+        }
         if (f.flash > 0) { ctx.save(); ctx.globalAlpha = f.flash * 5; ctx.fillStyle = '#fff'; ctx.fillRect(f.x * T - cam.x, f.y * T - cam.y, f.w * T, f.h * T); ctx.restore(); }
         if (f.atk) {
           var a = f.atk, d = a.d;
