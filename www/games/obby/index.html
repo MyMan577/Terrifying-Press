@@ -5328,11 +5328,14 @@ let srEchoFrames = [];
     fighterDefs(char) { return { ups: (UPGRADE_DEFS[char] || []).map(u => u.id), protagMoves: PROTAG_MOVE_DEFS, protagAbilities: PROTAG_ABILITY_DEFS, protagMaxLevel: PROTAG_MAX_LEVEL }; },
     fighterDash() { if (player.dashCharges > 0 && player.dashCooldown <= 0) activateDash(); },
     fighterJump() { jumpJustPressed = true; jumpPressed = true; },
-    fighterDraw(F) {
+    // spin: the tumble while launched. Only the body turns; its effects, projectiles and label stay upright.
+    fighterDraw(F, spin) {
       const keepCtx = ctx;
       this.fighterRun(F, () => {
         try { drawConduitEffects(); } catch (e) {}
+        if (spin) { const sx = (player.x + player.w / 2) * TILE - cam.x, sy = (player.y + player.h / 2) * TILE - cam.y; ctx.save(); ctx.translate(sx, sy); ctx.rotate(spin); ctx.translate(-sx, -sy); }
         try { drawPlayer(); } catch (e) {}
+        if (spin) ctx.restore();
         for (const fxFn of _CHAR_FX) { try { fxFn(); } catch (e) {} }
         try { if (window.PPStrike && window.PPStrike._draw) window.PPStrike._draw(ctx, performance.now() / 1000, cam); } catch (e) {}
         for (const pl of (window._fighterPlugins || [])) if (pl.draw) { try { pl.draw(ctx, performance.now() / 1000, cam); } catch (e) {} }
