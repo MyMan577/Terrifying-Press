@@ -520,6 +520,7 @@
   };
 
   function timeUp() {
+    if (SM.net && SM.net.role === 'guest') return;                     // online: the host calls time
     var a = me.stocks, b = foe.stocks;
     if (a !== b) endMatch(a > b ? 'me' : 'foe');
     else if (Math.abs(me.pct - foe.pct) > 0.5) endMatch(me.pct < foe.pct ? 'me' : 'foe');
@@ -1903,7 +1904,9 @@
       '<div class="lb">Time limit</div>' + chips('tm', [{ v: 0, l: 'None' }, { v: 180, l: '3:00' }, { v: 300, l: '5:00' }], 'time', sel.time) +
       (online ? '' : '<div class="lb">Opponent</div>' + chips('cp', [{ v: 0, l: '🎯 Dummy' }, { v: 1, l: 'CPU 1', s: 'easy' }, { v: 2, l: 'CPU 2', s: 'normal' }, { v: 3, l: 'CPU 3', s: 'hard' }], 'cpu', sel.cpu) +
         '<div class="lb">Opponent fighter</div>' + chips('cc', [{ v: 'random', l: '🎲 Random' }].concat(ros), 'cpuChar', sel.cpuChar)) +
-      '<button class="go" id="smGo" type="button">' + (online ? 'Start match' : 'Fight!') + '</button><button class="x" id="smNo" type="button">Cancel</button></div>';
+      '<button class="go" id="smGo" type="button">' + (online ? 'Start match' : 'Fight!') + '</button>' +
+      (online || !(window.__obbyNet && window.__obbyNet.smash) ? '' : '<button class="go" id="smNet" type="button" style="background:#3b5bdb">🌐 Play a friend (2 phones)</button>') +
+      '<button class="x" id="smNo" type="button">Cancel</button></div>';
     el.innerHTML = html; el.style.display = 'flex';
     el.querySelectorAll('.ch').forEach(function (row) {
       row.addEventListener('click', function (e) {
@@ -1913,6 +1916,8 @@
       });
     });
     document.getElementById('smNo').onclick = function () { hideMenu(); if (opts.onCancel) opts.onCancel(); };
+    var nb = document.getElementById('smNet');
+    if (nb) nb.onclick = function () { hideMenu(); if (isFighter(sel.char) && g.char !== sel.char) window._selectCharacter(sel.char); window.__obbyNet.smash(); };
     document.getElementById('smGo').onclick = function () {
       var cfg = Object.assign({}, sel); if (cfg.cpu === 0) { cfg.stocks = cfg.stocks; }
       if (opts.onGo) opts.onGo(cfg); else SM.start(cfg);
@@ -1938,7 +1943,9 @@
   Object.defineProperty(SM, 'me', { get: function () { return me; } });
   Object.defineProperty(SM, 'foe', { get: function () { return foe; } });
   SM.hitMe = hitMe;
-  SM.koFromRemote = function (stocks) { foe.stocks = stocks; foe.pct = 0; };
+  SM.koFromRemote = function (stocks) { foe.stocks = stocks; foe.pct = 0; if (stocks > 0) showBanner('KO!', 0.7); };
+  // online: the other phone says the match is over (w is the result from this phone's side)
+  SM.remoteOver = function (w) { if (!SM.active) return; SM.phase = 'over'; SM.over = w; showResult(w); };
   SM.onEnvDamage = function (text) {
     if (window._fighterPass) return;                                   // the CPU's own pass, not you
     if (SM.phase !== 'fight' || me.invuln > 0 || me.hitstun > 0 || me.respawnHold > 0) return;

@@ -276,6 +276,15 @@
     ctx.restore();
   };
 
+  // what the other phone needs to draw this fighter's body mid-move (online play)
+  FK._states = {};
+  FK.netState = function () {
+    const f = FK._states[window.selectedCharacter]; if (!f) return null;
+    const S = f(); if (!S || !S.pose) return null;
+    const pose = {}; for (const k in S.pose) { const v = S.pose[k]; pose[k] = Array.isArray(v) ? v.map(n => Math.round(n * 100) / 100) : typeof v === 'number' ? Math.round(v * 100) / 100 : v; }
+    return { pose, rot: S.rot ? Math.round(S.rot * 100) / 100 : 0, pr: S.pr || 0, invis: S.invis > 0 ? S.invis : 0, reveal: S.reveal > 0 ? 1 : 0, charge: S.charge || 0, jav: S.jav ? 1 : 0 };
+  };
+
   // ---------------------------------------------------------------- define a fighter
   // spec: { id, plug, def, stats, statMod(S), moves, mfd, fresh(), can(key,S,p), pressS(p,S,k), busy(S),
   //         act: { ground_neutral(p,f,pw,S) -> optional title, ... }, step(p,dt,S,k,jumpEdge), onTeleport(p,S),
@@ -362,8 +371,9 @@
       if (charId !== ID) { if (_origDraw) return _origDraw(charId, ctx, px, py, pw, ph, now2); return; }
       if (!isFinite(px) || !isFinite(py) || !isFinite(pw) || !isFinite(ph) || pw <= 0 || ph <= 0) return;
       const p = window.selectedCharacter === ID ? window._gamePlayer : null;   // previews (menus) draw without a live body
+      const rem = window.__ppRemoteDraw && window.__ppRemoteDraw.fk;           // the other phone's fighter: its own pose
       ctx.save();
-      try { C.drawBody(ctx, px, py, pw, ph, now2 || Date.now() / 1000, p ? S : null, p); } catch (e) {}
+      try { if (rem && rem.pose) C.drawBody(ctx, px, py, pw, ph, now2 || Date.now() / 1000, rem, null); else C.drawBody(ctx, px, py, pw, ph, now2 || Date.now() / 1000, p ? S : null, p); } catch (e) {}
       ctx.restore();
     };
     function drawWorld(ctx, cam) {
@@ -400,6 +410,7 @@
       }
       if (isOwned()) { register(); window.injectCboxCharButtons(); }
     })();
+    FK._states[ID] = () => S;
     return { state: () => S };
   };
 })();
