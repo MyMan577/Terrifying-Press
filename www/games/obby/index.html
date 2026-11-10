@@ -13238,15 +13238,16 @@ function applyTileEffect(tile) {
     for (let i = 0; i < 15; i++) particles.push({ x: px, y: py, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6 - 2, life: 0.6, color: '#ff6b6b', size: 2 + Math.random() * 3 });
   }
 
+  function _parryOn() {
+    if ((player._parryT || 0) > 0) return true;
+    return selectedCharacter === 'cb_protagonist' && typeof protagAbilityEquipped === 'function' && protagAbilityEquipped('ab_retaliate') && (player._protagRetaliateTimer || 0) > 0;
+  }
   function takeDamage(text) {
     if (window.__smash && window.__smash.active) { window.__smash.onEnvDamage(text); return; }
     if (player.hpInvuln > 0 || player.dashInvuln > 0) return;
     
-    if (selectedCharacter === 'cb_protagonist' && typeof protagAbilityEquipped === 'function' && protagAbilityEquipped('ab_retaliate') && (player._protagRetaliateTimer || 0) > 0) {
-      player._protagRetaliateTimer = 0;
-      if (typeof protagFireRetaliateCounter === 'function') protagFireRetaliateCounter();
-      return;
-    }
+    // a parry (Guardian's Counter, or any fighter's _parryT): close attackers are countered, far ones get a reflected bolt
+    if (_parryOn() && window.PPParry) { window.PPParry.parry(null); return; }
     
     if (selectedCharacter === 'cb_protagonist' && typeof protagAbilityEquipped === 'function' && protagAbilityEquipped('ab_bulwark') && Math.random() < 0.15) {
       player.hpInvuln = 0.6;
@@ -17734,6 +17735,8 @@ d.vy *= 0.85;
         proj.life -= dt;
         
         if (!isRespawning && !player.dashInvuln && rectsOverlap({x:player.x,y:player.y,w:player.w,h:player.h},{x:proj.x-proj.r,y:proj.y-proj.r,w:proj.r*2,h:proj.r*2})) {
+          // parrying: the shot is reflected back at whoever fired it
+          if (_parryOn() && window.PPParry) { window.PPParry.parry(proj); enemyProjectiles.splice(i, 1); continue; }
 
           
           
@@ -40520,7 +40523,7 @@ window._claimLBro = function() {
       glow(ctx, i % 2 ? '#ffffff' : col, 0.55 * a); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(bx, yy); ctx.lineTo(bx - st.d * l, yy); ctx.stroke(); }
   }
 
-  const STYLES = {
+  const STYLES = window.PPStrikeStyles = {
     // anyone without a style of their own: lean back, lunge, settle
     _default: {
       windup: st => { const u = ease(st.u), h = st.hv; return { lean: -st.d * 0.3 * h * u, sx: 1 + 0.12 * h * u, sy: Math.max(0.76, 1 - 0.18 * h * u) }; },
@@ -44589,6 +44592,11 @@ window._claimLBro = function() {
 })();
 </script>
 <script src="gale.js"></script>
+<script src="fkit.js"></script>
+<script src="fighter-kodiak.js"></script>
+<script src="fighter-valka.js"></script>
+<script src="fighter-boiler.js"></script>
+<script src="fighter-sleight.js"></script>
 <script>
 // Free mystery boxes and character capsules bought in the Press Play shop open one after another.
 // Each is taken from the shop only as it opens, so leaving mid-way keeps the rest for next time.

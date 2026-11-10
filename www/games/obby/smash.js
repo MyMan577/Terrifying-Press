@@ -498,6 +498,7 @@
     }
     if (SM.phase === 'fight' && matchT > 0) { matchT -= dt; if (matchT <= 0) { matchT = 0; timeUp(); } }
     if (SM.phase !== 'over') { playerPost(g, P, dt); }
+    if (SM.phase === 'fight') stepRefl(dt); else refl.length = 0;
     foePost(g, P, dt);
     updateFx(dt);
     camera(g, P, dt);
@@ -518,9 +519,74 @@
   }
 
   // ---------------------------------------------------------------- player side
+  // ---- parry, reflect, super armor and throw invincibility ----
+  // A fighter sets these on its own body (yours: the player; the CPU's: its fighter state):
+  //  _parryT > 0 (or the Protagonist's Guardian's Counter): a hit from close is PARRIED, the attacker takes a
+  //    counter hit; a hit from range (a projectile) is REFLECTED back as a homing bolt. _parried is then set
+  //    for a moment so the fighter can follow up (the grappler turns a parry into a grab).
+  //  _armorT > 0: super armor, the hit's percent counts but there is no launch or hitstun (up to 30% hits).
+  //  _grabInv > 0: mid-throw, nothing touches it.
+  var refl = [];
+  function defend(isMe, h) {
+    var g = G(), P = g.player, st = isMe ? P : (foe.F ? foe.F.st : null), chr = isMe ? me.char : foe.char, side = isMe ? me : foe;
+    if (!st) return false;
+    if (st._grabInv > 0) return true;
+    var vx = isMe ? P.x + P.w / 2 : foe.x + foe.w / 2, vy = isMe ? P.y + P.h / 2 : foe.y + foe.h / 2;
+    var ax = isMe ? foe.x + foe.w / 2 : P.x + P.w / 2, ay = isMe ? foe.y + foe.h / 2 : P.y + P.h / 2;
+    if (st._parryT > 0 || (chr === 'cb_protagonist' && st._protagRetaliateTimer > 0)) {
+      var far = Math.hypot(ax - vx, ay - vy) > 2.6, d = sgn(ax - vx) || 1;
+      st._parryT = 0; st._protagRetaliateTimer = 0; st._parried = 0.45; st._parryFar = far; st._parryDir = d;
+      side.invuln = Math.max(side.invuln || 0, 0.45); side.hitstun = 0;
+      window._ppHitstop = Math.max(window._ppHitstop || 0, 0.1); g.shake(7);
+      addFx('ring', vx, vy, '#ffffff'); addFx('burst', vx, vy, far ? '#7cdbff' : '#ffd166', 18);
+      showBanner(far ? 'REFLECT!' : 'PARRY!', 0.55);
+      if (far) refl.push({ x: vx, y: vy, toMe: !isMe, pct: Math.max(6, h.pct * 1.25), t: 0, trail: [] });
+      else {
+        var cp = Math.max(8, h.pct * 1.2);
+        if (isMe) hitFoe(g, P, cp, d * 9, -9, 1, true); else hitMe({ pct: cp, ix: d * 9, iy: -9, fromX: vx, k: 1, noDef: true });
+      }
+      return true;
+    }
+    if (st._armorT > 0 && h.pct < 30) {
+      side.pct = Math.min(999, side.pct + h.pct * 0.85); side.flash = 0.1;
+      addFx('ring', vx, vy, '#ffb347'); g.shake(3);
+      return true;
+    }
+    return false;
+  }
+  // reflected bolts home in on whoever threw the attack
+  function stepRefl(dt) {
+    var g = G(), P = g.player;
+    for (var i = refl.length - 1; i >= 0; i--) {
+      var r = refl[i]; r.t += dt;
+      var tx = r.toMe ? P.x + P.w / 2 : foe.x + foe.w / 2, ty = r.toMe ? P.y + P.h / 2 : foe.y + foe.h / 2;
+      var dx = tx - r.x, dy = ty - r.y, d = Math.hypot(dx, dy) || 1, sp = 26 * dt;
+      r.trail.push([r.x, r.y]); if (r.trail.length > 8) r.trail.shift();
+      if (d <= sp + 0.5) {
+        var ux = dx / d;
+        if (r.toMe) hitMe({ pct: r.pct, ix: sgn(ux) * 10, iy: -7, fromX: r.x, k: 1, noDef: true }); else hitFoe(g, P, r.pct, sgn(ux) * 10, -7, 1, true);
+        addFx('burst', tx, ty, '#7cdbff', 14); refl.splice(i, 1); continue;
+      }
+      r.x += dx / d * sp; r.y += dy / d * sp;
+      if (r.t > 2.5) refl.splice(i, 1);
+    }
+  }
+  function drawRefl(ctx, cam) {
+    for (var i = 0; i < refl.length; i++) {
+      var r = refl[i];
+      ctx.globalCompositeOperation = 'lighter';
+      for (var j = 0; j < r.trail.length; j++) { var q = r.trail[j], a = (j + 1) / r.trail.length; ctx.globalAlpha = 0.5 * a; ctx.fillStyle = '#7cdbff'; ctx.beginPath(); ctx.arc(q[0] * T - cam.x, q[1] * T - cam.y, T * 0.22 * a, 0, Math.PI * 2); ctx.fill(); }
+      ctx.globalAlpha = 1; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(r.x * T - cam.x, r.y * T - cam.y, T * 0.2, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(r.x * T - cam.x, r.y * T - cam.y, T * (0.3 + 0.08 * Math.sin(r.t * 30)), 0, Math.PI * 2); ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  }
+  SM.__defend = defend;
+
   function hitMe(h) { // h: { pct, ix, iy, fromX, k }
     var g = G(), P = g.player;
     if (SM.phase !== 'fight' || me.invuln > 0 || me.dodge > 0 || me.ledgeInv > 0 || me.respawnHold > 0) return false;
+    if (!h.noDef && defend(true, h)) return true;
     if (me.guarding && P.onGround) {
       me.shield -= h.pct * 0.9 + 4; me.flash = 0.12;
       addFx('ring', P.x + P.w / 2, P.y + P.h / 2, '#7cdbff');
@@ -743,12 +809,10 @@
     if (add <= 0) return;
     s.chipBank -= add; s.pct = Math.min(999, s.pct + add); s.flash = Math.max(s.flash || 0, 0.06);
   }
-  function hitFoe(g, P, pct, ix, iy, k) {
+  function hitFoe(g, P, pct, ix, iy, k, noDef) {
     var f = foe;
     if (SM.phase !== 'fight') return;
-    if (f.F && f.F.st._protagRetaliateTimer > 0) {                       // its Guardian's Counter eats the hit and slashes back (the game's own counter)
-      g.fighterRun(f.F, function () { g.fighterCounter(); }); realHarvest(f, P); return;
-    }
+    if (!noDef && f.kind !== 'remote' && !(f.invuln > 0 || f.dodge > 0 || f.respawnHold > 0) && defend(false, { pct: pct })) return;
     if (f.kind === 'remote') { if (SM.net && SM.net.sendHit) SM.net.sendHit(pct, ix, iy, P.x + P.w / 2, k); f.flash = 0.12; addFx('burst', f.x + f.w / 2, f.y + f.h / 2, '#fff', 10); return; }
     if (f.invuln > 0 || f.dodge > 0 || f.ledgeInv > 0 || f.respawnHold > 0 && f.lvl > 0 && false) return;
     if (f.respawnHold > 0) return;
@@ -1603,6 +1667,7 @@
     if (!SM.active) return;
     var g = G(), ctx = g.ctx, cam = g.cam, P = g.player; if (!ctx) return;
     ctx.save();
+    drawRefl(ctx, cam);
     // respawn platform
     [[me, P], [foe, foe]].forEach(function (pr) {
       var s = pr[0]; if (s.respawnHold > 0) {
