@@ -20639,7 +20639,11 @@ function resolveCollisions(axis, dt) {
     const walkSpeed = Math.abs(player.vx);
     const walkPhase = player.onGround && walkSpeed > 0.5 ? now * walkSpeed * 2.2 : 0;
     const bodyBob = player.onGround && walkSpeed > 0.5 ? Math.sin(walkPhase * 2) * 0.8 : 0;
-    const lookDir = player.dashDir || 1;
+    // The whole character is mirrored on the canvas when facing left (see faceDir below). The per-character code
+    // also used to move beaks, eyes, weapons and so on to the left by itself, which mirrored them twice, so those
+    // parts (and for several characters the whole picture) always pointed right. It now always draws facing right.
+    const faceDir = (player.dashDir || 1) < 0 ? -1 : 1;
+    const lookDir = 1;
     
     const airStretch = player.onGround ? 1.0 : (player.vy < -4 ? 1.08 : 0.96);
     const W = player.w * TILE, H = player.h * TILE;
@@ -20658,7 +20662,7 @@ function resolveCollisions(axis, dt) {
     else { if (window.PPStrike) window.PPStrike.pose(ctx, W, H); if (window.PPEmote) window.PPEmote.pose(ctx, W, H); }
 
     
-    if (lookDir === -1) {
+    if (faceDir === -1) {
       ctx.save();
       ctx.translate(W, 0); ctx.scale(-1, 1);
     }
@@ -20684,13 +20688,27 @@ function resolveCollisions(axis, dt) {
       
       _skinOX.save();
       _skinOX.translate(_padSide, _padTop);
-      if (lookDir === -1) { _skinOX.save(); _skinOX.translate(W, 0); _skinOX.scale(-1, 1); }
+      if (faceDir === -1) { _skinOX.save(); _skinOX.translate(W, 0); _skinOX.scale(-1, 1); }
       ctx = _skinOX; 
       
       _skinOC._padSide = _padSide; _skinOC._padTop = _padTop;
     }
 
     
+    // Text drawn by a character (name tags and the like) must not come out mirrored.
+    const _ftCtx = ctx;
+    if (faceDir === -1) {
+      const _ft = _ftCtx.fillText;
+      _ftCtx.fillText = function (text, tx, ty, maxWidth) {
+        const t = _ftCtx.getTransform();
+        if (t.a < 0 && t.b === 0 && t.c === 0) {
+          _ftCtx.save();
+          _ftCtx.setTransform(-t.a, 0, 0, t.d, 2 * t.a * tx + t.e, t.f);
+          if (maxWidth === undefined) _ft.call(_ftCtx, text, tx, ty); else _ft.call(_ftCtx, text, tx, ty, maxWidth);
+          _ftCtx.restore();
+        } else if (maxWidth === undefined) _ft.call(_ftCtx, text, tx, ty); else _ft.call(_ftCtx, text, tx, ty, maxWidth);
+      };
+    }
     if (id === 'chicken') {
       
       drawLeg(cx - 7, H - 10, Math.sin(walkPhase) * 0.35, '#ffd700');
@@ -22619,7 +22637,7 @@ function resolveCollisions(axis, dt) {
         
         
         
-        if (lookDir === -1) {
+        if (faceDir === -1) {
           const _origFillText = ctx.fillText.bind(ctx);
           ctx.fillText = function(text, tx, ty, maxWidth) {
             const t = ctx.getTransform();
@@ -22650,9 +22668,10 @@ function resolveCollisions(axis, dt) {
     }
 
     
+    if (faceDir === -1) delete _ftCtx.fillText;
     if (_activeSkin && _activeSkin.tint && _skinOC && _skinOX) {
       
-      if (lookDir === -1) _skinOX.restore();
+      if (faceDir === -1) _skinOX.restore();
       _skinOX.restore(); 
 
       
@@ -22676,7 +22695,7 @@ function resolveCollisions(axis, dt) {
       
       const _dxOff = -(_skinOC._padSide || 6);
       const _dyOff = -(_skinOC._padTop  || 28);
-      if (lookDir === -1) {
+      if (faceDir === -1) {
         ctx.restore(); 
         ctx.save();
         ctx.globalAlpha = 1;
@@ -22706,13 +22725,13 @@ function resolveCollisions(axis, dt) {
       ctx.restore();
     }
     if (player.keys > 0) {
-      if (lookDir === -1) { ctx.save(); ctx.translate(W, 0); ctx.scale(-1, 1); }
+      if (faceDir === -1) { ctx.save(); ctx.translate(W, 0); ctx.scale(-1, 1); }
       ctx.save();
       ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
       ctx.fillStyle = palette.key;
       ctx.fillText(`🗝️×${player.keys}`, cx, -10);
       ctx.restore();
-      if (lookDir === -1) ctx.restore();
+      if (faceDir === -1) ctx.restore();
     }
 
     
@@ -22724,7 +22743,7 @@ function resolveCollisions(axis, dt) {
     
     
     
-    if (lookDir === -1) ctx.restore();
+    if (faceDir === -1) ctx.restore();
 
     ctx.restore(); 
   }
@@ -39121,7 +39140,7 @@ window._claimLBro = function() {
     const walkPhase = p.onGround && walkSpeed > 0.5 ? t * walkSpeed * 2.3 : 0;
     const airStretch = p.onGround ? 1.0 : (p.vy < -4 ? 1.07 : 0.95);
     const bob = p.onGround && walkSpeed > 0.5 ? Math.sin(walkPhase*2)*ph*0.012 : 0;
-    const facing = (p.dashDir || p.lastMoveDir || 1) >= 0 ? 1 : -1;
+    const facing = 1;   // the game already mirrors the whole character when facing left; flipping here too cancelled it
 
     ctx.save();
     ctx.translate(cx, cy); ctx.scale(facing, airStretch); ctx.translate(-cx, -cy);
