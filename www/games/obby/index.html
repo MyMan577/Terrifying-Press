@@ -38974,7 +38974,7 @@ window._claimLBro = function() {
       if (s.pr) _chProjs.push(...s.pr); if (s.hz) _chHazards.push(...s.hz); if (s.fu) _chFuses.push(...s.fu); if (s.wa) _chWalls.push(...s.wa); if (s.lk) _chLinkFX.push(...s.lk);
       return out;
     },
-    tick: dt => { if (window.selectedCharacter === CHAM_ID) _chamTickFn(dt); },
+    tick: dt => { if (window.selectedCharacter !== CHAM_ID) return; const b = document.getElementById('chamFormBtn'), k = b && { d: b.style.display, bg: b.style.background, t: b.textContent, c: b.className }; try { _chamTickFn(dt); } finally { if (b && k) { b.style.display = k.d; b.style.background = k.bg; b.textContent = k.t; b.className = k.c; } } },   // the CPU's turn: your buttons stay yours
     draw: (ctx, now2, cam) => { if (window.selectedCharacter === CHAM_ID) _drawChamWorld(ctx, now2, cam); },
     keys: { '0': () => cycleChamForm() },
     form: () => CHAM_FORMS[_chamFormIdx] && CHAM_FORMS[_chamFormIdx].id });
@@ -39478,7 +39478,7 @@ window._claimLBro = function() {
       _tPhase = s.ph || 0; _tTimer = s.t || 0; _tWindow = s.w || 0; _tCD = s.cd || 0; _tTarget = s.tg || null; _tFromX = s.fx || 0; _tFromY = s.fy || 0; _tVisual = s.v || null;
       return out;
     },
-    tick: dt => { if (window.selectedCharacter === CHAM_ID) _chamTongueTickFn(dt); },
+    tick: dt => { if (window.selectedCharacter !== CHAM_ID) return; const b = document.getElementById('chamTongueBtn'), k = b && { d: b.style.display, t: b.textContent, c: b.className }; try { _chamTongueTickFn(dt); } finally { if (b && k) { b.style.display = k.d; b.textContent = k.t; b.className = k.c; } } },
     draw: (ctx, now2, cam) => _drawTongue(ctx, now2, cam),
     keys: { k: () => chamTonguePress() },
     ready: () => _tCD <= 0 && _tPhase === 0 });
