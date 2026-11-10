@@ -725,6 +725,7 @@
       if (!okX || !okY) continue;
       s.ledge = { L: L, t: 0 }; L.occ = s; s.ledgeInv = BAL.ledgeInv;
       b.vx = 0; b.vy = 0; b.onGround = false;
+      (isMe ? P : (s.F ? s.F.st : {}))._smRecUsed = false;
       if (isMe) { g.jumpCount = 0; P.dashCharges = P.maxDashes; me.airDodged = false; } else { s.jumps = 2; s.burst = 1; s.wallJumps = 0; s.recSide = false; }
       hangPos(b, L);
       addFx('ring', b.x + b.w / 2, L.top, '#9ad1ff');
@@ -1401,7 +1402,7 @@
     cb_protagonist: { dash: 1, dashRec: 1, upTapRec: 1, protag: 1 },
     // Chroma: each form's S moves (direction picks them; ground and air differ), K = Tongue Chain (twice for the
     // finisher), 0 = next form, held S = PRISM BEAM / COLOUR GEYSER / PAINT BOMB
-    cb_chameleon: { cham: 1 },
+    cb_chameleon: { cham: 1, upRec: 1 },   // (Smash recovery: RAINBOW RISE, held up + S in the air)
     // Press Play Prodigy: each EQ mode's S moves by direction (ground and air), presses on the beat for Hype
     // (Lv2+), K = THE DROP when Hype is full, G = next EQ mode, up in the air lifts once per jump
     cb_pressplay: { prod: 1, upTapRec: 1 },
@@ -1414,10 +1415,10 @@
     // the fighter-kit fighters (fkit.js): each one's own ai() in its plugin says what to press
     cb_kodiak: { fk: 1, upTapRec: 1 }, cb_valka: { fk: 1, upTapRec: 1 }, cb_boiler: { fk: 1, upTapRec: 1 }, cb_sleight: { fk: 1, upTapRec: 1 },
     // The base fighters: direction + S picks the move (range = how far its side / neutral move reaches), held S = specials
-    archmage:     { gen: 8 },                                   // up ice, down walls, side rocket, neutral fire
+    archmage:     { gen: 8, upRec: 1 },                                   // up ice, down walls, side rocket, neutral fire
     phantomace:   { gen: 7, dash: 1, sideRec: 1, upRec: 1 },    // shockwave slashes, 3 dashes, PHANTOM BLITZ / ASCENDING STAR to get back
-    formSwitcher: { gen: 6, formKey: '0' },                     // each element's own moves; 0 = next element
-    conduit:      { gen: 8 }                                    // Arc Stream, Lift Current, spikes, bolts
+    formSwitcher: { gen: 6, formKey: '0', upRec: 1 },                     // each element's own moves; 0 = next element
+    conduit:      { gen: 8, upRec: 1 }                                    // Arc Stream, Lift Current, spikes, bolts
   };
   function plugInfo(name) { var pl = (window._fighterPlugins || []).filter(function (q) { return q.name === name; })[0]; return pl && pl.info ? pl.info() : null; }
   function kit(f) { return KIT[f.char] || {}; }
