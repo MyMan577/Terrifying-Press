@@ -81,7 +81,7 @@
   // Each phone runs its own fighter. Your attacks land on the other player's stand-in and are sent over as
   // hits (percent and launch); they apply them, so shields, dodges and parries are judged on their phone.
   var SMK = function(){ return window.__smash; };
-  var remoteChar = null;
+  var remoteChar = null, smCourse = null;
   var smNet = {
     get role(){ return role; },
     remotePos: function(){ return remote ? { x: blendX || remote.x, y: blendY || remote.y, w: remote.w, h: remote.h, char: remote.char, vx: remote.vx, vy: remote.vy, onGround: remote.onGround } : null; },
@@ -95,7 +95,7 @@
   function smHostMenu(){
     var S = SMK(); if (!S) return;
     S.openMenu({ online: true, onCancel: function(){ leave(true); }, onGo: function(cfg){
-      if (cfg.stage === 'course') { cfg.stage = 'battlefield'; say('Your own course can’t be used against a friend yet: playing on Battlefield.'); }
+      if (cfg.stage === 'course') sendCourse();                  // your own course as the stage: the other phone gets a copy first
       if (cfg.stocks <= 0) cfg.stocks = 3;
       cfg.online = true; cfg.cpuChar = remoteChar || 'brawler';
       S.start(cfg); smNet.sendStart(S.cfg);
@@ -110,7 +110,7 @@
     status(role === 'host' ? '🤝 Together · sending your course' : '🤝 Together · getting the course');
     c.on('data', onMessage);
     c.on('close', function(){ if (conn === c) leave(false); });
-    shared = null; pendingEd = []; friendMark = null; remoteChar = null;
+    shared = null; pendingEd = []; friendMark = null; remoteChar = null; smCourse = null;
     if (role === 'host' && kind === 'smash') {
       conn.send({ t: 'kind', kind: kind });
       if (SMK()) SMK().setNet(smNet);
@@ -183,7 +183,13 @@
       remoteWon = !!m.won;
       return;
     }
-    if (m.t === 'course' && role === 'guest' && kind !== 'smash') {
+    if (m.t === 'course' && role === 'guest' && kind === 'smash') {   // the host's course for a Smash match: kept until the match starts
+      if (!incoming || incoming.id !== m.id) incoming = { id: m.id, n: m.n, parts: [], got: 0 };
+      if (incoming.parts[m.i] === undefined) { incoming.parts[m.i] = m.d; incoming.got++; }
+      if (incoming.got === incoming.n) { smCourse = incoming.parts.join(''); incoming = null; }
+      return;
+    }
+    if (m.t === 'course' && role === 'guest') {
       if (!incoming || incoming.id !== m.id) incoming = { id: m.id, n: m.n, parts: [], got: 0 };
       if (incoming.parts[m.i] === undefined) { incoming.parts[m.i] = m.d; incoming.got++; }
       if (incoming.got === incoming.n) {
@@ -209,7 +215,10 @@
     if (m.t === 'smChar') { remoteChar = m.char; return; }
     if (m.t === 'smStart' && role === 'guest' && S) {
       var rs = document.getElementById('smResult'); if (rs) rs.style.display = 'none';
-      S.start({ stage: m.stage, stocks: m.stocks, time: m.time, online: true, char: g.char, cpuChar: m.char || 'brawler' });
+      if (m.stage === 'course' && !smCourse) { say("Couldn't get the host's course."); return; }
+      if (S.active) S.stop(true);                                // a rematch: back to your own course first, then load theirs again
+      S.setNet(smNet);
+      S.start({ stage: m.stage, stocks: m.stocks, time: m.time, online: true, char: g.char, cpuChar: m.char || 'brawler', courseJson: m.stage === 'course' ? smCourse : null });
       status('🥊 Smash · vs Host');
       return;
     }
