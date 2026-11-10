@@ -63,17 +63,44 @@
   function say(t){ var g = G(); if (g) g.setMessage(t); }
 
   function openLink(k){
-    if (conn) return;
+    if (conn) { if (k === 'smash') say('You are already linked. Leave first to start a Smash match.'); return; }
     if (!window.QRLink){ say("Playing together isn't available."); return; }
-    kind = k === 'build' ? 'build' : 'play';
+    kind = k === 'build' ? 'build' : k === 'smash' ? 'smash' : 'play';
     QRLink.open({
-      app: 'obby', accent: '#7c9cff',
-      title: kind === 'build' ? 'Build together' : 'Play together',
+      app: 'obby', accent: kind === 'smash' ? '#ff6b6b' : '#7c9cff',
+      title: kind === 'build' ? 'Build together' : kind === 'smash' ? 'Smash a friend' : 'Play together',
       hint: kind === 'build'
         ? 'You both build the host’s course at the same time, then play it together. One phone hosts, the other joins.'
+        : kind === 'smash' ? 'A Smash match against each other. One phone hosts and picks the stage, the other joins. Pick your fighter first.'
         : 'You both play the host’s course, each with your own character. One phone hosts, the other joins.',
       onConnected: start
     });
+  }
+
+  // ---------- Smash against each other ----------
+  // Each phone runs its own fighter. Your attacks land on the other player's stand-in and are sent over as
+  // hits (percent and launch); they apply them, so shields, dodges and parries are judged on their phone.
+  var SMK = function(){ return window.__smash; };
+  var remoteChar = null;
+  var smNet = {
+    get role(){ return role; },
+    remotePos: function(){ return remote ? { x: blendX || remote.x, y: blendY || remote.y, w: remote.w, h: remote.h, char: remote.char, vx: remote.vx, vy: remote.vy, onGround: remote.onGround } : null; },
+    sendHit: function(pct, ix, iy, fromX, k){ if (conn) conn.send({ t: 'smHit', pct: pct, ix: ix, iy: iy, fromX: fromX, k: k }); },
+    sendKO: function(){ var S = SMK(); if (conn && S) conn.send({ t: 'smKO', stocks: S.me.stocks }); },
+    sendOver: function(w){ if (conn && role === 'host') conn.send({ t: 'smOver', w: w === 'me' ? 'foe' : w === 'foe' ? 'me' : 'draw' }); },
+    sendStart: function(cfg){ if (conn && role === 'host') conn.send({ t: 'smStart', stage: cfg.stage, stocks: cfg.stocks, time: cfg.time, char: G().char }); },
+    quit: function(){ leave(true); },
+    onStop: function(){}
+  };
+  function smHostMenu(){
+    var S = SMK(); if (!S) return;
+    S.openMenu({ online: true, onCancel: function(){ leave(true); }, onGo: function(cfg){
+      if (cfg.stage === 'course') { cfg.stage = 'battlefield'; say('Your own course can’t be used against a friend yet: playing on Battlefield.'); }
+      if (cfg.stocks <= 0) cfg.stocks = 3;
+      cfg.online = true; cfg.cpuChar = remoteChar || 'brawler';
+      S.start(cfg); smNet.sendStart(S.cfg);
+      status('🥊 Smash · vs Friend');
+    } });
   }
 
   // ---------- session ----------
@@ -83,7 +110,13 @@
     status(role === 'host' ? '🤝 Together · sending your course' : '🤝 Together · getting the course');
     c.on('data', onMessage);
     c.on('close', function(){ if (conn === c) leave(false); });
-    shared = null; pendingEd = []; friendMark = null;
+    shared = null; pendingEd = []; friendMark = null; remoteChar = null;
+    if (role === 'host' && kind === 'smash') {
+      conn.send({ t: 'kind', kind: kind });
+      if (SMK()) SMK().setNet(smNet);
+      status('🥊 Smash · pick the stage'); smHostMenu();
+      return;
+    }
     if (role === 'host') {
       conn.send({ t: 'kind', kind: kind });
       sendCourse(); baseline();
@@ -96,8 +129,17 @@
   function leave(byMe){
     var c = conn; conn = null; remote = null; prev = null; incoming = null; shared = null; pendingEd = []; friendMark = null;
     chip.style.display = 'none';
-    if (byMe && c) { try { c.close(); } catch(e){} }
+    if (byMe && c) { try { c.send({ t: 'smQuit' }); } catch(e){} try { c.close(); } catch(e){} }
     var g = G();
+    var S = SMK();
+    if (S && S.net === smNet) {          // a Smash match: end it, Smash puts your own course back
+      S.setNet(null); if (S.hideMenu) S.hideMenu();
+      var rs = document.getElementById('smResult'); if (rs) rs.style.display = 'none';
+      if (S.active) S.stop(true);
+      guestOwnCourse = null; role = null;
+      say(byMe ? 'You left the match.' : 'Your friend left the match.');
+      return;
+    }
     if (role === 'guest' && guestOwnCourse && g) {
       try { g.importLevel(guestOwnCourse); g.setMode('build'); } catch(e){}
     }
@@ -136,11 +178,12 @@
       var now = performance.now();
       if (lastAt) gap = Math.min(200, Math.max(20, gap * 0.85 + (now - lastAt) * 0.15));
       lastAt = now;
+      if (kind === 'smash') { var S0 = SMK(); if (S0 && S0.active && S0.foe && S0.foe.kind === 'remote' && m.pct != null) { S0.foe.pct = m.pct; if (m.stk != null && S0.phase === 'fight') S0.foe.stocks = m.stk; } return; }
       if (m.won && !remoteWon) say('Your friend reached the goal!');
       remoteWon = !!m.won;
       return;
     }
-    if (m.t === 'course' && role === 'guest') {
+    if (m.t === 'course' && role === 'guest' && kind !== 'smash') {
       if (!incoming || incoming.id !== m.id) incoming = { id: m.id, n: m.n, parts: [], got: 0 };
       if (incoming.parts[m.i] === undefined) { incoming.parts[m.i] = m.d; incoming.got++; }
       if (incoming.got === incoming.n) {
@@ -152,7 +195,28 @@
       }
       return;
     }
-    if (m.t === 'kind') { kind = m.kind === 'build' ? 'build' : 'play'; return; }
+    if (m.t === 'kind') {
+      kind = m.kind === 'build' ? 'build' : m.kind === 'smash' ? 'smash' : 'play';
+      if (kind === 'smash' && role === 'guest') {
+        if (SMK()) SMK().setNet(smNet);
+        guestOwnCourse = null;                                   // Smash keeps and restores your course itself
+        conn.send({ t: 'smChar', char: g.char });
+        status('🥊 Smash · waiting for the host'); say('Linked! The host is picking the stage.');
+      }
+      return;
+    }
+    var S = SMK();
+    if (m.t === 'smChar') { remoteChar = m.char; return; }
+    if (m.t === 'smStart' && role === 'guest' && S) {
+      var rs = document.getElementById('smResult'); if (rs) rs.style.display = 'none';
+      S.start({ stage: m.stage, stocks: m.stocks, time: m.time, online: true, char: g.char, cpuChar: m.char || 'brawler' });
+      status('🥊 Smash · vs Host');
+      return;
+    }
+    if (m.t === 'smHit' && S && S.active) { S.hitMe({ pct: m.pct, ix: m.ix, iy: m.iy, fromX: m.fromX, k: m.k }); return; }
+    if (m.t === 'smKO' && S && S.active) { S.koFromRemote(m.stocks); if (m.stocks <= 0 && S.remoteOver) S.remoteOver('me'); return; }
+    if (m.t === 'smOver' && S && S.active && role === 'guest') { if (S.remoteOver) S.remoteOver(m.w); return; }
+    if (m.t === 'smQuit') { leave(false); return; }
     if (m.t === 'ed') {   // the other phone's block changes
       if (g && g.mode === 'build') applyEd(m); else pendingEd.push(m);
       return;
@@ -208,7 +272,8 @@
     var p = g.player, now = performance.now();
 
     // host pressed Play again after editing: send the new course first
-    if (role === 'host' && g.mode !== lastMode) {
+    if (kind === 'smash') lastMode = g.mode;
+    else if (role === 'host' && g.mode !== lastMode) {
       if (g.mode === 'play') {
         var json = g.exportLevel();
         if (courseKey(json) !== lastCourseKey) { sendCourse(); conn.send({ t: 'play' }); }
@@ -222,7 +287,8 @@
         onGround: p.onGround, dashDir: p.dashDir, isDashing: p.isDashing, gravityFlipped: p.gravityFlipped,
         isWallSliding: p.isWallSliding, onWall: p.onWall, wallSide: p.wallSide, slashTimer: r2(p.slashTimer || 0),
         swordMode: p.swordMode, char: g.char, mode: g.mode, won: !!g.won,
-        em: window.PPEmote ? window.PPEmote.netState() : null });
+        pct: kind === 'smash' && SMK() && SMK().active ? Math.round(SMK().me.pct * 10) / 10 : undefined, stk: kind === 'smash' && SMK() && SMK().active ? SMK().me.stocks : undefined,
+        em: window.PPEmote ? window.PPEmote.netState() : null, fk: window.FKit && window.FKit.netState ? window.FKit.netState() : undefined });
     }
 
     // building together: send this phone's changes, put in any that waited while it was playing
@@ -247,5 +313,5 @@
   function r2(v){ return Math.round((v || 0) * 100) / 100; }
 
   // role while linked ('host' or 'guest'), so the course autosave can leave a friend's course alone
-  window.__obbyNet = { frame: frame, get role(){ return conn ? role : null; } };
+  window.__obbyNet = { frame: frame, get role(){ return conn ? role : null; }, smash: function(){ openLink('smash'); } };
 })();
