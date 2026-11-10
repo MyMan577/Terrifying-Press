@@ -952,7 +952,7 @@
     m.mood = r < wA ? 'aggro' : (r -= wA) < wB ? 'bait' : (r -= wB) < wN ? 'neutral' : (r -= wN) < wI ? 'idle' : (r -= wI) < wH ? 'hop' : 'stand';
     var hi = foe.lvl >= 2;
     m.moodT = m.mood === 'aggro' ? rnd(1.2, 2.4) + (hi ? 0.6 : 0) : m.mood === 'neutral' ? rnd(1.5, 3) + (hi ? 1 : 0)
-      : (m.mood === 'idle' || m.mood === 'hop') && hi ? rnd(1, 2.2) : rnd(2.2, 4.5);   // higher levels: breathers are short
+      : (m.mood === 'idle' || m.mood === 'hop') && hi ? rnd(1, 2.2) : m.mood === 'stand' ? rnd(1.2, 2.5) : rnd(2.2, 4.5);   // higher levels: breathers are short
     m.taunted = false; foe.wanderX = null;
     m.navOK = L.nav >= 0.9 || Math.random() < L.nav;
   }
@@ -1314,12 +1314,30 @@
     if (tadx > hold + 0.25) want = sgn(tdx);
     else if (!gp && !f.chasing && qadx < hold - 0.7 && f.cd > 0.05 && me.hitstun <= 0) want = -sgn(qdx);
     if (calm && m.mood === 'stand' && me.respawnHold <= 0) {
-      // hold the spot: only creep in if you're really far, and face you the whole time
-      want = qadx > 7 ? sgn(qdx) : 0; inp.speed = 0.5;
+      // hold the spot, but shuffle on it like a person (a half step in, a half step out), and walk in if you're far
+      want = qadx > 5 ? sgn(qdx) : 0; inp.speed = 0.5;
+      if (!want && f.onGround) { f.shufT = (f.shufT || 0) - dt; if (f.shufT <= 0) { f.shufT = rnd(0.35, 0.8); f.shufD = Math.random() < 0.5 ? 0 : (Math.random() < 0.55 ? 1 : -1) * sgn(qdx || f.face); } if (f.shufT > 0.2 && groundAhead(f, f.shufD || 1)) want = f.shufD || 0; }
       // you're walking in: put the shield up before you swing
       var coming = sgn(P.vx) === -sgn(dx) && Math.abs(P.vx) > 2;
       if (f.onGround && f.preShieldCD <= 0 && adx < 3 && Math.abs(dy) < 2 && coming && f.shield > 30 && Math.random() < dt * (2 + 4 * L.shield)) {
         f.guarding = true; f.guardLeft = rnd(0.4, 0.9); f.preShieldCD = rnd(1, 2.2); inp.dir = 0; return;
+      }
+    }
+    // footsies: parked at its spacing with nothing going on, it doesn't stand still waiting for you to move.
+    // It dances in and out, and every so often commits and walks in to swing.
+    if (!calm && !urgent && want === 0 && f.onGround && !f.atk && me.hitstun <= 0 && me.respawnHold <= 0 && f.lvl > 0) {
+      f.commitT = Math.max(0, (f.commitT || 0) - dt);
+      if (f.commitT > 0) { if (qadx > 1.0) want = sgn(qdx); }
+      else {
+        f.danceT = (f.danceT || 0) - dt;
+        if (f.danceT <= 0) {
+          f.danceT = rnd(0.18, 0.45);
+          var r2 = Math.random();
+          f.danceD = r2 < 0.42 ? sgn(qdx || f.face) : r2 < 0.78 ? -sgn(qdx || f.face) : 0;
+          if (Math.random() < 0.18 + 0.25 * L.aggr * (m.mood === 'aggro' ? 1.5 : m.mood === 'bait' ? 0.4 : 1)) f.commitT = rnd(0.5, 0.9);
+        }
+        want = f.danceD || 0;
+        if (want === -sgn(qdx) && qadx > hold + 1.2) want = 0;          // don't drift too far back out
       }
     }
     var retreat = want !== 0 && want !== sgn(qdx || f.face);
