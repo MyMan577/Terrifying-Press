@@ -5294,6 +5294,7 @@ let srEchoFrames = [];
         F.cs = this._csGet(); this._csSet(keepCs);
         enemies.splice(0); enemies.push(...keepEn);
         for (const k of Object.keys(player)) player[k] = (k in keepP) ? keepP[k] : undefined;
+        for (const k in keepP) player[k] = keepP[k];   // also what the other fighter's turn deleted outright (its crouch deletes _origH: without this you lost yours mid-crouch and stood up smaller each time)
         keys.clear(); keepKeys.forEach(k => keys.add(k));
         Object.assign(mobileKeys, keepMk);
         selectedCharacter = keep.sc; jumpCount = keep.jc; jumpPressed = keep.jp; jumpJustPressed = keep.jjp; turboCharging = keep.turbo;
