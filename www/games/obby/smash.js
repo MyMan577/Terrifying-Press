@@ -1336,8 +1336,8 @@
     // Press Play Mixtape: Tape Whip / Fast-Forward Dash / Spool Launch / Tangle on the ground, Ribbon Lash / Tape Zip /
     // Rewind Climb / Eject Slam in the air, K = FAST FORWARD when the Tape meter is full, G = flip the tape's side
     cb_pp_mixtape: { mix: 1, upTapRec: 1 },
-    // Gale: Gale Palm / Cyclone Dash / Updraft / Downburst on the ground, Whirl / Crosswind Kick / Jetstream / Dive Kick
-    // in the air; held S = CYCLONE RUSH (gets back across) / UPDRAFT GEYSER / TWISTER
+    // Gale: Kite Lash / Kite Toss (Gust Sentry) / Updraft Vent / Downburst on the ground, Pinwheel / Slipstream or Kite Zip /
+    // Jetstream / Dive Kick in the air; held S charges any of them (air side held = a longer Slipstream, gets back across)
     cb_gale: { gale: 1, upTapRec: 1, sideRec: 1 },
     // The base fighters: direction + S picks the move (range = how far its side / neutral move reaches), held S = specials
     archmage:     { gen: 8 },                                   // up ice, down walls, side rocket, neutral fire
@@ -1413,10 +1413,12 @@
       else A = dy < -1.2 && adx < 2.5 ? { type: 'tap', v: 'up' } : adx < 3 && Math.abs(dy) < 1.4 ? { type: 'tap', v: Math.random() < 0.7 ? '' : 'down' } : adx < 6 && Math.abs(dy) < 1.2 ? { type: 'tap', v: 'side' } : null;
     }
     if (K.gale && !A) {
-      var gs = f.F.plug && f.F.plug.gale;
-      if (!air && (killy || r < 0.1) && adx < 5 && Math.abs(dy) < 1.4) A = { type: 'charge', v: adx < 2.2 ? (dy < -1 ? 'up' : 'down') : 'side', hold: killy ? rnd(0.55, 0.8) : rnd(0.3, 0.5) };   // CYCLONE RUSH / UPDRAFT GEYSER / TWISTER
-      else if (air) A = dy < -0.8 && adx < 1.8 && !(gs && gs.airUpUsed) ? { type: 'tap', v: 'up' } : dy > 0.6 && dy < 4 && adx < 2.6 ? { type: 'tap', v: 'down' } : adx < 4 && Math.abs(dy) < 1.2 && !(gs && gs.airSideUsed) ? { type: 'tap', v: 'side' } : adx < 1.9 && Math.abs(dy) < 1.7 ? { type: 'tap', v: '' } : null;
-      else A = dy < -1.2 && adx < 2 ? { type: 'tap', v: 'up' } : adx < 2.4 && Math.abs(dy) < 1.3 ? { type: 'tap', v: Math.random() < 0.65 ? '' : 'down' } : adx < 5 && Math.abs(dy) < 1.2 && r < 0.5 ? { type: 'tap', v: 'side' } : null;
+      var gs = f.F.plug && f.F.plug.gale, kout = gs && gs.kiteOut;
+      if (air && kout && Math.random() < 0.35) A = { type: 'tap', v: 'side' };                                   // KITE ZIP to the sentry
+      else if (!air && (killy || r < 0.12) && adx < 5 && Math.abs(dy) < 1.4) A = { type: 'charge', v: adx < 2.2 ? (dy < -1 ? 'up' : 'down') : '', hold: killy ? rnd(0.55, 0.8) : rnd(0.3, 0.5) };   // charged SKY GEYSER / TWISTER / STORM LASH
+      else if (!air && !kout && adx > 2.5 && adx < 7 && Math.abs(dy) < 2 && r < 0.25) A = { type: 'tap', v: 'side' };   // KITE TOSS: a Gust Sentry
+      else if (air) A = dy < -0.8 && adx < 1.8 && !(gs && gs.airUpUsed) ? { type: 'tap', v: 'up' } : dy > 0.6 && dy < 4 && adx < 2.6 ? { type: 'tap', v: 'down' } : adx < 4 && Math.abs(dy) < 1.2 && !(gs && gs.airSideUsed) ? { type: 'tap', v: 'side' } : adx < 2.2 && Math.abs(dy) < 2 ? { type: 'tap', v: '' } : null;
+      else A = dy < -1.2 && adx < 2 ? { type: 'tap', v: 'up' } : adx < 2.6 && Math.abs(dy) < 1.5 ? { type: 'tap', v: Math.random() < 0.7 ? '' : 'down' } : null;
     }
     if (K.prod && !A) {
       var ps = f.F.plug && f.F.plug.prodigy;
