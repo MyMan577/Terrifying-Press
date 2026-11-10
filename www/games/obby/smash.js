@@ -32,7 +32,8 @@
     { id: 'cb_protagonist', n: 'Protagonist',  e: '🗡️', cap: 1 },
     { id: 'cb_pressplay',   n: 'Press Play Prodigy', e: '🎧', cap: 1 },
     { id: 'cb_pp_mixtape',  n: 'Press Play Mixtape', e: '📼', cap: 1 },
-    { id: 'cb_chameleon',   n: 'Chroma',       e: '🦎', cap: 1 }
+    { id: 'cb_chameleon',   n: 'Chroma',       e: '🦎', cap: 1 },
+    { id: 'cb_gale',        n: 'Gale',         e: '🪁', cap: 1 }
   ];
   function owned(id) { try { return JSON.parse(localStorage.getItem('obby_cbox_owned') || '[]').indexOf(id) >= 0; } catch (e) { return false; } }
   function roster() { return FIGHTERS.filter(function (f) { return !f.cap || owned(f.id); }); }
@@ -97,7 +98,10 @@
       meteor: { ix: 0, iy: 15, d: 0.9 },                                  // SPOOL SNARE: on the ground it pops them up
       launch: { ix: 0, iy: -15, d: 0.9, rocket: 1 } } },                  // TAPE TORNADO
     cb_chameleon:   { w: 0.85, d: 0.90, k: 0.90, mv: {
-      meteor: { ix: 0, iy: 14, d: 0.9, sweet: 1 } }                       // SKY TONGUE: tongue tip spikes
+      meteor: { ix: 0, iy: 14, d: 0.9, sweet: 1 } } },                    // SKY TONGUE: tongue tip spikes
+    cb_gale:        { w: 0.82, d: 0.92, k: 0.95, mv: {                    // light and fast: dies earlier, lives on mobility
+      meteor: { ix: 2, iy: 16, d: 1.0, bounce: 1 },                       // DIVE KICK: slanted spike, pogos off
+      launch: { ix: 1, iy: -17, d: 1.0 } }                                // UPDRAFT / JETSTREAM
     }
   };
   function ch(id) { return CH[id] || { w: 1, d: 1, k: 1 }; }
@@ -1312,7 +1316,7 @@
   // own player state, held keys and strike-engine state, presses the same buttons you do, and its attacks
   // are the real ones. Its target is a stand-in for you; whatever the attack does to it becomes your
   // percent and launch. Knockback, ledges, dodges and respawns stay with this file, synced both ways.
-  var REAL_CPU = { brawler: 1, cb_slugger: 1, cb_protagonist: 1, cb_chameleon: 1, cb_pressplay: 1, cb_pp_mixtape: 1, archmage: 1, phantomace: 1, formSwitcher: 1, conduit: 1 };
+  var REAL_CPU = { brawler: 1, cb_slugger: 1, cb_protagonist: 1, cb_chameleon: 1, cb_pressplay: 1, cb_pp_mixtape: 1, cb_gale: 1, archmage: 1, phantomace: 1, formSwitcher: 1, conduit: 1 };
   // what each real-moves fighter's kit is good for (all of it is pressed with the same buttons you use)
   //  sideRec / upRec: its side / up special moves it (usable to get back)   dash: dash-then-S attacks
   //  airThrow: S in the air throws something that travels (range in tiles)   groundOnly: specials only on the ground
@@ -1332,6 +1336,9 @@
     // Press Play Mixtape: Tape Whip / Fast-Forward Dash / Spool Launch / Tangle on the ground, Ribbon Lash / Tape Zip /
     // Rewind Climb / Eject Slam in the air, K = FAST FORWARD when the Tape meter is full, G = flip the tape's side
     cb_pp_mixtape: { mix: 1, upTapRec: 1 },
+    // Gale: Gale Palm / Cyclone Dash / Updraft / Downburst on the ground, Whirl / Crosswind Kick / Jetstream / Dive Kick
+    // in the air; held S = CYCLONE RUSH (gets back across) / UPDRAFT GEYSER / TWISTER
+    cb_gale: { gale: 1, upTapRec: 1, sideRec: 1 },
     // The base fighters: direction + S picks the move (range = how far its side / neutral move reaches), held S = specials
     archmage:     { gen: 8 },                                   // up ice, down walls, side rocket, neutral fire
     phantomace:   { gen: 7, dash: 1, sideRec: 1, upRec: 1 },    // shockwave slashes, 3 dashes, PHANTOM BLITZ / ASCENDING STAR to get back
@@ -1404,6 +1411,12 @@
       else if (!air && (killy || r < 0.1) && adx < 5 && Math.abs(dy) < 1.4) A = { type: 'charge', v: adx < 2.4 ? (dy < -1 ? 'up' : 'down') : 'side', hold: killy ? rnd(0.55, 0.8) : rnd(0.3, 0.5) };   // REWIND RUSH / TAPE TORNADO / SPOOL SNARE
       else if (air) A = dy < -0.8 && adx < 2 && !(ms && ms.airUpUsed) ? { type: 'tap', v: 'up' } : dy > 0.8 && adx < 1.6 ? { type: 'tap', v: 'down' } : adx < 7 && Math.abs(dy) < 2.5 ? { type: 'tap', v: adx > 3 ? 'side' : '' } : null;
       else A = dy < -1.2 && adx < 2.5 ? { type: 'tap', v: 'up' } : adx < 3 && Math.abs(dy) < 1.4 ? { type: 'tap', v: Math.random() < 0.7 ? '' : 'down' } : adx < 6 && Math.abs(dy) < 1.2 ? { type: 'tap', v: 'side' } : null;
+    }
+    if (K.gale && !A) {
+      var gs = f.F.plug && f.F.plug.gale;
+      if (!air && (killy || r < 0.1) && adx < 5 && Math.abs(dy) < 1.4) A = { type: 'charge', v: adx < 2.2 ? (dy < -1 ? 'up' : 'down') : 'side', hold: killy ? rnd(0.55, 0.8) : rnd(0.3, 0.5) };   // CYCLONE RUSH / UPDRAFT GEYSER / TWISTER
+      else if (air) A = dy < -0.8 && adx < 1.8 && !(gs && gs.airUpUsed) ? { type: 'tap', v: 'up' } : dy > 0.6 && dy < 4 && adx < 2.6 ? { type: 'tap', v: 'down' } : adx < 4 && Math.abs(dy) < 1.2 && !(gs && gs.airSideUsed) ? { type: 'tap', v: 'side' } : adx < 1.9 && Math.abs(dy) < 1.7 ? { type: 'tap', v: '' } : null;
+      else A = dy < -1.2 && adx < 2 ? { type: 'tap', v: 'up' } : adx < 2.4 && Math.abs(dy) < 1.3 ? { type: 'tap', v: Math.random() < 0.65 ? '' : 'down' } : adx < 5 && Math.abs(dy) < 1.2 && r < 0.5 ? { type: 'tap', v: 'side' } : null;
     }
     if (K.prod && !A) {
       var ps = f.F.plug && f.F.plug.prodigy;
