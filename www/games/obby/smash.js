@@ -33,7 +33,11 @@
     { id: 'cb_pressplay',   n: 'Press Play Prodigy', e: '🎧', cap: 1 },
     { id: 'cb_pp_mixtape',  n: 'Press Play Mixtape', e: '📼', cap: 1 },
     { id: 'cb_chameleon',   n: 'Chroma',       e: '🦎', cap: 1 },
-    { id: 'cb_gale',        n: 'Gale',         e: '🪁', cap: 1 }
+    { id: 'cb_gale',        n: 'Gale',         e: '🪁', cap: 1 },
+    { id: 'cb_kodiak',      n: 'Kodiak',       e: '🐻', cap: 1 },
+    { id: 'cb_valka',       n: 'Valka',        e: '🔱', cap: 1 },
+    { id: 'cb_boiler',      n: 'Boiler',       e: '♨️', cap: 1 },
+    { id: 'cb_sleight',     n: 'Sleight',      e: '🎩', cap: 1 }
   ];
   function owned(id) { try { return JSON.parse(localStorage.getItem('obby_cbox_owned') || '[]').indexOf(id) >= 0; } catch (e) { return false; } }
   function roster() { return FIGHTERS.filter(function (f) { return !f.cap || owned(f.id); }); }
@@ -101,7 +105,11 @@
       meteor: { ix: 0, iy: 14, d: 0.9, sweet: 1 } } },                    // SKY TONGUE: tongue tip spikes
     cb_gale:        { w: 0.82, d: 0.92, k: 0.95, mv: {                    // light and fast: dies earlier, lives on mobility
       meteor: { ix: 2, iy: 16, d: 1.0, bounce: 1 },                       // DIVE KICK: slanted spike, pogos off
-      launch: { ix: 1, iy: -17, d: 1.0 } }                                // UPDRAFT / JETSTREAM
+      launch: { ix: 1, iy: -17, d: 1.0 } },                               // UPDRAFT / JETSTREAM
+    cb_kodiak:      { w: 1.35, d: 1.10, k: 1.10 },                        // the heavyweight: his grabs and armor do the work
+    cb_valka:       { w: 0.95, d: 1.00, k: 1.00 },                        // spear: tipper hits are her own (they hit harder at the tip)
+    cb_boiler:      { w: 1.15, d: 1.00, k: 1.05 },                        // steam engine: stored Pressure makes every move stronger
+    cb_sleight:     { w: 0.80, d: 0.95, k: 0.95 }                         // stage magician: teleports, decoys and card mines
     }
   };
   function ch(id) { return CH[id] || { w: 1, d: 1, k: 1 }; }
@@ -541,7 +549,7 @@
       addFx('ring', vx, vy, '#ffffff'); addFx('burst', vx, vy, far ? '#7cdbff' : '#ffd166', 18);
       showBanner(far ? 'REFLECT!' : 'PARRY!', 0.55);
       if (far) refl.push({ x: vx, y: vy, toMe: !isMe, pct: Math.max(6, h.pct * 1.25), t: 0, trail: [] });
-      else {
+      else if (!st._parryGrab) {                                          // (a grappler's parry turns into its own grab instead)
         var cp = Math.max(8, h.pct * 1.2);
         if (isMe) hitFoe(g, P, cp, d * 9, -9, 1, true); else hitMe({ pct: cp, ix: d * 9, iy: -9, fromX: vx, k: 1, noDef: true });
       }
@@ -1380,7 +1388,7 @@
   // own player state, held keys and strike-engine state, presses the same buttons you do, and its attacks
   // are the real ones. Its target is a stand-in for you; whatever the attack does to it becomes your
   // percent and launch. Knockback, ledges, dodges and respawns stay with this file, synced both ways.
-  var REAL_CPU = { brawler: 1, cb_slugger: 1, cb_protagonist: 1, cb_chameleon: 1, cb_pressplay: 1, cb_pp_mixtape: 1, cb_gale: 1, archmage: 1, phantomace: 1, formSwitcher: 1, conduit: 1 };
+  var REAL_CPU = { brawler: 1, cb_slugger: 1, cb_protagonist: 1, cb_chameleon: 1, cb_pressplay: 1, cb_pp_mixtape: 1, cb_gale: 1, cb_kodiak: 1, cb_valka: 1, cb_boiler: 1, cb_sleight: 1, archmage: 1, phantomace: 1, formSwitcher: 1, conduit: 1 };
   // what each real-moves fighter's kit is good for (all of it is pressed with the same buttons you use)
   //  sideRec / upRec: its side / up special moves it (usable to get back)   dash: dash-then-S attacks
   //  airThrow: S in the air throws something that travels (range in tiles)   groundOnly: specials only on the ground
@@ -1403,6 +1411,8 @@
     // Gale: Kite Lash / Kite Toss (Gust Sentry) / Updraft Vent / Downburst on the ground, Pinwheel / Slipstream or Kite Zip /
     // Jetstream / Dive Kick in the air; held S charges any of them (air side held = a longer Slipstream, gets back across)
     cb_gale: { gale: 1, upTapRec: 1, sideRec: 1 },
+    // the fighter-kit fighters (fkit.js): each one's own ai() in its plugin says what to press
+    cb_kodiak: { fk: 1, upTapRec: 1 }, cb_valka: { fk: 1, upTapRec: 1 }, cb_boiler: { fk: 1, upTapRec: 1 }, cb_sleight: { fk: 1, upTapRec: 1 },
     // The base fighters: direction + S picks the move (range = how far its side / neutral move reaches), held S = specials
     archmage:     { gen: 8 },                                   // up ice, down walls, side rocket, neutral fire
     phantomace:   { gen: 7, dash: 1, sideRec: 1, upRec: 1 },    // shockwave slashes, 3 dashes, PHANTOM BLITZ / ASCENDING STAR to get back
@@ -1458,6 +1468,7 @@
   //  up RISING DRAGON, down EARTHQUAKE; longer hold = stronger), dash then S = a dash attack.
   function realPick(f, L, dir, dx, dy, adx) {
     if (f.act) return false;
+    if (G().player._invisT > 0 && Math.random() < 0.65) return false;   // you vanished (Sleight): it loses track of you
     var killy = me.pct > 85, air = !f.onGround, r = Math.random(), K = kit(f);
     var A = null;
     if (K.gen && !A) {
@@ -1475,6 +1486,11 @@
       else if (!air && (killy || r < 0.1) && adx < 5 && Math.abs(dy) < 1.4) A = { type: 'charge', v: adx < 2.4 ? (dy < -1 ? 'up' : 'down') : 'side', hold: killy ? rnd(0.55, 0.8) : rnd(0.3, 0.5) };   // REWIND RUSH / TAPE TORNADO / SPOOL SNARE
       else if (air) A = dy < -0.8 && adx < 2 && !(ms && ms.airUpUsed) ? { type: 'tap', v: 'up' } : dy > 0.8 && adx < 1.6 ? { type: 'tap', v: 'down' } : adx < 7 && Math.abs(dy) < 2.5 ? { type: 'tap', v: adx > 3 ? 'side' : '' } : null;
       else A = dy < -1.2 && adx < 2.5 ? { type: 'tap', v: 'up' } : adx < 3 && Math.abs(dy) < 1.4 ? { type: 'tap', v: Math.random() < 0.7 ? '' : 'down' } : adx < 6 && Math.abs(dy) < 1.2 ? { type: 'tap', v: 'side' } : null;
+    }
+    if (K.fk && !A) {
+      var fpl = (window._fighterPlugins || []).filter(function (q) { return q.char === f.char; })[0];
+      if (fpl && fpl.ai) { try { A = fpl.ai({ dx: dx, dy: dy, adx: adx, air: air, killy: killy, r: r, lvl: f.lvl, S: f.F.plug && f.F.plug[fpl.name] }); } catch (e) { A = null; } }
+      if (!A) { if (!air && adx > 1.2) return false; }
     }
     if (K.gale && !A) {
       var gs = f.F.plug && f.F.plug.gale, kout = gs && gs.kiteOut;
@@ -1528,7 +1544,7 @@
       else if (r < 0.65 && K.dash && f.F.st.dashCharges > 0) A = { type: 'dash' };                                                      // dash in, punch out of it
     }
     if (!A) return false;
-    A.dir = dir; A.t = 0; f.act = A;
+    A.dir = A.flip ? -dir : dir; A.t = 0; f.act = A;
     f.cd = A.type === 'tap' ? rnd(L.cd * 0.35, L.cd * 0.8) : rnd(L.cd * 1.2, L.cd * 2.2);
     return true;
   }
@@ -1555,6 +1571,7 @@
       else if (A.type === 'charge') {
         if (A.t <= dt + 1e-6) press = true;
         if (A.t >= A.hold) { release = true; f.act = null; }
+      } else if (A.type === 'crouch') { if (A.t >= A.hold) f.act = null;   // hold a direction without S (Boiler builds Pressure)
       } else if (A.type === 'dash') {
         if (A.t <= dt + 1e-6) dash = true; else if (A.t > 0.12) { f.act = A.noFollow ? null : { type: 'tap', v: '', dir: A.dir, t: 0 }; }
       }
