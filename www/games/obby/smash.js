@@ -1699,12 +1699,13 @@
       if (!(f.respawnHold > 0 && Math.floor(clock * 14) % 2)) {
         var cx = (f.x + f.w / 2) * T - cam.x, cy = (f.y + f.h / 2) * T - cam.y;
         ctx.save();
-        if (f.hitstun > 0) { ctx.translate(cx, cy); ctx.rotate(clock * 14 * sgn(f.kvx || 1)); ctx.translate(-cx, -cy); }
+        var spin = f.hitstun > 0 ? clock * 14 * sgn(f.kvx || 1) : 0;
+        if (spin && !f.F) { ctx.translate(cx, cy); ctx.rotate(spin); ctx.translate(-cx, -cy); }   // (a real-moves fighter spins only its body: see fighterDraw)
         if (f.invuln > 0 && Math.floor(clock * 20) % 2) ctx.globalAlpha = 0.5;
         var hop = f.taunt > 0 ? Math.abs(Math.sin((f.tauntLen - f.taunt) * 11)) * 0.22 : 0;
         if (f.F) {
           var dst = f.F.st; dst.x = f.x; dst.y = f.y - hop; dst.vx = f.vx; dst.vy = f.vy; dst.onGround = f.onGround;
-          g.fighterDraw(f.F);
+          g.fighterDraw(f.F, spin);
           ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 3;
           ctx.strokeText(foeLabel(), cx, f.y * T - cam.y - 8); ctx.fillText(foeLabel(), cx, f.y * T - cam.y - 8);
         } else g.drawAs({ x: f.x, y: f.y - hop, w: f.w, h: f.h, vx: f.vx, vy: f.vy, onGround: f.onGround, dashDir: f.face, isDashing: !!(f.atk && f.atk.d.lunge && f.atk.t > f.atk.d.wind),
