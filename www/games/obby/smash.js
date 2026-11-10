@@ -329,7 +329,7 @@
       var tiles = []; def = STAGES[cfg.stage].build(tiles);
       g.importLevel(JSON.stringify({ version: '1.0', id: 'smash-' + cfg.stage, name: 'Smash ' + STAGES[cfg.stage].n, author: 'smash',
         world: { tiles: tiles, goal: { x: 395, y: 2, w: 1, h: 1 }, spawn: { x: def.spawn[0].x, y: def.spawn[0].y }, checkpoint: null }, movers: [] }));
-    } else { w.goal = { x: -99, y: -99, w: 1, h: 1 }; }
+    } else { if (cfg.courseJson) { g.importLevel(cfg.courseJson); w = W(); } w.goal = { x: -99, y: -99, w: 1, h: 1 }; }   // (online guest: the host's course)
     if (!isFighter(g.char) || g.char !== cfg.char) window._selectCharacter(cfg.char);
     stage = analyze(def, cfg);
     SM.stage = stage;
@@ -362,7 +362,7 @@
     if (foe && foe.ent) { foe.ent.dead = true; var i = g.enemies.indexOf(foe.ent); if (i >= 0) g.enemies.splice(i, 1); }
     releaseLedge(me); releaseLedge(foe);
     if (backup) {
-      if (SM.cfg && SM.cfg.stage !== 'course') { try { g.importLevel(backup.json); } catch (e) {} }
+      if (SM.cfg && (SM.cfg.stage !== 'course' || SM.cfg.courseJson)) { try { g.importLevel(backup.json); } catch (e) {} }
       else { var w = W(); if (w) w.goal = backup.goal; }
       window._levelIsImported = backup.imported; window._srLevelDirty = backup.dirty;
       backup = null;
