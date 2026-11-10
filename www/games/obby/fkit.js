@@ -200,6 +200,26 @@
     ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); ctx.lineTo(pts[1][0], pts[1][1]); ctx.stroke();
     ctx.lineWidth = w2 || w; ctx.beginPath(); ctx.moveTo(pts[1][0], pts[1][1]); ctx.lineTo(pts[2][0], pts[2][1]); ctx.stroke();
   };
+  // the house style's big eyes: white, a dark pupil looking forward, a shine. o: { pupil, angry, glow, lid }
+  FK.eyes = function (ctx, x, y, r, gap, o) {
+    o = o || {};
+    for (const dx of [0, gap]) {
+      const ex2 = x + dx;
+      if (o.glow) { ctx.shadowBlur = r * 1.5; ctx.shadowColor = o.glow; ctx.fillStyle = o.glow; ctx.beginPath(); ctx.ellipse(ex2, y, r * 0.9, r * 0.6, 0, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0; continue; }
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.ellipse(ex2, y, r * 0.85, r, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = o.pupil || '#16121f'; ctx.beginPath(); ctx.arc(ex2 + r * 0.25, y + r * 0.08, r * 0.52, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(ex2 + r * 0.42, y - r * 0.18, r * 0.18, 0, Math.PI * 2); ctx.fill();
+      if (o.lid) { ctx.fillStyle = o.lid; ctx.beginPath(); ctx.ellipse(ex2, y - r * 0.55, r * 0.95, r * 0.5, 0, Math.PI, Math.PI * 2); ctx.fill(); }
+    }
+    if (o.angry) { ctx.strokeStyle = o.angry; ctx.lineWidth = r * 0.35; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x - r * 0.8, y - r * 1.25); ctx.lineTo(x + r * 0.6, y - r * 0.85); ctx.moveTo(x + gap - r * 0.6, y - r * 0.85); ctx.lineTo(x + gap + r * 0.8, y - r * 1.25); ctx.stroke(); }
+  };
+  // a soft rounded body block (chunky, slightly shaded) in the torso's own frame: from the hips up L, w wide
+  FK.blob = function (ctx, w, L, col, col2, r) {
+    const g = ctx.createLinearGradient(-w / 2, 0, w / 2, 0); g.addColorStop(0, col2 || col); g.addColorStop(0.6, col); g.addColorStop(1, col);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(-w / 2, -L, w, L + r * 0.4, r); ctx.fill();
+  };
+  // a round fist / mitt
+  FK.mitt = function (ctx, x, y, r, col, rim) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); if (rim) { ctx.strokeStyle = rim; ctx.lineWidth = r * 0.22; ctx.beginPath(); ctx.arc(x, y, r * 0.9, -0.6, 1.3); ctx.stroke(); } };
   // body-local point (forward/up offsets from a joint along the torso) in screen space, facing f
   FK.local = function (V, p, f, lx, ly) { return [V.SX(FK.pcx(p) + f * lx), V.SY(p.y + p.h - ly)]; };
 

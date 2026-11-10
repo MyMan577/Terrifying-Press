@@ -18,8 +18,8 @@
   const FK = window.FKit; if (!FK) return;
   const ID = 'cb_valka';
   const C_STEEL = '#cfd8e6', C_STEEL2 = '#8a97ab', C_BLUE = '#2f5fd0', C_BLUE2 = '#1c3a86', C_GOLD = '#ffd166', C_SKIN = '#f0c9a4', C_HAIR = '#f3e3b0', C_SHAFT = '#4a2f1f', C_FX = '#7fb4ff';
-  const P = { hip: 15, torso: 12, neck: 1.5, head: 4.2, ua: 6.5, fa: 6.5, th: 8, sh: 8 };
-  const U = 34, L = 3.0;   // body units over the hitbox height; spear length in tiles
+  const P = { hip: 9.5, torso: 10, neck: -2.5, head: 9, ua: 5, fa: 5, th: 4.8, sh: 4.8 };
+  const U = 36, L = 3.0;   // body units over the hitbox height; spear length in tiles
   const pose = FK.pose, { ex, ey, pcx, pcy } = FK;
 
   // poses (facing right). sp = spear angle (0 down, PI/2 forward, PI up), gr = grip: tiles of spear behind the hand,
@@ -279,53 +279,60 @@
       const K = FK.skel(P, q, cx, fy, s), held = !(S && S.jav);
       const Tpx = ph / (p ? p.h : 0.92);
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.shadowBlur = 8; ctx.shadowColor = 'rgba(127,180,255,0.45)';
+      // cape behind
+      const nk = K.neck, wv = Math.sin(t * 6) * s;
+      ctx.fillStyle = C_BLUE2; ctx.beginPath(); ctx.moveTo(nk[0] - 3 * s, nk[1] + 1 * s); ctx.quadraticCurveTo(nk[0] - 11 * s, nk[1] + 7 * s + wv, nk[0] - 11 * s, nk[1] + 15 * s); ctx.lineTo(nk[0] - 2 * s, nk[1] + 12 * s); ctx.closePath(); ctx.fill();
       // back limbs
-      FK.limb(ctx, K.lB, 4.6 * s, '#5d6a80', 4.2 * s);
-      FK.limb(ctx, K.aB, 3.8 * s, '#c9a283', 3.4 * s);
-      // cape streaming behind
-      ctx.fillStyle = C_BLUE2; ctx.beginPath(); const nk = K.neck;
-      ctx.moveTo(nk[0] - 2 * s, nk[1]); ctx.quadraticCurveTo(nk[0] - 9 * s, nk[1] + 9 * s + Math.sin(t * 6) * s, nk[0] - 12 * s, nk[1] + 18 * s); ctx.lineTo(nk[0] - 4 * s, nk[1] + 16 * s); ctx.closePath(); ctx.fill();
-      // torso: breastplate and a blue tabard
+      FK.limb(ctx, K.lB, 5.2 * s, '#8a97ab', 4.8 * s);
+      FK.mitt(ctx, K.lB[2][0] + 0.8 * s, K.lB[2][1] - 0.4 * s, 2.6 * s, '#6c788c');
+      FK.limb(ctx, K.aB, 4.4 * s, '#c9a283', 4 * s);
+      FK.mitt(ctx, K.aB[2][0], K.aB[2][1], 2.6 * s, '#8a97ab');
+      // body: a rounded blue tabard with a silver breastplate and a gold belt
       ctx.save(); ctx.translate(K.hip[0], K.hip[1]); ctx.rotate(q.lean);
-      const Lt = P.torso * s;
-      ctx.fillStyle = C_BLUE; ctx.beginPath(); ctx.moveTo(-4.2 * s, 2 * s); ctx.lineTo(-4.5 * s, -Lt * 0.95); ctx.lineTo(4.8 * s, -Lt * 0.95); ctx.lineTo(4.5 * s, 2 * s); ctx.closePath(); ctx.fill();
-      const g = ctx.createLinearGradient(-4 * s, 0, 5 * s, 0); g.addColorStop(0, C_STEEL2); g.addColorStop(0.6, C_STEEL); g.addColorStop(1, '#ffffff');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(-4 * s, -Lt * 0.35); ctx.quadraticCurveTo(-4.6 * s, -Lt * 1.0, 0, -Lt * 1.02); ctx.quadraticCurveTo(5.4 * s, -Lt * 0.95, 4.6 * s, -Lt * 0.35); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = C_GOLD; ctx.fillRect(-4.4 * s, -Lt * 0.33, 9 * s, 1.1 * s);
+      const Lt = P.torso * s, W = 15 * s;
+      FK.blob(ctx, W, Lt, C_BLUE, C_BLUE2, 6 * s);
+      ctx.shadowBlur = 0;
+      const g = ctx.createLinearGradient(-W / 2, 0, W / 2, 0); g.addColorStop(0, C_STEEL2); g.addColorStop(0.6, C_STEEL); g.addColorStop(1, '#ffffff');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(-W / 2 + 1 * s, -Lt, W - 2 * s, Lt * 0.6, [6 * s, 6 * s, 3 * s, 3 * s]); ctx.fill();
+      ctx.fillStyle = C_GOLD; ctx.fillRect(-W / 2, -Lt * 0.36, W, 1.6 * s);
+      ctx.fillStyle = C_GOLD; ctx.beginPath(); ctx.moveTo(W * 0.15, -Lt * 0.86); ctx.lineTo(W * 0.27, -Lt * 0.7); ctx.lineTo(W * 0.15, -Lt * 0.54); ctx.lineTo(W * 0.03, -Lt * 0.7); ctx.closePath(); ctx.fill();
       ctx.restore();
+      ctx.shadowBlur = 0;
       // the spear, behind the front hand
-      const sg = { hx: K.aF[2][0], hy: K.aF[2][1] };
       if (held) {
-        const dx = Math.sin(q.sp) * (q.sx == null ? 1 : q.sx), dy = Math.cos(q.sp), gr = q.gr * Tpx, len = L * Tpx;
-        const ax = sg.hx - dx * gr, ay = sg.hy - dy * gr, bx = sg.hx + dx * (len - gr), by = sg.hy + dy * (len - gr);
-        ctx.strokeStyle = C_SHAFT; ctx.lineWidth = 1.6 * s; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
-        ctx.strokeStyle = C_GOLD; ctx.lineWidth = 1.9 * s; ctx.beginPath(); ctx.moveTo(bx - dx * 3.2 * s, by - dy * 3.2 * s); ctx.lineTo(bx - dx * 2.4 * s, by - dy * 2.4 * s); ctx.stroke();
-        drawBlade(ctx, bx, by, dx, dy, s);
+        const hx = K.aF[2][0], hy = K.aF[2][1], dx = Math.sin(q.sp) * (q.sx == null ? 1 : q.sx), dy = Math.cos(q.sp), gr = q.gr * Tpx, len = L * Tpx;
+        const ax = hx - dx * gr, ay = hy - dy * gr, bx = hx + dx * (len - gr), by = hy + dy * (len - gr);
+        ctx.strokeStyle = C_SHAFT; ctx.lineWidth = 2.2 * s; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+        ctx.strokeStyle = C_GOLD; ctx.lineWidth = 2.6 * s; ctx.beginPath(); ctx.moveTo(bx - dx * 4.2 * s, by - dy * 4.2 * s); ctx.lineTo(bx - dx * 3.2 * s, by - dy * 3.2 * s); ctx.stroke();
+        drawBlade(ctx, bx, by, dx, dy, s * 1.3);
       }
-      // front leg: greaves
-      FK.limb(ctx, K.lF, 5 * s, '#e8e0d4', 4.6 * s);
-      ctx.strokeStyle = C_STEEL; ctx.lineWidth = 4.8 * s; ctx.beginPath(); const kn = K.lF[1], ft = K.lF[2]; ctx.moveTo(kn[0], kn[1]); ctx.lineTo(ft[0], ft[1]); ctx.stroke();
-      ctx.fillStyle = C_STEEL2; ctx.beginPath(); ctx.ellipse(ft[0] + 1.2 * s, ft[1] - 0.3 * s, 2.6 * s, 1.4 * s, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = C_STEEL; ctx.beginPath(); ctx.arc(kn[0], kn[1], 2.4 * s, 0, Math.PI * 2); ctx.fill();
-      // head: braid, face, winged helm with a crest
+      // front leg: silver boots
+      FK.limb(ctx, K.lF, 5.4 * s, C_STEEL, 5 * s);
+      FK.mitt(ctx, K.lF[2][0] + 0.8 * s, K.lF[2][1] - 0.4 * s, 2.8 * s, C_STEEL2);
+      // head: a big round face, braid, winged silver helm and a blue crest
       ctx.save(); ctx.translate(K.head[0], K.head[1]); ctx.rotate(q.lean + q.head);
       const hr = K.hr;
-      ctx.strokeStyle = C_HAIR; ctx.lineWidth = 2.2 * s; ctx.beginPath(); ctx.moveTo(-hr * 0.6, hr * 0.2); ctx.quadraticCurveTo(-hr * 1.6, hr * 1.2 + Math.sin(t * 5) * s, -hr * 1.3, hr * 2.4); ctx.stroke();
-      ctx.fillStyle = C_SKIN; ctx.beginPath(); ctx.arc(hr * 0.15, hr * 0.1, hr * 0.92, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#1a2340'; ctx.beginPath(); ctx.ellipse(hr * 0.55, hr * 0.0, hr * 0.12, hr * 0.2, 0, 0, Math.PI * 2); ctx.fill();
-      const hg = ctx.createLinearGradient(0, -hr, 0, 0); hg.addColorStop(0, '#ffffff'); hg.addColorStop(1, C_STEEL2);
-      ctx.fillStyle = hg; ctx.beginPath(); ctx.moveTo(-hr * 1.0, hr * 0.1); ctx.quadraticCurveTo(-hr * 1.0, -hr * 1.15, hr * 0.3, -hr * 1.1); ctx.quadraticCurveTo(hr * 1.2, -hr * 0.95, hr * 1.05, -hr * 0.15); ctx.lineTo(hr * 0.3, -hr * 0.3); ctx.lineTo(hr * 0.2, hr * 0.35); ctx.lineTo(-hr * 1.0, hr * 0.35); ctx.closePath(); ctx.fill();
-      // wing on the helm
-      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(-hr * 0.6, -hr * 0.6);
-      for (let i = 0; i < 3; i++) ctx.quadraticCurveTo(-hr * (1.4 + i * 0.35), -hr * (1.6 - i * 0.25) + Math.sin(t * 4) * s * 0.3, -hr * (1.0 + i * 0.4), -hr * (0.95 - i * 0.2));
-      ctx.lineTo(-hr * 0.5, -hr * 0.2); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = C_STEEL2; ctx.lineWidth = 0.4 * s; ctx.stroke();
-      ctx.fillStyle = C_BLUE; ctx.beginPath(); ctx.moveTo(-hr * 0.2, -hr * 1.1); ctx.quadraticCurveTo(hr * 0.2, -hr * 1.9, hr * 0.9, -hr * 1.5); ctx.quadraticCurveTo(hr * 0.4, -hr * 1.3, hr * 0.4, -hr * 1.0); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = C_HAIR; ctx.lineWidth = 3 * s; ctx.beginPath(); ctx.moveTo(-hr * 0.7, hr * 0.1); ctx.quadraticCurveTo(-hr * 1.35, hr * 0.8 + Math.sin(t * 5) * s, -hr * 1.1, hr * 1.5); ctx.stroke();
+      ctx.fillStyle = C_GOLD; ctx.beginPath(); ctx.arc(-hr * 1.1, hr * 1.5, 1.4 * s, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C_SKIN; ctx.beginPath(); ctx.arc(0, 0, hr, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#f59e9e'; ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.arc(hr * 0.62, hr * 0.38, hr * 0.14, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+      FK.eyes(ctx, hr * 0.08, hr * 0.1, hr * 0.2, hr * 0.48, { pupil: '#1f4fb8' });
+      ctx.strokeStyle = '#7a3b2a'; ctx.lineWidth = 0.8 * s; ctx.beginPath(); ctx.moveTo(hr * 0.35, hr * 0.55); ctx.quadraticCurveTo(hr * 0.5, hr * 0.62, hr * 0.62, hr * 0.52); ctx.stroke();
+      const hg = ctx.createLinearGradient(0, -hr, 0, -hr * 0.1); hg.addColorStop(0, '#ffffff'); hg.addColorStop(1, C_STEEL2);
+      ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(0, -hr * 0.05, hr * 1.04, Math.PI * 1.02, Math.PI * 1.98); ctx.lineTo(hr * 1.04, -hr * 0.18); ctx.lineTo(-hr * 1.04, -hr * 0.18); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = C_GOLD; ctx.fillRect(-hr * 1.04, -hr * 0.28, hr * 2.08, hr * 0.12);
+      // a white wing on the side of the helm
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(-hr * 0.55, -hr * 0.55);
+      for (let i = 0; i < 3; i++) ctx.quadraticCurveTo(-hr * (1.2 + i * 0.3), -hr * (1.5 - i * 0.2) + Math.sin(t * 4) * s * 0.4, -hr * (0.9 + i * 0.35), -hr * (0.9 - i * 0.18));
+      ctx.lineTo(-hr * 0.4, -hr * 0.3); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = C_STEEL2; ctx.lineWidth = 0.5 * s; ctx.stroke();
+      ctx.fillStyle = C_BLUE; ctx.beginPath(); ctx.moveTo(-hr * 0.3, -hr * 0.95); ctx.quadraticCurveTo(hr * 0.1, -hr * 1.7, hr * 0.8, -hr * 1.35); ctx.quadraticCurveTo(hr * 0.35, -hr * 1.2, hr * 0.35, -hr * 0.92); ctx.closePath(); ctx.fill();
       ctx.restore();
-      // front arm: a steel pauldron and a gauntlet gripping the spear
-      ctx.fillStyle = C_STEEL; ctx.beginPath(); ctx.ellipse(K.aF[0][0], K.aF[0][1] + 0.5 * s, 3.3 * s, 2.6 * s, q.lean, 0, Math.PI * 2); ctx.fill();
-      FK.limb(ctx, K.aF, 3.9 * s, C_SKIN, 3.6 * s);
-      ctx.fillStyle = C_STEEL2; ctx.beginPath(); ctx.arc(K.aF[2][0], K.aF[2][1], 2.1 * s, 0, Math.PI * 2); ctx.fill();
+      // front arm: a silver pauldron and a gauntlet on the spear
+      FK.limb(ctx, K.aF, 4.6 * s, C_SKIN, 4.2 * s);
+      ctx.fillStyle = C_STEEL; ctx.beginPath(); ctx.ellipse(K.aF[0][0], K.aF[0][1] + 0.8 * s, 3.6 * s, 3 * s, q.lean, 0, Math.PI * 2); ctx.fill();
+      FK.mitt(ctx, K.aF[2][0], K.aF[2][1], 2.8 * s, C_STEEL2);
     },
     drawWorld(ctx, V, S) {
       const p = V.p, T = V.T, f = FK.face(p), q = S.seq;

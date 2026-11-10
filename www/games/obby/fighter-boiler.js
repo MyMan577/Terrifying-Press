@@ -18,12 +18,12 @@
   const FK = window.FKit; if (!FK) return;
   const ID = 'cb_boiler';
   const C_COPPER = '#c8743a', C_COPPER2 = '#8e4b22', C_BRASS = '#e6b54a', C_IRON = '#3d3a40', C_IRON2 = '#5b5660', C_FIRE = '#ff6a1a', C_STEAM = '#f4f6f8', C_FX = '#ffae5c';
-  const P = { hip: 13, torso: 14, neck: 0.6, head: 4.6, ua: 6.5, fa: 6.5, th: 6.5, sh: 6.5 };
-  const U = 31, pose = FK.pose, { ex, ey, pcx, pcy } = FK;
+  const P = { hip: 8.5, torso: 14, neck: -4, head: 8.5, ua: 5.5, fa: 5.5, th: 4.2, sh: 4.2 };
+  const U = 34, pose = FK.pose, { ex, ey, pcx, pcy } = FK;
   const PR_MAX = 3, PR_RATE = 1 / 0.55, PR_HOLD = 4.5;
 
   const PO = {
-    idle:   pose({ y: 1, lean: 0.06, aF: [0.5, 1.2], aB: [0.2, 1.3], lF: [0.3, -0.2], lB: [-0.3, -0.1] }),
+    idle:   pose({ y: 1, lean: 0.06, aF: [0.35, 0.7], aB: [0.2, 0.9], lF: [0.3, -0.2], lB: [-0.3, -0.1] }),
     crouch: pose({ y: 6, lean: 0.25, aF: [0.9, 1.6], aB: [0.6, 1.7], lF: [1.0, -1.9], lB: [-0.4, -1.6], head: 0.1 }),
     jump:   pose({ aF: [2.2, 0.6], aB: [1.9, 0.7], lF: [0.8, -1.3], lB: [0.2, -0.9] }),
     fall:   pose({ aF: [1.6, 0.4], aB: [-1.3, 0.4], lF: [0.3, -0.5], lB: [-0.3, -0.3] }),
@@ -227,57 +227,59 @@
       const q = S ? S.pose : PO.idle, s = ph / U, cx = px + pw / 2, fy = py + ph;
       const K = FK.skel(P, q, cx, fy, s), pr = S ? S.pr : 1.5, lv = Math.floor(pr + 1e-6);
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.shadowBlur = 8 + 5 * lv; ctx.shadowColor = lv >= 3 ? 'rgba(255,106,26,0.8)' : 'rgba(255,174,92,0.4)';
       FK.limb(ctx, K.lB, 5.4 * s, C_IRON, 5 * s);
-      FK.limb(ctx, K.aB, 4.8 * s, C_COPPER2, 5.4 * s);
-      ctx.fillStyle = C_IRON; ctx.beginPath(); ctx.arc(K.aB[2][0], K.aB[2][1], 3 * s, 0, Math.PI * 2); ctx.fill();
-      // the boiler body
+      ctx.fillStyle = C_IRON; ctx.beginPath(); ctx.roundRect(K.lB[2][0] - 2.4 * s, K.lB[2][1] - 2 * s, 6 * s, 3.2 * s, 1.4 * s); ctx.fill();
+      FK.limb(ctx, K.aB, 4.6 * s, C_COPPER2, 4.6 * s);
+      FK.mitt(ctx, K.aB[2][0], K.aB[2][1], 3.4 * s, '#2c2a30');
+      // the body: a round copper boiler with brass bands, rivets, a furnace door and the pressure gauge
       ctx.save(); ctx.translate(K.hip[0], K.hip[1]); ctx.rotate(q.lean);
-      const Lt = P.torso * s;
-      // smokestack on the back
-      ctx.fillStyle = C_IRON; ctx.fillRect(-7.5 * s, -Lt * 1.25, 3.4 * s, Lt * 0.6);
-      ctx.fillStyle = C_IRON2; ctx.fillRect(-8.2 * s, -Lt * 1.3, 4.8 * s, 1.4 * s);
-      const bg = ctx.createLinearGradient(-7 * s, 0, 8 * s, 0); bg.addColorStop(0, C_COPPER2); bg.addColorStop(0.55, C_COPPER); bg.addColorStop(1, '#f0a066');
-      ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(-7 * s, -Lt * 1.02, 14.5 * s, Lt * 1.02 + 1 * s, 5 * s); ctx.fill();
-      ctx.fillStyle = C_BRASS; ctx.fillRect(-7 * s, -Lt * 0.72, 14.5 * s, 1.1 * s); ctx.fillRect(-7 * s, -Lt * 0.3, 14.5 * s, 1.1 * s);
-      ctx.fillStyle = '#5a2a10'; for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.arc(-5.5 * s + i * 3.1 * s, -Lt * 0.66, 0.5 * s, 0, Math.PI * 2); ctx.arc(-5.5 * s + i * 3.1 * s, -Lt * 0.24, 0.5 * s, 0, Math.PI * 2); ctx.fill(); }
-      // furnace door: glows hotter with pressure
-      const fg = ctx.createRadialGradient(3.5 * s, -Lt * 0.13, 0.5 * s, 3.5 * s, -Lt * 0.13, 3.5 * s);
+      const Lt = P.torso * s, W = 19 * s;
+      ctx.fillStyle = C_IRON; ctx.fillRect(-W * 0.5, -Lt * 1.25, 3.6 * s, Lt * 0.6);     // smokestack
+      ctx.fillStyle = C_IRON2; ctx.beginPath(); ctx.roundRect(-W * 0.5 - 0.8 * s, -Lt * 1.32, 5.2 * s, 1.8 * s, 0.6 * s); ctx.fill();
+      FK.blob(ctx, W, Lt, C_COPPER, C_COPPER2, 9 * s);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(255,220,180,0.35)'; ctx.beginPath(); ctx.ellipse(W * 0.18, -Lt * 0.7, W * 0.12, Lt * 0.22, -0.3, 0, Math.PI * 2); ctx.fill();   // shine
+      ctx.fillStyle = C_BRASS; ctx.fillRect(-W / 2, -Lt * 0.32, W, 1.4 * s);
+      ctx.fillStyle = '#5a2a10'; for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.arc(-W * 0.38 + i * W * 0.19, -Lt * 0.26, 0.55 * s, 0, Math.PI * 2); ctx.fill(); }
+      const fg = ctx.createRadialGradient(W * 0.18, -Lt * 0.13, 0.5 * s, W * 0.18, -Lt * 0.13, 4 * s);
       fg.addColorStop(0, lv >= 3 ? '#ffffff' : '#ffe0a0'); fg.addColorStop(0.5, pr > 0.2 ? C_FIRE : '#7a2a0a'); fg.addColorStop(1, '#3a1206');
-      ctx.fillStyle = C_IRON; ctx.beginPath(); ctx.roundRect(1 * s, -Lt * 0.25, 5 * s, 3.4 * s, 1 * s); ctx.fill();
-      ctx.fillStyle = fg; ctx.globalAlpha = 0.4 + 0.2 * pr; ctx.beginPath(); ctx.roundRect(1.6 * s, -Lt * 0.22, 3.8 * s, 2.6 * s, 0.8 * s); ctx.fill(); ctx.globalAlpha = 1;
-      // the pressure gauge: a dial with a needle that climbs to the red
-      const gx = 3 * s, gy = -Lt * 0.86, gr = 3.2 * s;
-      ctx.fillStyle = C_BRASS; ctx.beginPath(); ctx.arc(gx, gy, gr + 0.7 * s, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C_IRON; ctx.beginPath(); ctx.roundRect(W * 0.03, -Lt * 0.22, 6 * s, 3.6 * s, 1.2 * s); ctx.fill();
+      ctx.fillStyle = fg; ctx.globalAlpha = 0.45 + 0.18 * pr; ctx.beginPath(); ctx.roundRect(W * 0.07, -Lt * 0.19, 4.6 * s, 2.6 * s, 0.8 * s); ctx.fill(); ctx.globalAlpha = 1;
+      const gx = W * 0.14, gy = -Lt * 0.62, gr = 3.6 * s;
+      ctx.fillStyle = C_BRASS; ctx.beginPath(); ctx.arc(gx, gy, gr + 0.8 * s, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#f7f0dc'; ctx.beginPath(); ctx.arc(gx, gy, gr, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#d33'; ctx.lineWidth = 0.9 * s; ctx.beginPath(); ctx.arc(gx, gy, gr * 0.78, -0.3, 0.6); ctx.stroke();
+      ctx.strokeStyle = '#d33'; ctx.lineWidth = 1 * s; ctx.beginPath(); ctx.arc(gx, gy, gr * 0.75, -0.3, 0.6); ctx.stroke();
       const na = Math.PI * 0.8 + (pr / PR_MAX) * Math.PI * 1.35 + (lv >= 3 ? Math.sin(t * 40) * 0.08 : 0);
-      ctx.strokeStyle = '#222'; ctx.lineWidth = 0.7 * s; ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx + Math.cos(na) * gr * 0.85, gy + Math.sin(na) * gr * 0.85); ctx.stroke();
+      ctx.strokeStyle = '#222'; ctx.lineWidth = 0.8 * s; ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx + Math.cos(na) * gr * 0.85, gy + Math.sin(na) * gr * 0.85); ctx.stroke();
       ctx.restore();
-      FK.limb(ctx, K.lF, 5.8 * s, C_IRON2, 5.2 * s);
-      ctx.fillStyle = C_IRON; ctx.beginPath(); ctx.roundRect(K.lF[2][0] - 2.4 * s, K.lF[2][1] - 1.8 * s, 6 * s, 3 * s, 1 * s); ctx.fill();
-      // head: an iron helmet with a riveted visor and glowing eye slit
+      FK.limb(ctx, K.lF, 5.8 * s, C_IRON2, 5.4 * s);
+      ctx.fillStyle = C_IRON; ctx.beginPath(); ctx.roundRect(K.lF[2][0] - 2.4 * s, K.lF[2][1] - 2 * s, 6.4 * s, 3.4 * s, 1.4 * s); ctx.fill();
+      // head: a round iron dome with a visor and two glowing eyes, a valve on top
       ctx.save(); ctx.translate(K.head[0], K.head[1]); ctx.rotate(q.lean + q.head);
       const hr = K.hr;
-      ctx.fillStyle = C_IRON2; ctx.beginPath(); ctx.roundRect(-hr * 0.95, -hr * 0.9, hr * 2, hr * 1.8, hr * 0.5); ctx.fill();
-      ctx.fillStyle = C_IRON; ctx.fillRect(-hr * 0.95, -hr * 0.25, hr * 2, hr * 0.5);
-      ctx.shadowBlur = 6; ctx.shadowColor = C_FIRE; ctx.fillStyle = lv >= 3 ? '#fff2c0' : '#ffb347'; ctx.fillRect(hr * 0.2, -hr * 0.12, hr * 0.8, hr * 0.24); ctx.shadowBlur = 0;
-      ctx.fillStyle = C_BRASS; ctx.beginPath(); ctx.arc(-hr * 0.6, -hr * 0.55, hr * 0.12, 0, Math.PI * 2); ctx.arc(hr * 0.6, -hr * 0.55, hr * 0.12, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C_BRASS; ctx.fillRect(-hr * 0.12, -hr * 1.3, hr * 0.24, hr * 0.4); ctx.beginPath(); ctx.ellipse(0, -hr * 1.3, hr * 0.32, hr * 0.1, 0, 0, Math.PI * 2); ctx.fill();
+      const hg = ctx.createRadialGradient(hr * 0.3, -hr * 0.4, hr * 0.1, 0, 0, hr * 1.05); hg.addColorStop(0, '#7d7782'); hg.addColorStop(1, C_IRON);
+      ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(0, 0, hr, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#211f24'; ctx.beginPath(); ctx.roundRect(-hr * 0.55, -hr * 0.32, hr * 1.5, hr * 0.62, hr * 0.3); ctx.fill();
+      FK.eyes(ctx, hr * 0.1, 0, hr * 0.2, hr * 0.5, { glow: lv >= 3 ? '#fff2c0' : '#ffb347' });
+      ctx.fillStyle = C_BRASS; for (const a of [0.9, 2.2, 4.1, 5.4]) { ctx.beginPath(); ctx.arc(Math.cos(a) * hr * 0.82, Math.sin(a) * hr * 0.82, hr * 0.08, 0, Math.PI * 2); ctx.fill(); }
       ctx.restore();
-      // front arm: a piston with a big riveted fist
-      FK.limb(ctx, K.aF, 5 * s, C_COPPER, 5.6 * s);
+      // front arm: a piston rod and a big iron fist
+      FK.limb(ctx, K.aF, 5 * s, C_COPPER, 5 * s);
       const el = K.aF[1], hd = K.aF[2];
       ctx.strokeStyle = '#d9d9d9'; ctx.lineWidth = 1.6 * s; ctx.beginPath(); ctx.moveTo(el[0], el[1]); ctx.lineTo(el[0] + (hd[0] - el[0]) * 0.75, el[1] + (hd[1] - el[1]) * 0.75); ctx.stroke();
-      ctx.fillStyle = C_IRON; ctx.beginPath(); ctx.arc(hd[0], hd[1], 3.4 * s, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = C_BRASS; ctx.beginPath(); ctx.arc(hd[0], hd[1], 1 * s, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = C_BRASS; ctx.beginPath(); ctx.arc(K.aF[0][0], K.aF[0][1], 2.6 * s, 0, Math.PI * 2); ctx.fill();
+      FK.mitt(ctx, hd[0], hd[1], 4 * s, C_IRON, C_IRON2);
+      ctx.fillStyle = C_BRASS; ctx.beginPath(); ctx.arc(hd[0], hd[1], 1.1 * s, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C_BRASS; ctx.beginPath(); ctx.arc(K.aF[0][0], K.aF[0][1] + 0.5 * s, 3 * s, 0, Math.PI * 2); ctx.fill();
     },
     drawWorld(ctx, V, S) {
       const p = V.p, T = V.T, lv = Math.floor(S.pr + 1e-6);
       // pressure pips under his feet
       for (let i = 0; i < 3; i++) {
-        const x = V.SX(pcx(p)) + (i - 1) * T * 0.3, y = V.SY(p.y + p.h) + 7, fill = Math.max(0, Math.min(1, S.pr - i));
-        FK.solid(ctx, '#1a1214', 0.8); ctx.beginPath(); ctx.arc(x, y, T * 0.1, 0, Math.PI * 2); ctx.fill();
-        if (fill > 0) { ctx.beginPath(); ctx.arc(x, y, T * 0.1 * fill, 0, Math.PI * 2); FK.glow(ctx, lv >= 3 ? C_FIRE : C_BRASS, 0.95); ctx.fill(); }
+        const x = V.SX(pcx(p)) + (i - 1) * T * 0.22, y = V.SY(p.y + p.h) + 6, fill = Math.max(0, Math.min(1, S.pr - i));
+        FK.solid(ctx, '#ffffff', 0.18); ctx.beginPath(); ctx.arc(x, y, T * 0.07, 0, Math.PI * 2); ctx.fill();
+        if (fill > 0) { ctx.beginPath(); ctx.arc(x, y, T * 0.07 * fill, 0, Math.PI * 2); FK.glow(ctx, lv >= 3 ? C_FIRE : C_BRASS, 0.95); ctx.fill(); }
       }
       if (lv >= 3) { ctx.beginPath(); ctx.arc(V.SX(pcx(p)), V.SY(pcy(p)), T * (0.85 + 0.06 * Math.sin(V.now * 20)), 0, Math.PI * 2); FK.glow(ctx, C_FIRE, 0.35); ctx.lineWidth = 3; ctx.stroke(); }
       if (S.fist) {

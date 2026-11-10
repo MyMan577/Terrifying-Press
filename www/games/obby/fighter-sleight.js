@@ -19,12 +19,12 @@
   const FK = window.FKit; if (!FK) return;
   const ID = 'cb_sleight';
   const C_TUX = '#1c1a26', C_TUX2 = '#2e2a3d', C_SHIRT = '#f4f1ea', C_VIOLET = '#9b5cff', C_VIOLET2 = '#5a2bb0', C_GOLD = '#ffd166', C_SKIN = '#f1d0b5', C_RED = '#e0344a', C_FX = '#c49bff', C_CYAN = '#7ff0ff';
-  const P = { hip: 15, torso: 12, neck: 1.5, head: 4, ua: 6.5, fa: 6.5, th: 8, sh: 8 };
-  const U = 34, pose = FK.pose, { ex, ey, pcx, pcy } = FK;
+  const P = { hip: 9.5, torso: 10, neck: -2.5, head: 8.5, ua: 5, fa: 5, th: 4.8, sh: 4.8 };
+  const U = 36, pose = FK.pose, { ex, ey, pcx, pcy } = FK;
   const MAX_PADS = 3, MAX_PELLETS = 3, INVIS_T = 3.0, INVIS_CD = 9, TP_CD = 0.45;
 
   const PO = {
-    idle:   pose({ y: 0.4, lean: 0.04, aF: [0.5, 0.9], aB: [0.15, 0.4], lF: [0.25, -0.1], lB: [-0.2, -0.1], cane: 0.25 }),
+    idle:   pose({ y: 0.4, lean: 0.04, aF: [0.45, 0.35], aB: [0.15, 0.4], lF: [0.25, -0.1], lB: [-0.2, -0.1], cane: 0.25 }),
     jump:   pose({ aF: [2.4, 0.3], aB: [2.0, 0.5], lF: [0.7, -1.2], lB: [0.1, -0.6], cane: 2.6 }),
     fall:   pose({ aF: [1.8, 0.3], aB: [-1.4, 0.3], lF: [0.3, -0.4], lB: [-0.2, -0.3], cane: 1.8 }),
     aim:    pose({ y: 0.8, lean: 0.12, aF: [1.57, 0.0], aB: [-0.5, 0.6], lF: [0.5, -0.2], lB: [-0.45, -0.1], cane: 1.57 }),
@@ -381,44 +381,55 @@
     ctx.fillText(['♠', '♥', '♣', '♦'][suit % 4], 0, s * 0.03);
     ctx.restore();
   }
-  // the magician: tuxedo tails, a violet-lined cape, top hat, white gloves and a cane
-  function drawMagician(ctx, px, py, pw, ph, t, q, alpha) {
+  // the magician: a big round face with a monocle and a curled moustache, a tall top hat, a chunky tux,
+  // a violet-lined cape, white gloves and a cane
+  function drawMagician(ctx, px, py, pw, ph, t, q) {
     const s = ph / U, cx = px + pw / 2, fy = py + ph, K = FK.skel(P, q, cx, fy, s);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    // cape behind everything
+    ctx.shadowBlur = 8; ctx.shadowColor = 'rgba(196,155,255,0.45)';
     const nk = K.neck, wave = Math.sin(t * 5) * s;
-    ctx.fillStyle = C_VIOLET2; ctx.beginPath(); ctx.moveTo(nk[0] - 3 * s, nk[1] + 1 * s); ctx.quadraticCurveTo(nk[0] - 11 * s, nk[1] + 10 * s + wave, nk[0] - 9 * s, nk[1] + 21 * s); ctx.lineTo(nk[0] + 1 * s, nk[1] + 17 * s); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = C_TUX; ctx.beginPath(); ctx.moveTo(nk[0] - 2 * s, nk[1] + 1 * s); ctx.quadraticCurveTo(nk[0] - 9.5 * s, nk[1] + 10 * s + wave, nk[0] - 7.5 * s, nk[1] + 20 * s); ctx.lineTo(nk[0] - 2 * s, nk[1] + 16 * s); ctx.closePath(); ctx.fill();
-    FK.limb(ctx, K.lB, 3.8 * s, '#121019', 3.4 * s);
-    FK.limb(ctx, K.aB, 3.4 * s, C_TUX2, 3 * s);
-    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(K.aB[2][0], K.aB[2][1], 1.8 * s, 0, Math.PI * 2); ctx.fill();
-    // torso: tailcoat, white shirt front, red bow tie
+    ctx.fillStyle = C_VIOLET2; ctx.beginPath(); ctx.moveTo(nk[0] - 3 * s, nk[1] + 1 * s); ctx.quadraticCurveTo(nk[0] - 12 * s, nk[1] + 8 * s + wave, nk[0] - 10 * s, nk[1] + 16 * s); ctx.lineTo(nk[0] + 1 * s, nk[1] + 12 * s); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = C_TUX; ctx.beginPath(); ctx.moveTo(nk[0] - 2 * s, nk[1] + 1 * s); ctx.quadraticCurveTo(nk[0] - 10.5 * s, nk[1] + 8 * s + wave, nk[0] - 8.5 * s, nk[1] + 15 * s); ctx.lineTo(nk[0] - 2 * s, nk[1] + 12 * s); ctx.closePath(); ctx.fill();
+    FK.limb(ctx, K.lB, 4.4 * s, '#121019', 4 * s);
+    ctx.fillStyle = '#0b0a10'; ctx.beginPath(); ctx.ellipse(K.lB[2][0] + 1 * s, K.lB[2][1] - 0.4 * s, 2.8 * s, 1.6 * s, 0, 0, Math.PI * 2); ctx.fill();
+    FK.limb(ctx, K.aB, 4 * s, C_TUX2, 3.6 * s);
+    FK.mitt(ctx, K.aB[2][0], K.aB[2][1], 2.5 * s, '#e8e4ec');
+    // body: a chunky tailcoat over a white shirt front, red bow tie, gold buttons
     ctx.save(); ctx.translate(K.hip[0], K.hip[1]); ctx.rotate(q.lean);
-    const L = P.torso * s;
-    ctx.fillStyle = C_TUX; ctx.beginPath(); ctx.moveTo(-3.6 * s, 4 * s); ctx.lineTo(-4.2 * s, -L); ctx.lineTo(4 * s, -L); ctx.lineTo(3.6 * s, 0); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(-3.6 * s, 0); ctx.lineTo(-6 * s, 6 * s); ctx.lineTo(-2.5 * s, 3 * s); ctx.closePath(); ctx.fill();   // coat tails
-    ctx.fillStyle = C_SHIRT; ctx.beginPath(); ctx.moveTo(0, -L); ctx.lineTo(3.4 * s, -L); ctx.lineTo(3.2 * s, -L * 0.15); ctx.lineTo(1.5 * s, -L * 0.15); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = C_RED; ctx.beginPath(); ctx.moveTo(1.5 * s, -L * 0.93); ctx.lineTo(4.2 * s, -L * 1.0); ctx.lineTo(4.2 * s, -L * 0.82); ctx.closePath(); ctx.moveTo(1.5 * s, -L * 0.93); ctx.lineTo(-1.2 * s, -L * 1.0); ctx.lineTo(-1.2 * s, -L * 0.82); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = C_GOLD; ctx.beginPath(); ctx.arc(3.3 * s, -L * 0.5, 0.45 * s, 0, Math.PI * 2); ctx.arc(3.3 * s, -L * 0.3, 0.45 * s, 0, Math.PI * 2); ctx.fill();
+    const L = P.torso * s, W = 14 * s;
+    FK.blob(ctx, W, L, C_TUX2, C_TUX, 6 * s);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = C_TUX; ctx.beginPath(); ctx.moveTo(-W / 2, 0); ctx.lineTo(-W / 2 - 2.5 * s, 4.5 * s); ctx.lineTo(-W * 0.15, 1.5 * s); ctx.closePath(); ctx.fill();   // coat tail
+    ctx.fillStyle = C_SHIRT; ctx.beginPath(); ctx.moveTo(-W * 0.05, -L); ctx.lineTo(W * 0.4, -L); ctx.lineTo(W * 0.32, -L * 0.1); ctx.lineTo(W * 0.08, -L * 0.1); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = C_RED; ctx.beginPath(); ctx.moveTo(W * 0.18, -L * 0.88); ctx.lineTo(W * 0.42, -L * 0.98); ctx.lineTo(W * 0.42, -L * 0.76); ctx.closePath(); ctx.moveTo(W * 0.18, -L * 0.88); ctx.lineTo(-W * 0.06, -L * 0.98); ctx.lineTo(-W * 0.06, -L * 0.76); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = C_GOLD; for (const yy of [0.55, 0.32]) { ctx.beginPath(); ctx.arc(W * 0.2, -L * yy, 0.6 * s, 0, Math.PI * 2); ctx.fill(); }
     ctx.restore();
-    FK.limb(ctx, K.lF, 4 * s, '#1a1824', 3.6 * s);
-    ctx.fillStyle = '#0b0a10'; ctx.beginPath(); ctx.ellipse(K.lF[2][0] + 1.2 * s, K.lF[2][1] - 0.3 * s, 2.4 * s, 1.2 * s, 0, 0, Math.PI * 2); ctx.fill();
-    // head: face, a curled moustache, a monocle glint and the top hat
+    FK.limb(ctx, K.lF, 4.6 * s, '#1a1824', 4.2 * s);
+    ctx.fillStyle = '#0b0a10'; ctx.beginPath(); ctx.ellipse(K.lF[2][0] + 1.2 * s, K.lF[2][1] - 0.4 * s, 3 * s, 1.7 * s, 0, 0, Math.PI * 2); ctx.fill();
+    // head
     ctx.save(); ctx.translate(K.head[0], K.head[1]); ctx.rotate(q.lean + q.head);
     const hr = K.hr;
-    ctx.fillStyle = '#2a2236'; ctx.beginPath(); ctx.arc(-hr * 0.15, hr * 0.05, hr * 0.98, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = C_SKIN; ctx.beginPath(); ctx.ellipse(hr * 0.2, hr * 0.15, hr * 0.85, hr * 0.92, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#2a2236'; ctx.lineWidth = 0.7 * s; ctx.beginPath(); ctx.moveTo(hr * 0.2, hr * 0.5); ctx.quadraticCurveTo(hr * 0.6, hr * 0.38, hr * 0.95, hr * 0.62); ctx.quadraticCurveTo(hr * 1.1, hr * 0.4, hr * 0.95, hr * 0.32); ctx.stroke();
-    ctx.fillStyle = '#1a1520'; ctx.beginPath(); ctx.arc(hr * 0.55, -hr * 0.05, hr * 0.14, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = C_GOLD; ctx.lineWidth = 0.4 * s; ctx.beginPath(); ctx.arc(hr * 0.55, -hr * 0.05, hr * 0.3, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = C_TUX; ctx.fillRect(-hr * 0.9, -hr * 0.95, hr * 1.9, hr * 0.3); ctx.fillRect(-hr * 0.55, -hr * 2.4, hr * 1.25, hr * 1.5);
-    ctx.fillStyle = C_VIOLET; ctx.fillRect(-hr * 0.55, -hr * 1.2, hr * 1.25, hr * 0.28);
+    ctx.fillStyle = '#2a2236'; ctx.beginPath(); ctx.arc(-hr * 0.12, hr * 0.02, hr, 0, Math.PI * 2); ctx.fill();          // hair at the back
+    ctx.fillStyle = C_SKIN; ctx.beginPath(); ctx.arc(hr * 0.06, hr * 0.06, hr * 0.92, 0, Math.PI * 2); ctx.fill();
+    FK.eyes(ctx, hr * 0.02, hr * 0.02, hr * 0.19, hr * 0.48, { pupil: '#3b1c6b' });
+    ctx.strokeStyle = C_GOLD; ctx.lineWidth = 0.7 * s; ctx.beginPath(); ctx.arc(hr * 0.5, hr * 0.02, hr * 0.27, 0, Math.PI * 2); ctx.stroke();       // monocle
+    ctx.beginPath(); ctx.moveTo(hr * 0.5, hr * 0.29); ctx.quadraticCurveTo(hr * 0.42, hr * 0.7, hr * 0.15, hr * 0.85); ctx.stroke();
+    ctx.strokeStyle = '#2a2236'; ctx.lineWidth = 1.2 * s;                                                                       // a curled moustache
+    ctx.beginPath(); ctx.moveTo(hr * 0.3, hr * 0.48); ctx.quadraticCurveTo(hr * 0.1, hr * 0.6, hr * 0.0, hr * 0.42); ctx.moveTo(hr * 0.3, hr * 0.48); ctx.quadraticCurveTo(hr * 0.55, hr * 0.62, hr * 0.68, hr * 0.42); ctx.stroke();
+    // the top hat, tall and tilted
+    ctx.save(); ctx.rotate(-0.12);
+    ctx.fillStyle = C_TUX; ctx.beginPath(); ctx.roundRect(-hr * 1.05, -hr * 0.92, hr * 2.1, hr * 0.26, hr * 0.12); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(-hr * 0.66, -hr * 2.15, hr * 1.32, hr * 1.3, hr * 0.12); ctx.fill();
+    ctx.fillStyle = C_VIOLET; ctx.fillRect(-hr * 0.66, -hr * 1.12, hr * 1.32, hr * 0.24);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(hr * 0.25, -hr * 2.05, hr * 0.18, hr * 0.9);
     ctx.restore();
-    // front arm: a white glove holding the cane
-    FK.limb(ctx, K.aF, 3.6 * s, C_TUX2, 3.2 * s);
+    ctx.restore();
+    // front arm: a white glove on the cane
+    FK.limb(ctx, K.aF, 4.2 * s, C_TUX2, 3.8 * s);
     const hd = K.aF[2], ca = q.cane || 0, cl = 13 * s, dx = Math.sin(ca), dy = Math.cos(ca);
-    ctx.strokeStyle = '#120f18'; ctx.lineWidth = 1.1 * s; ctx.beginPath(); ctx.moveTo(hd[0] - dx * cl * 0.25, hd[1] - dy * cl * 0.25); ctx.lineTo(hd[0] + dx * cl * 0.75, hd[1] + dy * cl * 0.75); ctx.stroke();
-    ctx.fillStyle = C_GOLD; ctx.beginPath(); ctx.arc(hd[0] - dx * cl * 0.27, hd[1] - dy * cl * 0.27, 1.1 * s, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(hd[0], hd[1], 1.9 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#120f18'; ctx.lineWidth = 1.5 * s; ctx.beginPath(); ctx.moveTo(hd[0] - dx * cl * 0.2, hd[1] - dy * cl * 0.2); ctx.lineTo(hd[0] + dx * cl * 0.75, hd[1] + dy * cl * 0.75); ctx.stroke();
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(hd[0] + dx * cl * 0.75, hd[1] + dy * cl * 0.75, 1 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = C_GOLD; ctx.beginPath(); ctx.arc(hd[0] - dx * cl * 0.22, hd[1] - dy * cl * 0.22, 1.5 * s, 0, Math.PI * 2); ctx.fill();
+    FK.mitt(ctx, hd[0], hd[1], 2.8 * s, '#ffffff', '#cfc8dc');
   }
 })();

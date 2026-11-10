@@ -16,13 +16,13 @@
   const FK = window.FKit; if (!FK) return;
   const ID = 'cb_kodiak';
   const C_FUR = '#6b4226', C_FUR2 = '#4a2c18', C_SKIN = '#c98b5e', C_SKIN2 = '#a86c44', C_TRUNK = '#7a1022', C_GOLD = '#f2c14e', C_BOOT = '#b3122e', C_TAPE = '#f4efe6', C_EYE = '#ffb020', C_FX = '#ff8a3d';
-  const P = { hip: 14, torso: 13, neck: 1.6, head: 4.3, ua: 7.2, fa: 7, th: 7.5, sh: 7 };
-  const U = 29;   // the body is drawn U units tall over the hitbox height (a bit bigger than the hitbox: he's huge)
+  const P = { hip: 9.5, torso: 12, neck: -3.5, head: 9.5, ua: 5.5, fa: 5.5, th: 4.8, sh: 4.8 };
+  const U = 33;   // the body is drawn U units tall over the hitbox height (a bit bigger than the hitbox: he's huge)
   const pose = FK.pose;
 
   // ---------------------------------------------------------------- poses (facing right)
   const PO = {
-    idle:    pose({ y: 1.2, lean: 0.12, aF: [0.75, 1.45], aB: [0.45, 1.6], lF: [0.32, -0.25], lB: [-0.28, -0.12] }),
+    idle:    pose({ y: 1.2, lean: 0.12, aF: [0.9, 0.9], aB: [0.6, 1.1], lF: [0.32, -0.25], lB: [-0.28, -0.12] }),
     jump:    pose({ lean: 0.05, aF: [2.4, 0.5], aB: [2.1, 0.6], lF: [0.9, -1.5], lB: [0.3, -1.0] }),
     fall:    pose({ lean: 0.0, aF: [1.9, 0.3], aB: [-1.6, -0.3], lF: [0.35, -0.5], lB: [-0.3, -0.3] }),
     land:    pose({ y: 4.5, lean: 0.3, aF: [0.9, 1.2], aB: [0.6, 1.3], lF: [0.9, -1.7], lB: [-0.5, -1.0] }),
@@ -424,66 +424,58 @@
 
     // ---------------- drawing the body: a bear-masked heavyweight in a singlet and a title belt
     drawBody(ctx, px, py, pw, ph, t, S, p) {
-      const q = S ? S.pose : PO.idle, s = ph / U * 1.0, cx = px + pw / 2, fy = py + ph;
+      const q = S ? S.pose : PO.idle, s = ph / U, cx = px + pw / 2, fy = py + ph;
       if (S && S.rot) { ctx.translate(cx, py + ph / 2); ctx.rotate(S.rot); ctx.translate(-cx, -(py + ph / 2)); }
       const K = FK.skel(P, q, cx, fy, s);
       const armor = p && p._armorT > 0, guard = p && p._parryT > 0;
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      // back leg and arm, in shade
-      FK.limb(ctx, K.lB, 6.2 * s, '#8c5a3a', 5.4 * s);
-      ctx.strokeStyle = '#5c0717'; ctx.lineWidth = 6.6 * s; ctx.beginPath(); ctx.moveTo(K.lB[0][0], K.lB[0][1]); ctx.lineTo(K.lB[0][0] + (K.lB[1][0] - K.lB[0][0]) * 0.55, K.lB[0][1] + (K.lB[1][1] - K.lB[0][1]) * 0.55); ctx.stroke();
-      boot(ctx, K.lB, s, '#7a0d22');
-      FK.limb(ctx, K.aB, 5.6 * s, C_SKIN2, 6 * s);
-      ctx.fillStyle = '#cfc6b6'; ctx.beginPath(); ctx.arc(K.aB[2][0], K.aB[2][1], 2.9 * s, 0, Math.PI * 2); ctx.fill();
-      // torso, built in its own frame: wide shoulders, barrel chest, singlet
+      ctx.shadowBlur = armor ? 16 : 8; ctx.shadowColor = armor ? '#ff8a3d' : 'rgba(255,120,60,0.35)';
+      // back leg and arm
+      FK.limb(ctx, K.lB, 6.5 * s, '#5c0717', 6 * s);
+      ctx.fillStyle = '#8a0f24'; ctx.beginPath(); ctx.ellipse(K.lB[2][0] + 1 * s, K.lB[2][1] - 0.6 * s, 3.8 * s, 2.4 * s, 0, 0, Math.PI * 2); ctx.fill();
+      FK.limb(ctx, K.aB, 5.6 * s, C_SKIN2, 5.8 * s);
+      FK.mitt(ctx, K.aB[2][0], K.aB[2][1], 3.6 * s, '#d8cfbf');
+      // a big round barrel of a body: bare chest, red singlet, the title belt
       ctx.save(); ctx.translate(K.hip[0], K.hip[1]); ctx.rotate(q.lean);
-      const L = P.torso * s;
-      ctx.shadowBlur = armor ? 18 : 0; ctx.shadowColor = '#ff8a3d';
-      ctx.fillStyle = C_SKIN;
-      ctx.beginPath(); ctx.moveTo(-5.5 * s, 0); ctx.quadraticCurveTo(-7.5 * s, -L * 0.55, -7.8 * s, -L * 0.95); ctx.quadraticCurveTo(-3 * s, -L * 1.12, 2 * s, -L * 1.08); ctx.quadraticCurveTo(9.5 * s, -L * 1.02, 9 * s, -L * 0.62); ctx.quadraticCurveTo(8.5 * s, -L * 0.3, 6 * s, 0); ctx.closePath(); ctx.fill();
+      const L = P.torso * s, W = 21 * s;
+      FK.blob(ctx, W, L, C_SKIN, C_SKIN2, 9 * s);
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = C_SKIN2; ctx.lineWidth = 0.8 * s;
-      ctx.beginPath(); ctx.moveTo(0.5 * s, -L * 0.88); ctx.quadraticCurveTo(7.5 * s, -L * 0.9, 8.2 * s, -L * 0.6); ctx.stroke();      // pec
-      for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(2 * s, -L * (0.5 - i * 0.13)); ctx.lineTo(6.5 * s, -L * (0.5 - i * 0.13)); ctx.stroke(); }   // abs
-      ctx.fillStyle = C_TRUNK;   // singlet: a strap over the shoulder, the body below the ribs
-      ctx.beginPath(); ctx.moveTo(-5.6 * s, 0); ctx.lineTo(-6.2 * s, -L * 0.98); ctx.lineTo(-3.4 * s, -L * 1.04); ctx.lineTo(-2.4 * s, -L * 0.32); ctx.quadraticCurveTo(2 * s, -L * 0.22, 7.6 * s, -L * 0.3); ctx.lineTo(6.1 * s, 0); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = C_TRUNK; ctx.beginPath(); ctx.roundRect(-W / 2, -L * 0.42, W, L * 0.42 + 3.6 * s, [0, 0, 9 * s, 9 * s]); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-W * 0.36, -L * 0.42); ctx.lineTo(-W * 0.26, -L * 0.98); ctx.lineTo(-W * 0.1, -L * 0.98); ctx.lineTo(-W * 0.14, -L * 0.42); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = C_SKIN2; ctx.lineWidth = 0.9 * s;
+      ctx.beginPath(); ctx.arc(W * 0.12, -L * 0.72, W * 0.2, 0.3, Math.PI - 0.3); ctx.stroke();
+      ctx.fillStyle = '#2b1a10'; ctx.beginPath(); ctx.roundRect(-W / 2, -2.6 * s, W, 3.6 * s, 1.5 * s); ctx.fill();
+      const g = ctx.createLinearGradient(0, -5.5 * s, 0, 2 * s); g.addColorStop(0, '#fff2b0'); g.addColorStop(0.5, C_GOLD); g.addColorStop(1, '#a8761a');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(W * 0.12, -0.8 * s, 4.2 * s, 3.2 * s, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#c0392b'; ctx.beginPath(); ctx.arc(W * 0.12, -0.8 * s, 1.4 * s, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
-      // front leg: bare thigh-top trunks, a big knee, knee-high boots
-      FK.limb(ctx, K.lF, 6.6 * s, C_SKIN, 5.8 * s);
-      ctx.strokeStyle = C_TRUNK; ctx.lineWidth = 7.4 * s; ctx.beginPath(); ctx.moveTo(K.lF[0][0], K.lF[0][1]); ctx.lineTo(K.lF[0][0] + (K.lF[1][0] - K.lF[0][0]) * 0.55, K.lF[0][1] + (K.lF[1][1] - K.lF[0][1]) * 0.55); ctx.stroke();
-      boot(ctx, K.lF, s, C_BOOT);
-      // the title belt across the hips
-      ctx.save(); ctx.translate(K.hip[0], K.hip[1]); ctx.rotate(q.lean);
-      ctx.fillStyle = '#2b1a10'; ctx.fillRect(-6.4 * s, -2.8 * s, 13.2 * s, 3.4 * s);
-      const g = ctx.createLinearGradient(0, -5 * s, 0, 1.5 * s); g.addColorStop(0, '#fff2b0'); g.addColorStop(0.5, C_GOLD); g.addColorStop(1, '#a8761a');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(3.5 * s, -1.1 * s, 3.4 * s, 2.7 * s, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#7a4a10'; ctx.lineWidth = 0.6 * s; ctx.stroke();
-      ctx.fillStyle = '#c0392b'; ctx.beginPath(); ctx.arc(3.5 * s, -1.1 * s, 1.1 * s, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-      // the head: a bear mask with ears, a snout and glowing eyes
+      ctx.shadowBlur = 0;
+      // front leg: trunks, knee-high boots
+      FK.limb(ctx, K.lF, 6.8 * s, C_TRUNK, 6.2 * s);
+      ctx.fillStyle = C_BOOT; ctx.beginPath(); ctx.ellipse(K.lF[2][0] + 1.2 * s, K.lF[2][1] - 0.6 * s, 4 * s, 2.6 * s, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = C_TAPE; ctx.lineWidth = 0.9 * s; ctx.beginPath(); ctx.moveTo(K.lF[2][0] - 2.4 * s, K.lF[2][1] - 2.2 * s); ctx.lineTo(K.lF[2][0] + 3 * s, K.lF[2][1] - 2.2 * s); ctx.stroke();
+      // the head: a big round bear head under a red luchador mask with gold flames
       ctx.save(); ctx.translate(K.head[0], K.head[1]); ctx.rotate(q.lean + q.head);
       const hr = K.hr;
-      ctx.fillStyle = C_FUR2; ctx.beginPath(); ctx.arc(-hr * 0.55, -hr * 0.85, hr * 0.36, 0, Math.PI * 2); ctx.arc(hr * 0.4, -hr * 0.92, hr * 0.36, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = C_FUR; ctx.beginPath(); ctx.ellipse(0, 0, hr * 1.08, hr, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = C_FUR; ctx.beginPath(); ctx.moveTo(-hr * 1.0, hr * 0.3); ctx.quadraticCurveTo(-hr * 0.6, hr * 1.5, hr * 0.2, hr * 1.1); ctx.lineTo(hr * 0.2, hr * 0.6); ctx.closePath(); ctx.fill();   // the hood of the mask down the neck
-      ctx.fillStyle = '#c99a6b'; ctx.beginPath(); ctx.arc(-hr * 0.55, -hr * 0.85, hr * 0.17, 0, Math.PI * 2); ctx.arc(hr * 0.4, -hr * 0.92, hr * 0.17, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#d8b48a'; ctx.beginPath(); ctx.ellipse(hr * 0.72, hr * 0.32, hr * 0.5, hr * 0.38, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#1a0f0a'; ctx.beginPath(); ctx.ellipse(hr * 1.1, hr * 0.16, hr * 0.18, hr * 0.14, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#1a0f0a'; ctx.lineWidth = 0.6 * s; ctx.beginPath(); ctx.moveTo(hr * 0.5, hr * 0.56); ctx.quadraticCurveTo(hr * 0.8, hr * 0.72, hr * 1.08, hr * 0.48); ctx.stroke();
-      ctx.fillStyle = C_TRUNK; ctx.beginPath(); ctx.ellipse(hr * 0.35, -hr * 0.24, hr * 0.85, hr * 0.3, -0.08, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowBlur = 8; ctx.shadowColor = C_EYE; ctx.fillStyle = C_EYE;
-      ctx.beginPath(); ctx.moveTo(hr * 0.22, -hr * 0.34); ctx.lineTo(hr * 0.6, -hr * 0.2); ctx.lineTo(hr * 0.25, -hr * 0.12); ctx.closePath(); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(hr * 0.72, -hr * 0.3); ctx.lineTo(hr * 1.02, -hr * 0.2); ctx.lineTo(hr * 0.74, -hr * 0.12); ctx.closePath(); ctx.fill();
-      ctx.shadowBlur = 0;
+      ctx.fillStyle = C_FUR2; ctx.beginPath(); ctx.arc(-hr * 0.62, -hr * 0.78, hr * 0.32, 0, Math.PI * 2); ctx.arc(hr * 0.45, -hr * 0.86, hr * 0.32, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#e0a0a0'; ctx.beginPath(); ctx.arc(-hr * 0.62, -hr * 0.78, hr * 0.15, 0, Math.PI * 2); ctx.arc(hr * 0.45, -hr * 0.86, hr * 0.15, 0, Math.PI * 2); ctx.fill();
+      const hg = ctx.createRadialGradient(hr * 0.2, -hr * 0.3, hr * 0.2, 0, 0, hr * 1.1); hg.addColorStop(0, '#8a5a36'); hg.addColorStop(1, C_FUR);
+      ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(0, 0, hr, 0, Math.PI * 2); ctx.fill();
+      // the mask: red over the upper face, gold flame trim round the eyes
+      ctx.fillStyle = C_TRUNK; ctx.beginPath(); ctx.ellipse(hr * 0.18, -hr * 0.12, hr * 0.86, hr * 0.62, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C_GOLD;
+      for (const ox of [hr * -0.05, hr * 0.48]) { ctx.beginPath(); ctx.moveTo(ox - hr * 0.28, -hr * 0.3); ctx.quadraticCurveTo(ox - hr * 0.1, -hr * 0.78, ox + hr * 0.38, -hr * 0.62); ctx.quadraticCurveTo(ox + hr * 0.08, -hr * 0.52, ox + hr * 0.26, -hr * 0.34); ctx.closePath(); ctx.fill(); }
+      FK.eyes(ctx, hr * 0.02, -hr * 0.12, hr * 0.19, hr * 0.5, { pupil: '#2a0a0a', angry: '#2a0a0a' });
+      // muzzle
+      ctx.fillStyle = '#d8b48a'; ctx.beginPath(); ctx.ellipse(hr * 0.48, hr * 0.42, hr * 0.42, hr * 0.32, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#1a0f0a'; ctx.beginPath(); ctx.ellipse(hr * 0.7, hr * 0.26, hr * 0.15, hr * 0.11, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#1a0f0a'; ctx.lineWidth = 0.8 * s; ctx.beginPath(); ctx.moveTo(hr * 0.3, hr * 0.55); ctx.quadraticCurveTo(hr * 0.5, hr * 0.68, hr * 0.78, hr * 0.5); ctx.stroke();
       ctx.restore();
-      // front arm: a big deltoid, taped wrist, a fist
-      ctx.fillStyle = C_SKIN; ctx.beginPath(); ctx.ellipse(K.aF[0][0] + 1 * s, K.aF[0][1] + 1 * s, 3.6 * s, 3.2 * s, 0, 0, Math.PI * 2); ctx.fill();
-      FK.limb(ctx, K.aF, 6.4 * s, C_SKIN, 6.8 * s);
-      const el = K.aF[1], hd = K.aF[2];
-      ctx.strokeStyle = C_TAPE; ctx.lineWidth = 6.6 * s; ctx.beginPath(); ctx.moveTo(el[0] + (hd[0] - el[0]) * 0.68, el[1] + (hd[1] - el[1]) * 0.68); ctx.lineTo(hd[0] - (hd[0] - el[0]) * 0.1, hd[1] - (hd[1] - el[1]) * 0.1); ctx.stroke();
-      ctx.fillStyle = C_SKIN; ctx.beginPath(); ctx.arc(hd[0], hd[1], 3.3 * s, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = C_SKIN2; ctx.lineWidth = 0.6 * s; ctx.beginPath(); ctx.arc(hd[0], hd[1], 3.3 * s, -0.5, 1.2); ctx.stroke();
-      if (guard) { ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(K.neck[0] + 4 * s, K.neck[1] + 3 * s, 11 * s, 0, Math.PI * 2); ctx.stroke(); ctx.globalCompositeOperation = 'source-over'; }
+      // front arm: a thick arm, taped wrist, a huge fist
+      FK.limb(ctx, K.aF, 6 * s, C_SKIN, 6.4 * s);
+      FK.mitt(ctx, K.aF[2][0], K.aF[2][1], 4.3 * s, C_TAPE, '#bdb4a4');
+      ctx.fillStyle = C_SKIN; ctx.beginPath(); ctx.arc(K.aF[0][0] + 0.8 * s, K.aF[0][1] + 1 * s, 3.6 * s, 0, Math.PI * 2); ctx.fill();
+      if (guard) { ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, py + ph * 0.45, ph * 0.62, 0, Math.PI * 2); ctx.stroke(); ctx.globalCompositeOperation = 'source-over'; }
     },
 
     // ---------------- drawing the world: craters, guard ring, armor glow, motion lines
