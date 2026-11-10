@@ -40911,7 +40911,55 @@ window._claimLBro = function() {
       stone: { side: ['BOULDER ROLL', 'volley', { dmg: 6, n: 1, roll: true, speed: 11, life: 1.6, size: 0.6, pierce: 4, style: 'rock' }, 'stone'], up: ['STONE SPIRE', 'pillar', { dmg: 5, launch: 17, w: 1.4, style: 'rock' }, 'stone'], down: ['TECTONIC SLAM', 'ring', { dmg: 5, r: 3.6, waves: 2, kx: 10, style: 'rock' }, 'stone'] },
     },
   };
+  // SMASH RECOVERIES: fighters whose up special does not lift them get their own recovery move in Smash:
+  // in the air, hold S + up and let go. Once per airtime (landing or grabbing a ledge gives it back).
+  //  kind 'blink' teleports straight up; 'rise' launches you. hit: what it does to foes right next to you.
+  const SMASH_REC = {
+    archmage:     { name: 'ARCANE ASCENT', kind: 'blink', dist: 5.5, theme: 'arcane', hit: { dmg: 2, ky: -8, stun: 0.5 } },
+    conduit:      { name: 'LIGHTNING RIDE', kind: 'rise', rise: 19, theme: 'bolt', bolt: true, hit: { dmg: 3, ky: -9, stun: 0.9 } },
+    cb_chameleon: { name: 'RAINBOW RISE', kind: 'rise', rise: 16, theme: 'prism', style: 'prism', hit: { dmg: 2, ky: -9, slow: 2 } },
+    formSwitcher: {
+      flame: { name: 'FLAME JET', kind: 'rise', rise: 17, theme: 'fire', style: 'fire', hit: { dmg: 2, ky: -8, burn: 3 } },
+      frost: { name: 'ICE SPIRE LEAP', kind: 'rise', rise: 15, theme: 'ice', style: 'ice', hit: { dmg: 2, ky: -6, freeze: 1.2 } },
+      storm: { name: 'STORM STEP', kind: 'blink', dist: 5, theme: 'storm', bolt: true, hit: { dmg: 3, ky: -8, stun: 0.8 } },
+      stone: { name: 'BOULDER VAULT', kind: 'rise', rise: 14, theme: 'stone', style: 'rock', hit: { dmg: 4, ky: -11 } },
+    },
+  };
+  function smashRec(ch, s) {
+    if (!(window.__smash && window.__smash.active) || s.aim !== 'up') return null;
+    const p = P(); if (!p || p.onGround) return null;
+    let R = SMASH_REC[ch]; if (!R) return null;
+    if (ch === 'formSwitcher') R = R[s.variant] || R.flame;
+    const th = THEMES[R.theme] || THEMES.fist;
+    return {
+      fd: { windup: 0, sweet: 0.05, active: 0.25, endlag: 0.15, sweetDmg: 0, chargeDmg: 0, root: false, hang: false, quiet: true },
+      dir: s.dir, color: th[0], aim: 'up', variant: s.variant,
+      fire: pw => {
+        const q = P(); if (!q) return;
+        if (q._smRecUsed) { if (window._setMessage) window._setMessage('💨 ' + R.name + ' comes back when you land or grab a ledge'); return; }
+        q._smRecUsed = true;
+        const x0 = pcx(q), fy0 = q.y + q.h;
+        if (R.kind === 'blink') {
+          const D = R.dist * (1 + 0.25 * pw); let d = 0;
+          while (d + 0.25 <= D && !blockedAt(q.x, q.y - d - 0.25, q.w, q.h)) d += 0.25;
+          sfx.push({ k: 'ring', x: x0, fy: fy0, R: 1.4, t: 0, life: 0.45, th, style: R.theme === 'arcane' ? 'arcane' : undefined });
+          q.y -= d; q.vy = -5; q.vx *= 0.3; teleported = true;
+          sfx.push({ k: 'bolt', x1: x0, y1: fy0, x2: pcx(q), y2: q.y + q.h, t: 0, life: 0.35, th });
+          sfx.push({ k: 'ring', x: pcx(q), fy: q.y + q.h, R: 1.4, t: 0, life: 0.45, th, style: R.theme === 'arcane' ? 'arcane' : undefined });
+        } else {
+          q.vy = Math.min(q.vy, -R.rise * (1 + 0.15 * pw));
+          sfx.push({ k: 'pillar', x: x0, fy: fy0 + 0.6, w: 1.2, h: 3.5, t: 0, life: 0.5, th, style: R.style });
+          if (R.bolt) sfx.push({ k: 'bolt', x1: x0, y1: fy0 + 2.5, x2: x0, y2: fy0 - 3, t: 0, life: 0.4, th });
+        }
+        for (const e of foes()) if (Math.hypot(ex(e) - pcx(q), ey(e) - pcy(q)) < 1.7) zap(e, R.hit.dmg + Math.round(2 * pw), Object.assign({ kx: (ex(e) >= pcx(q) ? 1 : -1) * 3 }, R.hit));
+        fx.push({ k: 'label', x: pcx(q), y: q.y - 0.6, t: 0, life: 0.9, text: R.name, c: th[0] });
+        if (window._setMessage) window._setMessage('💨 ' + R.name + '!');
+        shake(4);
+      },
+    };
+  }
   function specialFor(ch, s) {
+    const rec = smashRec(ch, s); if (rec) return rec;
     let set = SPECIALS[ch]; if (!set) return null;
     if (ch === 'formSwitcher') set = set[s.variant] || set.flame;
     const def = set[s.aim === 'up' ? 'up' : s.aim === 'down' ? 'down' : 'side']; if (!def) return null;
@@ -40932,6 +40980,7 @@ window._claimLBro = function() {
   // per frame: delayed hits, projectiles, vortexes, burning and frozen foes
   function tickSpecials(dt) {
     const now = nowS();
+    { const q = P(); if (q && q._smRecUsed && q.onGround) q._smRecUsed = false; }
     for (let i = timers.length - 1; i >= 0; i--) { const tm = timers[i]; if (tm.poll ? tm.poll() : now >= tm.at) { timers.splice(i, 1); try { tm.run(); } catch (e) {} } }
     for (let i = sprojs.length - 1; i >= 0; i--) {
       const q = sprojs[i]; q.life -= dt;
@@ -43655,7 +43704,7 @@ window._claimLBro = function() {
 
   let active = false, atkCD = 0, formCD = 0, tape = 0, tapeFullSaid = false, airUpUsed = false;
   let lastPX = null, lastPY = null, prevJump = false, ff = null, aim = null;
-  let dash = null, stomp = null, cast = null, rope = null, fling = null, held = null, spinT = 0;
+  let dash = null, stomp = null, cast = null, rope = null, fling = null, held = null, spinT = 0, reel = null;
   const HOLD_MAX = 4, THROW_SPEED = 17;
   const yanks = [], fx = [];
   if (window.UNIVERSAL_PUNCH_EXCLUDED_CHARS) window.UNIVERSAL_PUNCH_EXCLUDED_CHARS.add(ID);
@@ -43780,7 +43829,7 @@ window._claimLBro = function() {
   }
   function resetKit() {
     freeFoes(); fx.length = 0;
-    dash = stomp = cast = rope = fling = ff = aim = null;
+    dash = stomp = cast = rope = fling = ff = aim = reel = null;
     atkCD = 0; formCD = 0; airUpUsed = false; spinT = 0;
     lastPX = lastPY = null;
   }
@@ -43791,12 +43840,30 @@ window._claimLBro = function() {
   }
 
   // ---- the ribbon: a cast flies out, then latches onto a block (swing) or a foe (yank) ----
+  // Smash: knocked off the stage, a ribbon shot roughly toward a ledge locks onto it and reels you in
+  function ledgeFor(p, dx, dy, range, cone) {
+    const SM = window.__smash; if (!SM || !SM.active || p.onGround || !SM.__state) return null;
+    const st = SM.__state().stage; if (!st || !st.ledges) return null;
+    const L0 = Math.hypot(dx, dy) || 1; let best = null, bs = cone;
+    for (const Lg of st.ledges) {
+      if (Lg.occ) continue;
+      if (Lg.side < 0 ? pcx(p) > Lg.x : pcx(p) < Lg.x) continue;          // only from outside that edge
+      const vx = Lg.x - pcx(p), vy = Lg.top + 0.1 - pcy(p), d = Math.hypot(vx, vy);
+      if (d > range || d < 0.8) continue;
+      const ang = Math.acos(Math.max(-1, Math.min(1, (vx * dx + vy * dy) / (d * L0))));
+      if (ang < bs) { bs = ang; best = Lg; }
+    }
+    return best;
+  }
   function shootRibbon(p, dx, dy, purpose) {
-    const L = Math.hypot(dx, dy) || 1;
     const sm = ff ? 1.5 : 1;
+    const lg = ledgeFor(p, dx, dy, RIBBON_RANGE * sm * 1.2, 0.85);
+    if (lg) { dx = lg.x - pcx(p); dy = lg.top + 0.1 - pcy(p); }
+    const L = Math.hypot(dx, dy) || 1;
     // the tip flies on a fixed line from where you shot it, even if you move meanwhile
     cast = { ox: pcx(p), oy: pcy(p), x: pcx(p), y: pcy(p), dx: dx / L, dy: dy / L, dist: 0, purpose: purpose || 'grapple',
       max: (purpose === 'zip' ? ZIP_RANGE : RIBBON_RANGE) * sm, speed: RIBBON_SPEED * sm, back: 0 };
+    if (lg) { cast.ledge = lg; cast.max = L + 0.2; cast.speed *= 1.3; }
     whoosh(dy < 0);
   }
   function aimFromKeys(p) {
@@ -43877,6 +43944,13 @@ window._claimLBro = function() {
       cast.dist += step / n;
       const x = cast.ox + cast.dx * cast.dist, y = cast.oy + cast.dy * cast.dist;
       cast.x = x; cast.y = y;
+      if (cast.ledge && (cast.dist >= cast.max - 0.25 || tileAt(x, y))) {   // the clip bites the ledge: reel in
+        reel = { L: cast.ledge, t: 0 }; cast = null; if (rope) dropRope(true);
+        fx.push({ k: 'clip', x: reel.L.x, y: reel.L.top, t: 0, life: 0.35 });
+        fx.push({ k: 'label', x: pcx(p), y: p.y - 0.3, t: 0, life: 0.7, text: 'LEDGE REEL!' });
+        tone(1400, { type: 'triangle', dur: 0.07, slide: 2200, vol: 0.2 }); click(0.14); msg('🎀 LEDGE REEL!');
+        return;
+      }
       for (const e of enemies) {
         if (Math.abs(ex(e) - x) < (e.w || 0.9) / 2 + 0.25 && Math.abs(ey(e) - y) < (e.h || 0.9) / 2 + 0.25) {
           const grab = cast.purpose === 'grapple' && !held && !heavy(e);
@@ -44256,7 +44330,7 @@ window._claimLBro = function() {
     const k = keyDirs();
 
     // respawned or teleported: let go of everything
-    if (lastPX != null && (Math.abs(p.x - lastPX) > 4 || Math.abs(p.y - lastPY) > 4)) { dash = stomp = cast = rope = fling = null; freeFoes(); }
+    if (lastPX != null && (Math.abs(p.x - lastPX) > 4 || Math.abs(p.y - lastPY) > 4)) { dash = stomp = cast = rope = fling = reel = null; freeFoes(); }
 
     if (atkCD > 0) atkCD = Math.max(0, atkCD - dt);
     if (formCD > 0) formCD = Math.max(0, formCD - dt);
@@ -44269,6 +44343,16 @@ window._claimLBro = function() {
 
     stepCast(p, dt);
     stepRope(p, dt, k);
+    // Ledge Reel (Smash): the ribbon pulls you to the ledge it caught, and you grab it
+    if (reel) {
+      reel.t += dt;
+      const Lg = reel.L, tx = Lg.side < 0 ? Lg.x - p.w - 0.1 : Lg.x + 0.1, ty = Lg.top + 0.1;
+      const dx = tx - p.x, dy = ty - p.y, d = Math.hypot(dx, dy) || 1, stepR = 24 * dt;
+      const hurt = lastPX != null && (Math.abs(p.x - lastPX) > 2.5 || Math.abs(p.y - lastPY) > 2.5);
+      if (reel.t > 1.2 || p.onGround || hurt || !(window.__smash && window.__smash.active)) reel = null;
+      else if (d <= stepR + 0.15) { p.x = tx; p.y = ty; p.vx = 0; p.vy = 1; reel = null; whoosh(true); }
+      else { p.x += dx / d * stepR; p.y += dy / d * stepR; p.vx = 0; p.vy = 0; }
+    }
 
     // a fling keeps your swing speed for a moment after you let go (air friction would eat it)
     if (fling) {
@@ -44449,6 +44533,7 @@ window._claimLBro = function() {
       ctx.strokeStyle = PALETTE[1]; ctx.lineWidth = 2;
       for (let i = 0; i < 3; i++) { const a = now * 6 + i * 2.1; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax + Math.cos(a) * T * 0.14, ay + Math.sin(a) * T * 0.14); ctx.stroke(); }
     }
+    if (reel) { drawTape(ctx, hxp, hyp, SX(reel.L.x), SY(reel.L.top), 0.5, now * 30, 0.95, C_AMBER); ctx.globalCompositeOperation = 'lighter'; ctx.beginPath(); ctx.arc(SX(reel.L.x), SY(reel.L.top), T * 0.2, 0, Math.PI * 2); neon(ctx, '#ffffff', 1.5, 0.9); }
     // a foe being reeled in, or held on the ribbon at your side
     for (const y of yanks) if (!y.e.dead) drawTape(ctx, hxp, hyp, SX(ex(y.e)), SY(ey(y.e)), 2, now * 30, 0.9);
     if (held && !held.e.dead) {
@@ -44556,12 +44641,12 @@ window._claimLBro = function() {
   // whoever it's holding and its yanks. Your buttons stay yours.
   (window._fighterPlugins = window._fighterPlugins || []).push({ name: 'mixtape', char: ID,
     swap(s) {
-      const out = { formIdx, PALETTE, active, atkCD, formCD, tape, tapeFullSaid, airUpUsed, lastPX, lastPY, prevJump, ff, aim, dash, stomp, cast, rope, fling, held, spinT,
+      const out = { formIdx, PALETTE, active, atkCD, formCD, tape, tapeFullSaid, airUpUsed, lastPX, lastPY, prevJump, ff, aim, dash, stomp, cast, rope, fling, held, spinT, reel,
         yanks: yanks.splice(0), fx: fx.splice(0) };
       if (!s) { const fi = Math.floor(Math.random() * FORMS.length); s = { formIdx: fi, PALETTE: FORMS[fi].pal.slice(), active: true }; }
       formIdx = s.formIdx || 0; PALETTE = s.PALETTE || FORMS[formIdx].pal.slice(); active = !!s.active; atkCD = s.atkCD || 0; formCD = s.formCD || 0;
       tape = s.tape || 0; tapeFullSaid = !!s.tapeFullSaid; airUpUsed = !!s.airUpUsed; lastPX = s.lastPX != null ? s.lastPX : null; lastPY = s.lastPY != null ? s.lastPY : null;
-      prevJump = !!s.prevJump; ff = s.ff || null; aim = s.aim || null; dash = s.dash || null; stomp = s.stomp || null; cast = s.cast || null; rope = s.rope || null; fling = s.fling || null; held = s.held || null; spinT = s.spinT || 0;
+      prevJump = !!s.prevJump; ff = s.ff || null; aim = s.aim || null; dash = s.dash || null; stomp = s.stomp || null; cast = s.cast || null; rope = s.rope || null; fling = s.fling || null; held = s.held || null; spinT = s.spinT || 0; reel = s.reel || null;
       if (s.yanks) yanks.push(...s.yanks); if (s.fx) fx.push(...s.fx);
       if (window._gtCharStatCache && window._gtCharStatCache[ID]) window._gtCharStatCache[ID] = formStats();   // speed / jump follow whoever's turn it is
       return out;
