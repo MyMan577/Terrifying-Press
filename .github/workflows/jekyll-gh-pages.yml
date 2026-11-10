@@ -1,11 +1,10 @@
 # Sample workflow for building and deploying a Jekyll site to GitHub Pages
 name: Deploy Jekyll with GitHub Pages dependencies preinstalled
 
+# This sample workflow publishes the repo itself (the README) to the same GitHub Pages site as the games
+# website (games-site.yml). Both ran on every push and whichever finished last won, so the games website
+# kept being replaced by a README page. It no longer runs on pushes; it can still be run by hand.
 on:
-  # Runs on pushes targeting the default branch
-  push:
-    branches: ["main"]
-
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
