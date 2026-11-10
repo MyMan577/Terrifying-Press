@@ -73,6 +73,7 @@
           S.seeking = false; clearTimeout(S.seekTimer);
           S.base = s.posMs; S.baseAt = now();
           emit(S, 'seeked'); emit(S, 'timeupdate');
+          if (s.state === 'ended') applySnap(S, s);          // the seek went to the very end
         } else if (++tries < 20) setTimeout(step, 200);
       }).catch(function () {});
     })();
@@ -399,6 +400,9 @@
     }
     if (s.state === 'buffering' && S.ready) emit(S, 'waiting');
     if (s.state === 'ended') {
+      // The app answers 'ended' with a seek (repeat). Reports from before that seek still say "ended": acting on
+      // them fired 'ended' two or three times per finish, each one seeking and restarting again.
+      if (S.seeking) return;
       if (!S.ended) { S.ended = true; S.pwr = false; emit(S, 'timeupdate'); emit(S, 'pause'); emit(S, 'ended'); }
       return;
     }
