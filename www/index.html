@@ -14408,6 +14408,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     sleepTimer = { mode: 'off', endAt: null, intervalId: null };
     sleepLabel.textContent = 'Sleep';
     sleepBtn.classList.remove('toggled');
+    syncAudioLoop();
   }
   function tickSleepLabel(){
     if (sleepTimer.mode === 'track'){
@@ -14437,6 +14438,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     sleepBtn.classList.add('toggled');
     tickSleepLabel();
     sleepTimer.intervalId = setInterval(tickSleepLabel, 1000);
+    syncAudioLoop();
   }
   function startSleepAtEndOfTrack(){
     if (sleepTimer.intervalId) clearInterval(sleepTimer.intervalId);
@@ -14444,6 +14446,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     sleepTimer.endAt = null;
     sleepBtn.classList.add('toggled');
     tickSleepLabel();
+    syncAudioLoop();   // the song must really end for this timer, so it may not loop
   }
   sleepBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -17390,7 +17393,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (bgAudioActive){ releaseWebAudioPicture(bgEl.muted); try { bgEl.pause(); bgEl.removeAttribute('src'); bgEl.load(); } catch(e){} }
     bgAudioActive = false; // any prior background-audio substitution no longer applies
     setTimeout(() => { if (!bgAudioActive) setBgGraphLive(false); }, 400);
-    audioEl.loop = false;
+    audioEl.loop = false;   // set again for the new track by syncAudioLoop() below
 
     persistSubtitleState(true);   // flush a pending offset change to the track we're leaving
     currentIndex = i;
@@ -17418,6 +17421,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     setABLabel();
     applySavedSubtitles(t.dbId);
     applySpeed();
+    syncAudioLoop();
 
     if (t.kind === 'video'){
       showVideoView();
@@ -17583,6 +17587,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     repeatBtn.classList.toggle('repeat-one', repeatMode === 2);
     repeatBtn.title = repeatMode === 0 ? 'Repeat' : repeatMode === 1 ? 'Repeat all' : 'Repeat one';
     if (bgAudioActive) bgEl.loop = repeatMode === 2 && sleepTimer.mode !== 'track';
+    syncAudioLoop();
     saveSettings();
   });
 
@@ -17655,6 +17660,17 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     durTimeEl.textContent = fmtTime(m.duration);
     renderPlaylist();
     updateABMarkers();
+  }
+  // Repeat-one for a song: let the player loop it by itself (ExoPlayer in the app, the <audio> element otherwise).
+  // Restarting from onEnded (ended -> seek to 0 -> play()) needs this page to be awake at the exact moment the
+  // song ends. With the screen off Android pauses the page, and a finished player also lets go of its
+  // foreground service, so the restart never arrived and the song just stopped. Same idea as bgEl.loop for videos.
+  // A single song on repeat-all is the same case. Sleep timer 'track' mode needs the real 'ended' event.
+  function syncAudioLoop(){
+    const t = currentIndex !== -1 ? tracks[currentIndex] : null;
+    const want = !!t && t.kind !== 'video' && sleepTimer.mode !== 'track' &&
+      (repeatMode === 2 || (repeatMode === 1 && tracks.length === 1));
+    if (audioEl.loop !== want) audioEl.loop = want;
   }
   function onEnded(e){
     if (e.target !== media()) return;
@@ -20607,6 +20623,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       repeatBtn.classList.toggle('toggled', repeatMode !== 0);
       repeatBtn.classList.toggle('repeat-one', repeatMode === 2);
       repeatBtn.title = repeatMode === 0 ? 'Repeat' : repeatMode === 1 ? 'Repeat all' : 'Repeat one';
+      syncAudioLoop();
     }
 
     if (typeof s.playbackSpeed === 'number' && s.playbackSpeed >= SPEED_MIN && s.playbackSpeed <= SPEED_MAX){
@@ -20921,7 +20938,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     window.ppMigrateLibrary = () => PPNative.migrateAll(tracks);   // run once from the console, or hook to a button
     PPNative.hooks.tick = () => {
       const sig = [currentIndex, shuffleOn, repeatMode, sleepTimer && sleepTimer.mode, tracks.length].join('|');
-      if (sig !== ppNextSig){ ppNextSig = sig; ppQueueNext(); }
+      if (sig !== ppNextSig){ ppNextSig = sig; syncAudioLoop(); ppQueueNext(); }
       ppCatalogCheck();
     };
     PPNative.setFxProvider(() => ({
