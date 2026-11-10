@@ -19,7 +19,7 @@
   const ID = 'cb_valka';
   const C_STEEL = '#cfd8e6', C_STEEL2 = '#8a97ab', C_BLUE = '#2f5fd0', C_BLUE2 = '#1c3a86', C_GOLD = '#ffd166', C_SKIN = '#f0c9a4', C_HAIR = '#f3e3b0', C_SHAFT = '#4a2f1f', C_FX = '#7fb4ff';
   const P = { hip: 9.5, torso: 10, neck: -2.5, head: 9, ua: 5, fa: 5, th: 4.8, sh: 4.8 };
-  const U = 36, L = 3.0;   // body units over the hitbox height; spear length in tiles
+  const U = 31, L = 3.0;   // body units over the hitbox height; spear length in tiles
   const pose = FK.pose, { ex, ey, pcx, pcy } = FK;
 
   // poses (facing right). sp = spear angle (0 down, PI/2 forward, PI up), gr = grip: tiles of spear behind the hand,
