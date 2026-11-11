@@ -53,6 +53,8 @@ class PlaybackService : MediaLibraryService() {
     lateinit var player: ExoPlayer
         private set
     lateinit var fx: FxAudioProcessor
+    /** Knows which part of the audio is audible right now (for the visualizer). Null until the player builds its output. */
+    @Volatile var vizClock: VizClockSink? = null
         private set
     private var session: MediaLibrarySession? = null
     private var uiPlayer: Player? = null
@@ -87,11 +89,11 @@ class PlaybackService : MediaLibraryService() {
         val renderers = object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
                 context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean
-            ): AudioSink = DefaultAudioSink.Builder(context)
+            ): AudioSink = VizClockSink(DefaultAudioSink.Builder(context)
                 .setEnableFloatOutput(false) // keep 16-bit so the FX chain stays active
                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                 .setAudioProcessors(arrayOf(fx))
-                .build()
+                .build(), fx).also { vizClock = it }
         }
         renderers.setEnableDecoderFallback(true)
         renderers.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)

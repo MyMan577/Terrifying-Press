@@ -62,6 +62,10 @@ class NativePlayerPlugin : Plugin() {
     private var ticking = false
     private var vizTicking = false
     private var viz = false
+    // The picture is always a little behind the data it is drawn from (the hop into the page, the wait for the next
+    // frame, the screen itself), so the visualizer is shown the sound from this far ahead of the speaker.
+    private var vizLeadUs = 45_000L
+    private var inBackground = false
     private val freq = ByteArray(512)
     private val wave = ByteArray(512)
 
@@ -155,6 +159,7 @@ class NativePlayerPlugin : Plugin() {
                     currentItem = item; nextUri = null
                     srcOrig = origOf(item); probeAsync(srcOrig)
                     kind = if (item.mediaMetadata.mediaType == MediaMetadata.MEDIA_TYPE_VIDEO) "video" else "audio"
+                    svc?.player?.let { applyVideoTrack(it) }
                     main.post { MainActivity.instance?.showVideoLayer(kind == "video") }
                     notifyListeners("external", snapshot("external"))
                 }
@@ -166,6 +171,12 @@ class NativePlayerPlugin : Plugin() {
                 currentItem = p.currentMediaItem
                 nextUri = null
                 srcOrig = origOf(currentItem); probeAsync(srcOrig)
+                // The queued item may be the other kind (a song after a video): switch the picture with it.
+                val k = currentItem?.mediaMetadata?.extras?.getString("kind") ?: ""
+                if (k.isNotEmpty() && k != kind && (k != "video" || MainActivity.nativeVideo)) {
+                    kind = k; applyVideoTrack(p)
+                    main.post { MainActivity.instance?.showVideoLayer(kind == "video") }
+                }
                 notifyListeners("advanced", snapshot("advanced"))
             }
         }
@@ -199,11 +210,15 @@ class NativePlayerPlugin : Plugin() {
         override fun run() {
             val s = svc
             if (!viz || s == null || !s.player.isPlaying) { vizTicking = false; return }
-            s.fx.spectrum(freq); s.fx.waveform(wave)
+            // The effect chain sees the sound up to a second before it reaches the speaker (it waits in the output
+            // buffer, longer over Bluetooth). Ask for the part that is playing now, not the part just processed.
+            val now = s.vizClock?.nowUs() ?: FxAudioProcessor.UNSET
+            s.fx.analyse(freq, wave, if (now == FxAudioProcessor.UNSET) now else now + vizLeadUs)
             notifyListeners("fft", JSObject()
                 .put("f", Base64.encodeToString(freq, Base64.NO_WRAP))
-                .put("t", Base64.encodeToString(wave, Base64.NO_WRAP)))
-            main.postDelayed(this, 33)
+                .put("t", Base64.encodeToString(wave, Base64.NO_WRAP))
+                .put("sr", s.fx.sampleRate))
+            main.postDelayed(this, 16)
         }
     }
 
@@ -232,6 +247,7 @@ class NativePlayerPlugin : Plugin() {
                     s.player.setAudioAttributes(
                         AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
                             .setContentType(if (kind == "video") C.AUDIO_CONTENT_TYPE_MOVIE else C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
+                    applyVideoTrack(s.player)
                     s.player.setMediaItem(item, startMs)
                     s.player.prepare()
                     s.player.playWhenReady = autoplay
@@ -247,7 +263,7 @@ class NativePlayerPlugin : Plugin() {
         val md = MediaMetadata.Builder()
             .setTitle(d.optString("title", "")).setArtist(d.optString("artist", ""))
             .setAlbumTitle(d.optString("album", ""))
-            .setExtras(Bundle().apply { putString("orig", orig) })
+            .setExtras(Bundle().apply { putString("orig", orig); putString("kind", d.optString("kind", "")) })
         val art = d.optString("artUri", "")
         if (art.isNotEmpty()) md.setArtworkUri(Uri.parse(art))
         val b64 = d.optString("artBase64", "")
@@ -417,7 +433,9 @@ class NativePlayerPlugin : Plugin() {
     @PluginMethod
     fun setViz(call: PluginCall) {
         viz = call.getBoolean("on", false) ?: false
-        withSvc(call) { it.fx.vizOn = viz; updateTicker(); call.resolve() }
+        val lead = call.data.optDouble("leadMs", Double.NaN)
+        if (!lead.isNaN()) vizLeadUs = (lead.coerceIn(-500.0, 1000.0) * 1000).toLong()
+        withSvc(call) { updateTicker(); call.resolve() }
     }
 
     // ---------- video ----------
@@ -541,9 +559,19 @@ class NativePlayerPlugin : Plugin() {
 
     /** Called by MainActivity: no point decoding video while the app is off-screen. */
     fun setBackground(bg: Boolean) {
-        val p = svc?.player ?: return
+        inBackground = bg
+        applyVideoTrack(svc?.player ?: return)
+    }
+
+    /**
+     * The picture is only decoded when there is somewhere to show it. A video played as a song ("To MP3") used to
+     * have its picture decoded and thrown away the whole time, which costs a lot on a 4K file.
+     */
+    private fun applyVideoTrack(p: Player) {
+        val off = inBackground || kind != "video"
+        if (p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_VIDEO) == off) return
         p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
-            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, bg).build()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, off).build()
     }
 
     /** Window colour behind the transparent WebView, so the area around the video matches the page. */

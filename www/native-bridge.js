@@ -24,11 +24,11 @@
     N.setSrc = function (el, t) { el.src = t.url; return Promise.resolve(); };
     N.raw = function (el) { return el; };
     N.active = N.videoActive = function () { return false; };
-    N.videoFps = function () { return 0; };
+    N.videoFps = N.vizRate = function () { return 0; };
     N.sampleLuma = function () { return Promise.reject(new Error('not native')); };
     N.setMemc = function () {};
     N.memcStatus = null;
-    N.mirror = N.decorateAnalyser = N.queueNext = N.nowPlaying = N.updateMeta = N.setFxProvider = N.setVideoFilterCss = N.screenOn = N.scheduleRect = N.resync = N.enterPip = function () {};
+    N.mirror = N.decorateAnalyser = N.setVizTrim = N.queueNext = N.nowPlaying = N.updateMeta = N.setFxProvider = N.setVideoFilterCss = N.screenOn = N.scheduleRect = N.resync = N.enterPip = function () {};
     N.boot = function () { return Promise.resolve(); };
     N.pushCatalog = N.migrateAll = function () {};
     N.snapshot = function () { return Promise.reject(new Error('not native')); };
@@ -456,7 +456,7 @@
       if (N.hooks.command) N.hooks.command(c.name, c);
     });
     Player.addListener('fft', function (e) {
-      fftF = dec(e.f); fftT = dec(e.t);
+      fftF = dec(e.f); fftT = dec(e.t); if (e.sr > 0) fftRate = e.sr;
     });
     Player.addListener('memc', function (m) { N.memcStatus = m; if (N.hooks.memcStatus) N.hooks.memcStatus(m); });
     Player.addListener('pip', function (e) {
@@ -503,15 +503,33 @@
     if (want && !fxTimer) { fxTimer = setInterval(fxTick, 400); fxTick(); }
     else if (!want && fxTimer) { clearInterval(fxTimer); fxTimer = 0; }
   }
-  N.setFxProvider = function (fn) { fxFn = fn; syncFxTimer(); };
+  // Knobs and sliders are followed closely while the page is on screen: at the housekeeping pace alone a turn of a
+  // knob arrived in up to 0.4 s steps, which sounded nothing like the same knob on a video.
+  var fxFast = 0;
+  N.setFxProvider = function (fn) {
+    fxFn = fn; syncFxTimer();
+    if (!fxFast) fxFast = setInterval(function () { if (!document.hidden) pushFx(false); }, 60);
+  };
 
   // ---------- visualizer ----------
-  var fftF = null, fftT = null, smooth = null, vizOn = false;
+  // The native player sends the spectrum of the sound that is audible right now (see VizClockSink), taken a little
+  // ahead to cover the time the picture needs to reach the screen. vizTrim is the listener's own correction on top.
+  var fftF = null, fftT = null, fftRate = 0, smooth = null, vizOn = false, VIZ_LEAD_MS = 45, vizTrim = 0;
+  try { vizTrim = Math.max(-300, Math.min(300, parseInt(localStorage.getItem('ppVizTrim'), 10) || 0)); } catch (e) {}
+  /** Later (+) or earlier (-) bars, in ms. For speakers and headphones that do not report their own delay. */
+  N.setVizTrim = function (ms) {
+    vizTrim = Math.max(-300, Math.min(300, +ms || 0));
+    try { localStorage.setItem('ppVizTrim', String(vizTrim)); } catch (e) {}
+    call(function () { return Player.setViz({ on: vizOn, leadMs: VIZ_LEAD_MS - vizTrim }); });
+  };
+  N.vizTrim = function () { return vizTrim; };
+  /** Sample rate of the spectrum being fed to the analyser (0 while the analyser reads the page's own audio). */
+  N.vizRate = function () { return (cur && cur.active && cur.playing && fftF) ? fftRate : 0; };
   function dec(s) { var b = atob(s), a = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; }
   function syncViz() {
     var want = !!(cur && cur.active && cur.kind === 'audio' && cur.playing && !document.hidden);
     if (want === vizOn) return; vizOn = want;
-    call(function () { return Player.setViz({ on: want }); });
+    call(function () { return Player.setViz({ on: want, leadMs: VIZ_LEAD_MS - vizTrim }); });
   }
   N.decorateAnalyser = function (an) {
     var of = an.getByteFrequencyData.bind(an), ot = an.getByteTimeDomainData.bind(an);
