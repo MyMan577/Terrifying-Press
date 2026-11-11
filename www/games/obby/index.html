@@ -2468,14 +2468,14 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
           <div>
             <div style="font-size:13px;font-weight:700">⚔️ Attack Flick</div>
-            <div class="small" style="margin-top:2px">Flick ⚔️ up or down for an up or down attack. A plain tap waits this long to tell it apart. 0 = off.</div>
+            <div class="small" style="margin-top:2px">Put your thumb on ⚔️ and flick up or down for an up or down attack. A tap attacks when you lift. This is how long your thumb can rest on ⚔️ before it attacks without a flick. 0 = flick off.</div>
           </div>
-          <div id="flickWaitVal" style="font-size:14px;font-weight:900;color:var(--accent);min-width:46px;text-align:right;">50 ms</div>
+          <div id="flickWaitVal" style="font-size:14px;font-weight:900;color:var(--accent);min-width:46px;text-align:right;">160 ms</div>
         </div>
-        <input type="range" id="flickWaitSlider" min="0" max="120" value="50" step="10"
+        <input type="range" id="flickWaitSlider" min="0" max="300" value="160" step="20"
           style="width:100%;accent-color:#7cdbff;cursor:pointer;"
           oninput="window._obbyFlickWait(this.value)">
-        <div style="display:flex;justify-content:space-between;" class="small"><span>Off</span><span>Forgiving</span></div>
+        <div style="display:flex;justify-content:space-between;" class="small"><span>Off</span><span>More time to flick</span></div>
       </div>
 
       <div style="padding:10px 12px;background:rgba(0,0,0,0.2);border-radius:12px;border:1px solid rgba(255,255,255,0.07);margin-top:8px;">
@@ -12563,15 +12563,14 @@ function resetPlayer() {
   }
   bindBtn('leftBtn', 'left'); bindBtn('rightBtn', 'right'); bindBtn('jumpBtn', 'jump'); bindBtn('dashBtn', 'dash');
 
-  // On touch, up/down come from: holding Jump (up), the Crouch toggle (down) and a flick on Attack
-  // (up or down, held until the attack button is let go). Each writes its own flag; this merges them.
+  // On touch, up comes from holding Jump or a flick up on ⚔️; down from the Crouch toggle or a flick down
+  // (held while the thumb stays on ⚔️). Each writes its own flag; this merges them.
   const _vSrc = { jumpUp: false, crouch: false, flickUp: false, flickDown: false };
   function _syncVert() {
     mobileKeys.up = _vSrc.jumpUp || _vSrc.flickUp;
     mobileKeys.down = _vSrc.crouch || _vSrc.flickDown;
-    window._flickAim = _vSrc.flickUp ? 'up' : _vSrc.flickDown ? 'down' : null;
   }
-  window.addEventListener('blur', () => { for (const k in _vSrc) _vSrc[k] = false; window._flickAim = null; });
+  window.addEventListener('blur', () => { for (const k in _vSrc) _vSrc[k] = false; });
   
   
   
@@ -12727,50 +12726,106 @@ function resetPlayer() {
         performProtagAttackRelease(heldMs);
       }
     };
-    // Flick to aim. Press ⚔️ and flick up or down: the attack fires the moment the thumb has moved far
-    // enough, aimed that way (as if holding ↑/↓). A plain tap fires as neutral once the thumb has stayed
-    // put for the flick wait (Settings), or on release if that comes first. Wait 0 = no flick, instant.
-    // The aim stays held until the button is let go, so charged attacks keep it on release.
-    const FLICK_PX = 12;
-    const fl = { id: null, x0: 0, y0: 0, fired: false, timer: 0 };
+    // Flick to aim. Thumb on ⚔️, then flick up or down = up/down attack; a tap = normal attack.
+    //  - Nothing fires on touch-down. It fires the moment the thumb has moved FLICK_PX (aimed if the move
+    //    is mostly up or down), on release if it never moved (a tap), or after the flick window if the
+    //    thumb is just resting there (so holding / charging still works). Window 0 = off, instant attack.
+    //  - The aim is held while the thumb stays down, like holding ↑/↓ on a keyboard.
+    //  - It also travels with the press into the strike engine: a press during another move is buffered and
+    //    the engine reads the direction only when that move starts (and a charged move when it's released),
+    //    by which time the thumb is usually gone. So each press carries its aim and gets it back then.
+    const FLICK_PX = 10;
+    const fl = { id: null, x0: 0, y0: 0, fired: false, timer: 0, aim: null };
+    const withAim = (aim, fn) => {
+      if (!aim) return fn();
+      const pu = mobileKeys.up, pd = mobileKeys.down;
+      mobileKeys.up = aim === 'up'; mobileKeys.down = aim === 'down';
+      try { return fn(); } finally { mobileKeys.up = pu; mobileKeys.down = pd; }
+    };
+    let pressAim = null;          // the aim of the ⚔️ press being handled right now
+    let strikeHooked = false;
+    const hookStrike = () => {
+      if (strikeHooked || !window.PPStrike) return;
+      strikeHooked = true;
+      const S = window.PPStrike, origPress = S.press, origStart = S.start;
+      // the move's hit (fire) runs after its windup and some fighters read the direction again there
+      const aimSpec = (aim, spec) => {
+        if (spec && typeof spec.fire === 'function' && !spec._flickAim) {
+          const f = spec.fire; spec._flickAim = aim;
+          spec.fire = function () { return withAim(aim, () => f.apply(this, arguments)); };
+        }
+        return spec;
+      };
+      S.press = function (resolve, chargeable) {
+        const aim = pressAim;
+        return origPress.call(this, aim ? () => aimSpec(aim, withAim(aim, resolve)) : resolve, chargeable);
+      };
+      S.start = function (spec) {
+        return origStart.call(this, pressAim ? aimSpec(pressAim, spec) : spec);
+      };
+    };
+    const setHold = aim => { _vSrc.flickUp = aim === 'up'; _vSrc.flickDown = aim === 'down'; _syncVert(); };
+    const NOEV = { preventDefault() {} };
+    // The strike engine drops a press made during a move's windup or more than 0.25 s before it ends, so
+    // taps in a combo used to vanish. A touch press it can't take yet waits (with its aim) and goes in as
+    // soon as the engine will queue it, for up to WAIT_MAX; if the thumb was lifted meanwhile, its
+    // release follows right after.
+    const WAIT_MAX = 600;
+    const waiting = { on: false, aim: null, until: 0, released: false };
+    const pressNow = aim => {
+      pressAim = aim;
+      try { withAim(aim, () => doAction(NOEV)); } finally { pressAim = null; }
+    };
+    const pollWaiting = () => {
+      if (!waiting.on) return;
+      const S = window.PPStrike;
+      if (mode !== 'play' || performance.now() > waiting.until || !S) { waiting.on = false; return; }
+      if (!S.canQueue()) { requestAnimationFrame(pollWaiting); return; }
+      waiting.on = false;
+      pressNow(waiting.aim);
+      if (waiting.released) withAim(waiting.aim, () => releaseAction(NOEV));
+    };
     const flickFire = aim => {
       if (fl.fired) return;
-      fl.fired = true; clearTimeout(fl.timer);
-      if (aim) { _vSrc.flickUp = aim === 'up'; _vSrc.flickDown = aim === 'down'; _syncVert(); }
-      doAction({ preventDefault() {} });
+      fl.fired = true; fl.aim = aim; clearTimeout(fl.timer);
+      hookStrike();
+      setHold(aim);
+      const S = window.PPStrike;
+      if (S && mode === 'play' && S.busy() && !S.canQueue()) {
+        Object.assign(waiting, { on: true, aim, until: performance.now() + WAIT_MAX, released: false });
+        requestAnimationFrame(pollWaiting);
+        return;
+      }
+      pressNow(aim);
     };
-    const flickEnd = () => {
-      clearTimeout(fl.timer); fl.id = null;
-      if (_vSrc.flickUp || _vSrc.flickDown) { _vSrc.flickUp = _vSrc.flickDown = false; _syncVert(); }
-    };
-    const findT = (list) => { for (let i = 0; i < list.length; i++) if (list[i].identifier === fl.id) return list[i]; return null; };
+    const findT = list => { for (let i = 0; i < list.length; i++) if (list[i].identifier === fl.id) return list[i]; return null; };
     slashBtnEl.addEventListener('touchstart', e => {
       e.preventDefault();
       if (fl.id !== null) return;
       const t = e.changedTouches[0];
-      const wait = window._settingFlickWait | 0;
-      fl.id = t.identifier; fl.x0 = t.clientX; fl.y0 = t.clientY; fl.fired = false;
-      if (wait <= 0) { flickFire(null); return; }
-      fl.timer = setTimeout(() => flickFire(null), wait);
+      const win = window._settingFlickWindow | 0;
+      fl.id = t.identifier; fl.x0 = t.clientX; fl.y0 = t.clientY; fl.fired = false; fl.aim = null;
+      if (win <= 0) { flickFire(null); return; }
+      fl.timer = setTimeout(() => flickFire(null), win);
     }, { passive: false });
     slashBtnEl.addEventListener('touchmove', e => {
       e.preventDefault();
       const t = findT(e.changedTouches); if (!t || fl.fired) return;
       const dx = t.clientX - fl.x0, dy = t.clientY - fl.y0;
       if (dx * dx + dy * dy < FLICK_PX * FLICK_PX) return;
-      // mostly vertical = aimed; sideways just fires as a normal attack
-      flickFire(Math.abs(dy) > Math.abs(dx) * 0.8 ? (dy < 0 ? 'up' : 'down') : null);
+      flickFire(Math.abs(dy) >= Math.abs(dx) * 0.7 ? (dy < 0 ? 'up' : 'down') : null);
     }, { passive: false });
     const flickRelease = e => {
       const t = findT(e.changedTouches); if (!t) return;
       e.preventDefault();
       if (!fl.fired) flickFire(null);
-      releaseAction(e);
-      flickEnd();
+      if (waiting.on) waiting.released = true;
+      else withAim(fl.aim, () => releaseAction(NOEV));
+      clearTimeout(fl.timer); fl.id = null; fl.aim = null; setHold(null);
     };
     slashBtnEl.addEventListener('touchend', flickRelease, { passive: false });
     slashBtnEl.addEventListener('touchcancel', flickRelease, { passive: false });
-    window.addEventListener('blur', flickEnd);
+    window.addEventListener('blur', () => { clearTimeout(fl.timer); fl.id = null; fl.aim = null; waiting.on = false; setHold(null); });
     slashBtnEl.addEventListener('mousedown', doAction);
     slashBtnEl.addEventListener('mouseup', releaseAction);
   }
@@ -28270,10 +28325,10 @@ function resolveCollisions(axis, dt) {
       window._settingHUDOpacity       = (saved.hudOpacity      != null) ? saved.hudOpacity      : 100;
       window._settingSidebarOpacity   = (saved.sidebarOpacity  != null) ? saved.sidebarOpacity  : 100;
       window._settingNoirFilter       = saved.noirFilter       === true;
-      window._settingFlickWait        = (saved.flickWait       != null) ? saved.flickWait       : 50;
+      window._settingFlickWindow      = (saved.flickWindow     != null) ? saved.flickWindow     : 160;
       window._settingMusicVolume      = (saved.musicVolume     != null) ? saved.musicVolume     : 50;
     } catch(e) {
-      window._settingFlickWait        = 50;
+      window._settingFlickWindow      = 160;
       window._settingMusicVolume      = 50;
       window._settingSlideEnabled     = true;
       window._settingTutorialBanners  = true;
@@ -28296,7 +28351,7 @@ function resolveCollisions(axis, dt) {
           hudOpacity:       window._settingHUDOpacity,
           sidebarOpacity:   window._settingSidebarOpacity,
           noirFilter:       window._settingNoirFilter,
-          flickWait:        window._settingFlickWait,
+          flickWindow:      window._settingFlickWindow,
           musicVolume:      window._settingMusicVolume,
         }));
       } catch(e) {}
@@ -28407,7 +28462,7 @@ function resolveCollisions(axis, dt) {
     
     window._obbyFlickWait = function(val) {
       val = parseInt(val, 10) || 0;
-      window._settingFlickWait = val;
+      window._settingFlickWindow = val;
       var display = document.getElementById('flickWaitVal');
       if (display) display.textContent = val ? val + ' ms' : 'Off';
       saveSettings();
@@ -28463,9 +28518,9 @@ function resolveCollisions(axis, dt) {
     if (window._musicVolume) window._musicVolume(window._settingMusicVolume / 100);
 
     var fwSlider = document.getElementById('flickWaitSlider');
-    if (fwSlider) fwSlider.value = window._settingFlickWait;
+    if (fwSlider) fwSlider.value = window._settingFlickWindow;
     var fwVal = document.getElementById('flickWaitVal');
-    if (fwVal) fwVal.textContent = window._settingFlickWait ? window._settingFlickWait + ' ms' : 'Off';
+    if (fwVal) fwVal.textContent = window._settingFlickWindow ? window._settingFlickWindow + ' ms' : 'Off';
 
     var hudSlider = document.getElementById('hudOpacitySlider');
     var hudVal    = document.getElementById('hudOpacityVal');
