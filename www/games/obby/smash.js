@@ -438,8 +438,8 @@
     if (d === 0 && Math.abs(gStick.x) > STICK_DEAD) d = gStick.x > 0 ? 1 : -1;
     return d;
   }
-  function upIn() { return held('w') || held('arrowup') || tch.jump || window._flickAim === 'up' || gStick.y < -STICK_DEAD; }
-  function downIn() { return held('arrowdown') || held('s') || tch.down || window._flickAim === 'down' || gStick.y > STICK_DEAD; }
+  function upIn() { return held('w') || held('arrowup') || tch.jump || gStick.y < -STICK_DEAD; }
+  function downIn() { return held('arrowdown') || held('s') || tch.down || gStick.y > STICK_DEAD; }
   function vDirIn() { return (downIn() ? 1 : 0) - (upIn() ? 1 : 0); }
   function jumpIn() { return pressed('w') || pressed('arrowup') || pressed(' ') || (tch.jump && !prevTch.jump); }
 
