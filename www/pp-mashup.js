@@ -79,15 +79,18 @@
     if (hint > 30) scan(hint - 1.2, hint + 1.2, 0.02);
     else { scan(80, 165, 0.25); var c = best.bpm; best.score = -1; scan(c - 0.4, c + 0.4, 0.01); }
     best.bpm = Math.round(best.bpm * 100) / 100;
+    // How much the beat stands out: level on the beat grid against the level everywhere. About 1 = no beat found.
+    var mean = 0; for (var i = 0; i < env.length; i++) mean += env[i]; mean /= Math.max(1, env.length);
+    best.conf = mean > 0 ? best.score / mean : 0;
     return best;
   }
   var beatMem = {};
   function beatOf(t, hint) {                                          // -> Promise<{bpm, phase}>, cached per track
-    var key = 'ppBeat1:' + t.dbId + ':' + (hint || 0);
+    var key = 'ppBeat2:' + t.dbId + ':' + (hint || 0);
     if (beatMem[key]) return beatMem[key];
     try { var sv = JSON.parse(localStorage.getItem(key) || 'null'); if (sv && sv.bpm > 0) return (beatMem[key] = Promise.resolve(sv)); } catch (e) {}
     var p = decodeAt(t.url, A_SR, 1).then(function (buf) {
-      var r = findBeat(onsetEnvelope(buf), hint), o = { bpm: r.bpm, phase: Math.round(r.phase * 1000) / 1000 };
+      var r = findBeat(onsetEnvelope(buf), hint), o = { bpm: r.bpm, phase: Math.round(r.phase * 1000) / 1000, conf: Math.round(r.conf * 100) / 100 };
       try { localStorage.setItem(key, JSON.stringify(o)); } catch (e) {}
       return o;
     });
@@ -99,8 +102,9 @@
   function beatSource(t) {
     if (!t.stem || !t.stemOf) return t;
     var a = API(), all = a ? a.tracks() : [];
-    return all.filter(function (x) { return x.url && x.stemOf === t.stemOf && isInst(x); })[0] ||
-           all.filter(function (x) { return x.url && String(x.dbId) === String(t.stemOf); })[0] || t;
+    var sib = all.filter(function (x) { return x.url && x.kind !== 'video' && x.stem && x.stemOf === t.stemOf && !isVocals(x); });
+    return sib.filter(isInst)[0] || sib.filter(function (x) { return stemPart(x) === 'drums'; })[0] ||
+           all.filter(function (x) { return x.url && String(x.dbId) === String(t.stemOf); })[0] || sib[0] || t;
   }
 
   // ---------- saving: stretch the vocals without changing their pitch (WSOLA), mix, write a WAV ----------
@@ -186,6 +190,14 @@
 
   function isVocals(t) { return !!t.stem && /\(vocals\)\s*$/i.test(t.title || ''); }
   function isInst(t) { return !!t.stem && /\(instrumental\)\s*$/i.test(t.title || ''); }
+  // "Song (Drums)" -> "drums". Any split part that is not the vocals can be the music: the full instrumental, or
+  // a single part such as drums, bass, guitar, piano or "other".
+  function stemPart(t) { var m = /\(([^()]+)\)\s*$/.exec(t.title || ''); return m ? m[1].trim().toLowerCase() : ''; }
+  function stemLabel(t) {
+    var m = /^(.*?)\s*\(([^()]+)\)\s*$/.exec(t.title || '');
+    var song = t.stemSrc || (m ? m[1] : t.title) || 'Untitled', part = m ? m[2].trim() : '';
+    return part && !/^instrumental$/i.test(part) ? song + ' \u2013 ' + part + ' only' : song;
+  }
   function fmt(s) { if (!isFinite(s) || s < 0) s = 0; var m = Math.floor(s / 60), x = Math.floor(s % 60); return m + ':' + (x < 10 ? '0' : '') + x; }
 
   function css() {
@@ -269,20 +281,33 @@
     back.addEventListener('ended', function () { voc.pause(); keep(false); paint(); });
     back.addEventListener('pause', function () { keep(false); paint(); });
     back.addEventListener('play', function () { keep(true); paint(); });
-    back.addEventListener('error', function () { toast('Could not open the music track for the mashup.'); });
-    voc.addEventListener('error', function () { toast('Could not open the vocals for the mashup.'); });
+    // Say what went wrong on the screen itself, not only in a passing toast.
+    var mediaErr = function (which, el) {
+      return function () {
+        var c = el.error ? el.error.code : 0, why = c === 4 ? 'this phone cannot play its file format here' : c === 2 ? 'the file could not be read' : c === 3 ? 'the file is damaged' : 'it could not be opened';
+        var m = 'Could not play the ' + which + ': ' + why + '.';
+        toast(m); var i = $('ppm-info'); if (i) i.innerHTML = '<b>' + m + '</b> Try a different track for the ' + which + '.';
+      };
+    };
+    back.addEventListener('error', mediaErr('music', back));
+    voc.addEventListener('error', mediaErr('vocals', voc));
   }
   function toast(m) { try { var s = $('toast-stack'); if (!s) return; var e = document.createElement('div'); e.className = 'toast'; e.textContent = m; s.appendChild(e); setTimeout(function () { e.remove(); }, 3500); } catch (x) {} }
 
   function byId(id) { var a = API(); return a ? a.tracks().filter(function (t) { return String(t.dbId) === String(id); })[0] : null; }
   function fill() {
     var a = API(), all = a ? a.tracks().filter(function (t) { return t.kind !== 'video' && t.url; }) : [];
-    var vs = all.filter(isVocals), insts = all.filter(isInst), songs = all.filter(function (t) { return !t.stem; });
+    var vs = all.filter(isVocals), songs = all.filter(function (t) { return !t.stem; });
+    // every split part except vocals; full instrumentals first, then the single parts, kept together per song
+    var insts = all.filter(function (t) { return t.stem && !isVocals(t); }).sort(function (x, y) {
+      var d = (isInst(y) ? 1 : 0) - (isInst(x) ? 1 : 0); if (d) return d;
+      return String(x.stemSrc || x.title).localeCompare(String(y.stemSrc || y.title)) || stemPart(x).localeCompare(stemPart(y));
+    });
     var opt = function (t, label) { var o = document.createElement('option'); o.value = t.dbId; o.textContent = label || t.title || 'Untitled'; return o; };
     var sv = $('ppm-voc'), sb = $('ppm-back'), pv = sv.value, pb = sb.value;
     sv.innerHTML = ''; sb.innerHTML = '';
     vs.forEach(function (t) { sv.appendChild(opt(t, (t.stemSrc || t.title).replace(/\s*\(vocals\)\s*$/i, ''))); });
-    if (insts.length) { var g1 = document.createElement('optgroup'); g1.label = 'Instrumentals (split)'; insts.forEach(function (t) { g1.appendChild(opt(t, (t.stemSrc || t.title).replace(/\s*\(instrumental\)\s*$/i, ''))); }); sb.appendChild(g1); }
+    if (insts.length) { var g1 = document.createElement('optgroup'); g1.label = 'From split songs (no vocals)'; insts.forEach(function (t) { g1.appendChild(opt(t, stemLabel(t))); }); sb.appendChild(g1); }
     if (songs.length) { var g2 = document.createElement('optgroup'); g2.label = 'Whole songs (their own vocals stay in)'; songs.forEach(function (t) { g2.appendChild(opt(t)); }); sb.appendChild(g2); }
     var ok = vs.length > 0 && (insts.length + songs.length) > 0;
     $('ppm-main').style.display = ok ? 'flex' : 'none';
@@ -353,6 +378,9 @@
       var pct = Math.round((st.auto - 1) * 100), kf = keyFit(tv.ck, tb.ck);
       info.innerHTML = 'Vocals <b>' + bv.bpm.toFixed(1) + ' BPM</b>, music <b>' + bb.bpm.toFixed(1) + ' BPM</b>: vocals ' + (pct === 0 ? 'barely changed' : (pct > 0 ? 'sped up ' : 'slowed ') + Math.abs(pct) + '%') + '.' +
         (kf ? ' ' + (tv.key || tv.ck) + ' over ' + (tb.key || tb.ck) + ': <b>' + kf + '</b>.' : '') + (move ? ' Beats lined up.' : ' Using your saved start.') +
+        (bb.conf < 2 ? ' <b>No steady beat was found in this music</b>, so the line-up is a guess: music with clear drums works best.' : '') +
+        (bv.conf < 2 && bb.conf >= 2 ? ' <b>No steady beat was found for the vocals\' song</b>, so the line-up is a guess.' : '') +
+        (Math.abs(st.auto - 1) > 0.16 ? ' <b>These two tempos are far apart</b>, so the vocals are changed a lot and may sound unnatural: music near ' + Math.round(bv.bpm) + ' BPM (or half / double) fits these vocals best.' : '') +
         (src === v && v.stem ? ' The beat was read from the vocals alone, so it may be off: keep the song\'s instrumental in the library for a better fit.' : '');
     }).catch(function () {
       if (id !== analyseId) return;
