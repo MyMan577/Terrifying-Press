@@ -4,7 +4,8 @@
  *  - His cane is a BUSTER: tap S for quick shots (three on screen at once), hold S to charge a big piercing blast.
  *  - TELEPORT PADS: ↓ + S on the ground sets a magic circle on the floor (up to 3). K / 🌀 teleports to one from
  *    anywhere, any time: hold a direction to pick the pad that way; no direction cycles through them. Arriving
- *    gives a puff of cards that knocks back anyone standing on the pad.
+ *    gives a puff of cards that knocks back anyone standing on the pad. Each pad works ONCE: it vanishes as you
+ *    arrive. Pads are also cleared when the player is reset (restart, Reset Player, a new Smash match or rematch).
  *  - VANISH: G / 👻 turns him invisible for a few seconds. He still blinks into view now and then, and every shot
  *    gives him away for a moment.
  *
@@ -88,7 +89,13 @@
       if (!others.length) return;
       S.tpIdx = (S.tpIdx + 1) % others.length; pick = others[S.tpIdx];
     }
-    if (tpTo(p, S, pick)) { S.tpCD = TP_CD; S.seq = null; S.airUp = false; FK.label(S, p, 'TA-DA!', C_GOLD); }
+    if (tpTo(p, S, pick)) {
+      // a pad works once: it vanishes as you arrive on it
+      const i = S.pads.indexOf(pick); if (i >= 0) S.pads.splice(i, 1);
+      S.tpIdx = Math.max(-1, S.tpIdx - 1);
+      S.fx.push({ k: 'slit', x: pick.x, y: pick.y, t: 0, life: 0.5 });
+      S.tpCD = TP_CD; S.seq = null; S.airUp = false; FK.label(S, p, 'TA-DA!', C_GOLD);
+    }
   }
   // G / 👻: vanish
   function pressVanish() {
@@ -234,13 +241,17 @@
     const k = e.key.toLowerCase();
     if (k === 'k') pressTeleport(); else if (k === 'g') pressVanish();
   });
+  // restarting (Reset Player, R, a new Smash match or rematch) clears every pad
+  (window._onPlayerReset = window._onPlayerReset || []).push(() => {
+    try { const S = H && H.state(); if (S && S.pads) { S.pads.length = 0; S.tpIdx = -1; } } catch (e) {}
+  });
   (window._rafHubTickers = window._rafHubTickers || []).push(() => { try { syncBtns(H && !window._fighterPass ? H.state() : null); } catch (e) {} });
 
   const H = FK.define({
     id: ID, plug: 'sleight',
     def: { name: 'Sleight', icon: '🎩', tier: 'gold', color: C_FX, color2: C_GOLD,
-      ability: 'Zoner: a chargeable cane buster, teleport pads you warp to at will (K / 🌀), and Vanish (G / 👻)',
-      desc: 'A stage magician who fights from afar. Tap S for quick cane shots, hold S for a big piercing blast. ↓ + S sets a teleport pad on the floor (up to 3): K / 🌀 warps to one from anywhere (hold a direction to pick it). G / 👻 turns him invisible for a few seconds, blinking into view now and then. Card Spread, Bomb Lob, Homing Doves, Rising Curtain and Card Rain round him out.' },
+      ability: 'Zoner: a chargeable cane buster, one-use teleport pads you warp to at will (K / 🌀), and Vanish (G / 👻)',
+      desc: 'A stage magician who fights from afar. Tap S for quick cane shots, hold S for a big piercing blast. ↓ + S sets a teleport pad on the floor (up to 3): K / 🌀 warps to one from anywhere (hold a direction to pick it). Each pad works once, then vanishes. G / 👻 turns him invisible for a few seconds, blinking into view now and then. Card Spread, Bomb Lob, Homing Doves, Rising Curtain and Card Rain round him out.' },
     stats: { speed: 1.1, jump: 1.15, maxJumps: 2, maxDashes: 1, hp: 3 },
     moves: MOVES, mfd: MFD,
     fresh: () => ({ seq: null, pose: PO.idle, target: PO.idle, rate: 18, run: 0, airUp: false, shots: [], bombs: [], doves: [], pads: [], padNo: 0, tpIdx: -1, tpCD: 0, invis: 0, invisCD: 0, reveal: 0 }),

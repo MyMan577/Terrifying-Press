@@ -9879,6 +9879,8 @@ function resetPlayer() {
     collectedTiles.clear();
     player.keys = 0; 
   }
+  // plugins that keep things placed in the world (Sleight's teleport pads) clear them on a restart
+  if (window._onPlayerReset) for (const fn of window._onPlayerReset) { try { fn(); } catch (e) {} }
 }
 
   
