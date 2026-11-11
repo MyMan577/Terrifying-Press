@@ -279,16 +279,6 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
   font-size: 18px; user-select: none; touch-action: manipulation;
 }
 .mc-btn:active { background: rgba(255,255,255,0.3); }
-/* Left thumb d-pad: ◀ ▲▼ ▶. One finger drives it: slide anywhere to aim (diagonals too),
-   so up/down attacks no longer need the jump or crouch buttons next to Attack. */
-#mcPad { gap: 6px; touch-action: none; }
-.mc-vert { width: 40px; display: flex; flex-direction: column; gap: 4px; }
-.mc-half {
-  flex: 1; border-radius: 12px; background: rgba(255,255,255,0.12);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: bold; user-select: none; touch-action: none;
-}
-#mcPad .pad-on { background: rgba(255,255,255,0.34); }
 .mc-btn.wall-latch { background: rgba(124,219,255,0.4); outline: 2px solid rgba(124,219,255,0.65); }
 #doubleJumpBtn:active { background: rgba(124,219,255,0.45); }
 #dashBtn:active { background: rgba(255,107,157,0.45); }
@@ -1782,11 +1772,6 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
 }
 
 
-@media (orientation: portrait) and (max-width: 860px) {
-  #mcPad { gap: 5px; padding-right: 4px; }
-  .mc-vert { width: 32px; }
-}
-
 @media (max-width: 400px) {
   #sidebar { width: 88vw; }
   #menuToggle { left: 88vw; }
@@ -1823,9 +1808,6 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
   #mobileControls { bottom: max(6px, env(safe-area-inset-bottom)); left: env(safe-area-inset-left); right: env(safe-area-inset-right); }
   .mc-group { gap: 14px; padding: 8px 14px; }
   .mc-btn { width: 68px; height: 68px; font-size: 22px; }
-  #mcPad { gap: 8px; }
-  .mc-vert { width: 50px; }
-  .mc-half { font-size: 16px; }
   #abilityBtnGroup { bottom: 96px; }
   #cameraControls { bottom: 96px; }
 }
@@ -3012,9 +2994,8 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
       <button id="zoomInBtn" class="zoom-btn" title="Zoom in" type="button">+</button>
     </div>
     <div id="mobileControls">
-      <div class="mc-group" id="mcPad">
+      <div class="mc-group">
         <div class="mc-btn" id="leftBtn">◀</div>
-        <div class="mc-vert"><div class="mc-half" id="upBtn">▲</div><div class="mc-half" id="downBtn">▼</div></div>
         <div class="mc-btn" id="rightBtn">▶</div>
       </div>
       <div class="mc-group">
@@ -12572,63 +12553,7 @@ function resetPlayer() {
     el.addEventListener('touchstart', e => { e.preventDefault(); mobileKeys[keyName] = true; });
     el.addEventListener('touchend', e => { e.preventDefault(); mobileKeys[keyName] = false; });
   }
-  bindBtn('jumpBtn', 'jump'); bindBtn('dashBtn', 'dash');
-
-  // Up/down come from three places on touch: the d-pad, holding Jump (up) and the Crouch toggle (down).
-  const _vSrc = { padUp: false, padDown: false, jumpUp: false, crouch: false };
-  function _syncVert() {
-    mobileKeys.up = _vSrc.padUp || _vSrc.jumpUp;
-    mobileKeys.down = _vSrc.padDown || _vSrc.crouch;
-  }
-  window.addEventListener('blur', () => { for (const k in _vSrc) _vSrc[k] = false; });
-
-  // Left d-pad. The finger that lands on it owns it until lifted and steers by where it is, so you can
-  // roll from ◀ to ▲ to ▶ without lifting. Middle column: top half up, bottom half down.
-  // On ◀/▶, pushing toward the top or bottom edge (or past it) adds up/down for diagonals.
-  (function bindPad() {
-    const pad = document.getElementById('mcPad'); if (!pad) return;
-    const lb = document.getElementById('leftBtn'), rb = document.getElementById('rightBtn');
-    const ub = document.getElementById('upBtn'), db = document.getElementById('downBtn');
-    const vert = pad.querySelector('.mc-vert');
-    const st = { id: null, l: false, r: false, u: false, d: false };
-    window._mcPad = st;
-    function apply(l, r, u, d) {
-      st.l = l; st.r = r; st.u = u; st.d = d;
-      mobileKeys.left = l; mobileKeys.right = r;
-      _vSrc.padUp = u; _vSrc.padDown = d; _syncVert();
-      lb.classList.toggle('pad-on', l); rb.classList.toggle('pad-on', r);
-      ub.classList.toggle('pad-on', u); db.classList.toggle('pad-on', d);
-    }
-    function aim(t) {
-      const v = vert.getBoundingClientRect(), b = lb.getBoundingClientRect();
-      const cx = v.left + v.width / 2, cy = v.top + v.height / 2;
-      const dx = t.clientX - cx, dy = t.clientY - cy;
-      const half = v.width / 2 + 2;
-      if (Math.abs(dx) <= half) { apply(false, false, dy < 0, dy >= 0); return; }
-      // diagonal threshold, with a little hysteresis so it doesn't flicker on the edge
-      const T = b.height * 0.36, Toff = b.height * 0.26;
-      const u = st.u ? dy < -Toff : dy < -T;
-      const d = st.d ? dy > Toff : dy > T;
-      apply(dx < 0, dx > 0, u, d);
-    }
-    function find(list) { for (let i = 0; i < list.length; i++) if (list[i].identifier === st.id) return list[i]; return null; }
-    pad.addEventListener('touchstart', e => {
-      e.preventDefault();
-      if (st.id !== null && find(e.touches)) return;   // already steered by another finger
-      const t = e.changedTouches[0]; st.id = t.identifier; aim(t);
-    }, { passive: false });
-    pad.addEventListener('touchmove', e => {
-      e.preventDefault();
-      const t = find(e.changedTouches); if (t) aim(t);
-    }, { passive: false });
-    const end = e => {
-      if (!find(e.changedTouches)) return;
-      e.preventDefault(); st.id = null; apply(false, false, false, false);
-    };
-    pad.addEventListener('touchend', end, { passive: false });
-    pad.addEventListener('touchcancel', end, { passive: false });
-    window.addEventListener('blur', () => { st.id = null; apply(false, false, false, false); });
-  })();
+  bindBtn('leftBtn', 'left'); bindBtn('rightBtn', 'right'); bindBtn('jumpBtn', 'jump'); bindBtn('dashBtn', 'dash');
   
   
   
@@ -12637,12 +12562,12 @@ function resetPlayer() {
   const crouchBtnEl = document.getElementById('crouchBtn');
   if (crouchBtnEl) {
     const setCrouchToggle = on => {
-      _vSrc.crouch = on; _syncVert();
+      mobileKeys['down'] = on;
       crouchBtnEl.classList.toggle('crouching', on);
     };
     const crouchTap = e => {
       e.preventDefault();
-      setCrouchToggle(!_vSrc.crouch);
+      setCrouchToggle(!mobileKeys['down']);
     };
     crouchBtnEl.addEventListener('click', crouchTap);
     crouchBtnEl.addEventListener('touchstart', crouchTap, { passive: false });
@@ -12698,7 +12623,7 @@ function resetPlayer() {
       
       
       mobileKeys.jump = true;
-      _vSrc.jumpUp = true; _syncVert();
+      mobileKeys.up = true;
       
       
     };
@@ -12706,7 +12631,7 @@ function resetPlayer() {
       e.preventDefault();
       jumpPressed = false;
       mobileKeys.jump = false;
-      _vSrc.jumpUp = false; _syncVert();
+      mobileKeys.up = false;
     };
     doubleJumpBtn.addEventListener('touchstart', mobileJump);
     doubleJumpBtn.addEventListener('mousedown', mobileJump);

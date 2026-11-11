@@ -421,29 +421,24 @@
   // Touch input. The on-screen buttons only write to the game's mobileKeys, and suppressKeys() wipes those,
   // so Smash keeps its own copy of which buttons each finger is on (read straight from the touch list).
   var tch = { left: false, right: false, jump: false, down: false }, prevTch = { left: false, right: false, jump: false, down: false };
-  // ◀ ▶ ▲ ▼ are one d-pad (#mcPad) that tracks its finger itself; read its state from window._mcPad.
-  var TBTN = { doubleJumpBtn: 'jump', jumpBtn: 'jump', crouchBtn: 'down' };
+  var TBTN = { leftBtn: 'left', rightBtn: 'right', doubleJumpBtn: 'jump', jumpBtn: 'jump', crouchBtn: 'down' };
   var gStick = { id: null, x0: 0, y0: 0, x: 0, y: 0 }; // drag on the shield button = a direction for rolls / air dodges
   function scanTouches(e) {
     var n = { left: false, right: false, jump: false, down: false }, ts = e.touches || [];
     for (var i = 0; i < ts.length; i++) {
       for (var el = ts[i].target; el && el.id !== undefined; el = el.parentNode) { if (TBTN[el.id]) { n[TBTN[el.id]] = true; break; } }
     }
-    tch.jump = n.jump; tch.crouch = n.down; padSync();
-  }
-  function padSync() {
-    var p = window._mcPad || {};
-    tch.left = !!p.l; tch.right = !!p.r; tch.up = !!p.u; tch.down = !!tch.crouch || !!p.d;
+    tch.left = n.left; tch.right = n.right; tch.jump = n.jump; tch.down = n.down;
   }
   ['touchstart', 'touchend', 'touchcancel'].forEach(function (t) { window.addEventListener(t, scanTouches, { capture: true, passive: true }); });
-  window.addEventListener('blur', function () { tch.left = tch.right = tch.jump = tch.down = tch.up = tch.crouch = false; gStick.id = null; gStick.x = gStick.y = 0; });
+  window.addEventListener('blur', function () { tch.left = tch.right = tch.jump = tch.down = false; gStick.id = null; gStick.x = gStick.y = 0; });
   var STICK_DEAD = 0.45;
   function dirIn() {
     var d = (held('d') || held('arrowright') || tch.right ? 1 : 0) - (held('a') || held('arrowleft') || tch.left ? 1 : 0);
     if (d === 0 && Math.abs(gStick.x) > STICK_DEAD) d = gStick.x > 0 ? 1 : -1;
     return d;
   }
-  function upIn() { return held('w') || held('arrowup') || tch.jump || tch.up || gStick.y < -STICK_DEAD; }
+  function upIn() { return held('w') || held('arrowup') || tch.jump || gStick.y < -STICK_DEAD; }
   function downIn() { return held('arrowdown') || held('s') || tch.down || gStick.y > STICK_DEAD; }
   function vDirIn() { return (downIn() ? 1 : 0) - (upIn() ? 1 : 0); }
   function jumpIn() { return pressed('w') || pressed('arrowup') || pressed(' ') || (tch.jump && !prevTch.jump); }
@@ -461,14 +456,13 @@
     saved = null;
     MOVE_KEYS.forEach(function (k) { if (down[k]) g.keys.add(k); });
     // give back the touch buttons that are still being held, or you had to lift and re-press to move again
-    if (g.mobileKeys) { g.mobileKeys.left = tch.left; g.mobileKeys.right = tch.right; g.mobileKeys.jump = tch.jump; g.mobileKeys.up = tch.jump || tch.up; }
+    if (g.mobileKeys) { g.mobileKeys.left = tch.left; g.mobileKeys.right = tch.right; g.mobileKeys.jump = tch.jump; g.mobileKeys.up = tch.jump; }
   }
 
   // ---------------------------------------------------------------- per-frame hooks
   SM.pre = function (dt) {
     if (!SM.active) return;
     var g = G(), P = g.player;
-    padSync();
     dt = Math.min(dt, 0.033);
     // keep the hidden opponent in the enemy list and mirror its body
     var ent = foe.ent;
