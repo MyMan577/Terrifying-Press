@@ -9235,6 +9235,17 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (meta.length === 0) return;
 
     let anyAutoReverted = false;
+    // A song whose file is really a video: it was turned into a song with "To MP3". Tracks stored on the device
+    // used to lose that mark on reload, which left them stuck as songs with no way back. The file name still tells.
+    const videoExtOf = (m) => {
+      for (const n of [m.fileName, m.nativeUri]){
+        if (!n) continue;
+        let x = String(n); try { x = decodeURIComponent(x); } catch(e){}
+        const k = /\.(mp4|m4v|mkv|webm|mov|avi|3gp|ts|flv|wmv|mpg|mpeg|ogv)$/i.exec(x.split(/[?#]/)[0]);
+        if (k) return k[1].toLowerCase();
+      }
+      return '';
+    };
     for (const m of meta){
       try {
         if (m.remoteUrl){
@@ -9247,11 +9258,21 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
           let artUrl = null;
           if (m.nativeArt && window.PPNative && PPNative.lib) artUrl = PPNative.lib.fileSrc(m.nativeArt);
           else if (m.artDbId){ const ab = await dbGet(m.artDbId); if (ab) artUrl = URL.createObjectURL(ab); }
+          const vx = videoExtOf(m);
+          const lost = !m.convertedFromVideo && m.kind === 'audio' && m.ext === 'mp3' && !!vx && !m.stem;   // stuck by the old bug
+          const conv = !!m.convertedFromVideo || lost, back = conv && !keepMp3Conversions;
+          if (back || lost) anyAutoReverted = true;                    // save the repaired state
+          const oExt = m.origExt || vx || 'mp4', oArtist = m.origArtist != null ? m.origArtist : (lost && m.artist && m.artist !== 'Unknown artist' ? m.artist : 'Video');
           tracks.push({ dbId: m.dbId, artDbId: m.artDbId || null, url: (window.Capacitor && Capacitor.convertFileSrc) ? Capacitor.convertFileSrc(m.nativeUri) : '',
             nativeUri: m.nativeUri, nativeArt: m.nativeArt || null, nativeLocal: !!m.nativeLocal, album: m.album || '', artUrl,
-            kind: m.kind, ext: m.ext || 'mp4', title: m.title, artist: m.artist, duration: m.duration, size: m.size != null ? m.size : null,
-            width: m.width || null, height: m.height || null, playlistIds: Array.isArray(m.playlistIds) ? m.playlistIds : [], fileName: m.fileName || null,
-            stem: m.stem || undefined, stemOf: m.stemOf || null, stemSrc: m.stemSrc || null });
+            kind: back ? 'video' : m.kind, ext: back ? oExt : (m.ext || 'mp4'), title: m.title, artist: back ? oArtist : m.artist, duration: m.duration, size: m.size != null ? m.size : null,
+            width: back ? (m.origWidth || null) : (m.width || null), height: back ? (m.origHeight || null) : (m.height || null),
+            playlistIds: Array.isArray(m.playlistIds) ? m.playlistIds : [], fileName: m.fileName || null,
+            stem: m.stem || undefined, stemOf: m.stemOf || null, stemSrc: m.stemSrc || null,
+            convertedFromVideo: conv && !back,
+            _origExt: conv && !back ? oExt : undefined, _origArtist: conv && !back ? oArtist : undefined,
+            _origWidth: conv && !back ? (m.origWidth != null ? m.origWidth : null) : undefined,
+            _origHeight: conv && !back ? (m.origHeight != null ? m.origHeight : null) : undefined });
           continue;
         }
         const blob = await dbGet(m.dbId);
@@ -17485,7 +17506,10 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     // explicitly typed as audio so it's indistinguishable from any other
     // audio file from here on, including in the background.
     let rewrapOk = false;
-    try {
+    // A file on the device plays through the native player, which does not care what the file is labelled as:
+    // nothing to re-wrap. (This used to read the whole video into memory and save a second copy of it.)
+    if (t.nativeUri || t.remoteUrl) rewrapOk = true;
+    else try {
       const origBlob = await (await fetch(t.url)).blob();
       const audioBlob = new Blob([origBlob], { type: 'audio/mp4' });
       t.url = URL.createObjectURL(audioBlob);
