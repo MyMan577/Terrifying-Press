@@ -830,8 +830,8 @@
     var sec = document.createElement('div');
     sec.className = 'settings-section'; sec.id = 'pgr-settings-section';
     sec.innerHTML = '<div class="settings-row"><div class="settings-row-text"><div class="settings-row-title">Playground</div><div class="settings-row-sub">Orders, charms, the daily wheel and more.</div></div><button type="button" class="settings-toggle-btn" id="pgr-open-btn">Open</button></div>' +
-      '<div class="settings-row"><div class="settings-row-text"><div class="settings-row-title">Playground button</div><div class="settings-row-sub">The floating 🎪 button. Drag it anywhere; turn this off to remove it.</div></div><label class="settings-switch"><input type="checkbox" id="pgr-opt-fab"><span class="settings-slider"></span></label></div>' +
-      '<div class="settings-row"><div class="settings-row-text"><div class="settings-row-title">Playground sounds</div><div class="settings-row-sub">Small chimes and clicks.</div></div><label class="settings-switch"><input type="checkbox" id="pgr-opt-sfx"><span class="settings-slider"></span></label></div>';
+      '<div class="settings-row" style="margin-top:12px"><div class="settings-row-text"><div class="settings-row-title">Playground button</div><div class="settings-row-sub">The round floating Playground button. Drag it anywhere; turn this off to remove it.</div></div><label class="settings-switch"><input type="checkbox" id="pgr-opt-fab"><span class="settings-switch-track"><span class="settings-switch-thumb"></span></span></label></div>' +
+      '<div class="settings-row" style="margin-top:12px"><div class="settings-row-text"><div class="settings-row-title">Playground sounds</div><div class="settings-row-sub">Small chimes and clicks.</div></div><label class="settings-switch"><input type="checkbox" id="pgr-opt-sfx"><span class="settings-switch-track"><span class="settings-switch-thumb"></span></span></label></div>';
     host.parentNode.insertBefore(sec, host.nextSibling);
     sec.querySelector('#pgr-open-btn').addEventListener('click', function(){ PP.open(); });
     var f = sec.querySelector('#pgr-opt-fab'), s = sec.querySelector('#pgr-opt-sfx');
