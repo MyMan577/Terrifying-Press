@@ -53,6 +53,7 @@
     kbGrow: 0.02,        // knockback leans on percent: strong hits still kill, just later (charged ~90%+, not 50%)
     kbSoft: 22,
     chipK: 0.35,         // damage with no knockback (poison, burns, beam ticks): this share of normal percent, no launch
+    healK: 0.7,          // a healing move (Chroma's Lumen): each point it mends takes this share of pctPerDmg off its user
     chipMax: 3.5,        // ...and at most this much percent per second from it
     minLaunchAng: 0.66,  // radians (~38 deg): sideways hits still launch upward, like a fighting game, not along the floor
     stunGrav: 0.4,       // gravity share while in hitstun: launched fighters carry along their arc instead of sagging          // hit strength soft cap: huge charged impulses from the game get squashed toward this
@@ -99,7 +100,7 @@
     cb_pp_mixtape:  { w: 0.95, d: 0.95, k: 0.95, mv: {
       meteor: { ix: 0, iy: 15, d: 0.9 },                                  // SPOOL SNARE: on the ground it pops them up
       launch: { ix: 0, iy: -15, d: 0.9, rocket: 1 } } },                  // TAPE TORNADO
-    cb_chameleon:   { w: 0.88, d: 0.95, k: 0.95 },                        // four forms, each its own fighter (chroma.js): spikes and launchers are the moves' own
+    cb_chameleon:   { w: 0.88, d: 0.95, k: 0.95 },                        // five forms, each its own fighter (chroma.js): spikes and launchers are the moves' own
     cb_gale:        { w: 0.82, d: 0.92, k: 0.95, mv: {                    // light and fast: dies earlier, lives on mobility
       meteor: { ix: 2, iy: 16, d: 1.0, bounce: 1 },                       // DIVE KICK: slanted spike, pogos off
       launch: { ix: 1, iy: -17, d: 1.0 } },                               // UPDRAFT / JETSTREAM
@@ -851,6 +852,15 @@
     var s = foe && e === foe.ent ? foe : foe && e === foe.tgt ? me : null;
     return !s || !(s.guarding || s.dodge > 0 || s.invuln > 0 || s.ledge || s.respawnHold > 0);
   };
+  // a fighter's own healing move (Chroma's Lumen form): takes percent off whoever is acting, you or the CPU.
+  // pts are in the game's damage points; returns the percent it took off
+  SM.__heal = function (pts) {
+    var s = window._fighterPass ? foe : me;
+    if (SM.phase !== 'fight' || !s || !(pts > 0) || !(s.pct > 0)) return 0;
+    var d = Math.min(s.pct, pts * BAL.pctPerDmg * BAL.healK);
+    s.pct -= d; s.leechT = 0.25;
+    return d;
+  };
   SM.__hitFoe = function (pct, ix, iy) { var g = G(); hitFoe(g, g.player, pct, ix, iy, 1); };
 
   function foePost(g, P, dt) {
@@ -1425,8 +1435,9 @@
     // dash = Blade Dash (also gets him back across a gap), up+S in the air = Skybound Slash (lifts with some moves),
     // Q = Whirlwind Slash, C = Guardian's Counter (when equipped)
     cb_protagonist: { dash: 1, dashRec: 1, upTapRec: 1, protag: 1 },
-    // Chroma: four forms, each a different fighter (0 = next form, which also cancels his move): Ember brawls up close,
-    // Frost shoots from range, Venom grabs with the tongue, Volt blinks. Every form's up move in the air lifts him.
+    // Chroma: five forms, each a different fighter (0 = next form, which also cancels his move): Ember brawls up close,
+    // Frost shoots from range, Venom grabs with the tongue, Volt blinks, Lumen hits and mends himself (SM.__heal).
+    // Every form's up move in the air lifts him.
     // K = Tongue Chain (twice for the finisher); held S charges any move
     cb_chameleon: { cham: 1, upTapRec: 1, sideRec: 1 },
     // Press Play Prodigy: each EQ mode's S moves by direction (ground and air), presses on the beat for Hype
@@ -1557,7 +1568,8 @@
       else if (fm === 0) A = dy < -1.2 && adx < 1.6 ? { type: 'tap', v: 'up' } : adx < 2 && ady < 1.3 ? { type: 'tap', v: Math.random() < 0.7 ? '' : 'down' } : adx < 4.6 && ady < 1 ? { type: 'tap', v: 'side' } : null;                      // Ember: get in and claw
       else if (fm === 1) A = adx < 2 && ady < 2 && Math.random() < 0.5 ? { type: 'tap', v: 'down' } : adx < 8 && ady < 0.9 ? { type: 'tap', v: Math.random() < 0.5 ? '' : 'side' } : adx > 1 && adx < 7.5 && ady < 3.5 ? { type: 'tap', v: 'up' } : null;   // Frost: keep away and shoot
       else if (fm === 2) A = adx < 1.9 && ady < 1.2 ? { type: 'tap', v: '' } : adx < 4.8 && ady < 0.8 ? { type: 'tap', v: Math.random() < 0.7 ? 'side' : 'down' } : adx < 5 && ady < 2.4 && Math.random() < 0.5 ? { type: 'tap', v: 'down' } : adx > 2.5 && adx < 8 && ady < 2 ? { type: 'tap', v: 'up' } : null;   // Venom: tongue, vanish, mortar
-      else A = adx < 1.9 && ady < 1.2 ? { type: 'tap', v: Math.random() < 0.75 ? '' : 'down' } : adx < 5.4 && ady < 0.9 ? { type: 'tap', v: 'side' } : adx < 7 && ady < 4 ? { type: 'tap', v: 'up' } : null;                                       // Volt: jab, blink, thunder
+      else if (fm === 3) A = adx < 1.9 && ady < 1.2 ? { type: 'tap', v: Math.random() < 0.75 ? '' : 'down' } : adx < 5.4 && ady < 0.9 ? { type: 'tap', v: 'side' } : adx < 7 && ady < 4 ? { type: 'tap', v: 'up' } : null;                      // Volt: jab, blink, thunder
+      else A = dy < -1.2 && adx < 1.5 ? { type: 'tap', v: 'up' } : adx < 1.9 && ady < 1.2 ? { type: 'tap', v: Math.random() < (f.pct > 40 && !(cs && cs.sanct > 0) ? 0.45 : 0.85) ? '' : 'down' } : adx < 6 && ady < 0.8 ? { type: 'tap', v: 'side' } : f.pct > 40 && adx > 3.5 && !(cs && cs.sanct > 0) ? { type: 'tap', v: 'down' } : null;   // Lumen: palm, siphon, and a Sanctuary to mend in when hurt
     }
     if (K.protag && !A) {
       var pst = f.F.st, ab = (f.F.protag && f.F.protag.abilities) || [];
