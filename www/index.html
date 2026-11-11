@@ -5219,6 +5219,10 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
               <input type="checkbox" id="speed-pitch-follow">
               <span>Pitch follows speed</span>
             </label>
+            <label class="override-toggle" style="margin-top:6px;" title="This song always opens with the speed, pitch and reverb set here; other songs are left alone">
+              <input type="checkbox" id="speed-song-remember">
+              <span>Remember for this song</span>
+            </label>
             <div class="pp-seg" id="speed-preset-seg" style="margin-top:8px;">
               <button type="button" data-v="slowed">Slowed + reverb</button><button type="button" data-v="nightcore">Nightcore</button><button type="button" data-v="normal">Normal</button>
             </div>
@@ -14443,7 +14447,64 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     refreshSpeedPresetUI();
     showToast(name === 'slowed' ? 'Slowed + reverb' : name === 'nightcore' ? 'Nightcore' : 'Normal speed and pitch');
   }
-  speedPitchToggle.addEventListener('change', () => { setPitchFollows(speedPitchToggle.checked); refreshSpeedPresetUI(); });
+  // ---- per-song sound: a song can keep its own speed, pitch mode and reverb ----
+  // songSound[dbId] = { s: speed, f: pitch follows speed, r: reverb }. While such a song is loaded, the values
+  // every other song uses are parked in songSoundBase (also kept in localStorage, so closing the app on that song
+  // cannot turn its sound into the default for everything).
+  const speedSongRemember = document.getElementById('speed-song-remember');
+  let songSound = {}, songSoundBase = null, songSoundBooted = false;
+  try { songSound = JSON.parse(localStorage.getItem('ppSongSound') || '{}') || {}; } catch(e){ songSound = {}; }
+  function songSoundSave(){ try { localStorage.setItem('ppSongSound', JSON.stringify(songSound)); } catch(e){} }
+  function songSoundSetBase(b){
+    songSoundBase = b;
+    try { if (b) localStorage.setItem('ppSongSoundBase', JSON.stringify(b)); else localStorage.removeItem('ppSongSoundBase'); } catch(e){}
+  }
+  function songSoundNow(){ return { s: playbackSpeed, f: pitchFollowsSpeed, r: Math.round(reverbMix * 100) / 100 }; }
+  function songSoundApply(o){
+    if (!o) return;
+    if (typeof o.s === 'number' && o.s >= SPEED_MIN && o.s <= SPEED_MAX) playbackSpeed = o.s;
+    if (typeof o.r === 'number' && o.r >= 0 && o.r <= 1 && Math.abs(o.r - reverbMix) > 0.001){ reverbMix = o.r; try { refreshFxUI(); applyFxAll(); } catch(e){} }
+    if (!!o.f !== pitchFollowsSpeed) setPitchFollows(!!o.f);
+  }
+  function songSoundCapture(t){ if (t && songSound[t.dbId]){ songSound[t.dbId] = songSoundNow(); songSoundSave(); } }
+  // Called by loadTrack just before the speed is applied.
+  function songSoundSwitch(prev, next){
+    if (!songSoundBooted){
+      songSoundBooted = true;
+      try { const b = JSON.parse(localStorage.getItem('ppSongSoundBase') || 'null'); if (b){ songSoundBase = null; songSoundApply(b); localStorage.removeItem('ppSongSoundBase'); } } catch(e){}
+    } else if (prev && prev !== next) songSoundCapture(prev);   // keep whatever was changed while it played
+    const o = next ? songSound[next.dbId] : null;
+    if (o){
+      if (!songSoundBase) songSoundSetBase(songSoundNow());
+      songSoundApply(o);
+    } else if (songSoundBase){
+      const b = songSoundBase; songSoundSetBase(null); songSoundApply(b);
+    }
+    speedSongRemember.checked = !!o;
+    speedSongRemember.disabled = !next;
+    refreshSpeedPresetUI();
+  }
+  speedSongRemember.addEventListener('change', () => {
+    const t = currentIndex !== -1 ? tracks[currentIndex] : null;
+    if (!t){ speedSongRemember.checked = false; return; }
+    if (speedSongRemember.checked){
+      songSound[t.dbId] = songSoundNow();
+      // Other songs go back to normal speed and pitch, with the reverb from before a preset if one changed it.
+      let r = reverbMix; try { const v = localStorage.getItem('ppPresetPrevReverb'); if (v != null && isFinite(parseFloat(v))){ r = parseFloat(v); localStorage.removeItem('ppPresetPrevReverb'); } } catch(e){}
+      if (!songSoundBase) songSoundSetBase({ s: 1, f: false, r });
+      showToast('This song will always open with this speed, pitch and reverb');
+    } else {
+      delete songSound[t.dbId];
+      if (songSoundBase){ const b = songSoundBase; songSoundSetBase(null); songSoundApply(b); applySpeed(); saveSettings(); refreshSpeedPresetUI(); }
+      showToast('This song plays like the others again');
+    }
+    songSoundSave();
+  });
+  const songSoundTouched = () => { if (currentIndex !== -1) songSoundCapture(tracks[currentIndex]); };
+  speedSlider.addEventListener('change', songSoundTouched);
+  speedResetBtn.addEventListener('click', songSoundTouched);
+  speedPresetSeg.addEventListener('click', () => setTimeout(songSoundTouched, 0));
+  speedPitchToggle.addEventListener('change', () => { setPitchFollows(speedPitchToggle.checked); refreshSpeedPresetUI(); songSoundTouched(); });
   speedPresetSeg.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) applySpeedPreset(b.dataset.v); });
   speedSlider.addEventListener('change', refreshSpeedPresetUI);
   applyPitchMode();
@@ -17499,6 +17560,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     setStemSections: on => { stemSections = !!on; try { localStorage.setItem('ppStemSections', on ? '1' : '0'); } catch(e){} renderPlaylist(); },
     // Splitter entry point: adds stems as split tracks (kept out of All tracks, grouped under "Split tracks").
     // info: { srcId, srcTitle, makePlaylist, showInTab }
+    addLibraryFiles: (files) => addFiles(files),   // a new ordinary library track (used by mashup save)
     addStemFiles: (files, info) => {
       info = info || {};
       let plId = null;
@@ -17551,6 +17613,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   function loadTrack(i, autoplay){
     if (i < 0 || i >= tracks.length) return;
     if (autoplay && window.__ppOnPlay){ try { window.__ppOnPlay(tracks[i]); } catch(e){} }
+    const _prevTrack = currentIndex !== -1 ? tracks[currentIndex] : null;
 
     // Remember where the track we're switching away from left off, so it
     // picks back up there next time (see the resume-seek below).
@@ -17603,6 +17666,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
     setABLabel();
     applySavedSubtitles(t.dbId);
+    try { songSoundSwitch(_prevTrack, t); } catch(e){}   // this song's own speed / pitch / reverb, if it has one
     applySpeed();
     syncAudioLoop();
 
@@ -26933,6 +26997,6 @@ body.pp-lite .eq-band-pro { display:flex !important; }
 <script src="./pp-playground-lab.js?v=20261108a"></script>   <!-- Press Play Playground (the fourth app mode): hub, orders, charms, wheel. Bump v= when it changes -->
 <script src="./pp-playground-stars.js?v=20261108a"></script>   <!-- Playground Star Shop: Stars for Points, boosts, shields, the vault -->
 <script src="./vocal-separator.js?v=20261030a" defer></script>
-<script src="./pp-mashup.js?v=20261111a" defer></script>   <!-- mashup mode -->   <!-- bump v= each time vocal-separator.js changes so phones fetch the new copy -->
+<script src="./pp-mashup.js?v=20261111b" defer></script>   <!-- mashup mode -->   <!-- bump v= each time vocal-separator.js changes so phones fetch the new copy -->
 </body>
 </html>

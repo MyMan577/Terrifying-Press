@@ -148,7 +148,7 @@
       },
       set: function (target, prop, value) {
         switch (prop) {
-          case 'playbackRate': S.rate = +value || 1; if (S.active) S.applyRate(); break;
+          case 'playbackRate': S.rate = +value || 1; S.rateAt = now(); if (S.active) S.applyRate(); break;
           case 'volume': S.vol = Math.max(0, Math.min(1, +value)); if (S.active) S.applyVol(); break;
           case 'muted': S.muted = !!value; if (S.active) S.applyVol(); break;
           case 'loop': S.loop = !!value; if (S.active) S.after(function () { return Player.setLoop({ loop: S.loop }); }); break;
@@ -391,7 +391,10 @@
     // While a seek is pending, keep the target the user chose. Snapshots from before the seek finished would move the bar back.
     if (!S.seeking) { S.base = s.posMs || 0; S.baseAt = now(); }
     S.durMs = s.durMs >= 0 ? s.durMs : NaN;
-    if (s.rate) S.rate = s.rate;
+    // The page owns the speed. Ordinary reports still carry the player's OLD speed while a change is on its way
+    // (queued behind a track load), and taking it from them undid the change: the new song kept the last song's
+    // speed. Only a speed change made outside the page (a 'rate' report with no recent change of ours) is adopted.
+    if (s.rate && s.why === 'rate' && now() - (S.rateAt || 0) > 1500) S.rate = s.rate;
     if (s.vw) { S.vw = s.vw; S.vh = s.vh; }
     if (s.fps) S.fps = s.fps;
     if ((s.state === 'ready' || adopted) && !S.ready) {

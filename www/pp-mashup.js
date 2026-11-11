@@ -37,6 +37,153 @@
     if ((d === 1 && m[2] === n[2]) || (d === 0 && m[2] !== n[2])) return 'keys blend';
     return 'keys may clash';
   }
+  // ---------- beat finding ----------
+  // Decodes a track at a low sample rate and measures where its beats fall: a precise tempo (tags only store whole
+  // BPM, which drifts by half a beat within a minute) and the time of a beat ("phase"). Assumes a steady tempo.
+  var A_SR = 11025, A_HOP = 128, A_HOPSEC = A_HOP / A_SR;
+  function decodeAt(url, sr, ch) {
+    return fetch(url).then(function (r) { if (!r.ok && r.status !== 0) throw new Error('fetch ' + r.status); return r.arrayBuffer(); })
+      .then(function (buf) { var OC = window.OfflineAudioContext || window.webkitOfflineAudioContext; return new OC(ch, 1, sr).decodeAudioData(buf); });
+  }
+  function onsetEnvelope(buf) {
+    var n = Math.min(buf.length, A_SR * 150), nc = buf.numberOfChannels, c0 = buf.getChannelData(0), c1 = nc > 1 ? buf.getChannelData(1) : null;
+    var frames = Math.floor(n / A_HOP), env = new Float32Array(frames), prev = 0;
+    for (var f = 0; f < frames; f++) {
+      var e = 0, o = f * A_HOP;
+      for (var i = 0; i < A_HOP; i++) { var x = c1 ? (c0[o + i] + c1[o + i]) * 0.5 : c0[o + i]; e += x * x; }
+      e = Math.sqrt(e / A_HOP);
+      env[f] = e > prev ? e - prev : 0; prev = e;                    // only rises in loudness count (hits)
+    }
+    var W = Math.round(0.5 / A_HOPSEC), out = new Float32Array(frames), sum = 0;   // take away the local average
+    for (var k = 0; k < frames; k++) {
+      sum += env[k]; if (k >= W) sum -= env[k - W];
+      var v = env[k] - sum / Math.min(k + 1, W); out[k] = v > 0 ? v : 0;
+    }
+    var sm = new Float32Array(frames);                                // a beat may be a frame early or late
+    for (var j = 0; j < frames; j++) sm[j] = Math.max(out[j], j ? out[j - 1] * 0.8 : 0, j + 1 < frames ? out[j + 1] * 0.8 : 0);
+    return sm;
+  }
+  function combScore(env, bpm) {                                      // best beat grid for one tempo
+    var P = 60 / bpm / A_HOPSEC, best = -1, bestPh = 0, n = env.length, beats = Math.floor((n - P) / P);
+    if (beats < 8) return { score: 0, phase: 0 };
+    for (var ph = 0; ph < P; ph += 1) {
+      var sc = 0;
+      for (var k = 0; k < beats; k++) sc += env[Math.round(ph + k * P)];
+      if (sc > best) { best = sc; bestPh = ph; }
+    }
+    return { score: best / beats, phase: bestPh * A_HOPSEC };
+  }
+  function findBeat(env, hint) {
+    var best = { score: -1, bpm: 0, phase: 0 }, b, r;
+    var scan = function (lo, hi, step) { for (b = lo; b <= hi + 1e-9; b += step) { r = combScore(env, b); if (r.score > best.score) best = { score: r.score, bpm: b, phase: r.phase }; } };
+    if (hint > 30) scan(hint - 1.2, hint + 1.2, 0.02);
+    else { scan(80, 165, 0.25); var c = best.bpm; best.score = -1; scan(c - 0.4, c + 0.4, 0.01); }
+    best.bpm = Math.round(best.bpm * 100) / 100;
+    return best;
+  }
+  var beatMem = {};
+  function beatOf(t, hint) {                                          // -> Promise<{bpm, phase}>, cached per track
+    var key = 'ppBeat1:' + t.dbId + ':' + (hint || 0);
+    if (beatMem[key]) return beatMem[key];
+    try { var sv = JSON.parse(localStorage.getItem(key) || 'null'); if (sv && sv.bpm > 0) return (beatMem[key] = Promise.resolve(sv)); } catch (e) {}
+    var p = decodeAt(t.url, A_SR, 1).then(function (buf) {
+      var r = findBeat(onsetEnvelope(buf), hint), o = { bpm: r.bpm, phase: Math.round(r.phase * 1000) / 1000 };
+      try { localStorage.setItem(key, JSON.stringify(o)); } catch (e) {}
+      return o;
+    });
+    beatMem[key] = p; p.catch(function () { delete beatMem[key]; });
+    return p;
+  }
+  // Vocals on their own carry little beat. A stem shares its timeline with the song it was cut from, so the beat
+  // is read from that song's instrumental (or the song itself) when it is still in the library.
+  function beatSource(t) {
+    if (!t.stem || !t.stemOf) return t;
+    var a = API(), all = a ? a.tracks() : [];
+    return all.filter(function (x) { return x.url && x.stemOf === t.stemOf && isInst(x); })[0] ||
+           all.filter(function (x) { return x.url && String(x.dbId) === String(t.stemOf); })[0] || t;
+  }
+
+  // ---------- saving: stretch the vocals without changing their pitch (WSOLA), mix, write a WAV ----------
+  // Pieces of the vocals are laid down at the new spacing; each piece is slid a little to where it best continues
+  // the one before it, so the waveform stays joined up and the pitch does not move.
+  function stretch(chs, rate, tick) {
+    if (Math.abs(rate - 1) < 0.003) return Promise.resolve(chs);
+    var n = chs[0].length, N = 2048, H = N / 2, D = 512, outLen = Math.floor(n / rate), frames = Math.max(1, Math.floor((outLen - N) / H));
+    var win = new Float32Array(N), i; for (i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
+    var mono = new Float32Array(n); for (i = 0; i < n; i++) mono[i] = chs.length > 1 ? (chs[0][i] + chs[1][i]) * 0.5 : chs[0][i];
+    var out = chs.map(function () { return new Float32Array(outLen + N); }), prev = 0, k = 0;
+    return new Promise(function (resolve) {
+      (function run() {
+        var until = Math.min(frames, k + 400);
+        for (; k < until; k++) {
+          var nominal = Math.round(k * H * rate), pos = nominal;
+          if (k > 0) {
+            var want = prev + H, lo = Math.max(0, nominal - D), hi = Math.min(n - N - 1, nominal + D), bestC = -Infinity;
+            if (want + N < n) {
+              for (var c = lo; c <= hi; c += 2) {
+                var acc = 0; for (var q = 0; q < 512; q += 2) acc += mono[c + q] * mono[want + q];
+                if (acc > bestC) { bestC = acc; pos = c; }
+              }
+            }
+          }
+          pos = Math.max(0, Math.min(n - N - 1, pos)); prev = pos;
+          var o = k * H;
+          for (var ch = 0; ch < chs.length; ch++) { var src = chs[ch], dst = out[ch]; for (var j = 0; j < N; j++) dst[o + j] += src[pos + j] * win[j]; }
+        }
+        if (tick) tick(k / frames);
+        if (k < frames) setTimeout(run, 0); else resolve(out);
+      })();
+    });
+  }
+  function wavBlob(L, R, sr) {
+    var n = L.length, buf = new ArrayBuffer(44 + n * 4), dv = new DataView(buf), w = function (o, str) { for (var i = 0; i < str.length; i++) dv.setUint8(o + i, str.charCodeAt(i)); };
+    w(0, 'RIFF'); dv.setUint32(4, 36 + n * 4, true); w(8, 'WAVEfmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 2, true);
+    dv.setUint32(24, sr, true); dv.setUint32(28, sr * 4, true); dv.setUint16(32, 4, true); dv.setUint16(34, 16, true); w(36, 'data'); dv.setUint32(40, n * 4, true);
+    var o16 = new Int16Array(buf, 44, n * 2);
+    for (var i = 0; i < n; i++) { o16[i * 2] = Math.max(-32767, Math.min(32767, Math.round(L[i] * 32767))); o16[i * 2 + 1] = Math.max(-32767, Math.min(32767, Math.round(R[i] * 32767))); }
+    return new Blob([buf], { type: 'audio/wav' });
+  }
+  var saving = false;
+  function saveMashup() {
+    if (saving) return;
+    var v = byId($('ppm-voc').value), b = byId($('ppm-back').value), a = API();
+    if (!v || !b || !a || !a.addLibraryFiles) return;
+    saving = true;
+    var btn = $('ppm-save'), say = function (m) { btn.textContent = m; }, SR = 44100;
+    var rate = st.rate, nudge = st.nudge, vVol = st.vVol, bVol = st.bVol;
+    back.pause(); voc.pause();
+    say('Reading the songs\u2026');
+    Promise.all([decodeAt(b.url, SR, 2), decodeAt(v.url, SR, 2)]).then(function (bufs) {
+      var bb = bufs[0], vb = bufs[1];
+      var vch = [vb.getChannelData(0), vb.numberOfChannels > 1 ? vb.getChannelData(1) : vb.getChannelData(0)];
+      return stretch(vch, rate, function (f) { say('Fitting the vocals ' + Math.round(f * 100) + '%'); }).then(function (vs) {
+        say('Mixing\u2026');
+        var n = bb.length, bL = bb.getChannelData(0), bR = bb.numberOfChannels > 1 ? bb.getChannelData(1) : bL;
+        var L = new Float32Array(n), R = new Float32Array(n), off = Math.round(nudge * SR), vn = Math.floor(vb.length / rate), peak = 0, i, j;
+        for (i = 0; i < n; i++) {
+          j = i - off;
+          var l = bL[i] * bVol, r = bR[i] * bVol;
+          if (j >= 0 && j < vn) { l += vs[0][j] * vVol; r += vs[1][j] * vVol; }
+          L[i] = l; R[i] = r;
+          var m = l < 0 ? -l : l, m2 = r < 0 ? -r : r; if (m > peak) peak = m; if (m2 > peak) peak = m2;
+        }
+        if (peak > 0.98) { var g = 0.98 / peak; for (i = 0; i < n; i++) { L[i] *= g; R[i] *= g; } }   // never clip
+        var name = clean(v) + ' x ' + clean(b) + ' (Mashup).wav';
+        a.addLibraryFiles([new File([wavBlob(L, R, SR)], name, { type: 'audio/wav' })]);
+        toast('Saved to your library: ' + name.replace(/\.wav$/, ''));
+      });
+    }).catch(function (e) { toast('Could not save the mashup' + (e && e.message ? ': ' + e.message : '') + '.'); })
+      .then(function () { saving = false; say('Save as a song'); });
+  }
+  function clean(t) { return String(t.stemSrc || t.title || 'Song').replace(/\s*\((vocals|instrumental)\)\s*$/i, '').replace(/[\\/:*?"<>|]/g, ' ').trim().slice(0, 60); }
+
+  // The app is frozen in the background unless a foreground service holds it (same one background video sound uses).
+  var keepOn = false;
+  function keep(on) {
+    if (on === keepOn) return; keepOn = on;
+    try { var P = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.OnnxSeparator; if (P && P.keepAlive) P.keepAlive({ on: on, mode: 'play' }).catch(function () {}); } catch (e) {}
+  }
+
   function isVocals(t) { return !!t.stem && /\(vocals\)\s*$/i.test(t.title || ''); }
   function isInst(t) { return !!t.stem && /\(instrumental\)\s*$/i.test(t.title || ''); }
   function fmt(s) { if (!isFinite(s) || s < 0) s = 0; var m = Math.floor(s / 60), x = Math.floor(s % 60); return m + ':' + (x < 10 ? '0' : '') + x; }
@@ -85,10 +232,12 @@
           '<div class="ppm-row"><span>Vocals speed</span><input type="range" id="ppm-rate" min="0.6" max="1.6" step="0.005" value="1"><span id="ppm-rate-v">1.00x</span></div>' +
           '<div class="ppm-btns"><button id="ppm-rate-auto">Match tempo</button><button id="ppm-rate-1">Original speed</button></div>' +
           '<div class="ppm-row"><span>Vocals start</span><input type="range" id="ppm-nudge" min="-8" max="30" step="0.01" value="0"><span id="ppm-nudge-v">0.00s</span></div>' +
+          '<div class="ppm-btns"><button id="ppm-align">Line up the beat</button></div>' +
           '<div class="ppm-btns"><button data-n="-1">&minus; 1 beat</button><button data-n="-0.25">&minus; &frac14;</button><button data-n="0.25">+ &frac14;</button><button data-n="1">+ 1 beat</button></div>' +
           '<div class="ppm-row"><span>Vocals volume</span><input type="range" id="ppm-vvol" min="0" max="1" step="0.01" value="1"><span id="ppm-vvol-v">100%</span></div>' +
           '<div class="ppm-row"><span>Music volume</span><input type="range" id="ppm-bvol" min="0" max="1" step="0.01" value="0.9"><span id="ppm-bvol-v">90%</span></div>' +
-          '<div class="ppm-info">Tempo is matched from the songs\' tags. Line the vocals up with the beat using Vocals start: slide it, or step by beats while it plays.</div>' +
+          '<div class="ppm-btns"><button id="ppm-save">Save as a song</button></div>' +
+          '<div class="ppm-info" id="ppm-help">The tempo and the beat are found from the songs themselves. If the vocals come in on the wrong beat, step them by a beat; fine-tune with Vocals start.</div>' +
         '</div>' +
       '</div>';
     document.body.appendChild(d);
@@ -104,6 +253,8 @@
     $('ppm-rate').oninput = function () { st.rate = +this.value; applyRate(); syncVocals(true); };
     $('ppm-rate-auto').onclick = function () { st.rate = st.auto; applyRate(); syncVocals(true); };
     $('ppm-rate-1').onclick = function () { st.rate = 1; applyRate(); syncVocals(true); };
+    $('ppm-align').onclick = function () { analyse(true); };
+    $('ppm-save').onclick = saveMashup;
     $('ppm-nudge').oninput = function () { st.nudge = +this.value; paintNudge(); syncVocals(true); remember(); };
     d.querySelectorAll('[data-n]').forEach(function (b) {
       b.onclick = function () {
@@ -115,11 +266,11 @@
     $('ppm-vvol').oninput = function () { st.vVol = +this.value; voc.volume = st.vVol; $('ppm-vvol-v').textContent = Math.round(st.vVol * 100) + '%'; };
     $('ppm-bvol').oninput = function () { st.bVol = +this.value; back.volume = st.bVol; $('ppm-bvol-v').textContent = Math.round(st.bVol * 100) + '%'; };
     back.addEventListener('loadedmetadata', paint);
-    back.addEventListener('ended', function () { voc.pause(); paint(); });
-    back.addEventListener('pause', paint); back.addEventListener('play', paint);
+    back.addEventListener('ended', function () { voc.pause(); keep(false); paint(); });
+    back.addEventListener('pause', function () { keep(false); paint(); });
+    back.addEventListener('play', function () { keep(true); paint(); });
     back.addEventListener('error', function () { toast('Could not open the music track for the mashup.'); });
     voc.addEventListener('error', function () { toast('Could not open the vocals for the mashup.'); });
-    document.addEventListener('visibilitychange', function () { if (document.hidden && open && !back.paused) { back.pause(); voc.pause(); } });
   }
   function toast(m) { try { var s = $('toast-stack'); if (!s) return; var e = document.createElement('div'); e.className = 'toast'; e.textContent = m; s.appendChild(e); setTimeout(function () { e.remove(); }, 3500); } catch (x) {} }
 
@@ -161,7 +312,7 @@
     if (voc.getAttribute('src') !== v.url) voc.src = v.url;
     back.volume = st.bVol; voc.volume = st.vVol;
     $('ppm-nudge').value = st.nudge; paintNudge();
-    applyRate();
+    applyRate(true);            // loading a pair is not a choice to remember
     var bits = [];
     if (st.bpmV && st.bpmB) {
       var pct = Math.round((st.auto - 1) * 100);
@@ -171,14 +322,47 @@
     }
     var kf = keyFit(tv.ck, tb.ck);
     if (kf) bits.push((tv.key || tv.ck) + ' over ' + (tb.key || tb.ck) + ': <b>' + kf + '</b>.');
-    $('ppm-info').innerHTML = bits.join(' ');
+    tagInfo = bits.join(' ');
+    $('ppm-info').innerHTML = tagInfo;
     $('ppm-rate-auto').disabled = !(st.bpmV && st.bpmB);
     paint();
+    analyse(false);
   }
-  function applyRate() {
+  // Measure both songs, set the exact tempo match, and (when asked, or when this pair has no saved start) move the
+  // vocals to the nearest point where their beats fall on the music's beats.
+  var analyseId = 0, tagInfo = '';
+  function analyse(force) {
+    var v = byId($('ppm-voc').value), b = byId($('ppm-back').value);
+    if (!v || !b) return;
+    var id = ++analyseId, hadSaved = false, info = $('ppm-info');
+    try { hadSaved = !!localStorage.getItem(pairKey()); } catch (e) {}
+    var tv = tagsOf(v), tb = tagsOf(b), src = beatSource(v);
+    info.innerHTML = tagInfo + ' <b>Finding the beat\u2026</b>';
+    Promise.all([beatOf(src, +tv.bpm || 0), beatOf(b, +tb.bpm || 0)]).then(function (r) {
+      if (id !== analyseId) return;
+      var bv = r[0], bb = r[1];
+      st.bpmV = bv.bpm; st.bpmB = bb.bpm; st.auto = autoRate(bv.bpm, bb.bpm);
+      $('ppm-rate-auto').disabled = false;
+      var move = force || !hadSaved;
+      if (move) {
+        st.rate = st.auto;
+        var PB = 60 / bb.bpm, want = bb.phase - bv.phase / st.rate, k = Math.round((st.nudge - want) / PB);
+        st.nudge = Math.max(-8, Math.min(30, Math.round((want + k * PB) * 1000) / 1000));
+        $('ppm-nudge').value = st.nudge; paintNudge(); applyRate(); syncVocals(true);
+      }
+      var pct = Math.round((st.auto - 1) * 100), kf = keyFit(tv.ck, tb.ck);
+      info.innerHTML = 'Vocals <b>' + bv.bpm.toFixed(1) + ' BPM</b>, music <b>' + bb.bpm.toFixed(1) + ' BPM</b>: vocals ' + (pct === 0 ? 'barely changed' : (pct > 0 ? 'sped up ' : 'slowed ') + Math.abs(pct) + '%') + '.' +
+        (kf ? ' ' + (tv.key || tv.ck) + ' over ' + (tb.key || tb.ck) + ': <b>' + kf + '</b>.' : '') + (move ? ' Beats lined up.' : ' Using your saved start.') +
+        (src === v && v.stem ? ' The beat was read from the vocals alone, so it may be off: keep the song\'s instrumental in the library for a better fit.' : '');
+    }).catch(function () {
+      if (id !== analyseId) return;
+      info.innerHTML = tagInfo + ' Could not read the songs to find the beat; line the vocals up by hand.';
+    });
+  }
+  function applyRate(noSave) {
     voc.playbackRate = st.rate;
     $('ppm-rate').value = st.rate; $('ppm-rate-v').textContent = st.rate.toFixed(2) + 'x';
-    remember();
+    if (!noSave) remember();
   }
   function paintNudge() { $('ppm-nudge-v').textContent = (st.nudge >= 0 ? '+' : '') + st.nudge.toFixed(2) + 's'; }
 
@@ -225,10 +409,12 @@
   function close() {
     open = false;
     clearInterval(timer); timer = 0;
+    analyseId++;
     if (back) { back.pause(); voc.pause(); }
+    keep(false);
     var d = $('ppm'); if (d) d.classList.remove('open');
   }
-  window.PPMashup = { open: show, close: close, _els: function () { return [back, voc]; }, _autoRate: autoRate, _keyFit: keyFit };
+  window.PPMashup = { open: show, close: close, _els: function () { return [back, voc]; }, _stretch: stretch, _findBeat: findBeat, _state: function () { return st; }, _autoRate: autoRate, _keyFit: keyFit };
 
   function wire() {
     var b = $('mashup-btn'); if (b) b.addEventListener('click', show);
