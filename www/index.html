@@ -1842,6 +1842,12 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
   }
   #viz-sens-dropdown .tool-dropdown-label span:last-child{ color:var(--text); font-variant-numeric:tabular-nums; }
   #viz-sensitivity, #viz-sensitivity-track{ width:100%; }
+  .pp-seg{ display:flex; gap:6px; }
+  .pp-seg button{
+    flex:1; padding:7px 4px; background:none; border:1px solid var(--line); color:var(--text);
+    font-size:11px; border-radius:6px; cursor:pointer; white-space:nowrap;
+  }
+  .pp-seg button.on{ border-color:var(--accent); color:var(--accent); background:rgba(110,231,208,0.08); }
 
   #controls-col{
     width:100%;
@@ -4306,6 +4312,14 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
                 </label>
                 <p class="tool-dropdown-label"><span>This song</span><span id="viz-sens-track-value">100%</span></p>
                 <input type="range" id="viz-sensitivity-track" min="25" max="250" value="100" step="5" disabled>
+                <p class="tool-dropdown-label" style="margin-top:12px;"><span>Style</span></p>
+                <div class="pp-seg" id="viz-style-seg">
+                  <button type="button" data-v="bars">Bars</button><button type="button" data-v="blocks">Blocks</button><button type="button" data-v="pulse">Bass pulse</button>
+                </div>
+                <p class="tool-dropdown-label" style="margin-top:12px;"><span>Bass haptics (phone vibrates on the kick)</span></p>
+                <div class="pp-seg" id="viz-haptic-seg">
+                  <button type="button" data-v="0">Off</button><button type="button" data-v="1">Light</button><button type="button" data-v="2">Strong</button>
+                </div>
               </div>
             </div>
           </div>
@@ -5201,6 +5215,13 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
             <input type="range" id="speed-slider" min="0.25" max="4" step="0.05" value="1">
             <div class="speed-range-labels"><span>0.25x</span><span>4x</span></div>
             <button class="full-row" id="speed-reset-btn">Reset to 1x</button>
+            <label class="override-toggle" style="margin-top:10px;" title="Like a record: slower is lower, faster is higher">
+              <input type="checkbox" id="speed-pitch-follow">
+              <span>Pitch follows speed</span>
+            </label>
+            <div class="pp-seg" id="speed-preset-seg" style="margin-top:8px;">
+              <button type="button" data-v="slowed">Slowed + reverb</button><button type="button" data-v="nightcore">Nightcore</button><button type="button" data-v="normal">Normal</button>
+            </div>
           </div>
         </div>
         <button class="pill-btn" id="extras-btn" title="Bookmarks, chapters &amp; lyrics" aria-label="Bookmarks, chapters and lyrics" data-item-wrapper="marks">
@@ -14362,7 +14383,67 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     playbackSpeed = 1;
     applySpeed();
     saveSettings();
+    refreshSpeedPresetUI();
   });
+
+  // "Pitch follows speed": like a record or tape, slower is lower and faster is higher. Off = speed changes keep
+  // the original pitch. In the app the audio element is a facade over ExoPlayer, which gets the same setting.
+  let pitchFollowsSpeed = false;
+  try { pitchFollowsSpeed = localStorage.getItem('ppPitchFollow') === '1'; } catch(e){}
+  const speedPitchToggle = document.getElementById('speed-pitch-follow');
+  const speedPresetSeg = document.getElementById('speed-preset-seg');
+  function applyPitchMode(){
+    [audioEl, videoEl, bgPlainEl, bgFxEl].forEach(el => { try { el.preservesPitch = !pitchFollowsSpeed; } catch(e){} });
+    speedPitchToggle.checked = pitchFollowsSpeed;
+  }
+  function setPitchFollows(on){
+    pitchFollowsSpeed = !!on;
+    try { localStorage.setItem('ppPitchFollow', pitchFollowsSpeed ? '1' : '0'); } catch(e){}
+    applyPitchMode();
+  }
+  // One-tap sounds. Each sets speed, pitch mode and reverb together. The reverb you had before a preset is kept
+  // and put back by the next preset that does not use reverb.
+  const SPEED_PRESETS = {
+    slowed:    { speed: 0.85, follow: true,  reverb: 0.4 },
+    nightcore: { speed: 1.25, follow: true,  reverb: null },
+    normal:    { speed: 1,    follow: false, reverb: null }
+  };
+  function activeSpeedPreset(){
+    for (const k in SPEED_PRESETS){
+      const p = SPEED_PRESETS[k];
+      if (Math.abs(playbackSpeed - p.speed) < 0.005 && pitchFollowsSpeed === p.follow && (p.reverb == null || Math.abs(reverbMix - p.reverb) < 0.03)) return k;
+    }
+    return '';
+  }
+  function refreshSpeedPresetUI(){
+    const cur = activeSpeedPreset();
+    speedPresetSeg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === cur));
+  }
+  function applySpeedPreset(name){
+    const p = SPEED_PRESETS[name]; if (!p) return;
+    let prev = null;
+    try { const v = localStorage.getItem('ppPresetPrevReverb'); if (v != null) prev = parseFloat(v); } catch(e){}
+    if (p.reverb != null){
+      if (prev == null){ try { localStorage.setItem('ppPresetPrevReverb', String(reverbMix)); } catch(e){} }
+      reverbMix = p.reverb;
+    } else if (prev != null && isFinite(prev)){
+      reverbMix = Math.max(0, Math.min(1, prev));
+      try { localStorage.removeItem('ppPresetPrevReverb'); } catch(e){}
+    }
+    refreshFxUI();
+    applyFxAll();
+    setPitchFollows(p.follow);
+    playbackSpeed = p.speed;
+    applySpeed();
+    saveSettings();
+    refreshSpeedPresetUI();
+    showToast(name === 'slowed' ? 'Slowed + reverb' : name === 'nightcore' ? 'Nightcore' : 'Normal speed and pitch');
+  }
+  speedPitchToggle.addEventListener('change', () => { setPitchFollows(speedPitchToggle.checked); refreshSpeedPresetUI(); });
+  speedPresetSeg.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) applySpeedPreset(b.dataset.v); });
+  speedSlider.addEventListener('change', refreshSpeedPresetUI);
+  applyPitchMode();
+  setTimeout(refreshSpeedPresetUI, 1500);   // after saved settings (speed, reverb) have been restored
 
   // ---------- A/B loop ----------
   function updateABMarkers(){
@@ -16004,6 +16085,29 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   const VIZ_BASS = 9;                             // the lowest bands (to about 200 Hz) get extra weight
   let vizBandPos = null, vizBandPosFor = '';      // [first bin, last bin] (fractional) per band
   let vizBassAvg = 0, vizPulse = 0, vizBeatAt = 0, vizWave = 0, vizScaleSet = '';
+  const vizWaves = [];                            // 'pulse' style: several rings can be travelling at once
+  let vizStyle = 'bars', hapticBass = 0;          // style: bars | blocks | pulse.  haptics: 0 off, 1 light, 2 strong
+  try { const v = localStorage.getItem('ppVizStyle'); if (v === 'blocks' || v === 'pulse') vizStyle = v; } catch(e){}
+  try { hapticBass = Math.max(0, Math.min(2, parseInt(localStorage.getItem('ppHapticBass'), 10) || 0)); } catch(e){}
+  (function(){
+    const styleSeg = document.getElementById('viz-style-seg'), hapSeg = document.getElementById('viz-haptic-seg');
+    const paint = () => {
+      styleSeg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === vizStyle));
+      hapSeg.querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.v === hapticBass));
+    };
+    styleSeg.addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      vizStyle = b.dataset.v; try { localStorage.setItem('ppVizStyle', vizStyle); } catch(x){}
+      paint();
+    });
+    hapSeg.addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      hapticBass = +b.dataset.v; try { localStorage.setItem('ppHapticBass', String(hapticBass)); } catch(x){}
+      paint();
+      if (hapticBass && navigator.vibrate){ try { navigator.vibrate(hapticBass === 2 ? 30 : 14); } catch(x){} }   // feel what was picked
+    });
+    paint();
+  })();
   let vizRgb = [110, 231, 208], vizRgbAt = 0;
 
   function vizBandBins(nBins, sampleRate){
@@ -16044,9 +16148,13 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   function drawViz(ts){
     const vizLive = audioCtx && isPlaying && currentIndex !== -1;
     // Not visible, or paused with the bars already settled: check back in 250 ms instead of every frame.
-    if (!vizIsVisible() || (vizIdle && !vizLive)){ vizLast = 0; setTimeout(() => requestAnimationFrame(drawViz), 250); return; }
+    const vizShown = vizIsVisible();
+    // Haptics follow the kick anywhere in the app, so the analysis keeps running (without drawing) while the
+    // ring is off screen, as long as the app itself is on screen.
+    const hapticOnly = !vizShown && hapticBass > 0 && vizLive && !document.hidden;
+    if ((!vizShown && !hapticOnly) || (vizIdle && !vizLive)){ vizLast = 0; setTimeout(() => requestAnimationFrame(drawViz), 250); return; }
     requestAnimationFrame(drawViz);
-    if (ts - vizLast < 15) return;   // 60 fps: smooth falls and peaks without paying for 120
+    if (ts - vizLast < (hapticOnly ? 30 : 15)) return;   // 60 fps: smooth falls and peaks without paying for 120
     const dt = vizLast ? Math.min(0.1, (ts - vizLast) / 1000) : 0.016;
     vizLast = ts;
 
@@ -16095,17 +16203,23 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
         vizBeatAt = ts;
         vizPulse = Math.min(1, 0.55 + (bass - vizBassAvg) * 5);
         vizWave = 0.0001;
+        vizWaves.push(0.0001); if (vizWaves.length > 4) vizWaves.shift();
+        if (hapticBass && navigator.vibrate && !document.hidden){
+          try { navigator.vibrate(Math.round((hapticBass === 2 ? 34 : 16) * (0.6 + 0.4 * vizPulse))); } catch(e){}
+        }
       }
       vizBassAvg += (bass - vizBassAvg) * (1 - Math.exp(-dt / 0.35));
     }
     vizPulse *= Math.exp(-dt / 0.14);
     if (vizWave > 0){ vizWave += dt / 0.45; if (vizWave >= 1) vizWave = 0; }
+    for (let i = vizWaves.length - 1; i >= 0; i--){ vizWaves[i] += dt / 0.7; if (vizWaves[i] >= 1) vizWaves.splice(i, 1); }
     const pulse = Math.min(1, vizPulse * vizSensitivity);
     vizSetDiscScale(1 + pulse * 0.05);   // the disc thumps with the kick
 
     let maxLv = 0;
     for (let k = 0; k < VIZ_BANDS; k++) if (vizLevel[k] > maxLv) maxLv = vizLevel[k];
     vizIdle = !raw && maxLv < 0.004 && vizPulse < 0.01;
+    if (!vizShown) return;
 
     // --- draw ---
     // The canvas is 20% larger than the ring box (see #viz), so the disc radius (0.36 of the box) is 0.30 here.
@@ -16114,6 +16228,34 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const [cr, cg, cb] = vizAccent(ts);
     const barW = Math.max(2, (Math.PI * 2 * baseR / (VIZ_BANDS * 2)) * 0.42);
     ctx.lineCap = 'butt';   // square ends
+
+    if (vizStyle === 'pulse'){
+      // Bass only: a band of light around the disc as thick as the bass is loud, rings thrown off by each kick,
+      // and one thin line further out that follows everything above the bass.
+      let bassLv = 0, restLv = 0;
+      for (let k = 0; k < VIZ_BANDS; k++){ if (k < VIZ_BASS) bassLv += vizLevel[k] / VIZ_BASS; else restLv += vizLevel[k] / (VIZ_BANDS - VIZ_BASS); }
+      for (const wv of vizWaves){
+        ctx.strokeStyle = `rgba(${cr},${cg},${cb},${(0.5 * (1 - wv) * (1 - wv)).toFixed(3)})`;
+        ctx.lineWidth = S * 0.012 * (1 - wv) + 1;
+        ctx.beginPath(); ctx.arc(cx, cy, baseR + maxLen * wv, 0, Math.PI * 2); ctx.stroke();
+      }
+      const thick = S * 0.004 + Math.pow(bassLv, 1.6) * maxLen * 0.6;
+      const grad = ctx.createRadialGradient(cx, cy, baseR, cx, cy, baseR + thick * 1.6);
+      grad.addColorStop(0, `rgba(${cr},${cg},${cb},${(0.3 + bassLv * 0.5).toFixed(3)})`);
+      grad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(cx, cy, baseR + thick * 1.6, 0, Math.PI * 2); ctx.arc(cx, cy, baseR, 0, Math.PI * 2, true); ctx.fill();
+      const w2 = Math.round(cr + (255 - cr) * bassLv * 0.6), g3 = Math.round(cg + (255 - cg) * bassLv * 0.6), b3 = Math.round(cb + (255 - cb) * bassLv * 0.6);
+      ctx.strokeStyle = `rgba(${w2},${g3},${b3},${(0.45 + bassLv * 0.55).toFixed(3)})`;
+      ctx.lineWidth = thick;
+      ctx.beginPath(); ctx.arc(cx, cy, baseR + thick / 2, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = `rgba(255,255,255,${(0.12 + restLv * 0.6).toFixed(3)})`;
+      ctx.lineWidth = Math.max(1, S * 0.003);
+      ctx.beginPath(); ctx.arc(cx, cy, baseR + thick + S * 0.012 + restLv * maxLen * 0.35, 0, Math.PI * 2); ctx.stroke();
+      return;
+    }
+    // 'blocks': the same bars cut into stacked segments, lit a whole segment at a time
+    const blocks = vizStyle === 'blocks', VIZ_SEGS = 10, segStep = maxLen / VIZ_SEGS;
 
     if (vizWave > 0){   // ring thrown off by a kick
       ctx.strokeStyle = `rgba(${cr},${cg},${cb},${(0.34 * (1 - vizWave)).toFixed(3)})`;
@@ -16146,9 +16288,10 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
         ctx.beginPath(); ctx.arc(cx, cy, baseR, a0, a1); ctx.arc(cx, cy, outer, a1, a0, true); ctx.closePath(); ctx.fill();
       }
     }
+    ctx.setLineDash(blocks ? [segStep * 0.68, segStep * 0.32] : []);
     for (let k = 0; k < VIZ_BANDS; k++){            // plain sharp bars, bass ones a little thicker
       const lv = vizLevel[k];
-      const len = S * 0.006 + lv * maxLen;
+      const len = blocks ? Math.max(1, Math.round(lv * VIZ_SEGS)) * segStep - segStep * 0.32 : S * 0.006 + lv * maxLen;
       const white = lv * lv * 0.55;
       const r = Math.round(cr + (255 - cr) * white), g2 = Math.round(cg + (255 - cg) * white), b = Math.round(cb + (255 - cb) * white);
       ctx.strokeStyle = `rgba(${r},${g2},${b},${(0.35 + lv * 0.65).toFixed(3)})`;
@@ -16162,6 +16305,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       }
       ctx.stroke();
     }
+    ctx.setLineDash([]);
     // base ring, brighter on a kick
     ctx.strokeStyle = `rgba(${cr},${cg},${cb},${(0.1 + pulse * 0.5).toFixed(3)})`;
     ctx.lineWidth = 1 + pulse * S * 0.004;
