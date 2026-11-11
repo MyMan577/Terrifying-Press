@@ -5236,6 +5236,10 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
           <span>Cut</span>
         </button>
+        <button class="pill-btn" id="mashup-btn" title="Mashup: vocals of one song over another" aria-label="Mashup">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h6l4 10h6"/><path d="M4 17h6l1.2-3"/><path d="M14 7h6"/></svg>
+          <span>Mashup</span>
+        </button>
         <div style="position:relative;" data-item-wrapper="sleep">
           <button class="pill-btn" id="sleep-btn" title="Sleep timer" aria-label="Sleep timer">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>
@@ -26928,6 +26932,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
 <script src="./pp-playground-album.js?v=20261108a"></script>
 <script src="./pp-playground-lab.js?v=20261108a"></script>   <!-- Press Play Playground (the fourth app mode): hub, orders, charms, wheel. Bump v= when it changes -->
 <script src="./pp-playground-stars.js?v=20261108a"></script>   <!-- Playground Star Shop: Stars for Points, boosts, shields, the vault -->
-<script src="./vocal-separator.js?v=20261030a" defer></script>   <!-- bump v= each time vocal-separator.js changes so phones fetch the new copy -->
+<script src="./vocal-separator.js?v=20261030a" defer></script>
+<script src="./pp-mashup.js?v=20261111a" defer></script>   <!-- mashup mode -->   <!-- bump v= each time vocal-separator.js changes so phones fetch the new copy -->
 </body>
 </html>
