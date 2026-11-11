@@ -5335,7 +5335,9 @@ let srEchoFrames = [];
       this.fighterRun(F, () => {
         try { drawConduitEffects(); } catch (e) {}
         if (spin) { const sx = (player.x + player.w / 2) * TILE - cam.x, sy = (player.y + player.h / 2) * TILE - cam.y; ctx.save(); ctx.translate(sx, sy); ctx.rotate(spin); ctx.translate(-sx, -sy); }
+        window.__ppFighterEmote = F.em || null;       // its own emote, not the one you are doing
         try { drawPlayer(); } catch (e) {}
+        window.__ppFighterEmote = undefined;
         if (spin) ctx.restore();
         for (const fxFn of _CHAR_FX) { try { fxFn(); } catch (e) {} }
         try { if (window.PPStrike && window.PPStrike._draw) window.PPStrike._draw(ctx, performance.now() / 1000, cam); } catch (e) {}
@@ -20654,8 +20656,11 @@ function resolveCollisions(axis, dt) {
     ctx.translate(x, y + bodyBob);
     // strike engine and emotes pose the body; the other phone's player (online) shows its own emote
     const _ppRem = window.__ppRemoteDraw;
+    // A second fighter with real moves (Smash CPU) is drawn by this same function. It shows its OWN emote
+    // (__ppFighterEmote: its { id, t }, or null for none), never yours: undefined means "this is you".
+    const _ppFE = window.__ppFighterEmote, _ppFEm = _ppFE ? Object.assign({ dir: player.dashDir }, _ppFE) : null;
     if (_ppRem) { if (window.PPEmote && _ppRem.em) window.PPEmote.pose(ctx, W, H, Object.assign({ dir: _ppRem.dashDir }, _ppRem.em)); }
-    else { if (window.PPStrike) window.PPStrike.pose(ctx, W, H); if (window.PPEmote) window.PPEmote.pose(ctx, W, H); }
+    else { if (window.PPStrike) window.PPStrike.pose(ctx, W, H); if (window.PPEmote) { if (_ppFE === undefined) window.PPEmote.pose(ctx, W, H); else if (_ppFEm) window.PPEmote.pose(ctx, W, H, _ppFEm); } }
 
     
     if (faceDir === -1) {
@@ -22733,7 +22738,7 @@ function resolveCollisions(axis, dt) {
     
     if (window.drawCosmeticAura) drawCosmeticAura(cx, H/2, Date.now()*0.001);
     // emotes: two floating hands (or the character's own gloves) and props
-    if (window.PPEmote) window.PPEmote.hands(ctx, W, H, id, _ppRem ? (_ppRem.em ? Object.assign({ dir: _ppRem.dashDir }, _ppRem.em) : {}) : null);
+    if (window.PPEmote) window.PPEmote.hands(ctx, W, H, id, _ppRem ? (_ppRem.em ? Object.assign({ dir: _ppRem.dashDir }, _ppRem.em) : {}) : (_ppFE === undefined ? null : (_ppFEm || {})));
 
     
     

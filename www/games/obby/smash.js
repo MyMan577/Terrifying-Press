@@ -757,7 +757,7 @@
 
   // ---------------------------------------------------------------- opponent
   function foePos() {
-    if (foe.kind === 'remote' && SM.net && SM.net.remotePos) { var r = SM.net.remotePos(); if (r) { foe.x = r.x; foe.y = r.y; foe.w = r.w || .72; foe.h = r.h || .92; foe.char = r.char || foe.char; foe.vx = r.vx || 0; foe.vy = r.vy || 0; foe.onGround = !!r.onGround; } }
+    if (foe.kind === 'remote' && SM.net && SM.net.remotePos) { var r = SM.net.remotePos(); if (r) { foe.x = r.x; foe.y = r.y; foe.w = r.w || .72; foe.h = r.h || .92; foe.char = r.char || foe.char; foe.vx = r.vx || 0; foe.vy = r.vy || 0; foe.onGround = !!r.onGround; foe.remEm = r.em || null; } }
     return { x: foe.x, y: foe.y, w: foe.w, h: foe.h };
   }
 
@@ -1218,7 +1218,7 @@
     f.think -= dt;
     // --- taunting: stands there showing off (and wide open). Hard CPUs snap out of it if you rush them.
     if (f.taunt > 0) {
-      f.taunt -= dt; f.vx = approach(f.vx, 0, 60 * dt); f.vy = Math.min(BAL.fall, f.vy + BAL.grav * dt); moveBody(f, dt);
+      f.taunt -= dt; if (f.em) f.em.t += dt; f.vx = approach(f.vx, 0, 60 * dt); f.vy = Math.min(BAL.fall, f.vy + BAL.grav * dt); moveBody(f, dt);
       if (f.lvl >= 2 && adx < 2 && Math.abs(dy) < 2 && f.taunt < 0.7) f.taunt = 0;
       checkFoeKO(g); return;
     }
@@ -1659,6 +1659,15 @@
   function startTaunt() {
     var f = foe; f.tauntQ = false; f.mem.taunted = true; f.vx = 0;
     f.taunt = rnd(0.9, 1.3); f.tauntLen = f.taunt; f.tauntTxt = TAUNTS[Math.floor(Math.random() * TAUNTS.length)];
+    // Most taunts are a real emote of its own choosing (the same ones you have), sometimes with the speech bubble too.
+    f.em = null;
+    var list = window.PPEmote && window.PPEmote.list;
+    if (list && list.length && Math.random() < 0.8) {
+      var e = list[Math.floor(Math.random() * list.length)];
+      f.em = { id: e.id, t: 0 };
+      f.taunt = e.len > 0 ? Math.min(e.len, rnd(1.6, 2.4)) : rnd(1.8, 2.8); f.tauntLen = f.taunt;   // dances have no end of their own
+      if (Math.random() < 0.6) f.tauntTxt = '';
+    }
   }
   function startAtk(name, dir) {
     var f = foe, d = MOVES[name]; f.atk = { name: name, d: d, t: 0, hit: false, dir: d.back ? -dir : dir }; f.face = dir; f.think = 0.05;
@@ -1737,14 +1746,16 @@
         var spin = f.hitstun > 0 ? clock * 14 * sgn(f.kvx || 1) : 0;
         if (spin && !f.F) { ctx.translate(cx, cy); ctx.rotate(spin); ctx.translate(-cx, -cy); }   // (a real-moves fighter spins only its body: see fighterDraw)
         if (f.invuln > 0 && Math.floor(clock * 20) % 2) ctx.globalAlpha = 0.5;
-        var hop = f.taunt > 0 ? Math.abs(Math.sin((f.tauntLen - f.taunt) * 11)) * 0.22 : 0;
+        var fem = f.kind === 'remote' ? (f.remEm || null) : (f.taunt > 0 ? (f.em || null) : null);   // the emote this fighter itself is doing
+        var hop = f.taunt > 0 && !fem ? Math.abs(Math.sin((f.tauntLen - f.taunt) * 11)) * 0.22 : 0;
         if (f.F) {
+          f.F.em = fem;
           var dst = f.F.st; dst.x = f.x; dst.y = f.y - hop; dst.vx = f.vx; dst.vy = f.vy; dst.onGround = f.onGround;
           g.fighterDraw(f.F, spin);
           ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 3;
           ctx.strokeText(foeLabel(), cx, f.y * T - cam.y - 8); ctx.fillText(foeLabel(), cx, f.y * T - cam.y - 8);
         } else g.drawAs({ x: f.x, y: f.y - hop, w: f.w, h: f.h, vx: f.vx, vy: f.vy, onGround: f.onGround, dashDir: f.face, isDashing: !!(f.atk && f.atk.d.lunge && f.atk.t > f.atk.d.wind),
-          char: f.char, slashTimer: f.atk ? 0.15 : 0, swordMode: 'blue', gravityFlipped: false, isWallSliding: false, onWall: false, wallSide: 0 }, foeLabel());
+          char: f.char, em: fem, slashTimer: f.atk ? 0.15 : 0, swordMode: 'blue', gravityFlipped: false, isWallSliding: false, onWall: false, wallSide: 0 }, foeLabel());
         ctx.restore();
         if (f.taunt > 0 && f.tauntTxt) {
           var a0 = Math.min(1, f.taunt / 0.2, (f.tauntLen - f.taunt) / 0.1);
