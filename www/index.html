@@ -16000,8 +16000,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   const VIZ_BANDS = 32;
   const vizLevel = new Float32Array(VIZ_BANDS);   // what is drawn, 0..1
   const vizAvg = new Float32Array(VIZ_BANDS);     // slow average per band: hits are measured against it
-  const vizCap = new Float32Array(VIZ_BANDS);     // falling peak marker
-  const vizCapHold = new Float32Array(VIZ_BANDS);
+  const vizGroup = new Float32Array(VIZ_BANDS);   // level of a bar together with its neighbours (for the glow)
+  const VIZ_BASS = 9;                             // the lowest bands (to about 200 Hz) get extra weight
   let vizBandPos = null, vizBandPosFor = '';      // [first bin, last bin] (fractional) per band
   let vizBassAvg = 0, vizPulse = 0, vizBeatAt = 0, vizWave = 0, vizScaleSet = '';
   let vizRgb = [110, 231, 208], vizRgbAt = 0;
@@ -16081,14 +16081,12 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
         // The average only feeds the jump term, so a steady loud band cannot creep up to full on its own.
         const hit = Math.max(0, v - vizAvg[k]);
         vizAvg[k] += (v - vizAvg[k]) * kAvg;
-        target = Math.min(1, (Math.pow(v, 2.6) * 0.62 + hit * 2.6) * vizSensitivity);
+        const bassW = k < VIZ_BASS ? 1.3 - 0.3 * k / VIZ_BASS : 1;      // the bass is the star: taller and punchier
+        target = Math.min(1, (Math.pow(v, 2.6) * 0.62 + hit * 2.6 * bassW) * bassW * vizSensitivity);
       } else {
         vizAvg[k] *= 1 - kAvg;
       }
       vizLevel[k] += (target - vizLevel[k]) * (target > vizLevel[k] ? kRise : kFall);
-      if (vizLevel[k] >= vizCap[k]){ vizCap[k] = vizLevel[k]; vizCapHold[k] = 0.22; }
-      else if (vizCapHold[k] > 0) vizCapHold[k] -= dt;
-      else vizCap[k] = Math.max(vizLevel[k], vizCap[k] - dt * 0.55);
     }
 
     // --- beat: the bass jumps above its short-term average ---
@@ -16103,15 +16101,15 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     vizPulse *= Math.exp(-dt / 0.14);
     if (vizWave > 0){ vizWave += dt / 0.45; if (vizWave >= 1) vizWave = 0; }
     const pulse = Math.min(1, vizPulse * vizSensitivity);
-    vizSetDiscScale(1 + pulse * 0.035);   // the disc thumps with the kick
+    vizSetDiscScale(1 + pulse * 0.05);   // the disc thumps with the kick
 
     let maxLv = 0;
-    for (let k = 0; k < VIZ_BANDS; k++) if (vizCap[k] > maxLv) maxLv = vizCap[k];
+    for (let k = 0; k < VIZ_BANDS; k++) if (vizLevel[k] > maxLv) maxLv = vizLevel[k];
     vizIdle = !raw && maxLv < 0.004 && vizPulse < 0.01;
 
     // --- draw ---
     // The canvas is 20% larger than the ring box (see #viz), so the disc radius (0.36 of the box) is 0.30 here.
-    const baseR = S * 0.307 * (1 + pulse * 0.035) + S * 0.006;
+    const baseR = S * 0.307 * (1 + pulse * 0.05) + S * 0.006;
     const maxLen = S * 0.5 - baseR - S * 0.02;
     const [cr, cg, cb] = vizAccent(ts);
     const barW = Math.max(2, (Math.PI * 2 * baseR / (VIZ_BANDS * 2)) * 0.42);
@@ -16122,13 +16120,39 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       ctx.lineWidth = S * 0.006 * (1 - vizWave) + 1;
       ctx.beginPath(); ctx.arc(cx, cy, baseR + maxLen * (0.15 + 0.85 * vizWave), 0, Math.PI * 2); ctx.stroke();
     }
-    for (let k = 0; k < VIZ_BANDS; k++){            // plain sharp bars: no glow or halo around them
+    // Soft glow behind a GROUP of bars that are up together (not an outline around single bars): one faint
+    // wedge of light per band, fading outwards, whose strength follows the band and its neighbours. Neighbouring
+    // wedges overlap into one patch of light. The bass glows sooner and brighter, and flares on a kick.
+    for (let k = 0; k < VIZ_BANDS; k++){
+      const l0 = vizLevel[Math.max(0, k - 2)], l1 = vizLevel[Math.max(0, k - 1)], l3 = vizLevel[Math.min(VIZ_BANDS - 1, k + 1)], l4 = vizLevel[Math.min(VIZ_BANDS - 1, k + 2)];
+      vizGroup[k] = Math.min(vizLevel[k], (l0 + l1 * 2 + vizLevel[k] * 3 + l3 * 2 + l4) / 9 * 1.25);   // a lone tall bar does not count
+    }
+    const step = Math.PI / VIZ_BANDS;
+    for (let k = 0; k < VIZ_BANDS; k++){
+      const isBass = k < VIZ_BASS, thr = isBass ? 0.34 : 0.5;
+      let gl = (vizGroup[k] - thr) / (1 - thr);
+      if (isBass) gl = Math.max(gl, 0) + pulse * 0.45 * (1 - k / VIZ_BASS);
+      if (gl <= 0.02) continue;
+      gl = Math.min(1, gl);
+      const outer = Math.min(S * 0.5, baseR + (S * 0.006 + vizLevel[k] * maxLen) * 1.2 + S * 0.02);
+      const grad = ctx.createRadialGradient(cx, cy, baseR, cx, cy, outer);
+      const al = gl * (isBass ? 0.34 : 0.22);
+      grad.addColorStop(0, `rgba(${cr},${cg},${cb},${al.toFixed(3)})`);
+      grad.addColorStop(0.55, `rgba(${cr},${cg},${cb},${(al * 0.45).toFixed(3)})`);
+      grad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+      ctx.fillStyle = grad;
+      for (let side = -1; side <= 1; side += 2){
+        const mid = -Math.PI / 2 + side * (k + 0.5) * step, a0 = mid - step * 0.95, a1 = mid + step * 0.95;   // wider than one band: wedges blend
+        ctx.beginPath(); ctx.arc(cx, cy, baseR, a0, a1); ctx.arc(cx, cy, outer, a1, a0, true); ctx.closePath(); ctx.fill();
+      }
+    }
+    for (let k = 0; k < VIZ_BANDS; k++){            // plain sharp bars, bass ones a little thicker
       const lv = vizLevel[k];
       const len = S * 0.006 + lv * maxLen;
       const white = lv * lv * 0.55;
       const r = Math.round(cr + (255 - cr) * white), g2 = Math.round(cg + (255 - cg) * white), b = Math.round(cb + (255 - cb) * white);
       ctx.strokeStyle = `rgba(${r},${g2},${b},${(0.35 + lv * 0.65).toFixed(3)})`;
-      ctx.lineWidth = barW;
+      ctx.lineWidth = k < VIZ_BASS ? barW * (1.35 - 0.35 * k / VIZ_BASS) : barW;
       const off = (k + 0.5) / VIZ_BANDS * Math.PI;
       ctx.beginPath();
       for (let side = -1; side <= 1; side += 2){
@@ -16137,17 +16161,6 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
         ctx.lineTo(cx + ca * (baseR + len), cy + sa * (baseR + len));
       }
       ctx.stroke();
-    }
-    // peak markers
-    ctx.fillStyle = `rgba(255,255,255,0.75)`;
-    const dot = Math.max(1, barW * 0.32);
-    for (let k = 0; k < VIZ_BANDS; k++){
-      if (vizCap[k] - vizLevel[k] < 0.03) continue;
-      const rr = baseR + S * 0.006 + vizCap[k] * maxLen + dot * 2, off = (k + 0.5) / VIZ_BANDS * Math.PI;
-      for (let side = -1; side <= 1; side += 2){
-        const a = -Math.PI / 2 + side * off;
-        ctx.beginPath(); ctx.arc(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr, dot, 0, Math.PI * 2); ctx.fill();
-      }
     }
     // base ring, brighter on a kick
     ctx.strokeStyle = `rgba(${cr},${cg},${cb},${(0.1 + pulse * 0.5).toFixed(3)})`;
