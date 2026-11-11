@@ -328,7 +328,7 @@
       g.importLevel(JSON.stringify({ version: '1.0', id: 'smash-' + cfg.stage, name: 'Smash ' + STAGES[cfg.stage].n, author: 'smash',
         world: { tiles: tiles, goal: { x: 395, y: 2, w: 1, h: 1 }, spawn: { x: def.spawn[0].x, y: def.spawn[0].y }, checkpoint: null }, movers: [] }));
     } else { if (cfg.courseJson) { g.importLevel(cfg.courseJson); w = W(); } w.goal = { x: -99, y: -99, w: 1, h: 1 }; }   // (online guest: the host's course)
-    if (!isFighter(g.char) || g.char !== cfg.char) window._selectCharacter(cfg.char);
+    if (!isFighter(g.char) || g.char !== cfg.char) { allowSel = true; try { window._selectCharacter(cfg.char); } finally { allowSel = false; } }
     stage = analyze(def, cfg);
     SM.stage = stage;
     g.setMode('play');
@@ -379,6 +379,30 @@
     showResult(winner);
     if (SM.net && SM.net.sendOver) SM.net.sendOver(winner);
   }
+
+  // ---------------------------------------------------------------- no switching fighters mid-match
+  // Your fighter is locked from the countdown to the result screen. Only Smash itself (start / rematch) may set it.
+  var allowSel = false;
+  function lockMsg() { var g = G(); if (g && g.setMessage) g.setMessage('🥊 You can’t switch fighters mid-match. Exit the match to pick another.'); }
+  function wrapSelect() {
+    var orig = window._selectCharacter;
+    if (!orig) { setTimeout(wrapSelect, 200); return; }
+    if (orig._smLock) return;
+    var w = function (charId) {
+      if (SM.active && !allowSel && !window._fighterPass) { lockMsg(); return; }
+      return orig.apply(this, arguments);
+    };
+    w._smLock = true;
+    window._selectCharacter = w;
+  }
+  wrapSelect();
+  // the character buttons (some set the character directly, not through _selectCharacter): swallow the tap
+  window.addEventListener('click', function (e) {
+    if (!SM.active) return;
+    var b = e.target && e.target.closest && e.target.closest('.char-btn');
+    if (!b) return;
+    e.preventDefault(); e.stopImmediatePropagation(); lockMsg();
+  }, true);
 
   // ---------------------------------------------------------------- input gate
   var BLOCK_ALL = true;
