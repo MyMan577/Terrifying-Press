@@ -1,4 +1,4 @@
-/* Obby Builder: CHROMA's own look and moveset. Four forms that play nothing alike.
+/* Obby Builder: CHROMA's own look and moveset. Five forms that play nothing alike.
  *
  * 0 / the gem button = next form. Switching cancels the end of the move you are in, shoves foes next to you
  * away and makes your next move within a moment a PRISM move (as if half charged): switch mid-combo.
@@ -18,6 +18,12 @@
  *    Ground: Spark Jabs (4 hits) / Bolt Blink (teleport, zaps the line) / Thunder Call / Tesla Orb (blink
  *            through an orb to set it off).
  *    Air:    Ball Lightning (homing) / Arc Dash / Sky Blink / Thunder Drop (drop as a bolt, shockwave).
+ * ⚪ LUMEN, the healer (drains). Four moves hit and leave LIGHT on foes; the other four (♥) hit AND mend him,
+ *    and mend more off a foe carrying LIGHT. Main game: mending fills a meter, a full meter is +1 ♥.
+ *    Smash: it takes percent off him.
+ *    Ground: Radiant Palm (3 hits) / Siphon Beam ♥ (long beam, drains) / Halo Rise (launcher) /
+ *            Sanctuary ♥ (a circle that mends him while he stands in it and burns foes; recharges).
+ *    Air:    Halo Spin (many hits) / Dove Dash ♥ (dash through foes) / Ascension / Benediction ♥ (dive burst).
  *
  * Works for a second fighter (Smash CPU) through window._fighterPlugins, like Gale and the Ace.
  */
@@ -30,10 +36,11 @@
     { id: 'frost', name: 'Frost', emoji: '🔵', c: '#4cc3ff', g: '#d9f6ff', d: '#1b5a94', b: '#eefbff', a: '#ffffff' },
     { id: 'venom', name: 'Venom', emoji: '🟢', c: '#5fdc4c', g: '#c8ff7a', d: '#1c6a33', b: '#e6ffc2', a: '#b45cff' },
     { id: 'volt',  name: 'Volt',  emoji: '🟡', c: '#ffd92e', g: '#fff7b0', d: '#93600a', b: '#fffbe0', a: '#63e6ff' },
+    { id: 'lumen', name: 'Lumen', emoji: '⚪', c: '#f6f4ff', g: '#ffffff', d: '#7a74ad', b: '#fff1d0', a: '#ffcf5a' },
   ];
-  const WHITE = '#ffffff', TONGUE = '#ff4d6d';
+  const WHITE = '#ffffff', TONGUE = '#ff4d6d', GOLD = '#ffcf5a', MEND = '#8dffb0';
   const fresh = () => ({ active: false, form: 0, switchCD: 0, prism: 0, shiftT: 0, atkCD: 0, mv: null, busy: false, airUp: false, airSide: false, airHop: false,
-    airT: 0, heat: 0, heatT: 0, invis: 0, shots: [], zones: [], timers: [], fx: [], tongue: null, lastPX: null, lastPY: null, selfMove: false });
+    airT: 0, heat: 0, heatT: 0, invis: 0, bank: 0, healT: 0, sanct: 0, shots: [], zones: [], timers: [], fx: [], tongue: null, lastPX: null, lastPY: null, selfMove: false });
   let S = fresh();
   const oops = e => { (window.__chromaErr = window.__chromaErr || []).length < 20 && window.__chromaErr.push(String(e && e.stack || e)); };
 
@@ -50,7 +57,7 @@
   const push = o => { o.t = 0; S.fx.push(o); return o; };
   function segDist(px, py, x1, y1, x2, y2) { const dx = x2 - x1, dy = y2 - y1, L = dx * dx + dy * dy || 1e-6; const u = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / L)); return Math.hypot(px - x1 - dx * u, py - y1 - dy * u); }
 
-  // ---- hitting and the four marks (burn, chill, poison, static) ----
+  // ---- hitting and the five marks (burn, chill, poison, static, light) ----
   function dmgTo(e, dmg) {
     if (inSmash()) { e.hp = Math.max(0, (e.hp || 1) - dmg); return; }   // Smash turns this into percent
     e._chFrac = (e._chFrac || 0) + dmg; const whole = Math.floor(e._chFrac + 1e-6);   // the main game's foes lose whole points
@@ -71,6 +78,7 @@
     else if (o.el === 'chill') chill(e, o.n || 1);
     else if (o.el === 'poison') { e._chPoisN = Math.min(5, (e._chPoisN || 0) + (o.n || 1)); e._chPois = 4.5; }
     else if (o.el === 'static') e._chStatic = 4.5;
+    else if (o.el === 'light') e._chLight = 5;
     if (o.big) { FK.shake(o.shake || 5); FK.hitstop(o.stop || 0.05); FK.smack(true); } else FK.smack(false);
     dead(e);
   }
@@ -84,6 +92,23 @@
     lbl(e, 'FROZEN!', FORMS[1].g); push({ k: 'ring', x: ex(e), y: ey(e), R: 0.9, c: FORMS[1].g, life: 0.3 });
     FK.tone(1900, { dur: 0.2, vol: 0.12, type: 'sine' }); FK.tone(2500, { dur: 0.25, vol: 0.08, type: 'sine', delay: 0.05 });
   }
+  // LUMEN's mending. pts are in the game's damage points. Main game: they fill a meter and a full meter is +1 heart.
+  // Smash: they come off his percent (smash.js), for you or for a CPU Chroma alike.
+  function chime() { for (let i = 0; i < 3; i++) FK.tone(784 * Math.pow(1.26, i), { dur: 0.2, vol: 0.09, delay: i * 0.06, type: 'sine' }); }
+  function heal(p, pts) {
+    if (!(pts > 0)) return;
+    S.healT = 0.7; push({ k: 'mend', x: pcx(p), y: pcy(p), life: 0.6 });
+    FK.tone(1175, { dur: 0.12, vol: 0.06, type: 'sine' });
+    if (inSmash()) { const sm = window.__smash; if (sm && sm.__heal) sm.__heal(pts); return; }
+    if (window._fighterPass) return;
+    S.bank += pts * 0.3;
+    if (S.bank < 1) return;
+    if ((p.hp || 0) < (p.maxHp || 0)) { p.hp = Math.min(p.maxHp, p.hp + 1); S.bank -= 1; FK.label(S, p, '+1 ♥ MEND', MEND, true); chime(); }
+    else S.bank = 1;
+  }
+  // a healing move takes the LIGHT off a foe it hits: that foe mends him more
+  function reap(e) { if (!(e._chLight > 0)) return 0; e._chLight = 0; push({ k: 'burst', x: ex(e), y: ey(e), c: GOLD, R: 0.7, life: 0.25 }); return 0.6; }
+  const drain = (e, p) => push({ k: 'drain', x: ex(e), y: ey(e), life: 0.4 });
   function canDrag(e) {
     if (e._noKnockback || (e._held && !e._smashFoe)) return false;
     const sm = window.__smash;
@@ -160,6 +185,9 @@
       } else if (z.k === 'orb') {
         let b = null, bd = 3.2; for (const e of FK.foes()) { const d = Math.hypot(ex(e) - z.x, ey(e) - z.y); if (d < bd) { bd = d; b = e; } }
         if (b) { hit(b, 0.5, { el: 'static', kx: 0, ky: -1.5, stun: 0.25, form: 'volt' }); push({ k: 'bolt', x1: z.x, y1: z.y, x2: ex(b), y2: ey(b), life: 0.14 }); FK.noise({ dur: 0.05, cut: 5200, q: 3, vol: 0.08 }); }
+      } else if (z.k === 'sanct') {   // Sanctuary: mends him while he stands in it, burns foes that do
+        if (Math.abs(pcx(p) - z.x) < z.r && Math.abs(p.y + p.h - z.y) < 1.2 && z.pool > 0) { const h = Math.min(z.pool, 0.25); z.pool -= h; heal(p, h); }
+        for (const e of circ(z.x, z.y - 0.3, z.r)) hit(e, 0.3, { el: 'light', kx: 0, ky: -1, form: 'lumen' });
       } else for (const e of circ(z.x, z.y - (z.k === 'spore' ? 0 : 0.3), z.r)) {
         if (z.k === 'fire') { hit(e, 0.4, { el: 'burn', kx: 0, ky: -1, form: 'ember' }); }
         else if (z.k === 'frost') { hit(e, 0.25, { el: 'chill', n: 1, kx: 0, ky: -1, form: 'frost' }); }
@@ -174,6 +202,7 @@
       if (e._chBurn > 0) { e._chBurn -= dt; d += 0.5 * dt; }
       if (e._chPois > 0) { e._chPois -= dt; d += 0.2 * (e._chPoisN || 1) * dt; if (e._chPois <= 0) e._chPoisN = 0; }
       if (e._chStatic > 0) e._chStatic -= dt;
+      if (e._chLight > 0) e._chLight -= dt;
       if (e._chChillT > 0) { e._chChillT -= dt; if (e._chChillT <= 0) e._chChill = 0; }
       if (d > 0) { dmgTo(e, d); dead(e); }
     }
@@ -501,6 +530,70 @@
           if (m.d < 0) return true;
         }, ev: [] },
     },
+    lumen: {
+      ground_neutral: { name: 'Radiant Palm', big: 'SUNBURST PALM', cd: 0.4, dur: 0.36, pose: 'jab',
+        ev: [0, 0.11, 0.23].map((t, i) => [t, (p, m) => {
+          const last = i === 2, r = R(m, 1.8); slide(p, m.f * 0.18, 0);
+          for (const e of box(p, m.f, -0.3, r, 0.95)) hit(e, D(m, last ? 1.5 : 0.6), { el: 'light', kx: m.f * (last ? 7 : 1.2), ky: last ? -6 : -1, stun: 0.35, big: last });
+          push({ k: 'burst', x: pcx(p) + m.f * (0.9 + 0.2 * i), y: pcy(p) + (i === 1 ? 0.15 : -0.1), c: last ? GOLD : WHITE, R: last ? 0.95 : 0.55, life: 0.2 });
+          FK.whoosh(false, last); FK.tone(880 + i * 220, { dur: 0.07, vol: 0.07, type: 'sine' });
+        }]) },
+      ground_side: { name: 'Siphon Beam', big: 'SOUL SIPHON', cd: 0.65, dur: 0.3, pose: 'thrust', w: 0.09,
+        ev: [[0, (p, m) => {
+          const mo = mouth(p, m.f), y = pcy(p), max = R(m, 6); let L = 0.4;
+          while (L < max && !FK.blocked(mo[0] + m.f * L - 0.1, y - 0.1, 0.2, 0.2)) L += 0.25;
+          let n = 0, got = 0;
+          for (const e of box(p, m.f, 0.2, L + 0.3, 0.55)) { hit(e, D(m, 1.6), { el: null, kx: m.f * 3, ky: -4, stun: 0.45, big: true }); if (n++ < 2) got += 0.7 + reap(e); drain(e, p); }
+          if (got) heal(p, got * (1 + 0.4 * m.pw));
+          push({ k: 'beam', x: mo[0], y, f: m.f, L, life: 0.26 });
+          p.vx = -m.f * 2; FK.tone(1320, { dur: 0.22, slide: 660, vol: 0.1, type: 'sine' }); FK.noise({ dur: 0.18, cut: 4200, cutEnd: 1500, q: 2, vol: 0.12 });
+        }]] },
+      ground_up: { name: 'Halo Rise', big: 'HALO ASCENDANT', cd: 0.6, dur: 0.3, pose: 'raise', w: 0.05,
+        ev: [[0.03, (p, m) => {
+          const r = R(m, 1.4);
+          for (const e of box(p, 1, -r, r, 1.7, -0.7)) hit(e, D(m, 2), { el: 'light', kx: away(e, p, m.f) * 2, ky: -14 - 2 * m.pw, stun: 0.5, big: true });
+          push({ k: 'halo', x: pcx(p), y: p.y + p.h, R: r, H: 3, life: 0.35 });
+          FK.whoosh(true, true); FK.tone(660, { dur: 0.2, slide: 1500, vol: 0.1, type: 'sine' });
+        }]] },
+      ground_down: { name: 'Sanctuary', big: 'CATHEDRAL', cd: 0.7, dur: 0.3, pose: 'slam', w: 0.06,
+        ev: [[0.05, (p, m) => {
+          const r = R(m, 2.1), x = pcx(p), y = p.y + p.h;
+          for (const e of circ(x, y - 0.4, r)) hit(e, D(m, 1.2), { el: 'light', kx: away(e, p, m.f) * 6, ky: -7, stun: 0.45, big: true });
+          push({ k: 'shock', x, y, R: r, c: GOLD, life: 0.4 }); FK.thud(false);
+          if (S.sanct > 0) { m.title = 'RADIANT BURST'; FK.msg('⚪ Sanctuary is recharging (' + Math.ceil(S.sanct) + 's): burst only'); return; }
+          for (const z of S.zones) if (z.k === 'sanct') z.life = 0;
+          zone({ k: 'sanct', x, y, r, life: 4, tk: 0.5, tt: 0.25, pool: 2 * (1 + 0.4 * m.pw) }); S.sanct = 9;
+          chime();
+        }]] },
+      air_neutral: { name: 'Halo Spin', big: 'CORONA', cd: 0.5, dur: 0.36, pose: 'spin', root: false,
+        move(p) { p.vy = Math.min(p.vy, 2); },
+        ev: [0, 0.09, 0.18, 0.3].map((t, i) => [t, (p, m) => {
+          const last = i === 3, r = R(m, 1.4);
+          for (const e of circ(pcx(p), pcy(p), r)) { hit(e, D(m, last ? 1.4 : 0.5), { el: 'light', kx: away(e, p, m.f) * (last ? 7 : -1), ky: last ? -7 : -2, stun: 0.3, big: last }); if (!last) drag(e, pcx(p) + away(e, p, m.f) * 0.8, pcy(p), 10, 0.06); }
+          push({ k: 'wheel', R: r, a: i * 1.9 * m.f, f: m.f, c: i % 2 ? GOLD : WHITE, life: 0.16 }); FK.whoosh(i % 2 === 0, false);
+        }]) },
+      air_side: { name: 'Dove Dash', big: 'SERAPH RUSH', cd: 0.5, dur: 0.24, pose: 'rush', root: false, once: 'side',
+        start(p, m) { m.left = R(m, 4.4); m.sp = m.left / 0.2; p.dashInvuln = Math.max(p.dashInvuln || 0, 0.2); FK.whoosh(false, true); FK.tone(990, { dur: 0.2, slide: 1760, vol: 0.08, type: 'sine' }); },
+        move(p, m, dt) {
+          const st = Math.min(m.left, m.sp * dt); m.left -= st;
+          const ok = slide(p, m.f * st, 0); p.vx = 0; p.vy = 0;
+          for (const e of box(p, m.f, -0.6, 0.6, 0.9)) if (!m.hs.has(e)) { m.hs.add(e); hit(e, D(m, 1.3), { el: null, kx: m.f * 3, ky: -7, stun: 0.4, big: true }); if (m.hs.size <= 2) heal(p, 0.6 + reap(e)); drain(e, p); }
+          ghost(p, WHITE);
+          if (!ok || m.left <= 0) { p.vx = m.f * 5; return true; }
+        } },
+      air_up: { name: 'Ascension', big: 'RAPTURE', cd: 0.55, dur: 0.3, pose: 'upper', root: false, once: 'up',
+        start(p, m) { p.vy = -16 - 2 * m.pw; p.onGround = false; push({ k: 'halo', x: pcx(p), y: p.y + p.h, R: 0.9, H: 1.2, life: 0.3 }); FK.whoosh(true, true); FK.tone(784, { dur: 0.22, slide: 1568, vol: 0.09, type: 'sine' }); },
+        move(p, m) { if (m.t < 0.22) { for (const e of box(p, 1, -0.9, 0.9, 1.1, -0.5)) if (!m.hs.has(e)) { m.hs.add(e); hit(e, D(m, 1.3), { el: 'light', kx: 0, ky: -11, stun: 0.4 }); } S.wings = 0.12; } },
+        ev: [] },
+      air_down: dive({ name: 'Benediction', big: 'GRACE', cd: 0.7, vy: 22,
+        touch(p, m) { for (const e of box(p, 1, -0.7, 0.7, 0.9, 0.5)) if (!m.hs.has(e)) { m.hs.add(e); hit(e, D(m, 1.2), { el: null, kx: 0, ky: 12, stun: 0.4, big: true }); } },
+        land(p, m) {
+          const r = R(m, 2.2), x = pcx(p), y = p.y + p.h; let n = 0, got = 0;
+          for (const e of circ(x, y - 0.4, r)) { hit(e, D(m, 2), { el: null, kx: away(e, p, m.f) * 5, ky: -9, stun: 0.5, big: true, shake: 7 }); if (n++ < 3) got += 0.4 + reap(e); drain(e, p); }
+          if (got) heal(p, got);
+          push({ k: 'shock', x, y, R: r, c: GOLD, life: 0.4 }); push({ k: 'halo', x, y, R: r * 0.8, H: 1.6, life: 0.35 }); FK.thud(true); FK.shake(6);
+        } }),
+    },
   };
   function chomp(p, m, e) {
     hit(e, D(m, 1.6), { el: 'poison', n: 1, rupture: true, kx: m.f * 4, ky: -10, stun: 0.5, big: true, shake: 6 });
@@ -602,7 +695,7 @@
   }
 
   // each form moves differently too
-  const PHYS = { ember: { speed: 5.5, jumpForce: -12.5, dashDist: 3.6 }, frost: { speed: 5.0, jumpForce: -13.2, dashDist: 3.4 }, venom: { speed: 5.3, jumpForce: -12.8, dashDist: 3.8 }, volt: { speed: 6.3, jumpForce: -12.3, dashDist: 4.2 } };
+  const PHYS = { ember: { speed: 5.5, jumpForce: -12.5, dashDist: 3.6 }, frost: { speed: 5.0, jumpForce: -13.2, dashDist: 3.4 }, venom: { speed: 5.3, jumpForce: -12.8, dashDist: 3.8 }, volt: { speed: 6.3, jumpForce: -12.3, dashDist: 4.2 }, lumen: { speed: 5.4, jumpForce: -13.0, dashDist: 3.6 } };
   const _origPhys = window.cboxCharPhysics;
   window.cboxCharPhysics = function (charId, player, keys, dt) {
     if (charId !== ID) return _origPhys ? _origPhys(charId, player, keys, dt) : null;
@@ -620,7 +713,7 @@
     S.clock = (S.clock || 0) + dt;
     if (S.lastPX != null && !S.selfMove && (Math.abs(p.x - S.lastPX) > 4 || Math.abs(p.y - S.lastPY) > 4)) endMove(p);   // respawned or teleported
     S.selfMove = false;
-    for (const k of ['atkCD', 'switchCD', 'prism', 'shiftT', 'invis']) if (S[k] > 0) S[k] = Math.max(0, S[k] - dt);
+    for (const k of ['atkCD', 'switchCD', 'prism', 'shiftT', 'invis', 'healT', 'sanct', 'wings']) if (S[k] > 0) S[k] = Math.max(0, S[k] - dt);
     if (S.heatT > 0) { S.heatT -= dt; if (S.heatT <= 0 && S.heat > 0) { S.heat--; S.heatT = 0.5; } }
     S.airT = p.onGround ? 0 : S.airT + dt;
     if (p.onGround) { S.airUp = false; S.airSide = false; S.airHop = false; }
@@ -720,6 +813,29 @@
       for (const s of [-1, 1]) { FK.solid(ctx, WHITE, Math.min(1, a * 2)); ctx.beginPath(); for (let i = -2; i <= 2; i++) { const bx = x + i * T * 0.2; ctx.moveTo(bx - T * 0.09, y + s * (g + T * 0.3)); ctx.lineTo(bx, y + s * g); ctx.lineTo(bx + T * 0.09, y + s * (g + T * 0.3)); } ctx.fill(); }
       return true;
     }
+    if (f.k === 'beam') {   // Siphon Beam: a lance of light that thins out
+      const x2 = x + f.f * f.L * T, w = T * 0.5 * a;
+      ctx.lineCap = 'round';
+      for (const [c, k, al] of [[GOLD, 1, 0.45], [WHITE, 0.55, 0.9]]) { FK.glow(ctx, c, a * al); ctx.lineWidth = w * k + 1; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x2, y); ctx.stroke(); }
+      for (let i = 0; i < 6; i++) { const q = ((i / 6 + 1 - u) % 1); FK.star(ctx, x + (x2 - x) * q, y + Math.sin(i * 2.4 + u * 9) * T * 0.22, T * 0.14, u * 4 + i, i % 2 ? GOLD : WHITE, a); }   // motes run back to him
+      return true;
+    }
+    if (f.k === 'drain') {   // life leaving a foe for him
+      const tx = V.SX(pcx(p)), ty = V.SY(pcy(p)), e2 = FK.ease(u);
+      for (let i = 0; i < 4; i++) { const k = Math.max(0, Math.min(1, e2 * 1.3 - i * 0.08)), sw = Math.sin(k * Math.PI) * T * 0.5 * (i % 2 ? 1 : -1); FK.star(ctx, x + (tx - x) * k, y + (ty - y) * k + sw, T * 0.13, u * 6 + i, i % 2 ? MEND : WHITE, Math.min(1, a * 2)); }
+      return true;
+    }
+    if (f.k === 'mend') {   // little crosses rising off him
+      const cx = V.SX(pcx(p)), cy = V.SY(pcy(p));
+      for (let i = 0; i < 4; i++) { const mx = cx + ((i * 0.37 + f.x) % 1 - 0.5) * T * 1.1, my = cy + T * 0.3 - u * T * (0.7 + i * 0.15) - i * T * 0.1, s = T * 0.09; FK.glow(ctx, MEND, a * 0.9); ctx.fillRect(mx - s, my - s / 3, s * 2, s / 1.5); ctx.fillRect(mx - s / 3, my - s, s / 1.5, s * 2); }
+      return true;
+    }
+    if (f.k === 'halo') {   // a ring of light lifting off the floor
+      const e2 = FK.easeOut(u), yy = y - f.H * T * e2, r = f.R * T * (0.6 + 0.4 * e2);
+      FK.glow(ctx, GOLD, a * 0.25); ctx.fillRect(x - r * 0.8, yy, r * 1.6, y - yy);
+      for (const [c, lw] of [[GOLD, 6], [WHITE, 2.5]]) { FK.glow(ctx, c, a); ctx.lineWidth = lw * a + 1; ctx.beginPath(); ctx.ellipse(x, yy, r, r * 0.24, 0, 0, Math.PI * 2); ctx.stroke(); }
+      return true;
+    }
     if (f.k === 'prism') {
       for (let i = 0; i < 6; i++) { const an = i * Math.PI / 3 + V.now * 4, r = T * (0.5 + 1.1 * FK.easeOut(u)); FK.glow(ctx, rainbow(i, V.now), a); ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, r, an, an + 0.7); ctx.stroke(); }
       return true;
@@ -768,6 +884,12 @@
     } else if (z.k === 'spore') {
       for (let i = 0; i < 9; i++) { const an = i * 0.698 + now * (i % 2 ? 0.8 : -0.6), rr = z.r * T * (0.25 + 0.6 * ((i * 0.37) % 1)); FK.solid(ctx, i % 3 ? FORMS[2].c : FORMS[2].a, a * 0.28); ctx.beginPath(); ctx.arc(x + Math.cos(an) * rr, y + Math.sin(an) * rr * 0.8, T * (0.38 + 0.12 * Math.sin(now * 3 + i)), 0, Math.PI * 2); ctx.fill(); }
       FK.glow(ctx, FORMS[2].a, a * 0.5); ctx.lineWidth = 1.5; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.arc(x, y, z.r * T, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    } else if (z.k === 'sanct') {
+      const r = z.r * T, pu = 0.5 + 0.5 * Math.sin(now * 5), left = Math.max(0, z.pool / 2);
+      FK.glow(ctx, GOLD, a * (0.14 + 0.08 * pu)); ctx.beginPath(); ctx.ellipse(x, y, r, T * 0.22, 0, 0, Math.PI * 2); ctx.fill();
+      FK.glow(ctx, WHITE, a * 0.8); ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, y, r, T * 0.22, 0, 0, Math.PI * 2); ctx.stroke();
+      FK.glow(ctx, GOLD, a * 0.7); ctx.lineWidth = 1.5; ctx.setLineDash([5, 7]); ctx.lineDashOffset = -now * 30; ctx.beginPath(); ctx.ellipse(x, y, r * 0.72, T * 0.15, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      for (let i = 0; i < 7; i++) { const ph = (now * 0.55 + i * 0.143) % 1, bx = x + ((i * 0.618) % 1 - 0.5) * r * 1.7; FK.star(ctx, bx, y - ph * T * 1.6, T * 0.1 * (1 - ph * 0.5), now * 2 + i, left > 0 && i % 2 ? MEND : GOLD, a * (1 - ph)); }
     } else if (z.k === 'wall') {
       const h = z.h * T * FK.easeOut(z.t * 7), w = T * 0.8;
       ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = a * 0.92;
@@ -798,6 +920,7 @@
       if (e._chBurn > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.85; for (let i = -1; i <= 1; i++) flameShape(ctx, x + i * T * 0.22, V.SY(e.y) + T * 0.15, T * 0.2, T * 0.42, now + i * 0.7, FORMS[0].c, FORMS[0].g); }
       if (e._chPois > 0 && e._chPoisN > 0) for (let i = 0; i < e._chPoisN; i++) { FK.solid(ctx, '#2a0f3d', 1); ctx.beginPath(); ctx.arc(x + (i - (e._chPoisN - 1) / 2) * 8, top, 3.6, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = i % 2 ? FORMS[2].c : FORMS[2].a; ctx.beginPath(); ctx.arc(x + (i - (e._chPoisN - 1) / 2) * 8, top, 2.5, 0, Math.PI * 2); ctx.fill(); }
       if (e._chChill > 0 && !(e._ppFrozen > 0)) for (let i = 0; i < e._chChill; i++) { ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; crystal(ctx, x + (i - (e._chChill - 1) / 2) * 9, top + 4, 7, 10, FORMS[1].c, WHITE); }
+      if (e._chLight > 0) FK.star(ctx, x, top - 5, 6 + 1.5 * Math.sin(now * 8), now * 2, GOLD, Math.min(1, e._chLight * 2));
       if (e._chStatic > 0) { FK.glow(ctx, FORMS[3].c, 0.6 + 0.4 * Math.sin(now * 20)); ctx.lineWidth = 2; const yy = top - 4; ctx.beginPath(); ctx.moveTo(x + 3, yy - 7); ctx.lineTo(x - 3, yy); ctx.lineTo(x + 2, yy); ctx.lineTo(x - 3, yy + 7); ctx.stroke(); }
     }
   }
@@ -815,6 +938,14 @@
     if (S.prism > 0) for (let i = 0; i < 6; i++) { const an = i * Math.PI / 3 + V.now * 5; FK.glow(ctx, rainbow(i, V.now), Math.min(1, S.prism * 2) * 0.85); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, T * 0.85, an, an + 0.62); ctx.stroke(); }
     // HEAT pips (Ember)
     if (S.heat > 0 && form().id === 'ember') for (let i = 0; i < S.heat; i++) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.95; flameShape(ctx, x + (i - (S.heat - 1) / 2) * 8, V.SY(p.y) - 6, 7, 11, V.now + i, FORMS[0].c, FORMS[0].a); }
+    // LUMEN: a soft pulse while he mends, wings on Ascension, and (main game) the mend meter filling toward +1 heart
+    if (S.healT > 0) { ctx.beginPath(); ctx.arc(x, y, T * (0.78 + 0.1 * Math.sin(V.now * 24)), 0, Math.PI * 2); FK.glow(ctx, MEND, Math.min(0.6, S.healT * 1.2)); ctx.lineWidth = 3; ctx.stroke(); }
+    if (S.wings > 0) for (const s of [-1, 1]) for (let i = 0; i < 3; i++) { const an = -0.5 - i * 0.42 + Math.sin(V.now * 26) * 0.18, L = T * (1.05 - i * 0.2); FK.taper(ctx, [[x + s * T * 0.15, y - T * 0.1], [x + s * (T * 0.15 + Math.cos(an) * L * 0.6), y - T * 0.1 + Math.sin(an) * L * 0.6 - T * 0.1], [x + s * (T * 0.15 + Math.cos(an) * L), y - T * 0.1 + Math.sin(an) * L]], T * 0.2, i ? WHITE : GOLD, Math.min(1, S.wings * 9) * 0.85); }
+    if (form().id === 'lumen' && S.bank > 0.02 && !inSmash() && !window._fighterPass && (p.hp || 0) < (p.maxHp || 0)) {
+      const by = V.SY(p.y) - 8, bw = T * 0.8;
+      FK.solid(ctx, '#1c1830', 0.75); ctx.beginPath(); ctx.roundRect(x - bw / 2 - 1, by - 1, bw + 2, 5, 2.5); ctx.fill();
+      FK.solid(ctx, MEND, 1); ctx.beginPath(); ctx.roundRect(x - bw / 2, by, bw * Math.min(1, S.bank), 3, 1.5); ctx.fill();
+    }
     FK.drawFx(ctx, V, S.fx, drawFx);
     ctx.restore();
   }
@@ -881,6 +1012,7 @@
     if (fm.id === 'ember') flameShape(ctx, tip[0], tip[1] + 0.03, 0.12 + heat * 0.012, 0.2 + heat * 0.03, t, fm.c, fm.a);
     else if (fm.id === 'frost') crystal(ctx, tip[0], tip[1] + 0.06, 0.1, 0.16, fm.g, WHITE);
     else if (fm.id === 'venom') { const dr = (t * 0.8) % 1; ctx.fillStyle = fm.a; ctx.beginPath(); ctx.arc(tip[0], tip[1], 0.045, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha *= 1 - dr; ctx.beginPath(); ctx.arc(tc[0] - 0.12, tc[1] + 0.12 + dr * 0.25, 0.022, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha /= 1 - dr || 1; }
+    else if (fm.id === 'lumen') { const r = 0.075 + 0.012 * Math.sin(t * 5); ctx.fillStyle = fm.a; ctx.beginPath(); for (let i = 0; i < 8; i++) { const an = t * 1.5 + i * Math.PI / 4, rr = i % 2 ? r * 0.32 : r; ctx.lineTo(tip[0] + Math.cos(an) * rr, tip[1] + Math.sin(an) * rr); } ctx.closePath(); ctx.fill(); ctx.fillStyle = WHITE; ctx.beginPath(); ctx.arc(tip[0], tip[1], 0.02, 0, Math.PI * 2); ctx.fill(); }   // a little star
     else { ctx.fillStyle = fm.a; ctx.beginPath(); ctx.arc(tip[0], tip[1], 0.04 + 0.012 * Math.sin(t * 22), 0, Math.PI * 2); ctx.fill(); }
 
     // legs
@@ -911,6 +1043,7 @@
       if (fm.id === 'ember' && (m || heat > 0)) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; flameShape(ctx, hx, hy + 0.05, 0.13 + heat * 0.015, 0.2 + heat * 0.03, t + ang, fm.c, fm.a); ctx.restore(); }
       else if (fm.id === 'volt' && m) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = fm.a; ctx.lineWidth = 0.02; zig(ctx, hx, hy, hx + rnd(-0.16, 0.16), hy + rnd(-0.16, 0.16), 3, 0.08); ctx.restore(); }
       else if (fm.id === 'frost' && m) crystal(ctx, hx + 0.04, hy + 0.05, 0.08, 0.14, fm.g, WHITE);
+      else if (fm.id === 'lumen' && (m || S.healT > 0)) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = S.healT > 0 ? MEND : fm.a; ctx.globalAlpha *= 0.55; ctx.beginPath(); ctx.arc(hx, hy, 0.1 + 0.02 * Math.sin(t * 20 + ang), 0, Math.PI * 2); ctx.fill(); ctx.restore(); }
     };
     arm(q.arm2, q.reach2 || 0, true);
 
@@ -920,11 +1053,11 @@
     ctx.fillStyle = fm.b; ctx.beginPath(); ctx.ellipse(0.13, -0.28, 0.16, 0.19, 0.2, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = mix(fm.b, fm.c, 0.45); ctx.lineWidth = 0.014; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(0.36, -0.38 + i * 0.09, 0.3, 2.5, 3.6); ctx.stroke(); }
     // markings on his flank: each form's own
-    ctx.fillStyle = fm.id === 'venom' ? fm.a : fm.g; ctx.globalAlpha *= 0.85;
+    ctx.fillStyle = fm.id === 'venom' || fm.id === 'lumen' ? fm.a : fm.g; ctx.globalAlpha *= 0.85;
     for (const [mx, my, mr] of [[-0.12, -0.44, 0.04], [-0.17, -0.33, 0.03], [-0.07, -0.3, 0.024]]) {
       ctx.beginPath();
       if (fm.id === 'volt') { ctx.moveTo(mx + mr, my - mr * 1.6); ctx.lineTo(mx - mr * 0.6, my); ctx.lineTo(mx + mr * 0.3, my); ctx.lineTo(mx - mr, my + mr * 1.6); ctx.lineTo(mx + mr * 0.8, my - mr * 0.3); ctx.lineTo(mx, my - mr * 0.3); }
-      else if (fm.id === 'frost') { ctx.moveTo(mx, my - mr * 1.5); ctx.lineTo(mx + mr, my); ctx.lineTo(mx, my + mr * 1.5); ctx.lineTo(mx - mr, my); }
+      else if (fm.id === 'frost' || fm.id === 'lumen') { ctx.moveTo(mx, my - mr * 1.5); ctx.lineTo(mx + mr, my); ctx.lineTo(mx, my + mr * 1.5); ctx.lineTo(mx - mr, my); }
       else if (fm.id === 'ember') { ctx.moveTo(mx - mr, my + mr); ctx.quadraticCurveTo(mx - mr, my - mr, mx, my - mr * 1.7); ctx.quadraticCurveTo(mx + mr, my - mr, mx + mr, my + mr); }
       else ctx.arc(mx, my, mr, 0, Math.PI * 2);
       ctx.closePath(); ctx.fill();
@@ -932,13 +1065,14 @@
     ctx.restore();
     leg(legs[1], C);
 
-    // the ridge down his back: flames, crystals, toxic knobs or jagged bolts
+    // the ridge down his back: flames, crystals, toxic knobs, jagged bolts or gold-tipped feathers
     const ridge = [[-0.2, -0.47, 0.8], [-0.14, -0.6, 1], [-0.1, -0.76, 1.15], [-0.03, -0.9, 1]];
     ridge.forEach(([rx, ry, k], i) => {
       ctx.save(); ctx.translate(rx, ry); ctx.rotate(-0.75 + i * 0.12);
       if (fm.id === 'ember') flameShape(ctx, 0, 0.02, 0.12 * k, (0.17 + heat * 0.035) * k, t + i * 1.3, fm.c, fm.a);
       else if (fm.id === 'frost') crystal(ctx, 0, 0.03, 0.1 * k, 0.19 * k, fm.g, WHITE);
       else if (fm.id === 'venom') { ctx.fillStyle = fm.d; ctx.beginPath(); ctx.arc(0, -0.035 * k, 0.058 * k, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = fm.a; ctx.beginPath(); ctx.arc(0, -0.04 * k, 0.04 * k, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#e9c8ff'; ctx.beginPath(); ctx.arc(0.012, -0.055 * k, 0.012, 0, Math.PI * 2); ctx.fill(); }
+      else if (fm.id === 'lumen') { const h = 0.2 * k, sw = Math.sin(t * 2.2 + i) * 0.015; for (const [c, kk] of [[Dk, 1.25], [fm.a, 1], [WHITE, 0.62]]) { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(0, 0.03); ctx.quadraticCurveTo(-0.06 * k * kk, -h * 0.45, sw, -h * (kk > 1 ? 1.06 : kk < 1 ? 0.72 : 1)); ctx.quadraticCurveTo(0.06 * k * kk, -h * 0.45, 0, 0.03); ctx.closePath(); ctx.fill(); } }
       else { const h = 0.2 * k * (0.9 + 0.1 * Math.sin(t * 30 + i)); ctx.fillStyle = fm.a; ctx.beginPath(); ctx.moveTo(-0.05 * k, 0.02); ctx.lineTo(-0.02, -h * 0.5); ctx.lineTo(-0.05, -h * 0.45); ctx.lineTo(0.01, -h); ctx.lineTo(0.03, -h * 0.5); ctx.lineTo(0.06, -h * 0.55); ctx.lineTo(0.05 * k, 0.02); ctx.closePath(); ctx.fill(); ctx.fillStyle = WHITE; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0.005, -h * 0.8); ctx.lineTo(0.025, 0); ctx.closePath(); ctx.fill(); }
       ctx.restore();
     });
@@ -973,12 +1107,17 @@
     };
     eye(0.3, -0.2, 0.065, look2);
     eye(0.1, -0.16, 0.125, look);
+    if (fm.id === 'lumen') {   // a halo floating over his casque
+      const hy = -0.53 + Math.sin(t * 2.2) * 0.012;
+      for (const [c, w] of [[mix(fm.a, fm.d, 0.45), 0.05], [fm.a, 0.032], [WHITE, 0.01]]) { ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath(); ctx.ellipse(-0.02, hy, 0.17, 0.05, -0.08, 0, Math.PI * 2); ctx.stroke(); }
+    }
     ctx.restore();
 
     arm(q.arm, q.reach, false);
-    // Frost breathes mist, Volt crackles
+    // Frost breathes mist, Volt crackles, Lumen glints
     if (live && fm.id === 'frost' && !m) { const br = (t * 0.6) % 1; ctx.fillStyle = WHITE; ctx.globalAlpha *= 0.5 * (1 - br); ctx.beginPath(); ctx.arc(0.55 + br * 0.15, -0.62 - br * 0.08, 0.03 + br * 0.05, 0, Math.PI * 2); ctx.fill(); }
     if (live && fm.id === 'volt' && Math.sin(t * 9) > 0.55) { ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = fm.a; ctx.lineWidth = 0.018; const a0 = Math.floor(t * 9) * 2.4; zig(ctx, Math.cos(a0) * 0.3, -0.5 + Math.sin(a0) * 0.35, Math.cos(a0 + 0.9) * 0.4, -0.5 + Math.sin(a0 + 0.9) * 0.45, 4, 0.1); }
+    if (live && fm.id === 'lumen' && !m) { const gl = (t * 0.7) % 1, gi = Math.floor(t * 0.7), gx = Math.sin(gi * 2.7) * 0.32, gy = -0.5 + Math.cos(gi * 1.9) * 0.3, r = 0.07 * Math.sin(gl * Math.PI); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = fm.a; ctx.beginPath(); for (let i = 0; i < 8; i++) { const an = i * Math.PI / 4, rr = i % 2 ? r * 0.25 : r; ctx.lineTo(gx + Math.cos(an) * rr, gy + Math.sin(an) * rr); } ctx.closePath(); ctx.fill(); }
     ctx.restore();
   }
   const _origDraw = window.cboxCharDraw;
