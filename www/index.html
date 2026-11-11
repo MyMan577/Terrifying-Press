@@ -4234,6 +4234,22 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <div class="menu-item">
           <div class="menu-item-head">
             <div class="menu-item-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h6l4 10h6"/><path d="M4 17h6l1.2-3"/><path d="M14 7h6"/></svg>
+              <span>Mashup</span>
+            </div>
+            <label class="qb-toggle"><input type="checkbox" class="qb-checkbox" data-qb="mashup"> Quick bar</label>
+          </div>
+          <div class="menu-item-slot" data-slot="mashup">
+            <button class="pill-btn" id="mashup-btn" type="button" title="Mashup: vocals of one song over another" aria-label="Mashup" data-item-wrapper="mashup">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h6l4 10h6"/><path d="M4 17h6l1.2-3"/><path d="M14 7h6"/></svg>
+              <span>Mashup</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="menu-item">
+          <div class="menu-item-head">
+            <div class="menu-item-title">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>
               <span>Sleep timer</span>
             </div>
@@ -5239,10 +5255,6 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <button class="pill-btn" id="cutter-btn" title="Trim &amp; export clip" aria-label="Trim and export a clip" data-item-wrapper="cutter">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
           <span>Cut</span>
-        </button>
-        <button class="pill-btn" id="mashup-btn" title="Mashup: vocals of one song over another" aria-label="Mashup">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h6l4 10h6"/><path d="M4 17h6l1.2-3"/><path d="M14 7h6"/></svg>
-          <span>Mashup</span>
         </button>
         <div style="position:relative;" data-item-wrapper="sleep">
           <button class="pill-btn" id="sleep-btn" title="Sleep timer" aria-label="Sleep timer">
@@ -13551,7 +13563,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   // real listeners already attached above) that we relocate between the
   // quick bar row and its slot inside the settings menu, rather than
   // cloning or rebuilding anything.
-  const QUICKBAR_ORDER = ['eq', 'boost', 'fx', 'speed', 'marks', 'abloop', 'cutter', 'stems', 'sleep', 'framestep', 'viewmode', 'vizsens', 'latency', 'memc', 'upscale', 'appearance'];
+  const QUICKBAR_ORDER = ['eq', 'boost', 'fx', 'speed', 'marks', 'abloop', 'cutter', 'stems', 'mashup', 'sleep', 'framestep', 'viewmode', 'vizsens', 'latency', 'memc', 'upscale', 'appearance'];
   const QUICKBAR_DEFAULT = ['speed', 'marks', 'abloop', 'cutter', 'sleep'];
   const QUICKBAR_KEY = 'playerQuickBar';
   // Hard cap: the pill row lives in the same fixed-size column as the
