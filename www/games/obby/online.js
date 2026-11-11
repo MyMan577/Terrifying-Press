@@ -84,7 +84,8 @@
   var remoteChar = null, smCourse = null;
   var smNet = {
     get role(){ return role; },
-    remotePos: function(){ return remote ? { x: blendX || remote.x, y: blendY || remote.y, w: remote.w, h: remote.h, char: remote.char, vx: remote.vx, vy: remote.vy, onGround: remote.onGround } : null; },
+    remotePos: function(){ return remote ? { x: blendX || remote.x, y: blendY || remote.y, w: remote.w, h: remote.h, char: remote.char, vx: remote.vx, vy: remote.vy, onGround: remote.onGround,
+      em: remote.em && remote.em.id ? { id: remote.em.id, t: remote.em.t + (performance.now() - (remote._at || performance.now())) / 1000 } : null } : null; },
     sendHit: function(pct, ix, iy, fromX, k){ if (conn) conn.send({ t: 'smHit', pct: pct, ix: ix, iy: iy, fromX: fromX, k: k }); },
     sendKO: function(){ var S = SMK(); if (conn && S) conn.send({ t: 'smKO', stocks: S.me.stocks }); },
     sendOver: function(w){ if (conn && role === 'host') conn.send({ t: 'smOver', w: w === 'me' ? 'foe' : w === 'foe' ? 'me' : 'draw' }); },
