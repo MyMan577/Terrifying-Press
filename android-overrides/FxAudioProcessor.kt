@@ -1,10 +1,15 @@
 package com.pressplay.media
 
+import android.os.SystemClock
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.AudioProcessor.AudioFormat
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.ForwardingAudioSink
 import java.nio.ByteBuffer
 import kotlin.math.*
 
@@ -34,6 +39,8 @@ private class Biquad {
         val y = b0 * x + z1
         z1 = b1 * x - a1 * y + z2
         z2 = b2 * x - a2 * y
+        if (abs(z1) < 1e-25) z1 = 0.0
+        if (abs(z2) < 1e-25) z2 = 0.0
         return y
     }
     fun reset() { z1 = 0.0; z2 = 0.0 }
@@ -41,23 +48,26 @@ private class Biquad {
         b0 = nb0 / na0; b1 = nb1 / na0; b2 = nb2 / na0; a1 = na1 / na0; a2 = na2 / na0
     }
     fun identity() { b0 = 1.0; b1 = 0.0; b2 = 0.0; a1 = 0.0; a2 = 0.0 }
+    // The same formulas the WebView's BiquadFilterNode uses, so a knob sounds the same in both engines.
+    private fun w(sr: Double, f: Double) = 2 * PI * min(f, sr * 0.49) / sr
     fun peaking(sr: Double, f: Double, q: Double, db: Double) {
-        val a = 10.0.pow(db / 40.0); val w = 2 * PI * f / sr
+        val a = 10.0.pow(db / 40.0); val w = w(sr, f)
         val al = sin(w) / (2 * q); val c = cos(w)
         set(1 + al * a, -2 * c, 1 - al * a, 1 + al / a, -2 * c, 1 - al / a)
     }
     fun lowShelf(sr: Double, f: Double, db: Double) {
-        val a = 10.0.pow(db / 40.0); val w = 2 * PI * f / sr
+        val a = 10.0.pow(db / 40.0); val w = w(sr, f)
         val c = cos(w); val al = sin(w) / 2 * sqrt(2.0); val sa = 2 * sqrt(a) * al
         set(a * ((a + 1) - (a - 1) * c + sa), 2 * a * ((a - 1) - (a + 1) * c), a * ((a + 1) - (a - 1) * c - sa),
             (a + 1) + (a - 1) * c + sa, -2 * ((a - 1) + (a + 1) * c), (a + 1) + (a - 1) * c - sa)
     }
-    fun lowpass(sr: Double, f: Double, q: Double) {
-        val w = 2 * PI * f / sr; val c = cos(w); val al = sin(w) / (2 * q)
+    /** [qDb] is the resonance in dB, as Web Audio defines Q for lowpass and highpass. */
+    fun lowpass(sr: Double, f: Double, qDb: Double) {
+        val w = w(sr, f); val c = cos(w); val al = sin(w) / (2 * 10.0.pow(qDb / 20.0))
         set((1 - c) / 2, 1 - c, (1 - c) / 2, 1 + al, -2 * c, 1 - al)
     }
-    fun highpass(sr: Double, f: Double, q: Double) {
-        val w = 2 * PI * f / sr; val c = cos(w); val al = sin(w) / (2 * q)
+    fun highpass(sr: Double, f: Double, qDb: Double) {
+        val w = w(sr, f); val c = cos(w); val al = sin(w) / (2 * 10.0.pow(qDb / 20.0))
         set((1 + c) / 2, -(1 + c), (1 + c) / 2, 1 + al, -2 * c, 1 - al)
     }
 }
@@ -67,6 +77,7 @@ private class Comb(size: Int) {
     fun process(x: Float, feedback: Float, damp: Float): Float {
         val out = buf[i]
         store = out * (1 - damp) + store * damp
+        if (abs(store) < 1e-20f) store = 0f
         buf[i] = x + store * feedback
         if (++i >= buf.size) i = 0
         return out
@@ -86,16 +97,55 @@ private class Allpass(size: Int) {
     fun clear() { buf.fill(0f); i = 0 }
 }
 
+/** Everything one channel needs. Sizes depend on the sample rate. */
+private class Chan(sr: Double, index: Int) {
+    val eq = Array(10) { Biquad() }
+    val sub = Biquad(); val shelf = Biquad(); val peak = Biquad()
+    val exLp = Biquad(); val exHp = Biquad()
+    val lp = Biquad(); val hp = Biquad()
+    val wetHp = Biquad(); val wetLp = Biquad()
+    var crushHold = 0.0; var crushCount = 0
+    val echo = FloatArray(max(1, (sr * 0.24).roundToInt()))
+    val pre = FloatArray(max(1, (sr * 0.018).roundToInt())); var preIdx = 0
+    var dark = 0.0
+    private val k = sr / 44100.0; private val spread = if (index % 2 == 1) 23 else 0
+    val combs = Array(8) { Comb(((intArrayOf(1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617)[it] + spread) * k).toInt()) }
+    val aps = Array(4) { Allpass(((intArrayOf(556, 441, 341, 225)[it] + spread) * k).toInt()) }
+    fun clear() {
+        eq.forEach { it.reset() }
+        sub.reset(); shelf.reset(); peak.reset(); exLp.reset(); exHp.reset(); lp.reset(); hp.reset(); wetHp.reset(); wetLp.reset()
+        crushHold = 0.0; crushCount = 0; echo.fill(0f); pre.fill(0f); preIdx = 0; dark = 0.0
+        combs.forEach { it.clear() }; aps.forEach { it.clear() }
+    }
+}
+
 /**
- * Native replacement for the Web Audio effect chain: 10-band EQ, boost, bass, DJ filter,
- * distortion, bitcrush, tremolo, echo, reverb. Also keeps a short ring of the output so the
- * UI visualizer can pull a spectrum without RECORD_AUDIO.
+ * Native version of the page's Web Audio effect chain, stage for stage and with the same knob curves, so a song
+ * sounds the same whether ExoPlayer or the WebView plays it:
+ *
+ *   EQ -> boost -> bass (rumble filter, shelf, punch peak, harmonics) -> DJ filter -> distortion -> bitcrush
+ *      -> tremolo -> echo -> reverb -> limiter
+ *
+ * It also keeps the last few seconds of its output, stamped with the playback clock, so the visualizer can be
+ * shown the sound that is leaving the speaker right now instead of sound that is still waiting in the buffer.
  */
 @UnstableApi
 class FxAudioProcessor : BaseAudioProcessor() {
     companion object {
         private val EQ_FREQS = doubleArrayOf(31.0, 60.0, 170.0, 350.0, 500.0, 1000.0, 3500.0, 6000.0, 10000.0, 16000.0)
         private const val FFT_N = 1024
+        private const val RING = 1 shl 17               // about 2.7 s at 48 kHz
+        const val UNSET = Long.MIN_VALUE
+        private const val ROOM_GAIN = 44.0              // loudness of the room model itself (measured), divided back out
+        private const val LIM_THRESH_DB = -2.0; private const val LIM_KNEE_DB = 3.0; private const val LIM_RATIO = 10.0
+        private fun easeIn(v: Double, curve: Double) = sign(v) * abs(v).pow(curve)
+        private fun easeOut(v: Double, curve: Double) = sign(v) * (1 - (1 - abs(v)).pow(curve))
+        /** The page's waveshaper curve (makeDistortionCurve) as a function. */
+        private fun shape(x: Double, k: Double): Double {
+            val c = if (x > 1) 1.0 else if (x < -1) -1.0 else x
+            return (3 + k) * c * (PI / 9) / (PI + k * abs(c))
+        }
+        private fun shapeK(amount: Double) = easeIn(amount, 2.2) * 320
     }
 
     @Volatile var params: FxParams = FxParams()
@@ -103,42 +153,39 @@ class FxAudioProcessor : BaseAudioProcessor() {
 
     private var sr = 44100.0
     private var ch = 2
-
-    private var eq = Array(2) { Array(10) { Biquad() } }
-    private var shelf = Array(2) { Biquad() }
-    private var lp = Array(2) { Biquad() }
-    private var hp = Array(2) { Biquad() }
-    private var combs = Array(2) { Array(4) { Comb(1) } }
-    private var aps = Array(2) { Array(2) { Allpass(1) } }
-    private var echoBuf = Array(2) { FloatArray(1) }
+    private var chans = Array(2) { Chan(44100.0, it) }
+    private var tmp = DoubleArray(2)
     private var echoIdx = 0
     private var tremPhase = 0.0
-    private var crushHold = FloatArray(2); private var crushCount = 0
-
-    // Visualizer ring (mono, post-FX)
-    private val ring = FloatArray(FFT_N); @Volatile private var ringPos = 0
-    @Volatile var vizOn = false
 
     // cached per-refresh
-    private var eqActive = BooleanArray(10)
-    private var bassOn = false; private var lpOn = false; private var hpOn = false
-    private var drive = 0.0; private var distMix = 0.0
-    private var bits = 16; private var hold = 1
-    private var trem = 0.0
-    private var echoWet = 0f; private var echoFb = 0f
-    private var revWet = 0f
-    private var gain = 1f
+    private var eqOn = false; private val eqActive = BooleanArray(10)
+    private var bassOn = false; private var exK = 0.0; private var exGain = 0.0
+    private var lpOn = false; private var hpOn = false
+    private var distOn = false; private var distK = 0.0
+    private var crushOn = false; private var crushStep = 1.0; private var crushEvery = 1
+    private var tremOn = false; private var tremDepth = 0.0
+    private var echoOn = false; private var echoWet = 0f; private var echoFb = 0f
+    private var revOn = false; private var revWet = 0.0; private var revDry = 1.0; private var revDark = 0.1; private var revNorm = 1.0
+    private var gainTarget = 1.0; private var gainNow = 1.0; private var gainK = 1.0
+    private var limDb = 0.0; private var limAtk = 1.0; private var limRel = 1.0
 
     override fun onConfigure(inputAudioFormat: AudioFormat): AudioFormat {
-        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT || inputAudioFormat.channelCount !in 1..2) {
+        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT || inputAudioFormat.channelCount !in 1..8) {
             return AudioFormat.NOT_SET // inactive: audio passes through untouched
         }
         sr = inputAudioFormat.sampleRate.toDouble(); ch = inputAudioFormat.channelCount
-        val k = sr / 44100.0
-        combs = Array(2) { c -> Array(4) { i -> Comb(((intArrayOf(1116, 1188, 1277, 1356)[i] + c * 23) * k).toInt()) } }
-        aps = Array(2) { c -> Array(2) { i -> Allpass(((intArrayOf(556, 441)[i] + c * 11) * k).toInt()) } }
-        echoBuf = Array(2) { FloatArray(max(1, (sr * 0.45).toInt())) }
+        chans = Array(ch) { Chan(sr, it) }
+        tmp = DoubleArray(ch)
         echoIdx = 0
+        gainK = 1 - exp(-1 / (0.015 * sr))
+        limAtk = 1 - exp(-1 / (0.002 * sr)); limRel = 1 - exp(-1 / (0.12 * sr))
+        // The page's reverb is a convolution with a decaying burst of low-passed noise. Here a room model is voiced to
+        // match it: the same dark tone (the noise's one-pole filter) and the same loudness for the same knob position.
+        val fc = -ln(1 - 0.12) * 48000 / (2 * PI)
+        revDark = 1 - exp(-2 * PI * fc / sr)
+        revNorm = 0.00125 * (44100.0 / 48000.0) * sqrt(48000 * 2.8) * sqrt(24000 / (fc * atan(24000 / fc))) / ROOM_GAIN
+        synchronized(clk) { rate = inputAudioFormat.sampleRate }
         applied = null
         return inputAudioFormat
     }
@@ -147,32 +194,43 @@ class FxAudioProcessor : BaseAudioProcessor() {
     override fun onReset() { clearState(); applied = null }
 
     private fun clearState() {
-        eq.forEach { a -> a.forEach { it.reset() } }
-        shelf.forEach { it.reset() }; lp.forEach { it.reset() }; hp.forEach { it.reset() }
-        combs.forEach { a -> a.forEach { it.clear() } }; aps.forEach { a -> a.forEach { it.clear() } }
-        echoBuf.forEach { it.fill(0f) }; echoIdx = 0; tremPhase = 0.0; crushCount = 0
+        chans.forEach { it.clear() }
+        echoIdx = 0; tremPhase = 0.0; limDb = 0.0
     }
 
     private fun refresh(p: FxParams) {
-        for (c in 0 until 2) {
+        eqOn = p.eqOn
+        val bassT = easeOut(p.bass.toDouble().coerceIn(0.0, 1.0), 2.0)
+        val filterT = easeIn(p.filter.toDouble().coerceIn(-1.0, 1.0), 1.5)
+        for (c in chans) {
             for (b in 0 until 10) {
                 val g = if (p.eqOn) p.eq.getOrElse(b) { 0f }.toDouble() else 0.0
                 eqActive[b] = abs(g) >= 0.05
-                if (eqActive[b]) eq[c][b].peaking(sr, EQ_FREQS[b], 1.1, g) else eq[c][b].identity()
+                if (eqActive[b]) c.eq[b].peaking(sr, EQ_FREQS[b], 1.0, g) else c.eq[b].identity()
             }
-            val bg = 12.0 * (1.0 - (1.0 - p.bass.toDouble()).pow(2.0))
-            shelf[c].lowShelf(sr, 120.0, bg)
-            if (p.filter < -0.01) { lp[c].lowpass(sr, 20000.0 * (200.0 / 20000.0).pow(-p.filter.toDouble()), 0.9) }
-            if (p.filter > 0.01) { hp[c].highpass(sr, 20.0 * (4000.0 / 20.0).pow(p.filter.toDouble()), 0.9) }
+            c.sub.highpass(sr, 28.0, 0.5)
+            c.shelf.lowShelf(sr, 110.0, bassT * 9.0)
+            c.peak.peaking(sr, 65.0, 0.9, bassT * 4.0)
+            c.exLp.lowpass(sr, 65.0 * 4.2, 0.7)
+            c.exHp.highpass(sr, 65.0 * 3, 0.7)
+            if (filterT < 0) c.lp.lowpass(sr, 20000.0 * (150.0 / 20000.0).pow(-filterT), 0.7)
+            if (filterT > 0) c.hp.highpass(sr, 20.0 * (6000.0 / 20.0).pow(filterT), 0.7)
+            c.wetHp.highpass(sr, 120.0, 0.5)
+            c.wetLp.lowpass(sr, 5200.0, 0.5)
         }
-        bassOn = p.bass > 0.01; lpOn = p.filter < -0.01; hpOn = p.filter > 0.01
-        drive = 1.0 + 30.0 * p.distortion * p.distortion; distMix = min(1.0, p.distortion * 2.0)
-        bits = (16 - 12 * p.bitcrush * p.bitcrush).roundToInt().coerceIn(3, 16)
-        hold = 1 + (14 * p.bitcrush * p.bitcrush).roundToInt()
-        trem = p.tremolo.toDouble()
-        echoWet = p.echo * 0.6f; echoFb = 0.15f + 0.5f * p.echo
-        revWet = p.reverb * 0.5f
-        gain = p.gain
+        bassOn = p.bass > 0f; exK = shapeK(min(1.0, bassT * 0.6)); exGain = bassT * 0.85
+        lpOn = filterT < 0; hpOn = filterT > 0
+        distOn = p.distortion > 0f; distK = shapeK(p.distortion.toDouble().coerceIn(0.0, 1.0))
+        // Bit depth and sample-and-hold, as in the page's bitcrusher (which runs at 48 kHz).
+        val crush = easeIn(p.bitcrush.toDouble().coerceIn(0.0, 1.0), 1.8)
+        crushOn = crush > 0.001
+        crushStep = 0.5.pow(16 - crush * 13)
+        crushEvery = max(1, (1 + (crush * 38 * sr / 48000.0).roundToInt()))
+        val tremT = easeOut(p.tremolo.toDouble().coerceIn(0.0, 1.0), 2.0)
+        tremOn = p.tremolo > 0f; tremDepth = tremT / 2
+        echoOn = p.echo > 0f; echoWet = p.echo * 0.55f; echoFb = p.echo * 0.42f
+        revOn = p.reverb > 0f; revWet = p.reverb.toDouble(); revDry = 1 - p.reverb * 0.7
+        gainTarget = p.gain.toDouble()
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
@@ -181,86 +239,142 @@ class FxAudioProcessor : BaseAudioProcessor() {
         val p = params
         if (p !== applied) { refresh(p); applied = p }
         val out = replaceOutputBuffer(n)
-        val bypass = p.neutral
+        val bypass = p.neutral && abs(gainNow - 1.0) < 0.001 && limDb > -0.01
         val frames = n / (2 * ch)
-        val echoLen = echoBuf[0].size
-        val tremInc = 2 * PI * 5.0 / sr
-        var rp = ringPos
-        val viz = vizOn
+        val tremInc = 2 * PI * 5.2 / sr
+        var rp = wPos
+        val t = tmp
 
         for (f in 0 until frames) {
-            if (!bypass) crushCount = (crushCount + 1) % hold
             var mono = 0f
-            for (c in 0 until ch) {
-                val raw = inputBuffer.getShort() / 32768.0f
-                var x = raw.toDouble()
-                if (!bypass) {
-                    for (b in 0 until 10) if (eqActive[b]) x = eq[c][b].process(x)
-                    if (bassOn) x = shelf[c].process(x)
-                    if (lpOn) x = lp[c].process(x)
-                    if (hpOn) x = hp[c].process(x)
-                    if (distMix > 0) {
-                        val shaped = tanh(x * drive) / tanh(drive)
-                        x = x * (1 - distMix) + shaped * distMix
+            if (bypass) {
+                for (c in 0 until ch) { val s = inputBuffer.getShort(); out.putShort(s); mono += s / 32768.0f }
+            } else {
+                gainNow += (gainTarget - gainNow) * gainK
+                val trem = if (tremOn) (1 - tremDepth) + tremDepth * sin(tremPhase) else 1.0
+                var peak = 0.0
+                for (c in 0 until ch) {
+                    val st = chans[c]
+                    var x = inputBuffer.getShort() / 32768.0
+                    if (eqOn) for (b in 0 until 10) if (eqActive[b]) x = st.eq[b].process(x)
+                    x *= gainNow
+                    var side = 0.0                                  // echo repeats and bass harmonics join after the reverb
+                    if (bassOn) {
+                        val s = st.sub.process(x)
+                        x = st.peak.process(st.shelf.process(s))
+                        side += st.exHp.process(shape(st.exLp.process(s), exK)) * exGain
                     }
-                    if (bits < 16 || hold > 1) {
-                        if (crushCount == 0) {
-                            val lv = (1 shl (bits - 1)).toDouble()
-                            crushHold[c] = (Math.round(x * lv) / lv).toFloat()
-                        }
-                        x = crushHold[c].toDouble()
+                    if (lpOn) x = st.lp.process(x)
+                    if (hpOn) x = st.hp.process(x)
+                    if (distOn) x = shape(x, distK)
+                    if (crushOn) {
+                        if (++st.crushCount >= crushEvery) { st.crushCount = 0; st.crushHold = Math.rint(x / crushStep) * crushStep }
+                        x = st.crushHold
                     }
-                    if (trem > 0.001) x *= 1.0 - trem * 0.5 * (1.0 + sin(tremPhase))
-                    var y = x.toFloat()
-                    if (echoWet > 0.001f) {
-                        val d = echoBuf[c][echoIdx]
-                        echoBuf[c][echoIdx] = y + d * echoFb
-                        y += d * echoWet
+                    x *= trem
+                    if (echoOn) {
+                        val e = st.echo; val i = if (echoIdx < e.size) echoIdx else 0
+                        val d = e[i]
+                        e[i] = (x + d * echoFb).toFloat()
+                        side += d * echoWet
                     }
-                    if (revWet > 0.001f) {
+                    if (revOn) {
+                        val d = st.pre[st.preIdx]; st.pre[st.preIdx] = x.toFloat()
+                        if (++st.preIdx >= st.pre.size) st.preIdx = 0
+                        st.dark += (st.wetLp.process(st.wetHp.process(d.toDouble())) - st.dark) * revDark
+                        if (abs(st.dark) < 1e-25) st.dark = 0.0
+                        val inp = st.dark.toFloat()
                         var r = 0f
-                        for (cb in combs[c]) r += cb.process(y * 0.015f, 0.84f, 0.2f)
-                        for (ap in aps[c]) r = ap.process(r)
-                        y += r * revWet * 6f
+                        for (cb in st.combs) r += cb.process(inp, 0.945f, 0.25f)
+                        for (ap in st.aps) r = ap.process(r)
+                        x = x * revDry + r * revNorm * revWet
                     }
-                    x = y * gain.toDouble()
-                    if (abs(x) > 0.95) x = tanh(x) // soft limiter keeps boosts from hard-clipping
+                    x += side
+                    t[c] = x
+                    val a = abs(x); if (a > peak) peak = a
                 }
-                val s = (x * 32767.0).roundToInt().coerceIn(-32768, 32767)
-                out.putShort(s.toShort())
-                mono += s / 32768.0f
+                if (echoOn && ++echoIdx >= chans[0].echo.size) echoIdx = 0
+                if (tremOn) { tremPhase += tremInc; if (tremPhase > 2 * PI) tremPhase -= 2 * PI }
+
+                // Limiter: turns the whole signal down smoothly when it would clip (all channels together, so the
+                // stereo picture stays put). Fast to react, slow to let go, like the page's compressor.
+                var want = 0.0
+                if (peak > 0.7943) {                                 // -2 dB
+                    val over = 20 * log10(peak) - LIM_THRESH_DB
+                    val y = if (over < LIM_KNEE_DB) over - (1 - 1 / LIM_RATIO) * over * over / (2 * LIM_KNEE_DB)
+                            else LIM_KNEE_DB - (1 - 1 / LIM_RATIO) * LIM_KNEE_DB / 2 + (over - LIM_KNEE_DB) / LIM_RATIO
+                    want = y - over
+                }
+                limDb += (want - limDb) * (if (want < limDb) limAtk else limRel)
+                val lg = if (limDb < -0.001) 10.0.pow(limDb / 20) else 1.0
+                for (c in 0 until ch) {
+                    var x = t[c] * lg
+                    // What gets past in the first two milliseconds is rounded off instead of cut off. The curve has no
+                    // step in it (the old one jumped from 0.95 to 0.74, which is the crackle the booster made).
+                    val a = abs(x)
+                    if (a > 0.9) x = sign(x) * (0.9 + 0.1 * tanh((a - 0.9) / 0.1))
+                    val s = (x * 32767.0).roundToInt().coerceIn(-32768, 32767)
+                    out.putShort(s.toShort())
+                    mono += s / 32768.0f
+                }
             }
-            if (!bypass) { if (++echoIdx >= echoLen) echoIdx = 0; tremPhase += tremInc; if (tremPhase > 2 * PI) tremPhase -= 2 * PI }
-            if (viz) { ring[rp] = mono / ch; rp = (rp + 1) and (FFT_N - 1) }
+            ring[rp] = mono / ch; rp = (rp + 1) and (RING - 1)
         }
-        if (viz) ringPos = rp
+        synchronized(clk) { wPos = rp; clkFrames += frames }
         // Any trailing partial frame is dropped (never happens with whole-frame PCM).
         inputBuffer.position(inputBuffer.limit())
         out.flip()
     }
 
-    // ---------- Visualizer taps (called from the plugin's thread) ----------
-    private val re = DoubleArray(FFT_N); private val im = DoubleArray(FFT_N)
-    private val win = DoubleArray(FFT_N) { 0.5 - 0.5 * cos(2 * PI * it / (FFT_N - 1)) }
+    // ---------- Visualizer: a ring of the output, and the clock that says which part of it is audible ----------
+    private val ring = FloatArray(RING)
+    private val clk = Any()
+    private var wPos = 0                 // next write index
+    private var clkFrames = 0L           // frames written since the clock was last set
+    private var clkBaseUs = UNSET        // playback time of frame 0
+    private var rate = 44100
+    val sampleRate: Int get() = synchronized(clk) { rate }
 
-    /** Fills [out] (size 512) like AnalyserNode.getByteFrequencyData (-100..-30 dB mapped to 0..255). */
-    @Synchronized fun spectrum(out: ByteArray) {
-        val start = ringPos
-        for (i in 0 until FFT_N) { re[i] = ring[(start + i) and (FFT_N - 1)] * win[i]; im[i] = 0.0 }
-        fft()
-        for (i in 0 until min(out.size, FFT_N / 2)) {
-            val mag = sqrt(re[i] * re[i] + im[i] * im[i]) / FFT_N * 2
-            val db = 20 * log10(max(mag, 1e-9))
-            out[i] = (((db + 100.0) / 70.0) * 255.0).coerceIn(0.0, 255.0).toInt().toByte()
+    /** The audio output was emptied (seek, new song, new format): the next buffer starts the clock again. */
+    fun clockReset() { synchronized(clk) { clkBaseUs = UNSET; clkFrames = 0 } }
+
+    /**
+     * Called with the timestamp of every buffer before it is processed. The clock runs by counting samples, as the
+     * audio output's own position does; it is only moved when the output moves its own (a jump in the timestamps).
+     */
+    fun clockBuffer(ptsUs: Long, resync: Boolean) {
+        synchronized(clk) {
+            if (clkBaseUs == UNSET) { clkBaseUs = ptsUs; clkFrames = 0; return }
+            val expected = clkBaseUs + clkFrames * 1_000_000L / rate
+            if (resync || abs(expected - ptsUs) > 200_000L) clkBaseUs += ptsUs - expected
         }
     }
 
-    /** Fills [out] with 0..255 time-domain samples (128 = silence), decimated from the ring. */
-    fun waveform(out: ByteArray) {
-        val start = ringPos; val step = max(1, FFT_N / out.size)
-        for (i in out.indices) {
-            val v = ring[(start + i * step) and (FFT_N - 1)]
-            out[i] = (128 + v * 127).toInt().coerceIn(0, 255).toByte()
+    private val re = DoubleArray(FFT_N); private val im = DoubleArray(FFT_N)
+    private val win = DoubleArray(FFT_N) { 0.5 - 0.5 * cos(2 * PI * it / (FFT_N - 1)) }
+
+    /**
+     * The sound around playback time [atUs] (or the newest sound when the time is not known):
+     * [freq] like AnalyserNode.getByteFrequencyData (-100..-30 dB mapped to 0..255), [wave] as 0..255 samples.
+     */
+    @Synchronized fun analyse(freq: ByteArray, wave: ByteArray, atUs: Long) {
+        val end: Int; var back = 0L
+        synchronized(clk) {
+            end = wPos
+            if (clkBaseUs != UNSET && atUs != UNSET) back = (clkBaseUs + clkFrames * 1_000_000L / rate - atUs) * rate / 1_000_000L
+        }
+        val start = end - back.coerceIn((FFT_N / 2).toLong(), (RING - FFT_N).toLong()).toInt() - FFT_N / 2
+        val step = max(1, FFT_N / wave.size)
+        for (i in wave.indices) {
+            val v = ring[(start + i * step) and (RING - 1)]
+            wave[i] = (128 + v * 127).toInt().coerceIn(0, 255).toByte()
+        }
+        for (i in 0 until FFT_N) { re[i] = ring[(start + i) and (RING - 1)] * win[i]; im[i] = 0.0 }
+        fft()
+        for (i in 0 until min(freq.size, FFT_N / 2)) {
+            val mag = sqrt(re[i] * re[i] + im[i] * im[i]) / FFT_N * 2
+            val db = 20 * log10(max(mag, 1e-9))
+            freq[i] = (((db + 100.0) / 70.0) * 255.0).coerceIn(0.0, 255.0).toInt().toByte()
         }
     }
 
@@ -290,5 +404,63 @@ class FxAudioProcessor : BaseAudioProcessor() {
             }
             len = len shl 1
         }
+    }
+}
+
+/**
+ * Sits in front of the real audio output and keeps the visualizer's clock: it stamps each buffer on its way into
+ * [FxAudioProcessor], and remembers the position the output last reported (the sound that is audible, with the
+ * output buffer and the device's delay, Bluetooth included, already taken off).
+ */
+@UnstableApi
+class VizClockSink(sink: AudioSink, private val fx: FxAudioProcessor) : ForwardingAudioSink(sink) {
+    private var fresh = true           // the next handleBuffer call brings a buffer not seen before
+    private var resync = false
+    private var restart = true
+    private var format = ""
+    private val lock = Any()
+    private var posUs = FxAudioProcessor.UNSET; private var posAtNs = 0L; private var speed = 1f
+
+    override fun configure(inputFormat: Format, specifiedBufferSize: Int, outputChannels: IntArray?) {
+        super.configure(inputFormat, specifiedBufferSize, outputChannels)
+        val f = "${inputFormat.sampleMimeType}/${inputFormat.sampleRate}/${inputFormat.channelCount}/${inputFormat.pcmEncoding}"
+        if (f != format) { format = f; restart = true }      // a different format gets a new output, counting from zero
+    }
+
+    override fun handleBuffer(buffer: ByteBuffer, presentationTimeUs: Long, encodedAccessUnitCount: Int): Boolean {
+        if (fresh) {
+            if (restart) fx.clockReset()
+            fx.clockBuffer(presentationTimeUs, resync)
+            restart = false; resync = false
+        }
+        fresh = super.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
+        return fresh
+    }
+
+    override fun getCurrentPositionUs(sourceEnded: Boolean): Long {
+        val p = super.getCurrentPositionUs(sourceEnded)
+        if (p != FxAudioProcessor.UNSET) {
+            val s = playbackParameters.speed
+            synchronized(lock) { posUs = p; posAtNs = SystemClock.elapsedRealtimeNanos(); speed = s }
+        }
+        return p
+    }
+
+    override fun handleDiscontinuity() { super.handleDiscontinuity(); resync = true }
+    override fun setAudioAttributes(audioAttributes: AudioAttributes) { super.setAudioAttributes(audioAttributes); resync = true }
+    override fun setAudioSessionId(audioSessionId: Int) { super.setAudioSessionId(audioSessionId); resync = true }
+    override fun flush() { super.flush(); forget() }
+    override fun reset() { super.reset(); forget() }
+    private fun forget() {
+        fresh = true; restart = true; resync = false
+        synchronized(lock) { posUs = FxAudioProcessor.UNSET }
+        fx.clockReset()
+    }
+
+    /** The playback time that is audible right now, or UNSET while nothing has played yet. */
+    fun nowUs(): Long = synchronized(lock) {
+        if (posUs == FxAudioProcessor.UNSET) return FxAudioProcessor.UNSET
+        val dtUs = ((SystemClock.elapsedRealtimeNanos() - posAtNs) / 1000L).coerceIn(0L, 150_000L)
+        posUs + (dtUs * speed).toLong()
     }
 }

@@ -4332,6 +4332,11 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
                 <div class="pp-seg" id="viz-style-seg">
                   <button type="button" data-v="bars">Bars</button><button type="button" data-v="blocks">Blocks</button><button type="button" data-v="pulse">Bass pulse</button>
                 </div>
+                <div id="viz-trim-row" style="display:none;">
+                  <p class="tool-dropdown-label" style="margin-top:12px;"><span>Timing</span><span id="viz-trim-value">Automatic</span></p>
+                  <input type="range" id="viz-trim" min="-300" max="300" value="0" step="10">
+                  <p class="menu-section-hint" style="margin:4px 0 0 0;">Follows the sound by itself. Slide right if the bars move before you hear it (some Bluetooth headphones), left if they move after.</p>
+                </div>
                 <p class="tool-dropdown-label" style="margin-top:12px;"><span>Bass haptics (phone vibrates on the kick)</span></p>
                 <div class="pp-seg" id="viz-haptic-seg">
                   <button type="button" data-v="0">Off</button><button type="button" data-v="1">Light</button><button type="button" data-v="2">Strong</button>
@@ -16184,6 +16189,14 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       if (hapticBass && navigator.vibrate){ try { navigator.vibrate(hapticBass === 2 ? 30 : 14); } catch(x){} }   // feel what was picked
     });
     paint();
+    // Timing: only the native player can be shifted (the page's own analyser is already exactly on the sound).
+    const trimRow = document.getElementById('viz-trim-row'), trim = document.getElementById('viz-trim'), trimVal = document.getElementById('viz-trim-value');
+    if (trimRow && PPNative.enabled && PPNative.vizTrim){
+      const show = (v) => { trimVal.textContent = v === 0 ? 'Automatic' : (v > 0 ? v + ' ms later' : -v + ' ms earlier'); };
+      trimRow.style.display = '';
+      trim.value = PPNative.vizTrim(); show(PPNative.vizTrim());
+      trim.addEventListener('input', () => { const v = parseInt(trim.value, 10) || 0; show(v); PPNative.setVizTrim(v); });
+    }
   })();
   let vizRgb = [110, 231, 208], vizRgbAt = 0;
 
@@ -16244,8 +16257,11 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       const g = currentGraph();
       g.analyser.getByteFrequencyData(g.dataArray);
       raw = g.dataArray;
-      const key = raw.length + '|' + audioCtx.sampleRate;
-      if (key !== vizBandPosFor){ vizBandPos = vizBandBins(raw.length, audioCtx.sampleRate); vizBandPosFor = key; }
+      // The native player's spectrum is at the song's own sample rate, not the page's: with the wrong one every
+      // bar sat about 8% off its pitch on 44.1 kHz songs, and songs at different rates looked different.
+      const vizSr = (PPNative.vizRate && PPNative.vizRate()) || audioCtx.sampleRate;
+      const key = raw.length + '|' + vizSr;
+      if (key !== vizBandPosFor){ vizBandPos = vizBandBins(raw.length, vizSr); vizBandPosFor = key; }
       vizEverLive = true;
     } else if (!vizEverLive){
       return; // never had data to show yet, nothing to draw or decay
