@@ -16114,32 +16114,29 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const baseR = S * 0.307 * (1 + pulse * 0.035) + S * 0.006;
     const maxLen = S * 0.5 - baseR - S * 0.02;
     const [cr, cg, cb] = vizAccent(ts);
-    const barW = Math.max(2, (Math.PI * 2 * baseR / (VIZ_BANDS * 2)) * 0.56);
-    ctx.lineCap = 'round';
+    const barW = Math.max(2, (Math.PI * 2 * baseR / (VIZ_BANDS * 2)) * 0.42);
+    ctx.lineCap = 'butt';   // square ends
 
     if (vizWave > 0){   // ring thrown off by a kick
       ctx.strokeStyle = `rgba(${cr},${cg},${cb},${(0.34 * (1 - vizWave)).toFixed(3)})`;
       ctx.lineWidth = S * 0.006 * (1 - vizWave) + 1;
       ctx.beginPath(); ctx.arc(cx, cy, baseR + maxLen * (0.15 + 0.85 * vizWave), 0, Math.PI * 2); ctx.stroke();
     }
-    for (let pass = 0; pass < 2; pass++){          // 0: soft glow underneath, 1: the bars
-      for (let k = 0; k < VIZ_BANDS; k++){
-        const lv = vizLevel[k];
-        if (pass === 0 && lv < 0.12) continue;
-        const len = S * 0.006 + lv * maxLen;
-        const white = lv * lv * 0.55;
-        const r = Math.round(cr + (255 - cr) * white), g2 = Math.round(cg + (255 - cg) * white), b = Math.round(cb + (255 - cb) * white);
-        ctx.strokeStyle = pass === 0 ? `rgba(${cr},${cg},${cb},${(lv * 0.22).toFixed(3)})` : `rgba(${r},${g2},${b},${(0.3 + lv * 0.7).toFixed(3)})`;
-        ctx.lineWidth = pass === 0 ? barW * 2.4 : barW;
-        const off = (k + 0.5) / VIZ_BANDS * Math.PI;
-        ctx.beginPath();
-        for (let side = -1; side <= 1; side += 2){
-          const a = -Math.PI / 2 + side * off, ca = Math.cos(a), sa = Math.sin(a);
-          ctx.moveTo(cx + ca * baseR, cy + sa * baseR);
-          ctx.lineTo(cx + ca * (baseR + len), cy + sa * (baseR + len));
-        }
-        ctx.stroke();
+    for (let k = 0; k < VIZ_BANDS; k++){            // plain sharp bars: no glow or halo around them
+      const lv = vizLevel[k];
+      const len = S * 0.006 + lv * maxLen;
+      const white = lv * lv * 0.55;
+      const r = Math.round(cr + (255 - cr) * white), g2 = Math.round(cg + (255 - cg) * white), b = Math.round(cb + (255 - cb) * white);
+      ctx.strokeStyle = `rgba(${r},${g2},${b},${(0.35 + lv * 0.65).toFixed(3)})`;
+      ctx.lineWidth = barW;
+      const off = (k + 0.5) / VIZ_BANDS * Math.PI;
+      ctx.beginPath();
+      for (let side = -1; side <= 1; side += 2){
+        const a = -Math.PI / 2 + side * off, ca = Math.cos(a), sa = Math.sin(a);
+        ctx.moveTo(cx + ca * baseR, cy + sa * baseR);
+        ctx.lineTo(cx + ca * (baseR + len), cy + sa * (baseR + len));
       }
+      ctx.stroke();
     }
     // peak markers
     ctx.fillStyle = `rgba(255,255,255,0.75)`;
