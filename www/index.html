@@ -5191,7 +5191,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
       </div>
       <div class="pp-pane" data-pp="ch"><div id="ch-list"></div></div>
       <div class="pp-pane" data-pp="ly">
-        <div class="pp-row"><button class="pp-btn" id="ly-load" type="button">Load .lrc file…</button><button class="pp-btn" id="ly-clear" type="button">Remove</button></div>
+        <div class="pp-row"><button class="pp-btn" id="ly-load" type="button">Load .lrc file…</button><button class="pp-btn" id="ly-clear" type="button">Remove</button><button class="pp-btn" id="ly-look" type="button">Look and effects…</button></div>
         <div id="ly-list"></div>
       </div>
     </div>
@@ -21656,14 +21656,21 @@ async function ppMp4Chapters(blob){
   }
   function ppLrcDraw(i){
     const ov = ppEl('lyrics-overlay');
-    ov.querySelector('.ly-cur').textContent = i >= 0 ? ppLrc[i].text : '';
+    const text = i >= 0 ? ppLrc[i].text : '';
     let n = ''; for (let j = i + 1; j < ppLrc.length; j++){ if (ppLrc[j].text){ n = ppLrc[j].text; break; } }
+    const H = window.__ppSongText;       // vocal-separator.js draws the words (fitted to the screen, with the chosen look and effects)
+    if (H && H.line){
+      const s = i >= 0 ? ppLrc[i].t : -1, e = i >= 0 ? (i + 1 < ppLrc.length ? ppLrc[i + 1].t : s + 5) : -1;
+      H.line(ov.querySelector('.ly-cur'), text, s, e); H.line(ov.querySelector('.ly-next'), n, -1, -1);
+      return;
+    }
+    ov.querySelector('.ly-cur').textContent = text;
     ov.querySelector('.ly-next').textContent = n;
   }
   function ppLrcStep(){
     ppLrcRaf = 0;
     if (!ppLrc.length) return;
-    const now = (media().currentTime || 0); let a = -1;
+    const now = (media().currentTime || 0) - ((window.__ppSongSync && +window.__ppSongSync()) || 0); let a = -1;   // "Timing for this song" in the captions menu
     for (let i = 0; i < ppLrc.length; i++){ if (ppLrc[i].t <= now) a = i; else break; }
     if (a !== ppLrcIdx){
       ppLrcIdx = a; ppLrcDraw(a);
@@ -21696,6 +21703,7 @@ async function ppMp4Chapters(blob){
     ppHighlightLyric();
   }
   ppEl('ly-load').addEventListener('click', () => ppEl('lrc-input').click());
+  ppEl('ly-look').addEventListener('click', () => { const b = document.getElementById('ppv-acc'); if (!b || b.style.display === 'none'){ ppToast('Play a song first.'); return; } ppTogglePanel(false); b.click(); });
   ppEl('lrc-input').addEventListener('change', async (e) => {
     const f = e.target.files[0]; e.target.value = ''; const t = tracks[currentIndex];
     if (!f || !t) return;

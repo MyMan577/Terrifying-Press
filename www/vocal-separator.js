@@ -3811,13 +3811,25 @@
       {
         const viz = document.getElementById('viz-wrap'), aud = document.getElementById('audio');
         if (viz && aud) {
+          // ---------- Song text: captions and lyrics share one box that always fits the screen, with its own look ----------
+          const ST_CSS = '#ppv-st{position:absolute;z-index:4;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:4px;overflow:hidden;text-align:center;font-family:var(--st-font);--st-k:1}' +
+            '#ppv-st.p-below{justify-content:flex-start}#ppv-st.p-over{justify-content:center}#ppv-st.p-above{justify-content:flex-end}' +
+            '#ppv-st.c-rainbow{animation:st-hue 6s linear infinite}' +
+            '#ppv-st #ppv-asub,#ppv-st #lyrics-overlay{position:static;max-width:100%;flex:0 0 auto;transform:scale(var(--st-beat,1));transition:transform .09s linear}' +
+            '#ppv-st .st-l{display:inline-block;max-width:100%;min-height:0;overflow-wrap:anywhere;white-space:normal;line-height:1.3;border-radius:6px;padding:.15em .5em;font-weight:var(--st-weight);text-transform:var(--st-caps);text-shadow:var(--st-ts);background:rgba(0,0,0,var(--st-bg));color:var(--st-color);font-size:calc(16px*var(--st-size)*var(--st-k))}' +
+            '#ppv-st .ly-next.st-l{display:block;font-size:calc(12.5px*var(--st-size)*var(--st-k));opacity:.6;margin-top:2px;font-weight:400;background:none}#ppv-st.nonext .ly-next,#ppv-st.tight .ly-next{display:none}' +
+            '.st-w{display:inline-block;transition:opacity .18s,transform .18s,text-shadow .18s}.st-hl .st-w{opacity:.42}.st-hl .st-w.on{opacity:1}.st-hl .st-w.now{transform:scale(1.1);text-shadow:0 0 .45em var(--st-color),var(--st-ts)}' +
+            '@keyframes st-hue{to{filter:hue-rotate(360deg)}}@keyframes st-fade{from{opacity:0}}@keyframes st-pop{from{opacity:0;transform:scale(.6)}60%{transform:scale(1.07)}}@keyframes st-slide{from{opacity:0;transform:translateY(.8em)}}@keyframes st-blur{from{opacity:0;filter:blur(8px)}}@keyframes st-word{from{opacity:0;transform:translateY(.5em)}}@keyframes st-wave{0%{opacity:0}35%{opacity:1;transform:translateY(-.4em)}70%{transform:translateY(.08em)}}@keyframes st-flip{from{opacity:0;transform:rotateX(90deg)}}' +
+            '#ppv-st.fx-fade .st-in{animation:st-fade .28s ease-out}#ppv-st.fx-pop .st-in{animation:st-pop .32s cubic-bezier(.2,1.3,.4,1)}#ppv-st.fx-slide .st-in{animation:st-slide .28s ease-out}#ppv-st.fx-blur .st-in{animation:st-blur .36s ease-out}#ppv-st.fx-flip .st-in{animation:st-flip .34s ease-out}' +
+            '#ppv-st.fx-words .st-in .st-w{animation:st-word .3s ease-out backwards;animation-delay:calc(var(--i)*55ms)}#ppv-st.fx-wave .st-in .st-w{animation:st-wave .45s ease-out backwards;animation-delay:calc(var(--i)*45ms)}' +
+            '#ppv-apanel .st-lab{font-size:12px;opacity:.75;margin:10px 0 4px;display:flex;justify-content:space-between}#ppv-apanel .st-row{display:flex;flex-wrap:wrap;gap:6px}#ppv-apanel .st-row button{width:auto;flex:0 0 auto;margin:0;padding:6px 10px;border:1px solid var(--line,#444);background:transparent;color:var(--text,#eee);border-radius:8px;font-size:12.5px;cursor:pointer}#ppv-apanel .st-row button.on{background:var(--accent,#7c3aed);color:#000;border-color:transparent;font-weight:700}#ppv-apanel .st-row input[type=color]{width:38px;height:30px;padding:0;border:1px solid var(--line,#444);border-radius:8px;background:none}#ppv-apanel input[type=range]{width:100%}';
           const st = document.createElement('style');
-          st.textContent = '#ppv-acc{position:absolute;top:-6px;right:-6px;z-index:6;width:34px;height:34px;border-radius:50%;border:1px solid var(--line,#555);background:var(--bg,#1b1c21);color:var(--text,#eee);font:700 11px system-ui;cursor:pointer;display:none;padding:0}#ppv-acc.on{background:var(--accent,#7c3aed);color:#fff;border-color:transparent}#ppv-asub{position:absolute;left:-14%;right:-14%;bottom:-48px;text-align:center;pointer-events:none;z-index:4;display:none}#ppv-asub span{display:inline-block;background:rgba(0,0,0,.7);color:#fff;padding:4px 10px;border-radius:4px;font-size:16px;line-height:1.4;white-space:pre-line;max-width:100%}#ppv-asub.low{bottom:-96px}#ppv-apanel{position:fixed;z-index:9999;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,420px);max-height:78vh;overflow:auto;background:var(--bg,#1b1c21);color:var(--text,#eee);border:1px solid var(--line,#444);border-radius:12px;padding:12px;display:none}#ppv-apanel.open{display:block}';
+          st.textContent = '#ppv-acc{position:absolute;top:-6px;right:-6px;z-index:6;width:34px;height:34px;border-radius:50%;border:1px solid var(--line,#555);background:var(--bg,#1b1c21);color:var(--text,#eee);font:700 11px system-ui;cursor:pointer;display:none;padding:0}#ppv-acc.on{background:var(--accent,#7c3aed);color:#fff;border-color:transparent}#ppv-asub{text-align:center;pointer-events:none;display:none}#ppv-apanel{position:fixed;z-index:9999;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,420px);max-height:78vh;overflow:auto;background:var(--bg,#1b1c21);color:var(--text,#eee);border:1px solid var(--line,#444);border-radius:12px;padding:12px;display:none}#ppv-apanel.open{display:block}' + ST_CSS;
           document.head.appendChild(st);
-          const btn = document.createElement('button'); btn.id = 'ppv-acc'; btn.textContent = 'CC'; btn.title = 'Subtitles'; btn.setAttribute('aria-label', 'Subtitles');
+          const btn = document.createElement('button'); btn.id = 'ppv-acc'; btn.textContent = 'CC'; btn.title = 'Captions and lyrics'; btn.setAttribute('aria-label', 'Captions and lyrics');
           const box = document.createElement('div'); box.id = 'ppv-asub'; const sp = document.createElement('span'); box.appendChild(sp);
           const panel = document.createElement('div'); panel.id = 'ppv-apanel'; panel.className = 'ppv-scope';
-          panel.innerHTML = '<div class="ppv-row"><b style="flex:1;align-self:center">Subtitles</b><button class="ppv-sec" id="ppv-apx" style="width:auto;padding:4px 12px" data-keep="1">Close</button></div><div class="ppv-note" id="ppv-ast">No subtitles</div><button id="ppv-aton" class="ppv-sec">Turn on</button><button id="ppv-ald" class="ppv-sec">Load subtitle file (.srt/.vtt/.lrc)</button><button id="ppv-arm" class="ppv-sec">Remove from this track</button><input type="file" id="ppv-af" accept=".srt,.vtt,.lrc,.txt" style="display:none"><hr style="border:0;border-top:1px solid var(--line,#444);margin:10px 0">';
+          panel.innerHTML = '<div class="ppv-row"><b style="flex:1;align-self:center">Captions &amp; lyrics</b><button class="ppv-sec" id="ppv-apx" style="width:auto;padding:4px 12px" data-keep="1">Close</button></div><div class="ppv-note" id="ppv-ast">No subtitles</div><button id="ppv-aton" class="ppv-sec">Turn on</button><button id="ppv-ald" class="ppv-sec">Load subtitle file (.srt/.vtt/.lrc)</button><button id="ppv-arm" class="ppv-sec">Remove from this track</button><input type="file" id="ppv-af" accept=".srt,.vtt,.lrc,.txt" style="display:none"><div id="ppv-stui"></div><hr style="border:0;border-top:1px solid var(--line,#444);margin:10px 0">';
           viz.append(btn, box); document.body.appendChild(panel);
           audPanel = panel;
           let cues = [], off = 0, lastId = null, shown = '';
@@ -3827,18 +3839,126 @@
             try { const o = JSON.parse(localStorage.getItem('playerSubtitles') || '{}')[t.dbId]; const c = o && (Array.isArray(o) ? o.map(x => [x.start, x.end, x.text]) : o.c); if (c) { cues = c.map(x => ({ s: +x[0], e: +x[1], text: String(x[2]) })).sort((a, b) => a.s - b.s); off = (!Array.isArray(o) && isFinite(+o.o)) ? +o.o : 0; } } catch (e) {}
           };
           const status = () => { $('#ppv-ast').textContent = cues.length ? cues.length + ' lines' + (cues.length ? '' : '') : 'No subtitles for this track yet. Generate them with Whisper below, or load a file.'; $('#ppv-aton').textContent = isOn() ? 'Turn off' : 'Turn on'; $('#ppv-aton').disabled = !cues.length; $('#ppv-arm').disabled = !cues.length; btn.classList.toggle('on', isOn() && cues.length > 0); };
+          const ST_DEF = { size: 100, pos: 'below', color: '#ffffff', font: 'default', look: 'outline', bg: 0, bold: 1, caps: 0, fx: 'fade', hl: 0, beat: 0, next: 1, sdh: 0 };
+          const ST_FONTS = { default: 'inherit', serif: 'Georgia,serif', mono: "'Courier New',monospace", arial: 'Arial,Helvetica,sans-serif', condensed: "'Arial Narrow',sans-serif-condensed,Arial,sans-serif", impact: "Impact,'Arial Narrow Bold',sans-serif", casual: "'Comic Sans MS','Chalkboard SE',cursive" };
+          const ST_LOOKS = { box: { bg: 70 }, outline: { bg: 0 }, cinema: { bg: 0 }, neon: { bg: 0 }, plain: { bg: 0 } };
+          const ST = Object.assign({}, ST_DEF); try { Object.assign(ST, JSON.parse(ls('ppvSongText') || '{}')); } catch (e) {}
+          const wrap = document.createElement('div'); wrap.id = 'ppv-st';
+          const lyEl = document.getElementById('lyrics-overlay');
+          viz.appendChild(wrap); wrap.appendChild(box); if (lyEl) wrap.appendChild(lyEl);
+          sp.className = 'st-l';
+          let stSync = 0, stDirty = true, stKey = '', preview = false;
+          const syncMap = () => { try { return JSON.parse(ls('ppvSongSync') || '{}') || {}; } catch (e) { return {}; } };
+          window.__ppSongSync = () => stSync;
+          const stApply = () => {
+            const c = wrap.style, col = ST.color === 'accent' ? 'var(--accent,#6ee7d0)' : ST.color === 'rainbow' ? '#ff6b6b' : ST.color;
+            const o = '#000', ol = [[1, 0], [-1, 0], [0, 1], [0, -1], [.7, .7], [-.7, .7], [.7, -.7], [-.7, -.7]].map(d => (d[0] * 1.4).toFixed(1) + 'px ' + (d[1] * 1.4).toFixed(1) + 'px 0 ' + o).join(',');
+            const ts = ST.look === 'outline' ? ol + ',0 1px 6px rgba(0,0,0,.8)' : ST.look === 'cinema' ? '0 2px 10px rgba(0,0,0,.95),0 0 2px #000' : ST.look === 'neon' ? '0 0 .2em ' + col + ',0 0 .6em ' + col + ',0 0 1.1em ' + col : ST.look === 'plain' ? 'none' : '0 0 0 transparent';
+            c.setProperty('--st-size', ST.size / 100); c.setProperty('--st-color', ST.look === 'neon' ? '#fff' : col); c.setProperty('--st-font', ST_FONTS[ST.font] || 'inherit');
+            c.setProperty('--st-weight', ST.bold ? 700 : 400); c.setProperty('--st-caps', ST.caps ? 'uppercase' : 'none'); c.setProperty('--st-ts', ts); c.setProperty('--st-bg', ST.bg / 100);
+            wrap.className = 'p-' + ST.pos + ' fx-' + ST.fx + (ST.next ? '' : ' nonext') + (ST.color === 'rainbow' ? ' c-rainbow' : '');
+            if (!ST.beat) c.setProperty('--st-beat', 1);
+            stDirty = true;
+          };
+          const stClean = t => !ST.sdh ? t : String(t).split('\n').map(l => l.replace(/\[[^\]]*\]|\([^)]*\)|[♪♫]+/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
+          // Puts a line into an element one word at a time, so words can come in and light up on their own.
+          const stFill = (el, text, s, e) => {
+            el.__stRaw = text || ''; text = stClean(text || '');
+            if (el.__stT === text && el.__stS === s) return;
+            el.__stT = text; el.__stS = s; el.__stE = e; el.textContent = ''; el.classList.add('st-l');
+            const ws = []; let i = 0;
+            text.split('\n').forEach((line, li) => {
+              if (li) el.appendChild(document.createElement('br'));
+              line.split(/\s+/).filter(Boolean).forEach((w, wi) => { if (wi) el.appendChild(document.createTextNode(' ')); const x = document.createElement('span'); x.className = 'st-w'; x.style.setProperty('--i', i++); x.textContent = w; el.appendChild(x); ws.push(x); });
+            });
+            // No word timings exist, so each word gets a share of the line by its length. Long gaps after a line are not sung.
+            let tot = 0; const len = ws.map(x => { const n = x.textContent.length + 1.5; tot += n; return n; });
+            const dur = Math.max(0.3, Math.min(e > s ? e - s : 3, 0.5 + ws.length * 0.42 + tot * 0.03)); let acc = 0;
+            el.__stW = ws; el.__stAt = len.map(n => { const a = s + dur * acc / tot; acc += n; return a; });
+            el.classList.remove('st-in'); void el.offsetWidth; if (text) el.classList.add('st-in');
+            stDirty = true;
+          };
+          const stMark = (el, now) => {
+            const ws = el && el.__stW, at = el && el.__stAt; if (!ws) return;
+            el.classList.toggle('st-hl', !!ST.hl && el.__stS >= 0); if (!ST.hl) return;
+            for (let i = 0; i < ws.length; i++) { const a = now >= at[i]; ws[i].classList.toggle('on', a); ws[i].classList.toggle('now', a && now < (i + 1 < ws.length ? at[i + 1] : el.__stE)); }
+          };
+          // The lyric lines in the main page are drawn through here too, so both kinds of text look and behave the same.
+          window.__ppSongText = { line: stFill };
+          // Where the box goes: always inside the screen, never over the song title. Text that is still too tall gets smaller.
+          const stLayout = () => {
+            const r = viz.getBoundingClientRect(); if (r.width < 20) return;
+            const vw = window.innerWidth, vh = window.innerHeight, m = 10;
+            let top, bot;
+            if (ST.pos === 'over') { top = r.top + r.height * 0.22; bot = r.top + r.height * 0.78; }
+            else if (ST.pos === 'above') { bot = r.top - 10; top = Math.max(56, bot - 150); if (bot - top < 44) { top = r.top + 4; bot = top + 120; } }   // clear of the CC button; no room above (landscape): top of the disc instead
+            else {
+              top = r.top + r.height * 0.875; bot = Math.min(vh - 8, r.bottom + 70);
+              const np = document.getElementById('now-playing'), nr = np && np.offsetParent ? np.getBoundingClientRect() : null;
+              if (nr && nr.top > r.top + r.height / 2) bot = Math.min(bot, nr.top - 4);
+              if (bot - top < 44) top = bot - 44;                    // very little room under the disc: let it ride up over the edge of it
+            }
+            const key = [Math.round(r.left), Math.round(top), Math.round(bot), vw, ST.size].join(',');
+            if (key !== stKey) { stKey = key; stDirty = true; wrap.style.left = (m - r.left) + 'px'; wrap.style.width = (vw - 2 * m) + 'px'; wrap.style.top = (top - r.top) + 'px'; wrap.style.height = (bot - top) + 'px'; }
+            if (!stDirty) return; stDirty = false;
+            const room = bot - top, need = () => { let h = 0, n = 0; for (const ch of wrap.children) { if (ch.offsetHeight) { h += ch.offsetHeight; n++; } } return h + Math.max(0, n - 1) * 4; };
+            let k = 1; wrap.classList.remove('tight'); wrap.style.setProperty('--st-k', k);
+            while (need() > room && k > 0.72) { k -= 0.07; wrap.style.setProperty('--st-k', k.toFixed(2)); }
+            if (need() > room) { wrap.classList.add('tight'); k = 1; wrap.style.setProperty('--st-k', k); while (need() > room && k > 0.5) { k -= 0.07; wrap.style.setProperty('--st-k', k.toFixed(2)); } }
+          };
           const tick = () => {
             const t = cur(), a = t && t.kind !== 'video';
             btn.style.display = a ? 'block' : 'none';
             if (!a) { box.style.display = 'none'; lastId = null; return; }
-            if (t.dbId !== lastId) { loadCues(); status(); }
-            if (!isOn() || !cues.length) { box.style.display = 'none'; return; }
-            const n = aud.currentTime - off; let txt = ''; for (const c of cues) { if (c.s > n) break; if (n < c.e) txt += (txt ? '\n' : '') + c.text; }
-            const ly = document.getElementById('lyrics-overlay'); box.classList.toggle('low', !!(ly && ly.classList.contains('show')));
-            if (txt !== shown) { shown = txt; sp.textContent = txt; }
-            box.style.display = txt ? 'block' : 'none';
+            if (t.dbId !== lastId) { loadCues(); status(); stSync = +syncMap()[t.dbId] || 0; stSyncUi(); }
+            const now = aud.currentTime - stSync, n = now - off; let txt = '', s0 = -1, e0 = -1;
+            if (isOn() && cues.length) for (const c of cues) { if (c.s > n) break; if (n < c.e) { txt += (txt ? '\n' : '') + c.text; if (s0 < 0) s0 = c.s; e0 = Math.max(e0, c.e); } }
+            const lyOn = !!(lyEl && lyEl.classList.contains('show'));
+            if (!txt && preview && !lyOn) { txt = 'This is how the words will look'; s0 = n - (n % 4); e0 = s0 + 4; }
+            if (txt !== shown) { shown = txt; stFill(sp, txt, s0, e0); }
+            box.style.display = txt && sp.__stT ? 'block' : 'none';
+            stMark(sp, n);
+            if (lyOn) stMark(lyEl.querySelector('.ly-cur'), now);
+            if (ST.beat) { let lv = -1; try { lv = aud.paused ? 0 : window.__ppBassLevel(); } catch (e) {} wrap.style.setProperty('--st-beat', (1 + Math.min(0.14, Math.max(0, lv - 0.02) * 0.7)).toFixed(3)); }
+            if (txt || lyOn) stLayout();
           };
-          setInterval(tick, 120);
+          setInterval(tick, 60);
+          window.addEventListener('resize', () => { stKey = ''; });
+          // ----- the controls -----
+          const ui = panel.querySelector('#ppv-stui');
+          const row = (label, key, opts) => '<div class="st-lab"><span>' + label + '</span></div><div class="st-row" data-k="' + key + '">' + opts.map(o => '<button data-v="' + o[0] + '"' + (o[2] ? ' style="' + o[2] + '"' : '') + '>' + o[1] + '</button>').join('') + '</div>';
+          ui.innerHTML = '<hr style="border:0;border-top:1px solid var(--line,#444);margin:10px 0"><b>Look and effects</b><div class="ppv-note">For captions and lyrics on songs. The words always stay inside the screen.</div>' +
+            '<div class="st-lab"><span>Timing for this song</span><span id="st-sync-v">0.0s</span></div><div class="st-row" id="st-sync"><button data-d="-0.5">−0.5</button><button data-d="-0.1">−0.1</button><button data-d="0.1">+0.1</button><button data-d="0.5">+0.5</button><button data-d="0">Reset</button></div>' +
+            row('Where', 'pos', [['below', 'Under the disc'], ['over', 'On the disc'], ['above', 'Above the disc']]) +
+            '<div class="st-lab"><span>Text size</span><span id="st-size-v"></span></div><input type="range" id="st-size" min="60" max="220" step="5">' +
+            row('Style', 'look', [['outline', 'Outline'], ['box', 'Box'], ['cinema', 'Cinema'], ['neon', 'Neon glow'], ['plain', 'Plain']]) +
+            '<div class="st-lab"><span>Background</span><span id="st-bg-v"></span></div><input type="range" id="st-bg" min="0" max="100" step="5">' +
+            '<div class="st-lab"><span>Color</span></div><div class="st-row" data-k="color">' + [['#ffffff', 'White'], ['#ffe14d', 'Yellow'], ['#6ee7d0', 'Aqua'], ['#7CFC7C', 'Green'], ['#7db8ff', 'Blue'], ['#ff8ad8', 'Pink'], ['#ffa94d', 'Orange'], ['#ff6b6b', 'Red']].map(o => '<button data-v="' + o[0] + '" style="color:' + o[0] + '">' + o[1] + '</button>').join('') + '<button data-v="accent">Theme</button><button data-v="rainbow">Rainbow</button><input type="color" id="st-col" value="#ffffff" title="Custom color"></div>' +
+            row('Font', 'font', [['default', 'Sans'], ['serif', 'Serif', 'font-family:Georgia,serif'], ['mono', 'Mono', "font-family:'Courier New',monospace"], ['arial', 'Arial', 'font-family:Arial'], ['condensed', 'Narrow', "font-family:'Arial Narrow',sans-serif-condensed"], ['impact', 'Impact', 'font-family:Impact'], ['casual', 'Casual', "font-family:'Comic Sans MS',cursive"]]) +
+            row('How a new line comes in', 'fx', [['none', 'None'], ['fade', 'Fade'], ['pop', 'Pop'], ['slide', 'Slide up'], ['blur', 'Focus'], ['flip', 'Flip'], ['words', 'Word by word'], ['wave', 'Wave']]) +
+            '<div class="st-lab"><span>Extras</span></div><div class="st-row" id="st-tg"><button data-t="hl" title="Words light up as they are sung">Sing-along highlight</button><button data-t="beat" title="The words pulse with the bass">Pulse with the beat</button><button data-t="next" title="Shows the next lyric line under the current one">Next lyric line</button><button data-t="bold">Bold</button><button data-t="caps">ALL CAPS</button><button data-t="sdh" title="Hides lines like [music], (sighs) and music notes">Hide [sounds]</button></div>';
+          const stPaint = () => {
+            ui.querySelectorAll('.st-row[data-k]').forEach(r => r.querySelectorAll('button').forEach(b => b.classList.toggle('on', String(ST[r.dataset.k]) === b.dataset.v)));
+            ui.querySelectorAll('#st-tg button').forEach(b => b.classList.toggle('on', !!ST[b.dataset.t]));
+            ui.querySelector('#st-size').value = ST.size; ui.querySelector('#st-size-v').textContent = ST.size + '%';
+            ui.querySelector('#st-bg').value = ST.bg; ui.querySelector('#st-bg-v').textContent = ST.bg + '%';
+            if (/^#[0-9a-f]{6}$/i.test(ST.color)) ui.querySelector('#st-col').value = ST.color;
+          };
+          function stSyncUi() { const v = ui.querySelector('#st-sync-v'); if (v) v.textContent = (stSync > 0 ? '+' : '') + stSync.toFixed(1) + 's' + (stSync > 0 ? ' later' : stSync < 0 ? ' earlier' : ''); }
+          // Any change replays the line, so the effect that was just picked is seen straight away.
+          const stChanged = () => { ls('ppvSongText', JSON.stringify(ST)); stApply(); stPaint(); shown = null; sp.__stT = null; const lc = lyEl && lyEl.querySelector('.ly-cur'); if (lc && lc.__stT) { const tx = lc.__stRaw != null ? lc.__stRaw : lc.__stT; lc.__stT = null; stFill(lc, tx, lc.__stS, lc.__stE); } tick(); };
+          ui.addEventListener('click', e => {
+            const b = e.target.closest('button'); if (!b) return;
+            const r = b.parentElement;
+            if (r.id === 'st-sync') { const t = cur(); if (!t) return; const d = +b.dataset.d; stSync = d === 0 ? 0 : Math.max(-30, Math.min(30, +(stSync + d).toFixed(2))); const m = syncMap(); if (stSync) m[t.dbId] = stSync; else delete m[t.dbId]; ls('ppvSongSync', JSON.stringify(m)); stSyncUi(); tick(); return; }
+            if (r.id === 'st-tg') { ST[b.dataset.t] = ST[b.dataset.t] ? 0 : 1; stChanged(); return; }
+            if (r.dataset.k) { ST[r.dataset.k] = b.dataset.v; if (r.dataset.k === 'look') ST.bg = ST_LOOKS[b.dataset.v].bg; stChanged(); }
+          });
+          ui.querySelector('#st-size').addEventListener('input', e => { ST.size = +e.target.value; stChanged(); });
+          ui.querySelector('#st-bg').addEventListener('input', e => { ST.bg = +e.target.value; stChanged(); });
+          ui.querySelector('#st-col').addEventListener('input', e => { ST.color = e.target.value; stChanged(); });
+          new MutationObserver(() => { preview = panel.classList.contains('open'); shown = null; tick(); }).observe(panel, { attributes: true, attributeFilter: ['class'] });
+          stApply(); stPaint(); stSyncUi();
           try { const a = A(); if (a && a.setSubtitles && !a.__ppvW) { const o = a.setSubtitles; a.setSubtitles = function () { const r = o.apply(this, arguments); lastId = null; return r; }; a.__ppvW = 1; } } catch (e) {}
           btn.onclick = () => { loadCues(); status(); placeWhisper('aud'); panel.classList.toggle('open'); };
           $('#ppv-apx').onclick = () => panel.classList.remove('open');
