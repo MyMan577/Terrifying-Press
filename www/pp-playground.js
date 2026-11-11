@@ -186,7 +186,8 @@
     var dur = ms * (strong ? 2 : 1), m = strong ? 3 : 2, now = Date.now();
     S.storm = { until: Math.max(now, S.storm.until) + dur, mult: Math.max(m, stormActive() ? S.storm.mult : 0) };
     save(); toast('🌩️ Groove Storm! Clicks and grooves ×' + S.storm.mult + ' for ' + Math.round(dur / 60000) + ' min');
-    try { if (window.PPClicker) window.PPClicker.show(); } catch(e){}
+    // open the clicker for the storm, unless you've hidden it in Settings
+    try { if (window.PPClicker && !(window.PPClicker.isHidden && window.PPClicker.isHidden())) window.PPClicker.show(); } catch(e){}
   }
   PP.startStorm = startStorm;
 
@@ -609,7 +610,7 @@
     var games = (window.__ppGames && window.__ppGames.list) || [];
     el.innerHTML =
       '<div class="pgr-card pgr-hero"><h3>Welcome to the Playground</h3>' +
-      '<p class="pgr-sub" style="margin:0">' + (window.__ppWeb ? 'The clicker stays out and every game exclusive is free. Earn <b>⭐ Stars</b> from orders, the wheel and playing games, then spend them on charms, charm levels, album pulls and the Star Shop.</p>' : 'Everything in the app is unlocked, the clicker stays out, and every game exclusive is free. Earn <b>⭐ Stars</b> from orders, the wheel and playing games, then spend them on charms, charm levels, album pulls and the Star Shop. Your EXP grows 25% faster here.</p>') +
+      '<p class="pgr-sub" style="margin:0">' + (window.__ppWeb ? 'The clicker is out and every game exclusive is free. Earn <b>⭐ Stars</b> from orders, the wheel and playing games, then spend them on charms, charm levels, album pulls and the Star Shop.</p>' : 'Everything in the app is unlocked, the clicker is out, and every game exclusive is free. Earn <b>⭐ Stars</b> from orders, the wheel and playing games, then spend them on charms, charm levels, album pulls and the Star Shop. Your EXP grows 25% faster here.</p>') +
       '<div class="pgr-chips" id="pgr-chips"></div></div>' +
       '<div class="pgr-card" id="pgr-wheelcard"></div>' +
       (window.__ppWeb ? '' : '<div class="pgr-card"><h3>Sound &amp; look</h3><p class="pgr-sub">One tap sets your real equalizer. Playground adds six presets named after the game exclusives.</p>' +
@@ -749,8 +750,55 @@
   fab.id = 'pgr-fab'; fab.type = 'button'; fab.setAttribute('aria-label', 'Open the Playground');
   function emblem(){ try { return window.__ppEmblem ? window.__ppEmblem() : ''; } catch(e){ return ''; } }
   fab.innerHTML = '<span class="pgr-emb">' + emblem() + '</span>';
-  fab.addEventListener('click', function(){ blip(600, 0.07, 'triangle', 0.07); PP.open(); });
+  fab.addEventListener('click', function(e){
+    if (Date.now() < fabSuppress){ e.preventDefault(); return; }   // the end of a drag isn't a tap
+    blip(600, 0.07, 'triangle', 0.07); PP.open();
+  });
   document.body.appendChild(fab);
+
+  // Drag the button anywhere, like Bloopy: it squashes while you pull it and springs back when you let go.
+  // The spot is saved; turning it off in Settings removes it.
+  var FAB_POS = 'pgrFabPos', fabSuppress = 0;
+  var fabCss = document.createElement('style');
+  fabCss.textContent = '@keyframes pgrStrain{0%,100%{transform:scale(1.1,.9)}50%{transform:scale(.9,1.1)}}@keyframes pgrSnap{0%{transform:scale(1.25,.75)}40%{transform:scale(.85,1.15)}70%{transform:scale(1.05,.95)}100%{transform:scale(1)}}' +
+    '#pgr-fab{touch-action:none}#pgr-fab.pgr-strain{animation:pgrStrain .16s ease-in-out infinite;cursor:grabbing}#pgr-fab.pgr-snap{animation:pgrSnap .45s ease-out}';
+  document.head.appendChild(fabCss);
+  function fabMove(x, y){
+    var w = fab.offsetWidth || 52, h = fab.offsetHeight || 52;
+    x = Math.max(4, Math.min(innerWidth - w - 4, x)); y = Math.max(4, Math.min(innerHeight - h - 4, y));
+    fab.style.left = x + 'px'; fab.style.top = y + 'px'; fab.style.right = 'auto'; fab.style.bottom = 'auto';
+  }
+  function fabPlace(){
+    var p = null; try { p = JSON.parse(localStorage.getItem(FAB_POS)); } catch(e){}
+    if (p && isFinite(p.x) && isFinite(p.y)) fabMove(p.x, p.y);
+  }
+  (function(){
+    var sx, sy, ox, oy, moved = false, down = false;
+    function move(e){
+      if (!down) return;
+      var dx = e.clientX - sx, dy = e.clientY - sy;
+      if (!moved){ if (Math.hypot(dx, dy) < 6) return; moved = true; fab.classList.remove('pgr-snap'); fab.classList.add('pgr-strain'); }
+      fabMove(ox + dx, oy + dy);
+    }
+    function end(){
+      if (!down) return; down = false;
+      removeEventListener('pointermove', move); removeEventListener('pointerup', end); removeEventListener('pointercancel', end);
+      fab.classList.remove('pgr-strain');
+      if (moved){
+        fab.classList.add('pgr-snap'); setTimeout(function(){ fab.classList.remove('pgr-snap'); }, 500);
+        var r = fab.getBoundingClientRect();
+        try { localStorage.setItem(FAB_POS, JSON.stringify({ x: r.left, y: r.top })); } catch(e){}
+        fabSuppress = Date.now() + 300;
+      }
+    }
+    fab.addEventListener('pointerdown', function(e){
+      if (e.button > 0) return;
+      var r = fab.getBoundingClientRect(); down = true; moved = false; sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top;
+      addEventListener('pointermove', move); addEventListener('pointerup', end); addEventListener('pointercancel', end);
+    });
+  })();
+  fabPlace();
+  addEventListener('resize', fabPlace);
   function updateFab(){
     var show = on() && S.opts.fab && !hubOpen();
     fab.style.display = show ? '' : 'none';
@@ -782,7 +830,7 @@
     var sec = document.createElement('div');
     sec.className = 'settings-section'; sec.id = 'pgr-settings-section';
     sec.innerHTML = '<div class="settings-row"><div class="settings-row-text"><div class="settings-row-title">Playground</div><div class="settings-row-sub">Orders, charms, the daily wheel and more.</div></div><button type="button" class="settings-toggle-btn" id="pgr-open-btn">Open</button></div>' +
-      '<div class="settings-row"><div class="settings-row-text"><div class="settings-row-title">Playground button</div><div class="settings-row-sub">The floating 🎪 button on the right edge.</div></div><label class="settings-switch"><input type="checkbox" id="pgr-opt-fab"><span class="settings-slider"></span></label></div>' +
+      '<div class="settings-row"><div class="settings-row-text"><div class="settings-row-title">Playground button</div><div class="settings-row-sub">The floating 🎪 button. Drag it anywhere; turn this off to remove it.</div></div><label class="settings-switch"><input type="checkbox" id="pgr-opt-fab"><span class="settings-slider"></span></label></div>' +
       '<div class="settings-row"><div class="settings-row-text"><div class="settings-row-title">Playground sounds</div><div class="settings-row-sub">Small chimes and clicks.</div></div><label class="settings-switch"><input type="checkbox" id="pgr-opt-sfx"><span class="settings-slider"></span></label></div>';
     host.parentNode.insertBefore(sec, host.nextSibling);
     sec.querySelector('#pgr-open-btn').addEventListener('click', function(){ PP.open(); });

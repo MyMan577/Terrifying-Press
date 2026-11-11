@@ -22113,7 +22113,6 @@ async function ppMp4Chapters(blob){
 
     const HIDDEN_KEY = 'discClickerHiddenV1';
     function isHidden(){
-      try { if (localStorage.getItem('ppPlaygroundMode') === '1') return false; } catch(e){}   // Playground keeps the clicker out
       try { return localStorage.getItem(HIDDEN_KEY) === '1'; } catch(e){ return false; }
     }
     function setHidden(hidden){
@@ -22126,7 +22125,6 @@ async function ppMp4Chapters(blob){
     }
     if (sidebarToggleBtn){
       sidebarToggleBtn.addEventListener('click', () => {
-        try { if (localStorage.getItem('ppPlaygroundMode') === '1'){ if (typeof showToast === 'function') showToast('Playground keeps the clicker out. Switch the app mode to hide it.'); return; } } catch(e){}
         setHidden(!isHidden());
       });
     }
@@ -22317,6 +22315,7 @@ async function ppMp4Chapters(blob){
       fmt: formatNum,
       add: (n) => { if (!(n > 0)) return; state.grooves += n; renderStats(); saveState(); },
       spend: (n) => { if (!(n > 0) || state.grooves < n) return false; state.grooves -= n; renderAll(); saveState(); return true; },
+      isHidden: () => isHidden(),
       show: () => { setHidden(false); root.classList.add('dc-open'); tabBtn.setAttribute('aria-expanded', 'true'); renderAll(); }
     };
 
@@ -26453,7 +26452,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   var MODES=[['lite','Press Play Lite','Simple layout: fewer EQ presets and filters, no levels, EXP or games. Every audio and video tool stays.'],
     ['plus','Press Play PLUS','Everything unlocked from the start: presets, EQ bands, backgrounds, colors and perks. Levels, EXP and games stay on.'],
     ['premium','Press Play PREMIUM','Everything unlocked, every tool kept, and levels, EXP and games hidden.'],
-    ['playground','Press Play Playground','Everything unlocked, the clicker always out, every game exclusive free, and a Playground of orders, charms, a daily wheel and more. Levels, EXP and games stay on.']];
+    ['playground','Press Play Playground','Everything unlocked, the clicker out (hide it in Settings if you like), every game exclusive free, and a Playground of orders, charms, a daily wheel and more. Levels, EXP and games stay on.']];
   var EDGE={lite:'var(--accent)',plus:'#ec4899',premium:'#d4af57',playground:'#b05cff'};
   function label(){var c=cur(),n=MODES.filter(function(x){return x[0]===c})[0];return n?n[1]:'Standard'}
   function refreshRow(){var el=document.getElementById('pp-mode-current');if(el)el.textContent=label()}
@@ -27052,7 +27051,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
 })();
 </script>
 <script src="./pp-points.js?v=20261108n"></script>   <!-- Press Play Points: quests, achievements and shop on the Games page. Bump v= when it changes -->
-<script src="./pp-playground.js?v=20261108d"></script>
+<script src="./pp-playground.js?v=20261112a"></script>
 <script src="./pp-playground-album.js?v=20261108a"></script>
 <script src="./pp-playground-lab.js?v=20261108a"></script>   <!-- Press Play Playground (the fourth app mode): hub, orders, charms, wheel. Bump v= when it changes -->
 <script src="./pp-playground-stars.js?v=20261108a"></script>   <!-- Playground Star Shop: Stars for Points, boosts, shields, the vault -->
