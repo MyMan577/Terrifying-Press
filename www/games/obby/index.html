@@ -2609,6 +2609,10 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
           border:1px solid rgba(124,219,255,0.4);color:#7cdbff;font-weight:900;font-size:13px;">
           ▶ Start Speedrun
         </button>
+        <button id="srCancelBtn" style="display:none;width:100%;padding:11px;border-radius:12px;margin-top:8px;
+          background:rgba(255,107,107,0.16);border:1px solid rgba(255,107,107,0.45);color:#ffb1b1;font-weight:900;font-size:13px;">
+          ✖ Cancel Speedrun
+        </button>
         <div class="hint" style="margin-top:6px;text-align:center">Press <span class="kbd">Q</span> to start · <span class="kbd">Esc</span> to cancel</div>
       </div>
       <div style="margin-top:8px">
@@ -34532,6 +34536,7 @@ function resolveCollisions(axis, dt) {
   const boardList     = document.getElementById('srBoardList');
   const echoToggleBtn = document.getElementById('srEchoToggleBtn');
   const clearOldBtn   = document.getElementById('srClearOldBtn');
+  const cancelBtn     = document.getElementById('srCancelBtn');
 
   
   function renderSidebarBoard(id) {
@@ -34637,6 +34642,19 @@ function resolveCollisions(axis, dt) {
   }
 
   
+  // Cancel button only shows while a run is going; it's checked on a timer so every way a run ends hides it.
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+      if (!srActive) return;
+      cancelSpeedrun();
+      setMessage('✖ Speedrun cancelled. Nothing was saved.');
+    });
+    setInterval(() => {
+      const show = !!srActive;
+      if ((cancelBtn.style.display !== 'none') !== show) cancelBtn.style.display = show ? '' : 'none';
+    }, 250);
+  }
+
   function cancelSpeedrun() {
     srActive    = false;
     window._srActive = false;
