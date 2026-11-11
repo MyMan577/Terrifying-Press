@@ -2405,17 +2405,7 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
       </div>
 
       
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:rgba(0,0,0,0.2);border-radius:12px;border:1px solid rgba(255,255,255,0.07);margin-top:8px;">
-        <div>
-          <div style="font-size:13px;font-weight:700">⛰️ Slope Natural Roll</div>
-          <div class="small" style="margin-top:2px">Slopes gently push you downhill even without sliding.</div>
-        </div>
-        <div id="slopeRollToggle" data-on="true" onclick="window._obbyToggle('slopeRollToggle','_settingSlopeRollEnabled',null)" style="position:relative;width:44px;height:24px;flex-shrink:0;margin-left:12px;cursor:pointer;border-radius:24px;background:rgba(124,219,255,0.45);border:1px solid rgba(124,219,255,0.7);transition:background 0.2s,border-color 0.2s;">
-          <div id="slopeRollToggleThumb" style="position:absolute;top:3px;left:23px;width:16px;height:16px;border-radius:50%;background:#7cdbff;box-shadow:0 1px 4px rgba(0,0,0,0.4);transition:left 0.2s;"></div>
-        </div>
-      </div>
-
-      
+            
       <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:rgba(0,0,0,0.2);border-radius:12px;border:1px solid rgba(255,255,255,0.07);margin-top:8px;">
         <div>
           <div style="font-size:13px;font-weight:700">🎓 Tutorial Banners</div>
@@ -2474,6 +2464,20 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
       </div>
 
       
+      <div style="padding:10px 12px;background:rgba(0,0,0,0.2);border-radius:12px;border:1px solid rgba(255,255,255,0.07);margin-top:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <div>
+            <div style="font-size:13px;font-weight:700">⚔️ Attack Flick</div>
+            <div class="small" style="margin-top:2px">Flick ⚔️ up or down for an up or down attack. A plain tap waits this long to tell it apart. 0 = off.</div>
+          </div>
+          <div id="flickWaitVal" style="font-size:14px;font-weight:900;color:var(--accent);min-width:46px;text-align:right;">50 ms</div>
+        </div>
+        <input type="range" id="flickWaitSlider" min="0" max="120" value="50" step="10"
+          style="width:100%;accent-color:#7cdbff;cursor:pointer;"
+          oninput="window._obbyFlickWait(this.value)">
+        <div style="display:flex;justify-content:space-between;" class="small"><span>Off</span><span>Forgiving</span></div>
+      </div>
+
       <div style="padding:10px 12px;background:rgba(0,0,0,0.2);border-radius:12px;border:1px solid rgba(255,255,255,0.07);margin-top:8px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
           <div>
@@ -12554,6 +12558,16 @@ function resetPlayer() {
     el.addEventListener('touchend', e => { e.preventDefault(); mobileKeys[keyName] = false; });
   }
   bindBtn('leftBtn', 'left'); bindBtn('rightBtn', 'right'); bindBtn('jumpBtn', 'jump'); bindBtn('dashBtn', 'dash');
+
+  // On touch, up/down come from: holding Jump (up), the Crouch toggle (down) and a flick on Attack
+  // (up or down, held until the attack button is let go). Each writes its own flag; this merges them.
+  const _vSrc = { jumpUp: false, crouch: false, flickUp: false, flickDown: false };
+  function _syncVert() {
+    mobileKeys.up = _vSrc.jumpUp || _vSrc.flickUp;
+    mobileKeys.down = _vSrc.crouch || _vSrc.flickDown;
+    window._flickAim = _vSrc.flickUp ? 'up' : _vSrc.flickDown ? 'down' : null;
+  }
+  window.addEventListener('blur', () => { for (const k in _vSrc) _vSrc[k] = false; window._flickAim = null; });
   
   
   
@@ -12562,12 +12576,12 @@ function resetPlayer() {
   const crouchBtnEl = document.getElementById('crouchBtn');
   if (crouchBtnEl) {
     const setCrouchToggle = on => {
-      mobileKeys['down'] = on;
+      _vSrc.crouch = on; _syncVert();
       crouchBtnEl.classList.toggle('crouching', on);
     };
     const crouchTap = e => {
       e.preventDefault();
-      setCrouchToggle(!mobileKeys['down']);
+      setCrouchToggle(!_vSrc.crouch);
     };
     crouchBtnEl.addEventListener('click', crouchTap);
     crouchBtnEl.addEventListener('touchstart', crouchTap, { passive: false });
@@ -12623,7 +12637,7 @@ function resetPlayer() {
       
       
       mobileKeys.jump = true;
-      mobileKeys.up = true;
+      _vSrc.jumpUp = true; _syncVert();
       
       
     };
@@ -12631,7 +12645,7 @@ function resetPlayer() {
       e.preventDefault();
       jumpPressed = false;
       mobileKeys.jump = false;
-      mobileKeys.up = false;
+      _vSrc.jumpUp = false; _syncVert();
     };
     doubleJumpBtn.addEventListener('touchstart', mobileJump);
     doubleJumpBtn.addEventListener('mousedown', mobileJump);
@@ -12709,9 +12723,51 @@ function resetPlayer() {
         performProtagAttackRelease(heldMs);
       }
     };
-    slashBtnEl.addEventListener('touchstart', doAction);
+    // Flick to aim. Press ⚔️ and flick up or down: the attack fires the moment the thumb has moved far
+    // enough, aimed that way (as if holding ↑/↓). A plain tap fires as neutral once the thumb has stayed
+    // put for the flick wait (Settings), or on release if that comes first. Wait 0 = no flick, instant.
+    // The aim stays held until the button is let go, so charged attacks keep it on release.
+    const FLICK_PX = 12;
+    const fl = { id: null, x0: 0, y0: 0, fired: false, timer: 0 };
+    const flickFire = aim => {
+      if (fl.fired) return;
+      fl.fired = true; clearTimeout(fl.timer);
+      if (aim) { _vSrc.flickUp = aim === 'up'; _vSrc.flickDown = aim === 'down'; _syncVert(); }
+      doAction({ preventDefault() {} });
+    };
+    const flickEnd = () => {
+      clearTimeout(fl.timer); fl.id = null;
+      if (_vSrc.flickUp || _vSrc.flickDown) { _vSrc.flickUp = _vSrc.flickDown = false; _syncVert(); }
+    };
+    const findT = (list) => { for (let i = 0; i < list.length; i++) if (list[i].identifier === fl.id) return list[i]; return null; };
+    slashBtnEl.addEventListener('touchstart', e => {
+      e.preventDefault();
+      if (fl.id !== null) return;
+      const t = e.changedTouches[0];
+      const wait = window._settingFlickWait | 0;
+      fl.id = t.identifier; fl.x0 = t.clientX; fl.y0 = t.clientY; fl.fired = false;
+      if (wait <= 0) { flickFire(null); return; }
+      fl.timer = setTimeout(() => flickFire(null), wait);
+    }, { passive: false });
+    slashBtnEl.addEventListener('touchmove', e => {
+      e.preventDefault();
+      const t = findT(e.changedTouches); if (!t || fl.fired) return;
+      const dx = t.clientX - fl.x0, dy = t.clientY - fl.y0;
+      if (dx * dx + dy * dy < FLICK_PX * FLICK_PX) return;
+      // mostly vertical = aimed; sideways just fires as a normal attack
+      flickFire(Math.abs(dy) > Math.abs(dx) * 0.8 ? (dy < 0 ? 'up' : 'down') : null);
+    }, { passive: false });
+    const flickRelease = e => {
+      const t = findT(e.changedTouches); if (!t) return;
+      e.preventDefault();
+      if (!fl.fired) flickFire(null);
+      releaseAction(e);
+      flickEnd();
+    };
+    slashBtnEl.addEventListener('touchend', flickRelease, { passive: false });
+    slashBtnEl.addEventListener('touchcancel', flickRelease, { passive: false });
+    window.addEventListener('blur', flickEnd);
     slashBtnEl.addEventListener('mousedown', doAction);
-    slashBtnEl.addEventListener('touchend', releaseAction);
     slashBtnEl.addEventListener('mouseup', releaseAction);
   }
 
@@ -14407,7 +14463,6 @@ function applyTileEffect(tile) {
 
          
          const _slideEnabled    = window._settingSlideEnabled !== false;
-         const _slopeRollEnabled = window._settingSlopeRollEnabled !== false;
          const downKeyDown = keys.has('arrowdown') || mobileKeys.down;
          const slideKeyDown = _slideEnabled && downKeyDown;
 
@@ -14641,9 +14696,6 @@ function applyTileEffect(tile) {
          }
 
          
-         if (!player.isSliding && player.onGround && onSlope && !player.isDashing && _slopeRollEnabled) {
-           player.vx += (onDownSlope ? 1 : -1) * 8 * dt;
-         }
 
          
          
@@ -28207,7 +28259,6 @@ function resolveCollisions(axis, dt) {
     try {
       const saved = JSON.parse(localStorage.getItem('obbySettings') || '{}');
       window._settingSlideEnabled     = saved.slideEnabled     !== false;
-      window._settingSlopeRollEnabled = saved.slopeRollEnabled !== false;
       window._settingTutorialBanners  = saved.tutorialBanners  !== false;
       window._settingShowGrid         = saved.showGrid         !== false;
       window._settingScreenShake      = saved.screenShake      !== false;
@@ -28215,9 +28266,12 @@ function resolveCollisions(axis, dt) {
       window._settingHUDOpacity       = (saved.hudOpacity      != null) ? saved.hudOpacity      : 100;
       window._settingSidebarOpacity   = (saved.sidebarOpacity  != null) ? saved.sidebarOpacity  : 100;
       window._settingNoirFilter       = saved.noirFilter       === true;
+      window._settingFlickWait        = (saved.flickWait       != null) ? saved.flickWait       : 50;
+      window._settingMusicVolume      = (saved.musicVolume     != null) ? saved.musicVolume     : 50;
     } catch(e) {
+      window._settingFlickWait        = 50;
+      window._settingMusicVolume      = 50;
       window._settingSlideEnabled     = true;
-      window._settingSlopeRollEnabled = true;
       window._settingTutorialBanners  = true;
       window._settingShowGrid         = true;
       window._settingScreenShake      = true;
@@ -28231,7 +28285,6 @@ function resolveCollisions(axis, dt) {
       try {
         localStorage.setItem('obbySettings', JSON.stringify({
           slideEnabled:     window._settingSlideEnabled,
-          slopeRollEnabled: window._settingSlopeRollEnabled,
           tutorialBanners:  window._settingTutorialBanners,
           showGrid:         window._settingShowGrid,
           screenShake:      window._settingScreenShake,
@@ -28239,6 +28292,8 @@ function resolveCollisions(axis, dt) {
           hudOpacity:       window._settingHUDOpacity,
           sidebarOpacity:   window._settingSidebarOpacity,
           noirFilter:       window._settingNoirFilter,
+          flickWait:        window._settingFlickWait,
+          musicVolume:      window._settingMusicVolume,
         }));
       } catch(e) {}
     }
@@ -28346,6 +28401,14 @@ function resolveCollisions(axis, dt) {
     };
 
     
+    window._obbyFlickWait = function(val) {
+      val = parseInt(val, 10) || 0;
+      window._settingFlickWait = val;
+      var display = document.getElementById('flickWaitVal');
+      if (display) display.textContent = val ? val + ' ms' : 'Off';
+      saveSettings();
+    };
+
     window._obbyHUDOpacity = function(val) {
       val = parseInt(val, 10);
       window._settingHUDOpacity = val;
@@ -28373,11 +28436,12 @@ function resolveCollisions(axis, dt) {
       var display = document.getElementById('musicVolVal');
       if (display) display.textContent = val + '%';
       if (window._musicVolume) window._musicVolume(val / 100);
+      window._settingMusicVolume = val;
+      saveSettings();
     };
 
     
     syncToggle('slideToggle',    'slideToggleThumb',    window._settingSlideEnabled);
-    syncToggle('slopeRollToggle','slopeRollToggleThumb',window._settingSlopeRollEnabled);
     syncToggle('tutBannerToggle','tutBannerToggleThumb',window._settingTutorialBanners);
     syncToggle('gridToggle',     'gridToggleThumb',     window._settingShowGrid);
     syncToggle('shakeToggle',    'shakeToggleThumb',    window._settingScreenShake);
@@ -28388,6 +28452,17 @@ function resolveCollisions(axis, dt) {
     if (hint) hint.style.opacity = window._settingSlideEnabled ? '1' : '0.35';
 
     
+    var mvSlider = document.getElementById('musicVolSlider');
+    if (mvSlider) mvSlider.value = window._settingMusicVolume;
+    var mvVal = document.getElementById('musicVolVal');
+    if (mvVal) mvVal.textContent = window._settingMusicVolume + '%';
+    if (window._musicVolume) window._musicVolume(window._settingMusicVolume / 100);
+
+    var fwSlider = document.getElementById('flickWaitSlider');
+    if (fwSlider) fwSlider.value = window._settingFlickWait;
+    var fwVal = document.getElementById('flickWaitVal');
+    if (fwVal) fwVal.textContent = window._settingFlickWait ? window._settingFlickWait + ' ms' : 'Off';
+
     var hudSlider = document.getElementById('hudOpacitySlider');
     var hudVal    = document.getElementById('hudOpacityVal');
     if (hudSlider) hudSlider.value = window._settingHUDOpacity;
