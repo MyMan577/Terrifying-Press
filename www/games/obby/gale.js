@@ -1,22 +1,23 @@
 /* Obby Builder: GALE, a wind runner and her kite. Built for Smash.
  *
- * What makes Gale different: she fights in two places at once. Her KITE flies on a string behind her,
- * every move is thrown through it, and she can leave it out on the stage as a GUST SENTRY and later
- * ZIP to it. She also shapes the stage: UPDRAFT VENTS stay where she puts them and launch foes (and
- * throw her up), and a charged Downburst becomes a TWISTER that walks across the stage.
+ * What makes Gale different: her KITE is a long-range, many-hit weapon on a string. KITE REEL throws it far
+ * ahead, snags the first foe it touches, shreds them while it reels them back to her and pops them up at
+ * her feet. PINWHEEL whirls it round her again and again in the air. Every kite hit feeds TAILWIND, and
+ * Tailwind makes the kite reach further and reel faster. She also shapes the stage: UPDRAFT VENTS stay
+ * where she puts them and launch foes (and throw her up), and a charged Downburst becomes a TWISTER.
  *
  * MOVEMENT
- *  - TAILWIND: run one way to build up to +40% speed (streaks + an arc under your feet show it).
+ *  - TAILWIND: run one way, or land kite hits, to build up to +40% speed (streaks + an arc under your
+ *    feet show it). It also lengthens the kite's string.
  *  - WALL RUN: in the air, run into any wall (or touch it at speed) and you sprint up it. Jump off
  *    for a big WALL KICK that refills the run, so you can climb between two walls forever. Reach the
  *    top of the wall and you VAULT over it. Works on the stage's sides in Smash too.
  *  - KITE RIDE: hold jump while falling to hang from the kite: you float, steer and get a short lift.
- *  - KITE ZIP (air ←/→ + S while the kite is out): fly to the kite and get a jump back.
  *
  * 8 MOVES (S / ⚔️ + a direction). Hold S to charge any of them into a stronger version.
- *  Ground: neutral KITE LASH, side KITE TOSS (leaves a Gust Sentry; again = Recall Slice),
- *          up UPDRAFT VENT (lasting launcher you can ride), down DOWNBURST (charged: TWISTER).
- *  Air:    neutral PINWHEEL, side KITE ZIP / SLIPSTREAM, up JETSTREAM, down DIVE KICK (spike, pogo).
+ *  Ground: neutral KITE LASH (2 hits: down, then a snap back up), side KITE REEL (long range, many hits,
+ *          drags the foe to you), up UPDRAFT VENT (lasting launcher you can ride), down DOWNBURST (charged: TWISTER).
+ *  Air:    neutral PINWHEEL (many hits, holds foes in the wheel), side SLIPSTREAM, up JETSTREAM, down DIVE KICK (spike, pogo).
  *
  * Works for a second fighter (Smash CPU) through window._fighterPlugins, like the Mixtape.
  */
@@ -25,8 +26,8 @@
   const ID = 'cb_gale';
   const DEF = {
     id: ID, name: 'Gale', icon: '🪁', tier: 'gold',
-    ability: 'Kite Fighter: every move goes through her kite. Wall Run, Kite Ride, Gust Sentry + 8 moves (hold S to charge)',
-    desc: 'A wind runner and her kite. Every attack is thrown through the kite, which she can leave out as a GUST SENTRY and ZIP back to. UPDRAFT VENTS stay on the stage and launch foes (ride them yourself), and a charged Downburst becomes a walking TWISTER. Run up any wall, kick off to climb, vault over the top, and hold jump while falling to ride the kite.',
+    ability: 'Kite Fighter: a long-range, many-hit kite on a string. Kite Reel, Pinwheel, Wall Run, Kite Ride + 8 moves (hold S to charge)',
+    desc: 'A wind runner and her kite. The kite hits from far away and hits many times: KITE REEL snags a foe at range, shreds them and drags them back to her, and PINWHEEL whirls it round her in the air. Every kite hit builds TAILWIND, which lengthens the string. UPDRAFT VENTS stay on the stage and launch foes (ride them yourself), and a charged Downburst becomes a walking TWISTER. Run up any wall, kick off to climb, vault over the top, and hold jump while falling to ride the kite.',
     color: '#5ee6c8'
   };
   const STATS = { speed: 1.15, jump: 1.2, maxJumps: 2, maxDashes: 1, hp: 3 };
@@ -49,16 +50,16 @@
   if (window.UNIVERSAL_PUNCH_EXCLUDED_CHARS) window.UNIVERSAL_PUNCH_EXCLUDED_CHARS.add(ID);
 
   const MOVES = {
-    ground: { neutral: { name: 'Kite Lash', big: 'STORM LASH', cd: 0.38 }, side: { name: 'Kite Toss', big: 'GALE SENTRY', cd: 0.5 }, up: { name: 'Updraft Vent', big: 'SKY GEYSER', cd: 0.7 }, down: { name: 'Downburst', big: 'TWISTER', cd: 0.9 } },
-    air:    { neutral: { name: 'Pinwheel', big: 'HURRICANE WHEEL', cd: 0.42 }, side: { name: 'Slipstream', big: 'JET SLIPSTREAM', cd: 0.45 }, up: { name: 'Jetstream', big: 'SKY ROCKET', cd: 0.5 }, down: { name: 'Dive Kick', big: 'METEOR DIVE', cd: 0.6 } },
+    ground: { neutral: { name: 'Kite Lash', big: 'STORM LASH', cd: 0.5 }, side: { name: 'Kite Reel', big: 'STORM REEL', cd: 0.55 }, up: { name: 'Updraft Vent', big: 'SKY GEYSER', cd: 0.7 }, down: { name: 'Downburst', big: 'TWISTER', cd: 0.9 } },
+    air:    { neutral: { name: 'Pinwheel', big: 'HURRICANE WHEEL', cd: 0.8 }, side: { name: 'Slipstream', big: 'JET SLIPSTREAM', cd: 0.45 }, up: { name: 'Jetstream', big: 'SKY ROCKET', cd: 0.5 }, down: { name: 'Dive Kick', big: 'METEOR DIVE', cd: 0.6 } },
   };
   // strike-engine frame data: light and fast. Holding S charges any of them.
   const MFD = {
-    ground_neutral: { windup: 0.05, active: 0.12, endlag: 0.10, sweetDmg: 1, sweetKb: 1.3 },
+    ground_neutral: { windup: 0.05, active: 0.24, endlag: 0.10, sweetDmg: 1, sweetKb: 1.3 },
     ground_side:    { windup: 0.06, active: 0.10, endlag: 0.12 },
     ground_up:      { windup: 0.08, active: 0.10, endlag: 0.18, sweetStop: 0.08, sweetShake: 7 },
     ground_down:    { windup: 0.10, active: 0.14, endlag: 0.20 },
-    air_neutral:    { windup: 0.04, active: 0.16, endlag: 0.10, root: false },
+    air_neutral:    { windup: 0.04, active: 0.30, endlag: 0.10, root: false },
     air_side:       { windup: 0.02, sweet: 0.0, active: 0.18, endlag: 0.08, root: false },
     air_up:         { windup: 0.03, sweet: 0.0, active: 0.2, endlag: 0.10, root: false, hang: false },
     air_down:       { windup: 0.05, sweet: 0.0, active: 0.5, endlag: 0.12, root: false, hang: false, stop: 0.06, shake: 5 },
@@ -66,9 +67,9 @@
   const TW_BUILD = 1.0, TW_DECAY = 1.6, RIDE_FALL = 2.2;
 
   // ---- per-fighter state (swapped for the Smash CPU) ----
-  let active = false, atkCD = 0, tw = 0, twSaid = 0, airUpUsed = false, airSideUsed = false, lastDir = 1;
+  let active = false, atkCD = 0, tw = 0, twSaid = 0, twHold = 0, airUpUsed = false, airSideUsed = false, lastDir = 1;
   let lastPX = null, lastPY = null, prevJump = false;
-  let kite = null, wr = null, wrStam = 1, wrLastSide = 0, ride = null, rideLift = 0.35, slip = null, zip = null, dive = null, carry = null;
+  let kite = null, wr = null, wrStam = 1, wrLastSide = 0, ride = null, rideLift = 0.35, slip = null, dive = null, carry = null;
   const fx = [], vents = [], twisters = [], trail = [];
 
   // ---- sound: airy whooshes and chimes (its own AudioContext) ----
@@ -143,7 +144,9 @@
   function label(p, text, c, big) { fx.push({ k: 'pop', x: pcx(p), y: p.y - 0.25, t: 0, life: big ? 0.8 : 0.55, text, c: c || C_MINT, big: !!big }); }
   function hit(e, dmg, o) {
     o = o || {};
-    e.hp = Math.max(0, (e.hp || 1) - Math.max(1, Math.round(dmg)));
+    // Smash turns damage into percent, so a link hit can be worth less than 1 there; the main game's foes lose whole points
+    e.hp = Math.max(0, (e.hp || 1) - (inSmash() ? Math.max(0.25, dmg) : Math.max(1, Math.round(dmg))));
+    if (!o.noWind) { tw = Math.min(1, tw + 0.07); twHold = 1.2; }   // kite hits keep the wind up
     e.hitFlash = 0.5;
     if (o.stun) e.stunTimer = Math.max(e.stunTimer || 0, o.stun);
     if (!e._noKnockback) { if (o.kx != null) e.vx = o.kx; if (o.ky != null) e.vy = o.ky; }
@@ -164,32 +167,47 @@
   }
   function facing(p, k) { return k.right ? 1 : k.left ? -1 : face(p); }
   function newKite(p) { return { x: p ? pcx(p) - face(p) * 1.2 : 0, y: p ? p.y - 1.2 : 0, vx: 0, vy: 0, m: 'follow', t: 0, ang: 0 }; }
-  function kiteOut() { return !!kite && (kite.m === 'sentry' || kite.m === 'throw'); }
+  // the kite is out working a many-hit move: no new move until it is done
+  function kiteBusy() { return !!kite && (kite.m === 'reel' || kite.m === 'spin' || kite.m === 'lash'); }
+  // may a move drag this foe along? (not bosses, not held ones; in Smash not while they shield, dodge or are safe)
+  function canDrag(e) {
+    if (e._noKnockback || e._held) return false;
+    const sm = window.__smash;
+    return !(sm && sm.active && sm.__canHold && !sm.__canHold(e));
+  }
+  function drag(e, tx, ty, sp, dt) {
+    if (!canDrag(e)) return;
+    const w = e.w || 0.9, h = e.h || 0.9;
+    const dx = tx - ex(e), sx = Math.sign(dx) * Math.min(Math.abs(dx), sp * dt);
+    if (sx && !blocked(e.x + sx, e.y + 0.02, w, h - 0.08)) e.x += sx;
+    if (ty != null && inSmash()) {   // Smash fighters hang in the wind; the main game's foes keep their own gravity
+      const dy = ty - ey(e), sy = Math.sign(dy) * Math.min(Math.abs(dy), sp * 0.7 * dt);
+      if (sy && !blocked(e.x, e.y + sy, w, h - 0.02)) e.y += sy;
+    }
+  }
   function resetKit() {
     fx.length = 0; vents.length = 0; twisters.length = 0; trail.length = 0;
-    slip = zip = dive = carry = wr = ride = null;
-    atkCD = 0; airUpUsed = airSideUsed = false; tw = 0; wrStam = 1; wrLastSide = 0; rideLift = 0.35;
+    slip = dive = carry = wr = ride = null;
+    atkCD = 0; airUpUsed = airSideUsed = false; tw = 0; twHold = 0; wrStam = 1; wrLastSide = 0; rideLift = 0.35;
     kite = null; lastPX = lastPY = null;
   }
-  function recallKite() { if (kite && kite.m !== 'follow') { kite.m = 'return'; kite.t = 0; kite.hitSet = new Set(); } }
 
   // ---- the 8 moves (pw = how long S was held, 0..1) ----
   const ACT = {
-    // Kite Lash: the kite swoops over your head and down in front of you on its string
+    // Kite Lash: the kite swoops over your head and down in front of you (a light hit that pins), then
+    // snaps straight back up the same arc (the hit that launches)
     ground_neutral(p, f, pw) {
-      const R = 2.1 + 0.6 * tw + 0.8 * pw, k = (1 + 0.6 * tw) * (1 + 0.5 * pw);
-      kite.m = 'lash'; kite.t = 0; kite.dur = 0.2; kite.f = f; kite.R = R; kite.hitSet = new Set();
-      kite.dmg = 2 + (tw > 0.7 ? 1 : 0) + Math.round(2 * pw); kite.kx = f * 7 * k; kite.ky = -5 * k;
+      const R = 2.4 + 0.6 * tw + 0.8 * pw, k = (1 + 0.6 * tw) * (1 + 0.5 * pw);
+      kite.m = 'lash'; kite.t = 0; kite.dur = 0.18; kite.back = 0.16; kite.ph = 0; kite.f = f; kite.R = R; kite.hitSet = new Set();
+      kite.dmg = 2 + (tw > 0.7 ? 1 : 0) + Math.round(2 * pw); kite.kx = f * 7 * k; kite.ky = -6 * k;
       whoosh(false, pw > 0.3);
     },
-    // Kite Toss: throw the kite ahead; it stays as a Gust Sentry blowing foes away. Again: Recall Slice.
+    // Kite Reel: the kite shoots far ahead on its string. The first foe it touches is snagged: the kite
+    // shreds them while it reels them back to you, then pops them up at your feet. You can move meanwhile.
     ground_side(p, f, pw) {
-      if (kiteOut()) { recallKite(); tone(660, { dur: 0.12, slide: 990, vol: 0.12 }); return 'RECALL SLICE'; }
-      const dist = 4 + 2 * pw;
-      let tx = pcx(p) + f * dist, ty = pcy(p) - 0.6;
-      for (let d = dist; d > 0.5; d -= 0.25) { tx = pcx(p) + f * d; if (!blocked(tx - 0.3, ty - 0.3, 0.6, 0.6)) break; }
-      Object.assign(kite, { m: 'throw', t: 0, x0: kite.x, y0: kite.y, tx, ty, f, life: 4.5 + 3 * pw, pulse: 0.2, pw, hitSet: new Set() });
-      whoosh(false); chime(2);
+      Object.assign(kite, { m: 'reel', ph: 'out', t: 0, f, pw, ox: pcx(p), x: pcx(p) + f * 0.5, y: p.y + p.h * 0.35,
+        range: 6 + 1.5 * tw + 2.5 * pw, snag: null, tick: 0, n: 0 });
+      whoosh(false, true); chime(2);
     },
     // Updraft Vent: a wind vent on the floor that keeps launching foes, and throws you up if you step in
     ground_up(p, f, pw) {
@@ -214,20 +232,15 @@
       kite.m = 'slam'; kite.t = 0; kite.dur = 0.22; kite.f = f; kite.sx = pcx(p) + f * 2; kite.sy = p.y + p.h - 0.3; kite.done = false; kite.pw = pw;
       tone(700, { dur: 0.18, slide: 1400, vol: 0.1 });
     },
-    // Pinwheel: you spin and the kite whirls a full circle around you on its string; you hang for a moment
+    // Pinwheel: the kite whirls round and round you on its string. It hits again and again, the wind holds
+    // foes inside the wheel, and the last turn throws them out. You hang in the air while it spins.
     air_neutral(p, f, pw) {
-      kite.m = 'spin'; kite.t = 0; kite.dur = 0.3; kite.f = f; kite.R = 1.9 + 0.5 * pw; kite.hitSet = new Set(); kite.dmg = 2 + Math.round(2 * pw);
+      Object.assign(kite, { m: 'spin', t: 0, f, pw, dur: 0.6 + 0.2 * pw, revs: 2.5 + pw, R: 2.2 + 0.3 * tw + 0.5 * pw, tick: 0.06, dmg: 2 + Math.round(2 * pw) });
       p.vy = Math.min(p.vy, 0.5);
       whoosh(false, pw > 0.3);
     },
-    // Slipstream: an air dash that leaves afterimages and comes back if it hits.
-    // With the kite out as a sentry, it's KITE ZIP instead: you fly to the kite and get a jump back.
+    // Slipstream: an air dash that leaves afterimages and comes back if it hits
     air_side(p, f, pw) {
-      if (kite && kite.m === 'sentry') {
-        zip = { t: 0, x0: p.x, y0: p.y, tx: kite.x - p.w / 2, ty: kite.y - p.h / 2, dur: Math.max(0.12, Math.min(0.32, Math.hypot(kite.x - pcx(p), kite.y - pcy(p)) / 30)), hitSet: new Set(), pw };
-        whoosh(false, true); chime(3);
-        return 'KITE ZIP';
-      }
       airSideUsed = true;
       slip = { t: 0, dur: 0.2 + 0.08 * pw, f, speed: 18 + 4 * tw + 5 * pw, hitSet: new Set(), x0: pcx(p), y: pcy(p), landed: false, pw };
       whoosh(false, true);
@@ -252,19 +265,19 @@
   window.performSlash = function () {
     if (window.selectedCharacter !== ID) { if (_prevSlash) return _prevSlash.apply(this, arguments); return; }
     const p = window._gamePlayer;
-    if (!p || atkCD > 0) return;
+    if (!p || atkCD > 0 || kiteBusy()) return;
     const pick = () => {
-      const q = window._gamePlayer; if (!q || window.selectedCharacter !== ID) return null;
+      const q = window._gamePlayer; if (!q || window.selectedCharacter !== ID || kiteBusy()) return null;
       const k = keyDirs();
       const stance = q.onGround ? 'ground' : 'air';
       const dir = (k.down && !k.up) ? 'down' : (k.up && !k.down) ? 'up' : (k.left || k.right) ? 'side' : 'neutral';
       const mv = MOVES[stance][dir];
       if (stance === 'air' && dir === 'up' && airUpUsed) { msg('🪁 Jetstream comes back when you land, wall run or ride a vent'); return null; }
-      if (stance === 'air' && dir === 'side' && airSideUsed && !(kite && kite.m === 'sentry')) { msg('🪁 Slipstream comes back when you land or land a hit'); return null; }
+      if (stance === 'air' && dir === 'side' && airSideUsed) { msg('🪁 Slipstream comes back when you land or land a hit'); return null; }
       return { key: stance + '_' + dir, mv, f: facing(q, k) };
     };
     const fire = (sel, pw) => {
-      const q = window._gamePlayer; if (!q) return;
+      const q = window._gamePlayer; if (!q || kiteBusy()) return;
       pw = pw || 0;
       if (!kite) kite = newKite(q);
       atkCD = sel.mv.cd;
@@ -293,23 +306,88 @@
       }
     };
     if (K.m === 'lash') {
-      // from behind your head, over the top, down in front
-      const u = Math.min(1, K.t / K.dur), e2 = 1 - Math.pow(1 - u, 2);
-      const a = (K.f > 0 ? -Math.PI * 0.95 : -Math.PI * 0.05) + K.f * Math.PI * 1.2 * e2;
+      // down: from behind your head, over the top, down in front. back: the same arc the other way.
+      const a0 = K.f > 0 ? -Math.PI * 0.95 : -Math.PI * 0.05;
+      let e2;
+      if (!K.ph) { const u = Math.min(1, K.t / K.dur); e2 = 1 - Math.pow(1 - u, 2); }
+      else { const u = Math.min(1, K.t / K.back); e2 = 1 - 0.6 * u * u; }
+      const a = a0 + K.f * Math.PI * 1.2 * e2;
       K.x = hx + Math.cos(a) * K.R; K.y = hy + Math.sin(a) * K.R; K.ang = a + Math.PI / 2;
-      if (u > 0.25) sweep(K.x, K.y, 0.9, K.dmg, K.kx, K.ky, { big: K.R > 2.6 });
-      if (u >= 1) { K.m = 'follow'; K.vx = K.f * 6; K.vy = 2; }
+      if (!K.ph) {
+        if (K.t > K.dur * 0.25) sweep(K.x, K.y, 0.9, 1, K.f * 1.5, 1, { stun: 0.3, c: C_SKY });
+        if (K.t >= K.dur) { K.ph = 1; K.t = 0; K.hitSet = new Set(); whoosh(true); }
+      } else {
+        sweep(K.x, K.y, 1.0, K.dmg, K.kx, K.ky, { big: K.R > 2.9 });
+        if (K.t >= K.back) { K.m = 'follow'; K.vx = -K.f * 4; K.vy = -5; }
+      }
       return;
     }
     if (K.m === 'spin') {
-      const u = Math.min(1, K.t / K.dur), a = -Math.PI / 2 + K.f * Math.PI * 2 * u;
-      K.x = hx + Math.cos(a) * K.R; K.y = pcy(p) + Math.sin(a) * K.R; K.ang = a;
-      for (const e of enemies) {
-        if (K.hitSet.has(e)) continue;
-        const d = Math.hypot(ex(e) - pcx(p), ey(e) - pcy(p));
-        if (d < K.R + 0.6) { K.hitSet.add(e); const s = ex(e) >= pcx(p) ? 1 : -1; hit(e, K.dmg, { kx: s * 6, ky: -6, stun: 0.4, big: K.R > 2.2 }); smack(); }
+      const u = Math.min(1, K.t / K.dur), a = -Math.PI / 2 + K.f * Math.PI * 2 * K.revs * u, cx = pcx(p), cy = pcy(p);
+      K.x = cx + Math.cos(a) * K.R; K.y = cy + Math.sin(a) * K.R; K.ang = a;
+      p.vy = Math.min(p.vy, 1.2);   // you hang while it whirls
+      const inWheel = enemies.filter(e => Math.hypot(ex(e) - cx, ey(e) - cy) < K.R + 0.6 + (e.w || 0.9) / 2);
+      if (u >= 1) {
+        // the last turn throws them out
+        for (const e of inWheel) { const s = ex(e) === cx ? K.f : ex(e) > cx ? 1 : -1; hit(e, K.dmg, { kx: s * 7, ky: -8, stun: 0.45, c: C_GOLD, big: true }); }
+        if (inWheel.length) { smack(true); fx.push({ k: 'burst', x: cx, y: cy + 0.4, R: K.R, t: 0, life: 0.35 }); }
+        K.m = 'follow'; K.vx = K.vy = 0;
+        return;
       }
-      if (u >= 1) { K.m = 'follow'; }
+      // the wind holds them in the wheel, just off your side
+      for (const e of inWheel) { const s = ex(e) === cx ? K.f : ex(e) > cx ? 1 : -1; drag(e, cx + s * 1.25, cy, 7, dt); }
+      K.tick -= dt;
+      if (K.tick <= 0) {
+        K.tick = 0.13;
+        for (const e of inWheel) { const s = ex(e) >= cx ? 1 : -1; hit(e, 0.6, { kx: -s * 1.2, ky: -1.5, stun: 0.3, c: C_SKY }); }
+        if (inWheel.length) smack();
+      }
+      return;
+    }
+    if (K.m === 'reel') {
+      K.ang += dt * 26 * K.f;
+      const touching = () => {
+        let best = null, bd = 1e9;
+        for (const e of enemies) { const d = Math.hypot(ex(e) - K.x, ey(e) - K.y); if (d < 0.8 + (e.w || 0.9) / 2 && d < bd) { best = e; bd = d; } }
+        return best;
+      };
+      if (K.ph === 'out' || K.ph === 'hover') {
+        if (K.ph === 'out') {
+          // many small steps so a fast kite cannot skip over a foe
+          let left = (34 + 8 * tw) * dt;
+          while (left > 0 && K.ph === 'out' && !K.snag) {
+            const st = Math.min(0.3, left); left -= st;
+            const nx = K.x + K.f * st;
+            if (blocked(nx - 0.3, K.y - 0.3, 0.6, 0.6) || (nx - K.ox) * K.f >= K.range) { K.ph = 'hover'; K.t = 0; break; }
+            K.x = nx; K.snag = touching();
+          }
+        } else {
+          K.y += Math.sin(K.t * 40) * 0.01; K.snag = touching();
+          if (!K.snag && K.t > 0.2) { K.m = 'return'; K.t = 0; return; }
+        }
+        if (K.snag) { K.ph = 'shred'; K.t = 0; K.tick = 0; K.n = 0; label(p, 'SNAGGED!', C_GOLD); tone(990, { dur: 0.08, slide: 1500, vol: 0.12 }); }
+        return;
+      }
+      // shred: the kite sits on the foe, cutting, while the string reels them in to just in front of you
+      const e = K.snag;
+      if (!e || e.dead || enemies.indexOf(e) < 0) { K.m = 'return'; K.t = 0; return; }
+      const side = ex(e) === hx ? K.f : ex(e) > hx ? 1 : -1, gx = hx + side * 1.5;
+      drag(e, gx, hy, 8 + 4 * tw + 3 * K.pw, dt);
+      K.x = ex(e); K.y = ey(e);
+      K.tick -= dt;
+      if (K.tick <= 0) {
+        K.tick = 0.12; K.n++;
+        for (const e2 of within(K.x, K.y, 1.1)) hit(e2, 0.6, { kx: -side * 1.5, ky: -1, stun: 0.3, c: C_SKY });
+        smack();
+      }
+      const home = Math.abs(gx - ex(e)) < 0.35;
+      if ((home && K.n >= 4 + Math.round(2 * K.pw)) || K.t > 0.7 + 0.3 * K.pw) {
+        // the pop: straight up at your feet, ready for a follow-up
+        for (const e2 of within(K.x, K.y, 1.3)) hit(e2, 2 + Math.round(2 * K.pw), { kx: side * 2, ky: -12 - 3 * K.pw, stun: 0.55, c: C_GOLD, big: true });
+        fx.push({ k: 'burst', x: K.x, y: K.y + 0.4, R: 1.4, t: 0, life: 0.35 });
+        smack(true); chime(3); shake(4);
+        K.m = 'return'; K.t = 0; K.snag = null;
+      }
       return;
     }
     if (K.m === 'slam') {
@@ -337,33 +415,11 @@
       if (K.t > 0.35) K.m = 'follow';
       return;
     }
-    if (K.m === 'throw') {
-      const u = Math.min(1, K.t / 0.18);
-      K.x = K.x0 + (K.tx - K.x0) * u; K.y = K.y0 + (K.ty - K.y0) * u - Math.sin(u * Math.PI) * 0.6; K.ang = K.f * 0.5;
-      sweep(K.x, K.y, 0.6, 2, K.f * 7, -4);
-      if (u >= 1) { K.m = 'sentry'; K.t = 0; }
-      return;
-    }
-    if (K.m === 'sentry') {
-      // hovers and gusts: everything in front of it gets blown away
-      K.x = K.tx + Math.sin(K.t * 2.3) * 0.12; K.y = K.ty + Math.sin(K.t * 3.1) * 0.18; K.ang = K.f * (0.35 + 0.1 * Math.sin(K.t * 5));
-      K.pulse -= dt;
-      if (K.pulse <= 0) {
-        K.pulse = 0.65 - 0.15 * (K.pw || 0);
-        const L = 3.4 + (K.pw || 0);
-        for (const e of enemies) { const al = (ex(e) - K.x) * K.f; if (al > -0.4 && al < L && Math.abs(ey(e) - K.y) < 1.2 + al * 0.2) hit(e, 1, { kx: K.f * (8 + 4 * (K.pw || 0)), ky: -3, stun: 0.25, c: C_SKY }); }
-        fx.push({ k: 'gust', x: K.x, y: K.y, f: K.f, L, t: 0, life: 0.45 });
-        noise({ dur: 0.2, cut: 1800, cutEnd: 700, q: 2, vol: 0.08 });
-      }
-      if (K.t > K.life || Math.hypot(K.x - hx, K.y - hy) > 18) recallKite();
-      return;
-    }
-    if (K.m === 'return') {
-      const dx = hx - K.x, dy = hy - 0.8 - K.y, d = Math.hypot(dx, dy) || 1, sp = 26 * dt;
+    if (K.m === 'return') {   // flies home after a Reel
+      const dx = hx - K.x, dy = hy - 0.8 - K.y, d = Math.hypot(dx, dy) || 1, sp = 30 * dt;
       K.ang = Math.atan2(dy, dx) + Math.PI / 2;
       if (d <= sp + 0.3) { K.m = 'follow'; K.vx = dx / d * 6; K.vy = dy / d * 6; return; }
       K.x += dx / d * sp; K.y += dy / d * sp;
-      sweep(K.x, K.y, 0.6, 3, Math.sign(dx || f) * 8, -6, { c: C_GOLD });
       return;
     }
     // follow: a springy float up and behind you, bobbing in the wind (above you while you ride it)
@@ -372,7 +428,7 @@
     const ax = (tx - K.x) * 60 - K.vx * 11, ay = (ty - K.y) * 60 - K.vy * 11;
     K.vx += ax * dt; K.vy += ay * dt;
     K.x += K.vx * dt; K.y += K.vy * dt;
-    if (Math.hypot(K.x - hx, K.y - hy) > 6) { K.x = tx; K.y = ty; K.vx = K.vy = 0; }
+    if (Math.hypot(K.x - hx, K.y - hy) > 8) { K.x = tx; K.y = ty; K.vx = K.vy = 0; }
     K.ang += ((K.vx * 0.06 + Math.sin(K.t * 3) * 0.12) - K.ang) * Math.min(1, dt * 8);
   }
 
@@ -386,7 +442,7 @@
     const k = keyDirs(), enemies = foes(), jumpEdge = k.jump && !prevJump;
 
     // respawned or teleported (or knocked far in Smash): drop moves in progress, the kite comes home
-    if (lastPX != null && (Math.abs(p.x - lastPX) > 4 || Math.abs(p.y - lastPY) > 4)) { slip = zip = dive = carry = wr = ride = null; tw = 0; kite = newKite(p); trail.length = 0; }
+    if (lastPX != null && (Math.abs(p.x - lastPX) > 4 || Math.abs(p.y - lastPY) > 4)) { slip = dive = carry = wr = ride = null; tw = 0; kite = newKite(p); trail.length = 0; }
     if (!kite) kite = newKite(p);
 
     if (atkCD > 0) atkCD = Math.max(0, atkCD - dt);
@@ -398,13 +454,14 @@
     const before = tw;
     if (p.onGround) {
       if (inX && Math.abs(p.vx || 0) > 3 && Math.sign(p.vx) === inX) tw = Math.min(1, tw + dt / TW_BUILD);
-      else tw = Math.max(0, tw - dt * TW_DECAY);
+      else if (twHold <= 0) tw = Math.max(0, tw - dt * TW_DECAY);
     } else if (!inX && !wr) tw = Math.max(0, tw - dt * 0.3);
     if (before < 1 && tw >= 1 && twSaid <= 0) { twSaid = 3; label(p, 'TAILWIND!', C_SKY); chime(3); }
     if (twSaid > 0) twSaid -= dt;
+    if (twHold > 0) twHold -= dt;
     syncStats();
 
-    const busy = slip || zip || dive;
+    const busy = slip || dive;
 
     // WALL RUN: in the air, run into a wall (or hit it at speed) and sprint up it.
     // Sprinting into a wall on the ground runs straight up it too.
@@ -448,7 +505,7 @@
 
     // KITE RIDE: hold jump while falling and hang from the kite
     const wasRiding = !!ride;
-    ride = (!p.onGround && !busy && !wr && k.jump && (p.vy || 0) > -1 && !(p.hitstun > 0) && kite && kite.m !== 'sentry' && kite.m !== 'throw' && kite.m !== 'return') ? (ride || { t: 0 }) : null;
+    ride = (!p.onGround && !busy && !wr && k.jump && (p.vy || 0) > -1 && !(p.hitstun > 0) && kite && kite.m !== 'reel' && kite.m !== 'spin' && kite.m !== 'return') ? (ride || { t: 0 }) : null;
     if (ride) {
       ride.t += dt;
       if (rideLift > 0) { rideLift -= dt; p.vy = Math.min(p.vy, -2.5); }
@@ -522,25 +579,6 @@
       }
     }
 
-    // Kite Zip: fly to the kite
-    if (zip) {
-      const z = zip; z.t += dt;
-      const u = Math.min(1, z.t / z.dur), e2 = u * u * (3 - 2 * u);
-      const nx = z.x0 + (z.tx - z.x0) * e2, ny = z.y0 + (z.ty - z.y0) * e2;
-      if (!blocked(nx, ny, p.w, p.h)) { p.x = nx; p.y = ny; } else z.t = z.dur;
-      p.vx = 0; p.vy = 0; p.dashInvuln = Math.max(p.dashInvuln || 0, 0.1);
-      for (const e of enemies) {
-        if (z.hitSet.has(e)) continue;
-        if (ex(e) > p.x - 0.5 && ex(e) < p.x + p.w + 0.5 && ey(e) > p.y - 0.5 && ey(e) < p.y + p.h + 0.5) { z.hitSet.add(e); hit(e, 3, { kx: Math.sign(z.tx - z.x0 || 1) * 8, ky: -7, stun: 0.5, c: C_GOLD }); smack(); }
-      }
-      if (z.t >= z.dur) {
-        zip = null; kite.m = 'follow'; kite.t = 0;
-        p.vy = -7; airUpUsed = false; airSideUsed = false; wrStam = 1;
-        if (window._setJumpCount) window._setJumpCount(1);
-        fx.push({ k: 'burst', x: pcx(p), y: pcy(p), R: 1.2, t: 0, life: 0.3 });
-      }
-    }
-
     // Dive Kick
     if (dive) {
       dive.t += dt;
@@ -565,7 +603,7 @@
     }
 
     // afterimages while moving fast
-    const fast = slip || zip || dive || wr || (carry && Math.abs(carry.vx) > 6);
+    const fast = slip || dive || wr || (carry && Math.abs(carry.vx) > 6);
     if (fast) trail.push({ x: p.x, y: p.y, w: p.w, h: p.h, f: face(p), t: 0 });
     for (let i = trail.length - 1; i >= 0; i--) { trail[i].t += dt; if (trail[i].t > 0.22) trail.splice(i, 1); }
     if (trail.length > 10) trail.splice(0, trail.length - 10);
@@ -755,27 +793,35 @@
       if (taut) { glow(ctx, C_MINT, 0.5); ctx.lineWidth = 3; ctx.stroke(); }
       // the kite's path while it attacks: a wide crescent of wind
       if (kite.m === 'lash') {
-        const u = Math.min(1, kite.t / kite.dur), e2 = 1 - Math.pow(1 - u, 2), a0 = kite.f > 0 ? -Math.PI * 0.95 : -Math.PI * 0.05;
-        const a1 = a0 + kite.f * Math.PI * 1.2 * e2, from = a0 + kite.f * Math.PI * 1.2 * Math.max(0, e2 - 0.55);
-        const R = kite.R * T;
-        if (kite.f > 0) crescent(ctx, hx, hy, R + T * 0.25, from, a1, T * 0.6, C_MINT, 0.85); else crescent(ctx, hx, hy, R + T * 0.25, a1, from, T * 0.6, C_MINT, 0.85);
-        if (kite.R > 2.6) { if (kite.f > 0) crescent(ctx, hx, hy, R + T * 0.6, from, a1, T * 0.35, C_GOLD, 0.6); else crescent(ctx, hx, hy, R + T * 0.6, a1, from, T * 0.35, C_GOLD, 0.6); }
+        const a0 = kite.f > 0 ? -Math.PI * 0.95 : -Math.PI * 0.05, sw = kite.f * Math.PI * 1.2, R = kite.R * T, big = kite.R > 2.9;
+        let e2, from, col;
+        if (!kite.ph) { const u = Math.min(1, kite.t / kite.dur); e2 = 1 - Math.pow(1 - u, 2); from = Math.max(0, e2 - 0.55); col = C_SKY; }
+        else { const u = Math.min(1, kite.t / kite.back); e2 = 1 - 0.6 * u * u; from = Math.min(1, e2 + 0.45); col = C_MINT; }
+        const lo = a0 + sw * Math.min(e2, from), hi = a0 + sw * Math.max(e2, from);
+        crescent(ctx, hx, hy, R + T * 0.25, Math.min(lo, hi), Math.max(lo, hi), T * 0.6, col, 0.85);
+        if (big) crescent(ctx, hx, hy, R + T * 0.6, Math.min(lo, hi), Math.max(lo, hi), T * 0.35, C_GOLD, 0.6);
       } else if (kite.m === 'spin') {
-        const u = Math.min(1, kite.t / kite.dur), a1 = -Math.PI / 2 + kite.f * Math.PI * 2 * u, a0 = a1 - kite.f * Math.PI * 1.1, R = kite.R * T, cy = SY(pcy(p));
-        if (kite.f > 0) crescent(ctx, hx, cy, R + T * 0.3, a0, a1, T * 0.55, C_SKY, 0.85); else crescent(ctx, hx, cy, R + T * 0.3, a1, a0, T * 0.55, C_SKY, 0.85);
+        const u = Math.min(1, kite.t / kite.dur), a1 = -Math.PI / 2 + kite.f * Math.PI * 2 * kite.revs * u, a0 = a1 - kite.f * Math.PI * 1.3, R = kite.R * T, cy = SY(pcy(p));
+        // the whole wheel glows faintly so you can see what it covers, with two bright blades chasing round it
+        ctx.beginPath(); ctx.arc(hx, cy, R + T * 0.3, 0, Math.PI * 2); glow(ctx, C_SKY, 0.22); ctx.lineWidth = T * 0.5; ctx.stroke();
+        for (const off of [0, Math.PI]) {
+          if (kite.f > 0) crescent(ctx, hx, cy, R + T * 0.3, a0 + off, a1 + off, T * 0.55, off ? C_MINT : C_SKY, off ? 0.55 : 0.85);
+          else crescent(ctx, hx, cy, R + T * 0.3, a1 + off, a0 + off, T * 0.55, off ? C_MINT : C_SKY, off ? 0.55 : 0.85);
+        }
         for (let i = 0; i < 3; i++) { const an = a1 - kite.f * i * 0.5; star(ctx, hx + Math.cos(an) * (R + T * 0.5), cy + Math.sin(an) * (R + T * 0.5), T * 0.12, now * 8, C_WHITE, 0.8 - i * 0.2); }
       } else if (kite.m === 'slam' && kite.t < kite.dur) {
         const pts = []; for (let i = 0; i <= 6; i++) pts.push([kx - Math.sin(kite.ang) * 0, ky - (kite.t / kite.dur > 0.45 ? 1 : -1) * i * T * 0.25]);
         taper(ctx, pts, T * 0.25, C_GOLD, 0.8);
-      } else if (kite.m === 'throw' || kite.m === 'return') {
-        const pts = []; const back = kite.m === 'throw' ? -kite.f : Math.sign(kite.x - pcx(p)) || 1;
+      } else if (kite.m === 'return' || (kite.m === 'reel' && kite.ph === 'out')) {
+        const pts = []; const back = kite.m === 'reel' ? -kite.f : Math.sign(kite.x - pcx(p)) || 1;
         for (let i = 0; i <= 6; i++) pts.push([kx + back * i * T * 0.35, ky + Math.sin(now * 20 + i) * 3]);
-        taper(ctx, pts, T * 0.22, kite.m === 'throw' ? C_MINT : C_GOLD, 0.8);
-      } else if (kite.m === 'sentry') {
-        // a pulsing ring and a wind cone in front of the sentry
-        const left = 1 - kite.t / kite.life;
-        ctx.beginPath(); ctx.arc(kx, ky, T * 0.75, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left); glow(ctx, left < 0.25 ? C_KITE : C_MINT, 0.7); ctx.lineWidth = 2; ctx.stroke();
-        for (let i = 0; i < 3; i++) { const ph = (now * 1.8 + i / 3) % 1, pts = []; for (let j = 0; j <= 8; j++) { const u = j / 8; pts.push([kx + kite.f * T * (0.5 + 3 * ph + u * 0.8), ky + (i - 1) * T * 0.35 * (1 + ph) + Math.sin(now * 8 + u * 5 + i) * 3]); } taper(ctx, pts, 3, C_SKY, 0.5 * (1 - ph), false); }
+        taper(ctx, pts, T * 0.22, kite.m === 'reel' ? C_MINT : C_GOLD, 0.8);
+        if (kite.m === 'reel') for (let i = 0; i < 2; i++) crescent(ctx, kx, ky, T * 0.7, now * 30 + i * Math.PI, now * 30 + i * Math.PI + 1.8, T * 0.22, C_WHITE, 0.7);
+      } else if (kite.m === 'reel') {
+        // snagged (or waiting at the end of the string): a buzzing ring of blades round the kite
+        const hot = kite.ph === 'shred';
+        for (let i = 0; i < 3; i++) crescent(ctx, kx, ky, T * (hot ? 1.0 : 0.75), now * 26 + i * 2.1, now * 26 + i * 2.1 + 1.5, T * 0.28, i === 0 ? C_WHITE : hot ? C_GOLD : C_MINT, hot ? 0.85 : 0.6);
+        if (hot) { ctx.beginPath(); ctx.arc(kx, ky, T * (1.0 + 0.15 * Math.sin(now * 40)), 0, Math.PI * 2); glow(ctx, C_GOLD, 0.5); ctx.lineWidth = 2; ctx.stroke(); }
       }
       drawKite(ctx, kx, ky, kite.ang, T, now, kite.m === 'follow' ? tw : 1);
     }
@@ -799,7 +845,7 @@
       taper(ctx, pts, T * 0.4, C_KITE, 0.85);
       star(ctx, hx + dive.f * T * 0.3, SY(p.y + p.h), T * 0.25, now * 10, C_GOLD, 0.8);
     }
-    if (slip || zip) { const cy = SY(pcy(p)), dd = slip ? -slip.f : -Math.sign((zip.tx - zip.x0) || 1); for (let i = -1; i <= 1; i++) { const pts = []; for (let j = 0; j <= 8; j++) pts.push([hx + dd * j * T * 0.35, cy + i * T * 0.25 + Math.sin(j + now * 30) * 1.5]); taper(ctx, pts, T * (i ? 0.12 : 0.22), i ? C_SKY : C_WHITE, 0.8); } }
+    if (slip) { const cy = SY(pcy(p)), dd = -slip.f; for (let i = -1; i <= 1; i++) { const pts = []; for (let j = 0; j <= 8; j++) pts.push([hx + dd * j * T * 0.35, cy + i * T * 0.25 + Math.sin(j + now * 30) * 1.5]); taper(ctx, pts, T * (i ? 0.12 : 0.22), i ? C_SKY : C_WHITE, 0.8); } }
     // Tailwind meter: an arc under your feet
     if (tw > 0.02) { ctx.beginPath(); ctx.arc(hx, SY(p.y + p.h) + 4, T * 0.42, Math.PI * 0.15, Math.PI * (0.15 + 0.7 * tw)); glow(ctx, tw >= 1 ? C_WHITE : C_MINT, 0.8); ctx.lineWidth = 2.5; ctx.stroke(); }
 
@@ -814,8 +860,6 @@
         const x = SX(f.x), y = SY(f.y), R = f.R * T * (0.3 + 0.7 * Math.min(1, u * 2));
         ctx.beginPath(); ctx.ellipse(x, y, R, R * 0.3, 0, 0, Math.PI * 2); glow(ctx, C_GOLD, a); ctx.lineWidth = 4 * a + 1; ctx.stroke();
         for (const d of [1, -1]) { const pts = []; for (let j = 0; j <= 8; j++) { const v = j / 8; pts.push([x + d * R * (0.2 + v), y - Math.sin(v * Math.PI) * T * 0.7 * a]); } taper(ctx, pts, T * 0.2, C_SKY, a); }
-      } else if (f.k === 'gust') {
-        for (let i = -1; i <= 1; i++) { const pts = []; for (let j = 0; j <= 8; j++) { const v = j / 8; pts.push([SX(f.x) + f.f * f.L * T * (0.15 + v * u * 1.2), SY(f.y) + i * T * 0.3 * (1 + v) + Math.sin(v * 6 + f.t * 20) * 3]); } taper(ctx, pts, T * 0.14, i ? C_SKY : C_WHITE, a * 0.8); }
       } else if (f.k === 'jet') {
         for (let i = -1; i <= 1; i++) { const pts = []; for (let j = 0; j <= 8; j++) pts.push([SX(f.x) + i * T * 0.2 + Math.sin(j + f.t * 30) * 2, SY(f.y) + j * T * 0.3 * (0.5 + u)]); taper(ctx, pts, T * (i ? 0.12 : 0.22), i ? C_SKY : C_WHITE, a); }
       } else if (f.k === 'kick') {
@@ -850,13 +894,13 @@
   // A second fighter (Smash CPU) playing Gale keeps its own kite, vents, twisters, Tailwind and moves.
   (window._fighterPlugins = window._fighterPlugins || []).push({ name: 'gale', char: ID,
     swap(s) {
-      const o = { active, atkCD, tw, twSaid, airUpUsed, airSideUsed, lastDir, lastPX, lastPY, prevJump, kite, wr, wrStam, wrLastSide, ride, rideLift, slip, zip, dive, carry,
-        kiteOut: kiteOut(), fx: fx.splice(0), vents: vents.splice(0), twisters: twisters.splice(0), trail: trail.splice(0) };
+      const o = { active, atkCD, tw, twSaid, twHold, airUpUsed, airSideUsed, lastDir, lastPX, lastPY, prevJump, kite, wr, wrStam, wrLastSide, ride, rideLift, slip, dive, carry,
+        kiteBusy: kiteBusy(), fx: fx.splice(0), vents: vents.splice(0), twisters: twisters.splice(0), trail: trail.splice(0) };
       s = s || { active: true };
-      active = !!s.active; atkCD = s.atkCD || 0; tw = s.tw || 0; twSaid = s.twSaid || 0; airUpUsed = !!s.airUpUsed; airSideUsed = !!s.airSideUsed; lastDir = s.lastDir || 1;
+      active = !!s.active; atkCD = s.atkCD || 0; tw = s.tw || 0; twSaid = s.twSaid || 0; twHold = s.twHold || 0; airUpUsed = !!s.airUpUsed; airSideUsed = !!s.airSideUsed; lastDir = s.lastDir || 1;
       lastPX = s.lastPX != null ? s.lastPX : null; lastPY = s.lastPY != null ? s.lastPY : null; prevJump = !!s.prevJump;
       kite = s.kite || null; wr = s.wr || null; wrStam = s.wrStam == null ? 1 : s.wrStam; wrLastSide = s.wrLastSide || 0; ride = s.ride || null; rideLift = s.rideLift == null ? 0.35 : s.rideLift;
-      slip = s.slip || null; zip = s.zip || null; dive = s.dive || null; carry = s.carry || null;
+      slip = s.slip || null; dive = s.dive || null; carry = s.carry || null;
       if (s.fx) fx.push(...s.fx); if (s.vents) vents.push(...s.vents); if (s.twisters) twisters.push(...s.twisters); if (s.trail) trail.push(...s.trail);
       statKey = -1; if (window._gtCharStatCache && window._gtCharStatCache[ID]) window._gtCharStatCache[ID] = stats();   // speed follows whoever's turn it is
       return o;
