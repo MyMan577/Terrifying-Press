@@ -83,9 +83,7 @@
     archmage:       { w: 0.85, d: 1.00, k: 1.00, mv: {
       meteor: { ix: 0, iy: 15, d: 1.0, sweet: 1 },                        // SPEAR PLUMMET: only the tip spikes
       launch: { ix: 1, iy: -20, d: 1.0 } } },                             // ICE PILLAR: tall launch
-    phantomace:     { w: 0.90, d: 1.00, k: 1.00, mv: {
-      meteor: { ix: 3, iy: 16, d: 0.9, bounce: 1 },                       // CARD DROP: slanted spike, he bounces off
-      launch: { ix: 4, iy: -16, d: 1.0, rocket: 1 } } },                  // ACE RISER: launches and he rides up after
+    phantomace:     { w: 0.90, d: 1.00, k: 1.00, leech: 0.15 },          // life leecher: many-hit moves (ace.js), heals this share of the percent he deals
     formSwitcher:   { w: 0.95, d: 1.00, k: 1.00, mv: {
       meteor: { ix: 0, iy: 14, d: 1.0 },
       launch: { ix: 1, iy: -17, d: 1.0 } } },
@@ -603,6 +601,7 @@
       return true;
     }
     me.pct = Math.min(999, me.pct + h.pct);
+    if (foe && foe.F) leech(foe, h.pct);
     var Ln = launch(h.ix, h.iy, me.pct, ch(me.char).w, h.k, h.fromX, P.x + P.w / 2, P.onGround);
     var kind = styleLaunch(Ln, classify(h.ix, h.iy), P.onGround, me);
     // survival DI: holding up/down/sideways bends the launch a little (max ~12 degrees)
@@ -819,6 +818,8 @@
     if (add <= 0) return;
     s.chipBank -= add; s.pct = Math.min(999, s.pct + add); s.flash = Math.max(s.flash || 0, 0.06);
   }
+  // a life leecher takes a share of the percent it just dealt off its own
+  function leech(s, pct) { var l = ch(s.char).leech; if (l && s.pct > 0) { s.pct = Math.max(0, s.pct - pct * l); s.leechT = 0.25; } }
   function hitFoe(g, P, pct, ix, iy, k, noDef) {
     var f = foe;
     if (SM.phase !== 'fight') return;
@@ -832,6 +833,7 @@
       return;
     }
     f.pct = Math.min(999, f.pct + pct);
+    leech(me, pct);
     var Ln = launch(ix, iy, f.pct, 1.0, k, P.x + P.w / 2, f.x + f.w / 2, f.onGround);
     var kind = styleLaunch(Ln, classify(ix, iy), f.onGround, f);
     if (f.lvl >= 2 && stage) cpuDI(Ln, f, LV[f.lvl] || LV[2]);
@@ -1440,7 +1442,9 @@
     cb_kodiak: { fk: 1, upTapRec: 1 }, cb_valka: { fk: 1, upTapRec: 1 }, cb_boiler: { fk: 1, upTapRec: 1 }, cb_sleight: { fk: 1, upTapRec: 1 },
     // The base fighters: direction + S picks the move (range = how far its side / neutral move reaches), held S = specials
     archmage:     { gen: 8, upRec: 1 },                                   // up ice, down walls, side rocket, neutral fire
-    phantomace:   { gen: 7, dash: 1, sideRec: 1, upRec: 1 },    // shockwave slashes, 3 dashes, PHANTOM BLITZ / ASCENDING STAR to get back
+    // Phantom Ace: Phantom Flurry / Phantom Blitz / Ascending Star / Star Circle on the ground, Crescent Wheel / Phantom Pierce /
+    // Rising Ace / Card Drop in the air: all many-hit, all leech; held S charges any of them (air side held gets him back)
+    phantomace:   { ace: 1, dash: 1, upTapRec: 1, sideRec: 1 },
     formSwitcher: { gen: 6, formKey: '0', upRec: 1 },                     // each element's own moves; 0 = next element
     conduit:      { gen: 8, upRec: 1 }                                    // Arc Stream, Lift Current, spikes, bolts
   };
@@ -1524,6 +1528,13 @@
       else if (!air && adx > 2.6 && adx < 7 && Math.abs(dy) < 1.2 && r < 0.6) A = { type: 'tap', v: 'side' };       // KITE REEL: snag from range and drag in
       else if (air) A = dy < -0.8 && adx < 1.8 && !(gs && gs.airUpUsed) ? { type: 'tap', v: 'up' } : dy > 0.6 && dy < 4 && adx < 2 ? { type: 'tap', v: 'down' } : adx < 2.6 && Math.abs(dy) < 2.4 ? { type: 'tap', v: '' } : adx < 4.5 && Math.abs(dy) < 1.2 && !(gs && gs.airSideUsed) ? { type: 'tap', v: 'side' } : null;
       else A = dy < -1.2 && adx < 2 ? { type: 'tap', v: 'up' } : adx < 3 && Math.abs(dy) < 1.5 ? { type: 'tap', v: Math.random() < 0.7 ? '' : 'down' } : null;
+    }
+    if (K.ace && !A) {
+      var as = f.F.plug && f.F.plug.ace;
+      if (as && as.busy) A = null;                                                                                // mid-move: the cuts are still landing
+      else if (!air && (killy || r < 0.12) && adx < 4.5 && Math.abs(dy) < 1.4) A = { type: 'charge', v: adx < 2.2 ? (dy < -1 ? 'up' : Math.random() < 0.5 ? 'down' : '') : 'side', hold: killy ? rnd(0.55, 0.8) : rnd(0.3, 0.5) };   // charged STAR ASCENSION / GRAND STAR CIRCLE / PHANTOM STORM / PHANTOM RAID
+      else if (air) A = dy < -0.8 && adx < 1.5 && !(as && as.airUp) ? { type: 'tap', v: 'up' } : dy > 0.6 && dy < 4 && adx < 1.2 ? { type: 'tap', v: 'down' } : adx < 2 && Math.abs(dy) < 1.8 ? { type: 'tap', v: '' } : adx < 4.5 && Math.abs(dy) < 1 && !(as && as.airSide) ? { type: 'tap', v: 'side' } : null;
+      else A = dy < -1.2 && adx < 1.5 ? { type: 'tap', v: 'up' } : adx < 2.6 && Math.abs(dy) < 1.3 ? { type: 'tap', v: Math.random() < 0.6 ? '' : 'down' } : adx < 5 && Math.abs(dy) < 1 ? { type: 'tap', v: 'side' } : null;
     }
     if (K.prod && !A) {
       var ps = f.F.plug && f.F.plug.prodigy;

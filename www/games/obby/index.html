@@ -1940,8 +1940,8 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
         </button>
 
         
-        <button class="char-btn" data-char="phantomace" title="Phantom Ace: Jack of All Trades">
-          <span class="char-icon">🌟</span><span class="char-name">Phantom Ace</span><span class="char-ability">Jack of All Trades</span>
+        <button class="char-btn" data-char="phantomace" title="Phantom Ace: Life Leecher">
+          <span class="char-icon">🌟</span><span class="char-name">Phantom Ace</span><span class="char-ability">Life Leecher</span>
         </button>
 
         
@@ -3316,7 +3316,7 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
       color: '#ffe566',
       emoji: '🌟',
       ability: 'jackOfAllTrades',
-      description: 'All-rounder. S fires a shockwave slash.',
+      description: 'Life leecher. S + a direction: 8 fast many-hit moves. Every hit heals him a little.',
       stats: { speed: 1.25, jump: 1.2, dashRegen: 0, maxDashes: 3, dashCooldown: 0.05, maxJumps: 2 }
     },
     
@@ -3365,7 +3365,7 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
     brawler:     [ { id:'br1', name:'Iron Fist',     icon:'🥊', cost:5,  desc:'All punches deal +1 dmg' }, { id:'br2', name:'Combo Addict',  icon:'🔥', cost:10, desc:'Combo window +0.3s' }, { id:'br3', name:'KO King',       icon:'👑', cost:20, desc:'Uppercut/finisher launches 25% farther' } ],
     necromancer: [ { id:'ne1', name:'Dark Pact',     icon:'💀', cost:5,  desc:'Summon cooldown: 1.5s (was 3s)' }, { id:'ne2', name:'Army of Bones', icon:'🦴', cost:10, desc:'Max skeletons: 7 (was 5)' }, { id:'ne3', name:'Lich Form',     icon:'👁️', cost:20, desc:'Skeletons explode on death: 1 dmg' } ],
     archmage:    [ { id:'am1', name:'Arcane Surge',   icon:'🧙', cost:5,  desc:'Fire Spear pierces +1 extra target' }, { id:'am2', name:'Grand Summon',  icon:'👥', cost:10, desc:'Max 7 Mini-Wizards (was 5)' }, { id:'am3', name:'Frost Master',  icon:'❄️', cost:20, desc:'Ice Pillar freezes for 3s (was 1s)' } ],
-    phantomace:  [ { id:'pa1', name:'Ace Edge',      icon:'⚡', cost:5,  desc:'+1 Shockwave reach, dash regen 4s' }, { id:'pa2', name:'Phantom Step',  icon:'👁️', cost:10, desc:'Afterimages deal 1 dmg on contact' }, { id:'pa3', name:'True Ace',      icon:'🌟', cost:20, desc:'Every 5th slash = Ace Burst: AOE + free dash' } ],
+    phantomace:  [ { id:'pa1', name:'Ace Edge',      icon:'⚡', cost:5,  desc:'Longer reach on every move, dash regen 4s' }, { id:'pa2', name:'Phantom Step',  icon:'👁️', cost:10, desc:'Afterimages deal 1 dmg on contact' }, { id:'pa3', name:'True Ace',      icon:'🌟', cost:20, desc:'Life leech heals much faster' } ],
     conduit:      [ { id:'co_1', name:'Superconduct',  icon:'⚡', cost:5,  desc:'Arc Stream tracks 30% faster' }, { id:'co_2', name:'Cascade',      icon:'🌊', cost:10, desc:'Surge Dash trail lasts 2x longer' }, { id:'co_3', name:'Overclock',    icon:'💫', cost:20, desc:'All earned forms last 5s longer' } ],
     formSwitcher:[ { id:'fs1', name:'Quick Change',  icon:'🔄', cost:5,  desc:'Form switch cooldown: 0.8s (was 1.5s)' }, { id:'fs2', name:'Form Mastery', icon:'💪', cost:10, desc:'+15% dmg & effect in all forms' }, { id:'fs3', name:'Elemental Surge',icon:'🌊',cost:20, desc:'Switching forms leaves a damaging aura burst' } ],
 
@@ -11417,11 +11417,7 @@ function resetPlayer() {
   }
   // which move a press would make, and its frame data (null: the character would ignore the press anyway)
   const STRIKE_PICK = {
-    phantomace() {
-      if (aceSlashCooldown > 0.08) return null;
-      const burst = hasUpgrade('pa3') && (aceSlashCount + 1) % 5 === 0;
-      return { fd: burst ? ACE_FD.burst : ACE_FD.slash, dir: player.dashDir || player.lastMoveDir || 1, color: '#ffe566', aim: _strikeDirs().d };
-    },
+    // (Phantom Ace's moves, their timing and their charge are his own: ace.js)
     archmage() {
       if (archmageSpellEndlag > 0) return null;
       const k = _strikeDirs();
@@ -26176,12 +26172,8 @@ function resolveCollisions(axis, dt) {
     }
     
     if (selectedCharacter === 'phantomace') {
-      const slashReady = aceSlashCooldown <= 0;
-      const slashText = slashReady
-        ? `<span style="color:#ffe566">READY</span>`
-        : `<span style="color:#94a3b8">(${aceSlashCooldown.toFixed(1)}s)</span>`;
-      const burstProgress = hasUpgrade('pa3') ? ` · Burst: <b style="color:#a78bfa">${5-(aceSlashCount%5)}/5</b>` : '';
-      _hudH += `<br>⚡ Slash: ${slashText}${burstProgress}`;
+      const lp = Math.round((window.__aceLeech ? window.__aceLeech() : 0) * 100);
+      _hudH += `<br>🩸 Leech: <b style="color:#7dffb0">${lp}%</b> to the next ♥`;
       const regenText = hasUpgrade('pa1') ? ` · Regen: <b style="color:#7cdbff">${(4-aceDashRegenTimer).toFixed(1)}s</b>` : '';
       _hudH += `<br>🌟 Dashes: <b>${player.dashCharges}/${player.maxDashes}</b>${regenText}`;
       if (aceShockwaves.length > 0) _hudH += ` · <span style="color:#ffe566">⚡ Shockwave active!</span>`;
@@ -40922,7 +40914,7 @@ window._claimLBro = function() {
     cb_slugger:    { side: ['HOME RUN', 'beam', { len: 2.8, w: 1.2, dmg: 6, kx: 22, ky: -11, stun: 1.2, style: 'swing' }, 'slug'], up: ['SKYLINE UPPERCUT', 'pillar', { dmg: 4, launch: 18, rise: 13, w: 1.4, h: 5 }, 'slug'], down: ['POUND TOWN', 'ring', { dmg: 3, r: 2.6, waves: 3, kx: 6 }, 'slug'] },
     cb_pressplay:  { side: ['BASS CANNON', 'beam', { len: 7, w: 0.9, dmg: 4, kx: 12, stun: 0.8, style: 'sound' }, 'sound'], up: ['RISER BLAST', 'pillar', { dmg: 4, launch: 15, w: 1.8, h: 5, style: 'sound' }, 'sound'], down: ['SUB DROP', 'ring', { dmg: 4, r: 3.2, waves: 2, style: 'sound' }, 'sound'] },
     cb_pp_mixtape: { side: ['REWIND RUSH', 'dash', { len: 4.5, dmg: 3, rewind: true, kx: 6, style: 'tape' }, 'tape'], up: ['TAPE TORNADO', 'vortex', { dmg: 5, r: 3 }, 'tape'], down: ['SPOOL SNARE', 'ring', { dmg: 2, r: 3.2, kx: 0, ky: -2, stun: 2.5, style: 'tape' }, 'tape'] },
-    phantomace:    { side: ['PHANTOM BLITZ', 'dash', { len: 5.5, dmg: 4, kx: 10, style: 'star' }, 'star'], up: ['ASCENDING STAR', 'pillar', { dmg: 4, launch: 15, rise: 12, w: 1.2, h: 4.5, style: 'star' }, 'star'], down: ['STARBURST', 'volley', { dmg: 3, n: 8, radial: true, speed: 14, life: 0.5, style: 'star' }, 'star'] },
+    // phantomace has no table specials: holding S charges his own moves (ace.js)
     archmage:      { side: ['ARCANE LANCE', 'beam', { len: 8, w: 0.55, dmg: 5, kx: 9, stun: 0.9, style: 'arcane' }, 'arcane'], up: ['METEOR CALL', 'meteor', { dmg: 6, dist: 4, r: 2.4, burn: 3 }, 'arcane'], down: ['RUNE PRISON', 'ring', { dmg: 2, r: 3.4, kx: 0, ky: -1, stun: 2.6, style: 'arcane' }, 'arcane'] },
     conduit:       { side: ['RAILGUN', 'beam', { len: 8, w: 0.5, dmg: 5, kx: 8, chain: true, style: 'bolt' }, 'bolt'], up: ['THUNDERHEAD', 'strikes', { dmg: 5, n: 3, r: 7 }, 'bolt'], down: ['OVERLOAD NOVA', 'ring', { dmg: 4, r: 3.2, slow: 3, style: 'bolt' }, 'bolt'] },
     // cb_gale has no table specials: holding S charges her own moves (gale.js)
@@ -44705,6 +44697,7 @@ window._claimLBro = function() {
 <script src="fighter-valka.js"></script>
 <script src="fighter-boiler.js"></script>
 <script src="fighter-sleight.js"></script>
+<script src="ace.js"></script>
 <script>
 // Free mystery boxes and character capsules bought in the Press Play shop open one after another.
 // Each is taken from the shop only as it opens, so leaving mid-way keeps the rest for next time.
