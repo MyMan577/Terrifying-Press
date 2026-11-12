@@ -2019,7 +2019,7 @@
           if (text && text.trim()) raw.push({ start: seek + g.s, end: g.e == null ? 0 : seek + g.e, text });
         }
         seek += adv;
-        await ease(performance.now() - t0, 0, 'whn', wl);
+        if (!o.quick) await ease(performance.now() - t0, 0, 'whn', wl);   // quick: one spoken sentence for Bloop, no rest needed
       }
       done += rb - ra;
     }
@@ -4641,6 +4641,15 @@
 
     // ---- Kokoro: Bloop speaks ----
     let kP = null, kT = 0, kLoaded = false, spkId = 0, spkCtx = null, spkSrc = null, voiceAsked = false;
+    // Native option (app only): the phone's own text-to-speech reads the reply, so nothing is downloaded. A failure drops back to Kokoro for the session.
+    let vNatFailed = false, natTalk = false;
+    const natTts = () => { try { return NATIVE ? window.Capacitor.Plugins.PPSpeech : null; } catch (e) { return null; } };
+    const voiceNat = () => !vNatFailed && vFlag('ppvVoiceNat') && !!natTts();
+    async function speakNative(id, sents) {
+      const P = natTts(); vDuck(true); natTalk = true; vSpeaking = true;
+      try { for (const t of sents) { if (id !== spkId) return; const r = await P.speak({ text: t, rate: VOICE.speed, lang: 'en-US' }); if (id !== spkId || !r || r.done === false) return; } }
+      finally { if (id === spkId) { natTalk = false; vSpeaking = false; wwHold = Date.now() + 700; vDuck(false); } }
+    }
     const voiceWho = () => { const v = lsGet('ppvVoiceWho'); return VOICES.some(x => x[0] === v) ? v : 'af_heart'; }, voiceWhen = () => lsGet('ppvVoiceWhen') === 'all' ? 'all' : 'talk';
     function getTts(say) {
       if (kP) return kP;
@@ -4667,11 +4676,18 @@
       if (!speakOn() || !text || (!force && voiceWhen() === 'talk' && !voiceTurn)) return;
       const s = String(text).trim(); if (SKIPSPEAK.test(s) || heavyBusy()) return;
       const sents = speechSentences(s, typeof CRISIS_MSG !== 'undefined' && s === CRISIS_MSG); if (!sents.length) return;   // a safety message is always read in full
-      if (lsGet('ppvVoiceDl') !== '1') { if (!voiceAsked) { voiceAsked = true; dlAsk('ppvVoiceDl', 'To talk out loud I need to download my voice first: about 90 MB, one time. Wi-Fi is best.', () => { voiceAsked = false; vSpeak(s, true); }); } return; }
+      if (!voiceNat() && lsGet('ppvVoiceDl') !== '1') { if (!voiceAsked) { voiceAsked = true; dlAsk('ppvVoiceDl', 'To talk out loud I need to download my voice first: about 90 MB, one time. Wi-Fi is best.', () => { voiceAsked = false; vSpeak(s, true); }); } return; }
       const id = ++spkId; stopAudio();
       speakRun(id, sents).catch(e => { console.error(e); if (id === spkId) vDuck(false); });
     }
     async function speakRun(id, sents) {
+      if (voiceNat()) {
+        try { await speakNative(id, sents); return; }
+        catch (e) {
+          console.warn('native voice failed, using Kokoro', e); vNatFailed = true; if (id !== spkId) return;
+          if (lsGet('ppvVoiceDl') !== '1') { add('bot', 'The phone\u2019s own voice did not work here, so I will use my downloaded voice instead.'); spkId++; vSpeak(sents.join(' '), true); return; }
+        }
+      }
       let note = null; if (!kLoaded) note = add('bot', 'Loading my voice\u2026');
       let tts; try { tts = await getTts(note ? m => { note.textContent = m; } : null); }
       catch (e) { if (note) note.textContent = 'My voice would not load: ' + e.message; return; }
@@ -4698,7 +4714,7 @@
         } catch (e) { vSpeaking = false; res(); }
       });
     }
-    function stopAudio() { const s = spkSrc; spkSrc = null; if (s) { try { s.onended = null; s.stop(); } catch (e) {} } vSpeaking = false; }
+    function stopAudio() { if (natTalk) { natTalk = false; try { natTts().stop().catch(() => {}); } catch (e) {} } const s = spkSrc; spkSrc = null; if (s) { try { s.onended = null; s.stop(); } catch (e) {} } vSpeaking = false; }
     function stopSpeak() { spkId++; stopAudio(); vDuck(false); }
     function vDuck(on) {                                                                          // music dips while he talks or listens
       try {
@@ -4720,6 +4736,23 @@
       })();
       earsP.catch(() => { earsP = null; });
       return earsP;
+    }
+    // Native option (app only): the app's own Whisper engine (the one that makes subtitles) hears the sentence instead of Moonshine.
+    // It uses English Base if that is already on the phone, otherwise English Tiny. A failure drops back to Moonshine for the session.
+    let eNatFailed = false, earsNT = 0;
+    const earsNat = () => !!NATIVE && !eNatFailed && vFlag('ppvEarsNat');
+    async function earsNative(pcm, say) {
+      let size = 'tiny_en';
+      try { if ((await NP.exists({ id: 'wh_base_en_enc' })).ready && (await NP.exists({ id: 'wh_base_en_dec' })).ready) size = 'base_en'; } catch (e) {}
+      const raw = await whisperNative(pcm, [[0, pcm.length / 16000]], { size, lang: 'english', task: 'transcribe', quick: true }, m => { if (say) say(/^Transcribing/.test(m) ? 'Transcribing\u2026' : m); });
+      clearTimeout(earsNT); earsNT = setTimeout(() => { if (!heavyBusy()) NP.whisperUnload().catch(() => {}); }, 120000);   // give the memory back, unless a subtitle job is using the engine
+      return raw.map(r => r.text).join(' ');
+    }
+    async function hear(pcm, say) {
+      if (earsNat()) { try { return await earsNative(pcm, say); } catch (e) { console.warn('native listening failed, using Moonshine', e); eNatFailed = true; } }
+      const out = await (await getEars(say))(pcm);
+      clearTimeout(earsT); earsT = setTimeout(freeEars, 120000);
+      return String(out && out.text || '');
     }
     async function freeEars() { clearTimeout(earsT); const p = earsP; earsP = null; if (p) { try { const a = await p; await a.dispose(); } catch (e) {} } }
     // One shared microphone: the wake word and the recorder both read its 16 kHz frames. It closes as soon as nobody needs it.
@@ -4792,9 +4825,7 @@
         const pcm = await recordUtterance(viaWake ? 6 : 0); micRelease(); held = false;
         if (pcm) {
           note.textContent = 'Transcribing\u2026';
-          const out = await (await getEars(m => { note.textContent = m; }))(pcm);
-          text = String(out && out.text || '').trim().replace(/^(?:hey[, ]+)?(?:jarvis|computer|bloop|blue ?p)[,.!?]*\s*/i, '');
-          clearTimeout(earsT); earsT = setTimeout(freeEars, 120000);
+          text = (await hear(pcm, m => { note.textContent = m; })).trim().replace(/^(?:hey[, ]+)?(?:jarvis|computer|bloop|blue ?p)[,.!?]*\s*/i, '');
         }
         if (!/[a-z0-9]{2}/i.test(text) || /^(?:you|thank you|thanks for watching|bye)[.!]*$/i.test(text)) { note.textContent = pcm ? 'I did not catch that.' : 'I did not hear anything.'; text = ''; }
       } catch (e) {
@@ -4892,6 +4923,8 @@
     function vSet(k, on, say) {
       lsSet(k, on ? '1' : '0');
       if (k === 'ppvVoice' && !on) { stopSpeak(); freeVoice(); }
+      if (k === 'ppvVoiceNat') { stopSpeak(); vNatFailed = false; if (on) freeVoice(); }
+      if (k === 'ppvEarsNat') { eNatFailed = false; if (on) freeEars(); }
       if (k === 'ppvMini' && !on) freeMini();
       if (k === 'ppvMic' && !on) { dictStop = true; freeEars(); }
       vSync(say);
@@ -8748,14 +8781,17 @@
       '<div class="ppv-note">Loose wording finds the right command, and songs can be requested by meaning, like something for a rainy drive. Needs the assistant on.</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-voice-on"> Bloop speaks (Kokoro voice, ~90 MB download)</label>' +
       '<select id="ppv-voice-who"></select><select id="ppv-voice-when"><option value="talk">Only when spoken to</option><option value="all">Every reply</option></select>' +
-      '<div class="ppv-note">A warm, calm voice. Music dips while he talks.</div>' +
+      '<label class="ppv-c" id="ppv-voice-natl" style="display:none"><input type="checkbox" id="ppv-voice-nat"> Native voice: use the phone\'s own voice (no download, starts right away)</label>' +
+      '<div class="ppv-note">A warm, calm voice. Music dips while he talks. With Native voice on, the phone picks the voice and the list above is not used.</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-mic-on"> Talk to Bloop (Moonshine, ~50 MB download)</label>' +
-      '<div class="ppv-note">Adds a mic button to his chat. Tap it, speak, and it sends after a pause.</div>' +
+      '<label class="ppv-c" id="ppv-mic-natl" style="display:none"><input type="checkbox" id="ppv-mic-nat"> Native listening: hear with the app\'s own Whisper engine (the one that makes subtitles)</label>' +
+      '<div class="ppv-note">Adds a mic button to his chat. Tap it, speak, and it sends after a pause. Native listening is English only and uses English Base if you already have it, otherwise English Tiny (~40 MB).</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-wake-on"> Wake word (listens while this page is open)</label>' +
       '<div class="ppv-note">Say the wake phrase and he listens. It uses the mic continuously, which costs some battery, and loud music can hide the voice or cause false wakes. The phrase is Hey Jarvis.</div>' +
       '<button id="ppv-voicefree" class="ppv-sec" type="button">Free up voice downloads</button>');
     { const V = mas.voice, g = id => p.querySelector('#' + id);
-      const boxes = [['ppv-mini-on', 'ppvMini'], ['ppv-voice-on', 'ppvVoice'], ['ppv-mic-on', 'ppvMic'], ['ppv-wake-on', 'ppvWake']];
+      const boxes = [['ppv-mini-on', 'ppvMini'], ['ppv-voice-on', 'ppvVoice'], ['ppv-mic-on', 'ppvMic'], ['ppv-wake-on', 'ppvWake'], ['ppv-voice-nat', 'ppvVoiceNat'], ['ppv-mic-nat', 'ppvEarsNat']];
+      if (NATIVE) { g('ppv-mic-natl').style.display = 'block'; if (window.Capacitor.Plugins.PPSpeech) g('ppv-voice-natl').style.display = 'block'; }
       const sync = () => boxes.forEach(([id, k]) => { g(id).checked = V.get(k); });
       boxes.forEach(([id, k]) => { g(id).onchange = () => {
         const on = g(id).checked;
