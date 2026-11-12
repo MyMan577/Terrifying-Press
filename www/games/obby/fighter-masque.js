@@ -229,9 +229,9 @@
       if (tick !== q.n) {
         q.n = tick;
         for (let i = 0; i < 3; i++) S.fx.push({ k: 'flame', x: pcx(p) + f * 0.7, y: pcy(p) - 0.25, vx: f * (9 + Math.random() * 7), vy: (Math.random() - 0.5) * 4.5 - 0.5, t: 0, life: 0.34 + Math.random() * 0.1, r: 0.2 + Math.random() * 0.2 });
-        for (const e of box(p, f, 0.1, R, 1.0 + 0.25 * R * 0.3)) FK.hit(S, e, 1.1, { kx: f * 2.4, ky: -1.4, stun: 0.25, c: C_FIRE });
+        for (const e of box(p, f, 0.1, R, 1.0 + 0.25 * R * 0.3)) { FK.chip(S, e, 1.1, C_FIRE); if (!FK.inSmash() && !e._noKnockback) e.vx = f * 2.4; }   // a stream of ticks: it burns and nudges, it never launches
       }
-      if (q.t > 0.12 + D) S.seq = null;
+      if (q.t > 0.12 + D) { for (const e of box(p, f, 0.1, R, 1.2)) FK.hit(S, e, 2, { kx: f * 8, ky: -6, stun: 0.4, c: C_FIRE, big: true }); S.seq = null; }   // a last puff that does knock back
     },
     rush(p, dt, S, q) {
       const f = q.f, D = 0.42 + 0.2 * q.pw;
@@ -450,7 +450,7 @@
       const hold = !FK.inSmash() && !e._noKnockback;
       if (hold) { e.x += ((pcx(p) + f * 1.0 - (e.w || 0.9) / 2) - e.x) * Math.min(1, dt * 14); e.y += ((p.y + p.h - (e.h || 0.9)) - e.y) * Math.min(1, dt * 14); e.vx = 0; e.vy = 0; }
       e.stunTimer = Math.max(e.stunTimer || 0, 0.3);
-      while (q.n < 5 && t > 0.2 + q.n * 0.16) { q.n++; FK.hit(S, e, 1, { stun: 0.3, c: C_VENOM }); FK.heal(S, p, 0.45, C_MEND); S.fx.push({ k: 'mend', x: pcx(p), y: pcy(p), t: 0, life: 0.5 }); FK.tone(300 + q.n * 60, { dur: 0.08, vol: 0.1, type: 'square' }); }
+      while (q.n < 5 && t > 0.2 + q.n * 0.16) { q.n++; FK.chip(S, e, 1, C_VENOM); FK.heal(S, p, 0.45, C_MEND); S.fx.push({ k: 'mend', x: pcx(p), y: pcy(p), t: 0, life: 0.5 }); FK.tone(300 + q.n * 60, { dur: 0.08, vol: 0.1, type: 'square' }); }
       if (t > 1.1) { FK.hit(S, e, 3, { kx: -f * 13, ky: -11, stun: 0.6, c: FORMS[3].c, big: true, stop: 0.1 }); FK.label(S, p, 'THROWN!', FORMS[3].c, true); S.seq = null; }
     },
     springX(p, dt, S, q) {   // HYDRA BURST: the highest jump of all, and at the top five globs of venom rain down
@@ -477,8 +477,8 @@
       S.beam = { x: x0, y: y0, f, len, t: 0.1 };
       FK.moveX(p, -f * 1.6 * dt); FK.shake(3);
       const tick = Math.floor((q.t - 0.28) / 0.09);
-      if (tick !== q.n) { q.n = tick; for (const e of box(p, f, 0.3, len + 0.8, 0.55)) FK.hit(S, e, 1.6, { kx: f * 3.5, ky: -1.5, stun: 0.3, c: C_FIRE, big: tick % 3 === 0 }); }
-      if (q.t > 0.28 + D) S.seq = null;
+      if (tick !== q.n) { q.n = tick; for (const e of box(p, f, 0.3, len + 0.8, 0.55)) { FK.chip(S, e, 1.6, C_FIRE); if (!FK.inSmash() && !e._noKnockback) e.vx = f * 3.5; } }
+      if (q.t > 0.28 + D) { for (const e of box(p, f, 0.3, (S.beam ? S.beam.len : 4) + 0.8, 0.55)) FK.hit(S, e, 3, { kx: f * 11, ky: -6, stun: 0.5, c: C_FIRE, big: true }); S.seq = null; }   // the last of the beam is the one real hit
     },
     rushX(p, dt, S, q) {   // FIRESTORM RUSH: a long flight that sets the floor under her alight all the way, and ends in a blast
       const f = q.f, D = 0.75;
@@ -588,7 +588,7 @@
         z.tick -= dt;
         if (z.tick <= 0) { z.tick = 0.5; if (Math.abs(pcx(p) - z.x) < z.w / 2 && Math.abs(p.y + p.h - z.fy) < 0.5) { FK.heal(S, p, 0.5, C_MEND); S.fx.push({ k: 'mend', x: pcx(p), y: pcy(p), t: 0, life: 0.6 }); } }
       } else if (z.k === 'fire') {
-        for (const e of foes) if (!z.cool.has(e) && Math.abs(ex(e) - z.x) < 0.85 && Math.abs(e.y + (e.h || 0.9) - z.fy) < 0.9) { z.cool.set(e, 0.45); FK.hit(S, e, 0.9, { kx: 0, ky: -3, stun: 0.15, c: C_FIRE }); }
+        for (const e of foes) if (!z.cool.has(e) && Math.abs(ex(e) - z.x) < 0.85 && Math.abs(e.y + (e.h || 0.9) - z.fy) < 0.9) { z.cool.set(e, 0.45); FK.chip(S, e, 0.9, C_FIRE); }
       }
       if (gone) S.zones.splice(i, 1);
     }
@@ -601,7 +601,8 @@
     for (const [e, v] of S.venom) {
       if (e.dead) { S.venom.delete(e); continue; }
       v.left -= dt; v.tick -= dt;
-      if (v.tick <= 0) { v.tick = 0.5; FK.hit(S, e, 0.7, { stun: 0, c: C_VENOM }); FK.heal(S, p, 0.22, C_MEND); S.fx.push({ k: 'drip', x: ex(e), y: ey(e), t: 0, life: 0.4 }); }
+      if (v.tick <= 0) { v.tick = 0.5; FK.chip(S, e, 0.7, C_VENOM);   // (a tick, not a hit: it never launches)
+        FK.heal(S, p, 0.22, C_MEND); S.fx.push({ k: 'drip', x: ex(e), y: ey(e), t: 0, life: 0.4 }); }
       if (v.left <= 0) S.venom.delete(e);
     }
     for (let i = S.thermals.length - 1; i >= 0; i--) {

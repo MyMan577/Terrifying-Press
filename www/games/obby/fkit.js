@@ -92,6 +92,13 @@
     if (o.stop) FK.hitstop(o.stop);
     if (e.hp <= 0 && !e.dead && window._killEnemy) window._killEnemy(e);
   };
+  // damage over time (poison, burning, a beam's ticks): takes the health off and nothing else. No knockback, no stun,
+  // no hit flash, so nothing is launched or stun-locked by it (Smash counts a hit with no flash and no push as percent only)
+  FK.chip = function (S, e, dmg, c) {
+    e.hp = Math.max(0, (e.hp || 1) - dmg);
+    if (S && c) S.fx.push({ k: 'ring', x: FK.ex(e), y: FK.ey(e), R: 0.5, c, t: 0, life: 0.2 });
+    if (e.hp <= 0 && !e.dead && window._killEnemy) window._killEnemy(e);
+  };
   FK.label = function (S, p, text, c, big) { S.fx.push({ k: 'pop', x: FK.pcx(p), y: p.y - 0.25, t: 0, life: big ? 0.85 : 0.6, text, c: c || '#ffffff', big: !!big }); };
 
   // ---------------------------------------------------------------- drawing helpers (screen space)
