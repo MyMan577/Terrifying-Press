@@ -223,6 +223,44 @@
   // body-local point (forward/up offsets from a joint along the torso) in screen space, facing f
   FK.local = function (V, p, f, lx, ly) { return [V.SX(FK.pcx(p) + f * lx), V.SY(p.y + p.h - ly)]; };
 
+  // ---------------------------------------------------------------- shared by the newer fighters (Fizz, Maul, Masque)
+  // run / idle / jump / fall poses from the body's own motion. PO needs idle, jump and fall; extra is merged into the run pose
+  FK.locomotion = function (S, p, dt, PO, extra) {
+    if (p.onGround && Math.abs(p.vx || 0) > 0.8) {
+      S.run = (S.run || 0) + dt * Math.abs(p.vx) * 1.7; const r = S.run, sw = Math.sin(r);
+      return FK.pose(Object.assign({ y: 0.3 - Math.abs(Math.cos(r)) * 0.8, lean: 0.22, aF: [0.2 + sw * 0.9, 0.7], aB: [0.2 - sw * 0.9, 0.7],
+        lF: [0.15 + sw * 0.8, -0.3 - Math.max(0, Math.cos(r)) * 1.2], lB: [0.15 - sw * 0.8, -0.3 - Math.max(0, -Math.cos(r)) * 1.2] }, extra || {}));
+    }
+    if (p.onGround) return FK.pose(Object.assign({}, PO.idle, { y: (PO.idle.y || 0) + 0.4 * Math.sin(performance.now() / 1000 * 2.4) }));
+    return (p.vy || 0) < 0 ? PO.jump : PO.fall;
+  };
+  // stand on something the fighter made (a bubble, a pillar): a one-way top from x0 to x1 at height top. ↓ drops through
+  FK.stand = function (p, top, x0, x1) {
+    if (FK.keys().down || (p.vy || 0) < 0) return false;
+    const cx = FK.pcx(p), feet = p.y + p.h;
+    if (cx < x0 - 0.2 || cx > x1 + 0.2 || feet < top - 0.08 || feet > top + 0.5) return false;
+    if (FK.blocked(p.x, top - p.h, p.w, p.h - 0.05)) return false;
+    p.y = top - p.h; p.vy = 0; p.onGround = true;
+    if (window._setJumpCount) window._setJumpCount(0);
+    return true;
+  };
+  // mend the fighter: hearts in the main game (pts bank up to a heart), percent off in Smash
+  FK.heal = function (S, p, pts, c) {
+    if (!(pts > 0)) return;
+    S.healT = 0.7; FK.tone(1175, { dur: 0.12, vol: 0.06, type: 'sine' });
+    if (FK.inSmash()) { const sm = window.__smash; if (sm && sm.__heal) sm.__heal(pts); return; }
+    if (window._fighterPass) return;
+    S.bank = (S.bank || 0) + pts * 0.3;
+    if (S.bank < 1) return;
+    if ((p.hp || 0) < (p.maxHp || 0)) {
+      p.hp = Math.min(p.maxHp, p.hp + 1); S.bank -= 1; FK.label(S, p, '+1 ♥', c || '#7dffb0', true);
+      for (let i = 0; i < 3; i++) FK.tone(784 * Math.pow(1.26, i), { dur: 0.2, vol: 0.09, delay: i * 0.06, type: 'sine' });
+    } else S.bank = 1;
+  };
+  FK.moveX = function (p, dx) { const nx = p.x + dx; if (!FK.blocked(nx, p.y + 0.02, p.w, p.h - 0.04)) { p.x = nx; return true; } return false; };
+  // the floor under a point (first blocked tile going down, at most n tiles), or null
+  FK.floorAt = function (x, y, n) { for (let i = 0; i <= (n || 6) * 4; i++) { const yy = y + i * 0.25; if (FK.blocked(x - 0.05, yy, 0.1, 0.1)) return Math.floor(yy); } return null; };
+
   // ---------------------------------------------------------------- parry outside Smash
   const bolts = [];
   window.PPParry = {

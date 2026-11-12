@@ -37,7 +37,10 @@
     { id: 'cb_kodiak',      n: 'Kodiak',       e: '🐻', cap: 1 },
     { id: 'cb_valka',       n: 'Valka',        e: '🔱', cap: 1 },
     { id: 'cb_boiler',      n: 'Boiler',       e: '♨️', cap: 1 },
-    { id: 'cb_sleight',     n: 'Sleight',      e: '🎩', cap: 1 }
+    { id: 'cb_sleight',     n: 'Sleight',      e: '🎩', cap: 1 },
+    { id: 'cb_fizz',        n: 'Fizz',         e: '🫧', cap: 1 },
+    { id: 'cb_maul',        n: 'Maul',         e: '🔨', cap: 1 },
+    { id: 'cb_masque',      n: 'Masque',       e: '🎭', cap: 1 }
   ];
   function owned(id) { try { return JSON.parse(localStorage.getItem('obby_cbox_owned') || '[]').indexOf(id) >= 0; } catch (e) { return false; } }
   function roster() { return FIGHTERS.filter(function (f) { return !f.cap || owned(f.id); }); }
@@ -107,7 +110,10 @@
     cb_kodiak:      { w: 1.35, d: 1.10, k: 1.10 },                        // the heavyweight: his grabs and armor do the work
     cb_valka:       { w: 0.95, d: 1.00, k: 1.00 },                        // spear: tipper hits are her own (they hit harder at the tip)
     cb_boiler:      { w: 1.15, d: 1.00, k: 1.05 },                        // steam engine: stored Pressure makes every move stronger
-    cb_sleight:     { w: 0.80, d: 0.95, k: 0.95 }                         // stage magician: teleports, decoys and card mines
+    cb_sleight:     { w: 0.80, d: 0.95, k: 0.95 },                        // stage magician: teleports, decoys and card mines
+    cb_fizz:        { w: 0.80, d: 0.90, k: 0.90 },                        // bubble blower: lots of small hits from range; light
+    cb_maul:        { w: 1.20, d: 1.05, k: 1.10 },                        // hammer smith: slow wind-ups that hit hard
+    cb_masque:      { w: 0.95, d: 0.95, k: 1.00 }                         // mask dancer: three forms, heals through SM.__heal
     }
   };
   function ch(id) { return CH[id] || { w: 1, d: 1, k: 1 }; }
@@ -1448,7 +1454,7 @@
   // own player state, held keys and strike-engine state, presses the same buttons you do, and its attacks
   // are the real ones. Its target is a stand-in for you; whatever the attack does to it becomes your
   // percent and launch. Knockback, ledges, dodges and respawns stay with this file, synced both ways.
-  var REAL_CPU = { brawler: 1, cb_slugger: 1, cb_protagonist: 1, cb_chameleon: 1, cb_pressplay: 1, cb_pp_mixtape: 1, cb_gale: 1, cb_kodiak: 1, cb_valka: 1, cb_boiler: 1, cb_sleight: 1, archmage: 1, phantomace: 1, formSwitcher: 1, conduit: 1 };
+  var REAL_CPU = { brawler: 1, cb_slugger: 1, cb_protagonist: 1, cb_chameleon: 1, cb_pressplay: 1, cb_pp_mixtape: 1, cb_gale: 1, cb_kodiak: 1, cb_valka: 1, cb_boiler: 1, cb_sleight: 1, cb_fizz: 1, cb_maul: 1, cb_masque: 1, archmage: 1, phantomace: 1, formSwitcher: 1, conduit: 1 };
   // what each real-moves fighter's kit is good for (all of it is pressed with the same buttons you use)
   //  sideRec / upRec: its side / up special moves it (usable to get back)   dash: dash-then-S attacks
   //  airThrow: S in the air throws something that travels (range in tiles)   groundOnly: specials only on the ground
@@ -1475,6 +1481,7 @@
     cb_gale: { gale: 1, upTapRec: 1, sideRec: 1 },
     // the fighter-kit fighters (fkit.js): each one's own ai() in its plugin says what to press
     cb_kodiak: { fk: 1, upTapRec: 1 }, cb_valka: { fk: 1, upTapRec: 1 }, cb_boiler: { fk: 1, upTapRec: 1 }, cb_sleight: { fk: 1, upTapRec: 1 },
+    cb_fizz: { fk: 1, upTapRec: 1 }, cb_maul: { fk: 1, upTapRec: 1 }, cb_masque: { fk: 1, upTapRec: 1 },
     // The base fighters: direction + S picks the move (range = how far its side / neutral move reaches), held S = specials
     archmage:     { gen: 8, upRec: 1 },                                   // up ice, down walls, side rocket, neutral fire
     // Phantom Ace: Phantom Flurry / Phantom Blitz / Ascending Star / Star Circle on the ground, Crescent Wheel / Phantom Pierce /
