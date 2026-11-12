@@ -53,7 +53,7 @@ class MainActivity : BridgeActivity() {
         registerPlugin(EmbedPlugin::class.java)     // native MiniLM sentence embeddings
         registerPlugin(StoragePlugin::class.java)   // real device free/used space for the Storage bar
         registerPlugin(TranslatePlugin::class.java) // on-device lyrics translation (ML Kit)
-        registerPlugin(SpeechPlugin::class.java)    // Bloop's native voice (the phone's own text-to-speech)
+        registerPlugin(SpeechPlugin::class.java)    // Bloopy's native voice (the phone's own text-to-speech)
         // native player layer
         registerPlugin(NativePlayerPlugin::class.java)
         registerPlugin(LibraryPlugin::class.java)

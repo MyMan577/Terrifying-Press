@@ -17,7 +17,7 @@ The owner tests on a Galaxy S24 Ultra (120 Hz, strong GPU).
 
 ## Project layout
 
-- `www/index.html` (almost the whole app) and `www/vocal-separator.js` (stems, tagging, Whisper, Bloop) are **built files, not stored in git**. Edit their parts in `src/`, then run `python3 tools/assemble.py` to build them into `www/`.
+- `www/index.html` (almost the whole app) and `www/vocal-separator.js` (stems, tagging, Whisper, Bloopy) are **built files, not stored in git**. Edit their parts in `src/`, then run `python3 tools/assemble.py` to build them into `www/`.
   - `src/index.html` is the page shell. Each `@@include path@@` line is replaced by that file (`src/index/css`, `src/index/html`, `src/index/js`).
   - `src/vocal-separator/*.js` are joined in name order.
   - The parts are plain cuts of one long file, so most are not complete scripts by themselves. Search across `src/` to find code, and check the built files, not the parts.

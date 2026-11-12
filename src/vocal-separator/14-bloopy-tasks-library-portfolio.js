@@ -32,7 +32,7 @@
         if (!pl) return say('I cannot find a playlist called \u201c' + m[1] + '\u201d.' + (pls.length ? ' You have: ' + pls.slice(0, 6).map(p => p.name).join(', ') + '.' : ' You have no playlists yet. Say \u201cmake a playlist called ' + m[1] + '\u201d.'));
         A.addToPlaylist(c.dbId, pl.id); A.commitPlaylists(); return done('Added \u201c' + c.title + '\u201d to ' + pl.name + '.');
       }
-      // ---- things you would normally do with a gesture or a tap: Bloop runs the app's own gesture actions and buttons ----
+      // ---- things you would normally do with a gesture or a tap: Bloopy runs the app's own gesture actions and buttons ----
       const GA = id => { const ga = A.gestureActions && A.gestureActions(), g = ga && ga[id]; if (!g || !g.run) return false; g.run(); return true; };
       const sk = () => $id('seek'), dur = () => parseFloat(sk() && sk().max) || 0, pos = () => parseFloat(sk() && sk().value) || 0;
       const clock = x => { x = Math.max(0, Math.round(x)); return Math.floor(x / 60) + ':' + String(x % 60).padStart(2, '0'); };
@@ -266,7 +266,7 @@
         if (!r.length) return say('None of your tagged tracks match that tempo.');
         shuffleIn(r); r = r.slice(0, 30); A.play(r[0], r); return done('Playing ' + label + '.');
       }
-      // ---- Press Play Portfolio (the listening stats). Read-only: Bloop reads the Portfolio's own saved stats and can open it. ----
+      // ---- Press Play Portfolio (the listening stats). Read-only: Bloopy reads the Portfolio's own saved stats and can open it. ----
       const PF = () => { try { if (window.PPPortfolioApi && window.PPPortfolioApi.flush) window.PPPortfolioApi.flush(); } catch (e) {} try { return JSON.parse(localStorage.getItem('pppSaveV1')) || null; } catch (e) { return null; } };
       const dur2 = ms => { const mn = Math.round(ms / 60000); return mn < 1 ? 'under a minute' : mn < 60 ? mn + ' min' : Math.floor(mn / 60) + ' h ' + (mn % 60) + ' min'; };
       const topN = (o, n, f) => Object.entries(o || {}).map(([k, v]) => [k, f ? f(v) : v]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, n);

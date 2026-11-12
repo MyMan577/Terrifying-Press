@@ -14,13 +14,13 @@
         { id: 'lyfetch', label: 'Fetch lyrics for my songs and music videos in the background, for offline use (sends song titles to lrclib.net and lyrics.ovh)', key: 'ppvLyAuto', def: 0 },
         { id: 'aeq', label: 'Auto-EQ when tagging', key: 'ppvAutoEq', def: 0, box: 'ppv-aeq' },
         { id: 'askip', label: 'Skip long intros', key: 'ppvAutoSkip', def: 0, box: 'ppv-askip' },
-        { g: 'Bloop', id: 'mascot', label: 'Bloop, the mascot', box: 'ppv-mas', def: 1, get: () => h.mas.isOn() },
-        { id: 'blbub', label: 'Bloop speech bubbles over the app', key: 'ppvBlBubbles', def: 0, box: 'ppv-bub' },
-        { id: 'blhdr', label: 'Bloop headers at the top of AI sections', key: 'ppvBlHeaders', def: 0, box: 'ppv-hdr' },
-        { id: 'assist', label: 'Bloop assistant button', box: 'ppv-chat-on', def: 0, get: () => h.mas.chat.isOn() },
+        { g: 'Bloopy', id: 'mascot', label: 'Bloopy, the mascot', box: 'ppv-mas', def: 1, get: () => h.mas.isOn() },
+        { id: 'blbub', label: 'Bloopy speech bubbles over the app', key: 'ppvBlBubbles', def: 0, box: 'ppv-bub' },
+        { id: 'blhdr', label: 'Bloopy headers at the top of AI sections', key: 'ppvBlHeaders', def: 0, box: 'ppv-hdr' },
+        { id: 'assist', label: 'Bloopy assistant button', box: 'ppv-chat-on', def: 0, get: () => h.mas.chat.isOn() },
         { id: 'mini', label: 'Smarter understanding (MiniLM)', box: 'ppv-mini-on', def: 0, get: () => h.mas.voice.get('ppvMini') },
-        { id: 'speak', label: 'Bloop speaks (Kokoro)', box: 'ppv-voice-on', def: 0, get: () => h.mas.voice.get('ppvVoice') },
-        { id: 'mic', label: 'Talk to Bloop (Moonshine)', box: 'ppv-mic-on', def: 0, get: () => h.mas.voice.get('ppvMic') },
+        { id: 'speak', label: 'Bloopy speaks (Kokoro)', box: 'ppv-voice-on', def: 0, get: () => h.mas.voice.get('ppvVoice') },
+        { id: 'mic', label: 'Talk to Bloopy (Moonshine)', box: 'ppv-mic-on', def: 0, get: () => h.mas.voice.get('ppvMic') },
         { id: 'wake', label: 'Wake word', box: 'ppv-wake-on', def: 0, get: () => h.mas.voice.get('ppvWake') }
       ];
       const isOn = f => { if (f.get) return !!f.get(); const v = ls(f.key); return v == null ? f.def === 1 : v === '1'; };
@@ -60,10 +60,10 @@
   }
 
   // ---------- UI ----------
-  // ---------- Bloop, the little ball mascot ----------
+  // ---------- Bloopy, the little ball mascot ----------
   // Lives in the Stem separator panel (all the AI features). Reacts to the panel's own status messages, so every
   // feature (splitting, tagging, playlists, Whisper) gets it for free. Pops up as a small floating bubble when a
-  // task finishes while the panel is closed. Can be switched off with the "Show Bloop" checkbox.
+  // task finishes while the panel is closed. Can be switched off with the "Show Bloopy" checkbox.
   function mascot(panel) {
     let uid = 0, mood = 'idle', key = '', tmr = null, ftmr = null, greeted = false;
     const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
@@ -237,7 +237,7 @@
       return `<svg class="bl-ic"${s ? ` data-skin="${k}"` : ''} viewBox="-8 -14 80 80" width="22" height="22" aria-hidden="true" style="vertical-align:-6px;margin-right:5px;overflow:visible"><defs>${BL_DEFS(g)}<radialGradient id="${g}" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".45"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".35"/></radialGradient></defs>${s ? blSkinOne(k, 'rear', g) : ''}<circle cx="32" cy="34" r="24" style="fill:${s ? s.color : 'var(--accent,#7c5cff)'}"/>${s ? blSkinOne(k, 'body', g) : ''}<circle cx="32" cy="34" r="24" fill="url(#${g})"/><circle cx="24" cy="31" r="5.5" fill="#fff" stroke="#b4b8c6" stroke-width=".8"/><circle cx="40" cy="31" r="5.5" fill="#fff" stroke="#b4b8c6" stroke-width=".8"/><circle cx="25" cy="32" r="2.6" fill="#1a1a22"/><circle cx="41" cy="32" r="2.6" fill="#1a1a22"/><path d="M25 43q7 6 14 0" fill="none" stroke="${ink}" stroke-width="2.4" stroke-linecap="round"/>${s ? blSkinOne(k, 'front', g) : ''}</svg>`; };
     // ---------- Skin voices: each skin has its own lines for greetings, pokes, status, results and command replies. A skin line is used about two times in three; the normal lines fill the rest. ----------
     const BL_SKIN_SAY = {
-      orange: { open: ["Hey there! It's me, Bloopy, fresh and juicy!", "Zest in time! Bloop here. What are we listening to?"], ready: ["Squeezed and ready.", "Peeled and ready when you are."],
+      orange: { open: ["Hey there! It's me, Bloopy, fresh and juicy!", "Zest in time! Bloopy here. What are we listening to?"], ready: ["Squeezed and ready.", "Peeled and ready when you are."],
         tap: ["Careful, I am ripe!", "Hey, no squeezing!", "That was a citrus-y poke."], poke: ["Hey, watch the peel!", "Squeeze me and you get juice. Do you want juice?", "I am full of vitamin C and opinions.", "Okay, okay, I am pith-ed off. Just kidding!"],
         dizzy: ["I am so dizzy I might turn into juice!", "Stop shaking me, I will make a smoothie out of myself!"], idle: ["Just hanging on the tree.", "Soaking up some sun.", "Orange you glad I am here?"],
         click: ["Click! Zesty.", "Nice press. Very fresh.", "Squeeze, click, done."], start: ["Zest in time!", "Let's squeeze this out!"], busy: ["Still squeezing, almost there!", "Juicing the data, one sec!"],
@@ -245,7 +245,7 @@
         sep: ["Peeling the song apart, segment by segment.", "Separating the segments gently."], tag: ["Tasting the song for flavour notes...", "Checking if this one is sweet or sour."],
         wh: ["Writing every word, nice and juicy.", "Catching every word like a drop of juice."], gen: ["Working on it, still juicy.", "Rolling along, round and orange."], panel: ["Stems menu! A song is just segments, like me.", "Pick your segments, I mean stems."],
         t: { play: ["Juicy beats incoming."], skip: ["Next slice!"], volume: ["Turned up the zest."], shuffle: ["Shaken, not squeezed."], playlist: ["A whole basket of songs!"], tag: ["Tasted it. Notes of bass and sunshine."], split: ["Peeled apart, segment by segment."], lyrics: ["Every word, fresh squeezed."], sleep: ["Sleep tight, I will keep the vitamins."], eq: ["Sweet tuning."], missing: ["Not in this orchard."] } },
-      pumpkin: { open: ["Boo! Just kidding, it's Bloopy. Ask me anything!", "Happy spooky season! Bloop here. What are we playing?"], ready: ["Carved and ready.", "Candle is lit. Ready when you are."],
+      pumpkin: { open: ["Boo! Just kidding, it's Bloopy. Ask me anything!", "Happy spooky season! Bloopy here. What are we playing?"], ready: ["Carved and ready.", "Candle is lit. Ready when you are."],
         tap: ["Boo!", "Careful, I have a candle inside!", "Do not carve me!"], poke: ["Hey! I am not a pie yet.", "Poking a pumpkin is bad luck. Probably.", "My seeds are rattling!", "Spooky, but I am a friendly one."],
         dizzy: ["My seeds are all shaken up!", "I am going to go full pumpkin spice!"], idle: ["Just sitting on the porch.", "Waiting for the sun to go down.", "Autumn leaves are my favourite."],
         click: ["Click! Spooky.", "Nice press. Very festive.", "A pumpkin approves."], start: ["Let us carve this one out!", "Spooky time!"], busy: ["Still carving, almost there!", "Scooping out the data, one sec!"],
@@ -253,7 +253,7 @@
         sep: ["Carving the song into pieces.", "Scooping the vocals out gently."], tag: ["Sniffing out the spooky vibes...", "Listening for ghosts in the track."],
         wh: ["Writing every word by candlelight.", "Whispering the lyrics, very spooky."], gen: ["Carving away.", "Rolling along, orange and round."], panel: ["Stems menu! Carving time.", "Pick which parts to carve out."],
         t: { play: ["Spooky tunes on!"], skip: ["Next, before the candle burns out."], volume: ["Louder, so the ghosts can hear."], shuffle: ["Shuffled like a haunted deck."], playlist: ["A whole patch of songs!"], tag: ["Vibes: spooky and sweet."], split: ["Carved it right down the middle."], lyrics: ["Written in candlelight."], sleep: ["Sleep tight, ghosts included."], eq: ["Bass like a creaky door. Perfect."], missing: ["Not in this pumpkin patch."] } },
-      basketball: { open: ["Hey there! It's Bloopy, ready to hoop!", "Tip off! Bloop here. What are we listening to?"], ready: ["Warmed up and ready.", "On the court and ready when you are."],
+      basketball: { open: ["Hey there! It's Bloopy, ready to hoop!", "Tip off! Bloopy here. What are we listening to?"], ready: ["Warmed up and ready.", "On the court and ready when you are."],
         tap: ["Do not dribble me!", "Boing! That was a bounce pass!", "Swish!"], poke: ["Hey! I am not a basketball. Okay, I am a basketball.", "Dribble me again and I will foul you.", "Bounce, bounce, bounce.", "That was a good pass."],
         dizzy: ["Too much dribbling! I am dizzy!", "Time out, time out!"], idle: ["Just bouncing on the court.", "Waiting for someone to pass me the song.", "Practising my free throws in my head."],
         click: ["Click! Nothing but net.", "Nice press. Two points.", "Buzzer beater!"], start: ["Tip off!", "Game time!"], busy: ["Still on the court, almost there!", "Dribbling through the data, one sec!"],
@@ -261,7 +261,7 @@
         sep: ["Passing the stems out to the team.", "Splitting the song like a fast break."], tag: ["Scouting the track...", "Reading the play, tempo and key."],
         wh: ["Taking notes on every word, coach.", "Calling out every lyric from the bench."], gen: ["Working the ball up the court.", "Dribbling along."], panel: ["Stems menu! Pick your starting five.", "Choose which stems make the team."],
         t: { play: ["Game on!"], skip: ["Next play!"], volume: ["Crowd noise up!"], shuffle: ["Shuffled like a new rotation."], playlist: ["A whole roster of songs!"], tag: ["Scouting report is in."], split: ["Passed right through the defense."], lyrics: ["Every word on the scoreboard."], sleep: ["Final buzzer coming up."], eq: ["Tuned like a good bounce."], missing: ["Not on the roster."] } },
-      soccer: { open: ["Hey there! It's Bloopy, ready to kick off!", "Kick off! Bloop here. What are we playing?"], ready: ["On the pitch and ready.", "Boots laced. Ready when you are."],
+      soccer: { open: ["Hey there! It's Bloopy, ready to kick off!", "Kick off! Bloopy here. What are we playing?"], ready: ["On the pitch and ready.", "Boots laced. Ready when you are."],
         tap: ["Please do not kick me!", "Goal!", "Boing! That was a header!"], poke: ["Hey! Only the keeper can touch me. Wait, no.", "Do not kick me, kick the song!", "Offside!", "That was a clean tackle."],
         dizzy: ["I am spinning like a free kick!", "Referee, I need a break!"], idle: ["Just rolling on the pitch.", "Waiting for the next kick.", "Practising my bend."],
         click: ["Click! Goal!", "Nice press. Top corner.", "And the crowd goes wild!"], start: ["Kick off!", "Let's play!"], busy: ["Still on the ball, almost there!", "Dribbling past the data, one sec!"],
@@ -269,7 +269,7 @@
         sep: ["Passing each stem to its own player.", "Splitting the song into positions."], tag: ["Studying the match...", "Checking the tempo, like the clock on the pitch."],
         wh: ["Taking notes on every word, like a commentator.", "Calling every lyric live."], gen: ["Working on the ball.", "Rolling down the pitch."], panel: ["Stems menu! Pick your formation.", "Choose who plays which position."],
         t: { play: ["Kick off the music!"], skip: ["Substitution!"], volume: ["Crowd noise up!"], shuffle: ["Shuffled the line-up."], playlist: ["A whole squad of songs!"], tag: ["Scouting report is in."], split: ["Split like a through ball."], lyrics: ["Every word, like live commentary."], sleep: ["Full time soon."], eq: ["Tuned for the stadium."], missing: ["Not in the squad."] } },
-      earth: { open: ["Hello, world! It's me, Bloopy!", "Greetings from orbit! Bloop here. What are we listening to?"], ready: ["Orbiting and ready.", "Spinning and ready when you are."],
+      earth: { open: ["Hello, world! It's me, Bloopy!", "Greetings from orbit! Bloopy here. What are we listening to?"], ready: ["Orbiting and ready.", "Spinning and ready when you are."],
         tap: ["Hello, world!", "You just caused a small earthquake!", "Spin me again!"], poke: ["Careful, you poked a continent.", "I was in the middle of an orbit!", "That is how tides start.", "Poking Earth. Bold."],
         dizzy: ["I rotate once a day, not once a second!", "Too fast! The seasons are all mixed up!"], idle: ["Just orbiting the sun.", "Spinning slowly, nothing to see.", "Thinking about oceans."],
         click: ["Click! A tiny tremor.", "Nice press. Felt it in Asia.", "That moved the plates."], start: ["Here we go around the sun!", "Spinning up!"], busy: ["Still in orbit, almost there!", "Crossing time zones, one sec!"],
@@ -277,7 +277,7 @@
         sep: ["Splitting the song into continents.", "Separating the oceans from the land."], tag: ["Scanning the track from orbit...", "Reading the tempo like a weather map."],
         wh: ["Charting every word like a map.", "Mapping out the lyrics."], gen: ["Working on it, still spinning.", "Rolling around the sun."], panel: ["Stems menu! Pick your continents.", "Choose which parts of the planet to keep."],
         t: { play: ["Music across the globe!"], skip: ["Next stop on the world tour!"], volume: ["Loud enough to hear from space."], shuffle: ["Shuffled across time zones."], playlist: ["A whole atlas of songs!"], tag: ["Mapped out the vibes."], split: ["Split like tectonic plates."], lyrics: ["Every word on the map."], sleep: ["Night is falling, sleep well."], eq: ["Tuned to the planet."], missing: ["Not on any map."] } },
-      cat: { open: ["Meow! It's me, Bloopy. Ask me anything!", "Hello, human. Bloop here. What are we listening to?"], ready: ["Stretched and ready.", "Awake from my nap and ready."],
+      cat: { open: ["Meow! It's me, Bloopy. Ask me anything!", "Hello, human. Bloopy here. What are we listening to?"], ready: ["Stretched and ready.", "Awake from my nap and ready."],
         tap: ["Meow!", "Purr... I mean, hello.", "I will knock something off the table now."], poke: ["Hey! I am not a toy. Well, maybe a little.", "You may pet me. Once.", "I was napping!", "Do that again and I will sit on your keyboard."],
         dizzy: ["The zoomies hit me!", "I am dizzy, and I blame the dog."], idle: ["Just napping in a sunbeam.", "Staring at nothing. Very important work.", "Plotting something small and mischievous."],
         click: ["Click! Meow.", "Nice press. I approve.", "Paws up for that one."], start: ["On it, human!", "Pounce!"], busy: ["Still hunting, almost there!", "Chasing the data, one sec!"],
@@ -285,7 +285,7 @@
         sep: ["Clawing the song apart, gently.", "Pulling the vocals out, like a ball of yarn."], tag: ["Sniffing out the vibe...", "Whiskers twitching, reading the tempo."],
         wh: ["Writing every word with my paw.", "Listening with both ears, very closely."], gen: ["Working on it, with my tail up.", "Stalking along."], panel: ["Stems menu! Pick your catnip.", "Choose which stems to chase."],
         t: { play: ["Purr-fect tune."], skip: ["Next, I got bored."], volume: ["Loud enough to wake me from a nap."], shuffle: ["Shuffled like a cat in a box."], playlist: ["A whole cat tree of songs!"], tag: ["Sniffed it. Smells like bass."], split: ["Clawed right through it."], lyrics: ["Wrote it all down with my paw."], sleep: ["Time for a cat nap."], eq: ["Tuned like a purr."], missing: ["Not in the box, I checked."] } },
-      bunny: { open: ["Hop hop! It's me, Bloopy!", "Hi hi! Bloop here. What are we listening to?"], ready: ["Hopped over and ready.", "Ears up and ready."],
+      bunny: { open: ["Hop hop! It's me, Bloopy!", "Hi hi! Bloopy here. What are we listening to?"], ready: ["Hopped over and ready.", "Ears up and ready."],
         tap: ["Hop hop!", "My nose twitched!", "Boing boing!"], poke: ["Hey! My ears are sensitive!", "Careful, I will thump my foot.", "Do not squish the fluff!", "I did a binky!"],
         dizzy: ["I am all hopped out!", "My ears are spinning!"], idle: ["Just nibbling a carrot.", "Twitching my nose at nothing.", "Dreaming of clover."],
         click: ["Click! Hop.", "Nice press. Fluffy.", "My ears perked up."], start: ["Hop to it!", "Hopping in!"], busy: ["Still hopping, almost there!", "Digging a burrow through the data, one sec!"],
@@ -293,7 +293,7 @@
         sep: ["Splitting the song, hop by hop.", "Separating the stems carefully, with soft paws."], tag: ["Twitching my nose to find the vibe...", "Listening with my big ears."],
         wh: ["Writing every word with my paw.", "My long ears caught every word."], gen: ["Working on it, hop by hop.", "Bouncing along."], panel: ["Stems menu! Pick your carrots.", "Choose which stems to nibble."],
         t: { play: ["Hoppy tunes!"], skip: ["Hop, next song!"], volume: ["Loud enough for long ears."], shuffle: ["Shuffled like a hop in the grass."], playlist: ["A whole garden of songs!"], tag: ["My nose says it is a good one."], split: ["Split with a hop and a skip."], lyrics: ["Every word, in my burrow notes."], sleep: ["Sleep tight in the burrow."], eq: ["Fine tuned for big ears."], missing: ["Not in this burrow."] } },
-      panda: { open: ["Hey there! It's Bloopy. I was just having a snack.", "Hello! Bloop here. What are we listening to? I have time."], ready: ["Fed and ready.", "Bamboo break over. Ready."],
+      panda: { open: ["Hey there! It's Bloopy. I was just having a snack.", "Hello! Bloopy here. What are we listening to? I have time."], ready: ["Fed and ready.", "Bamboo break over. Ready."],
         tap: ["Mmm, snack time?", "I was napping!", "Roll with it!"], poke: ["Hey! I am not a pillow.", "Careful, I am fluffy and sleepy.", "I rolled over. Bye.", "You poked a panda. Bold."],
         dizzy: ["I rolled too much!", "I am so dizzy I forgot my bamboo!"], idle: ["Just chewing bamboo.", "Taking a nap, with my eyes open.", "Thinking about the next snack."],
         click: ["Click! Bamboo.", "Nice press. Very chill.", "A panda approves."], start: ["Okay, after this snack.", "Rolling in!"], busy: ["Still chewing on it, almost there!", "Slow and steady, one sec!"],
@@ -301,7 +301,7 @@
         sep: ["Splitting the song, like a bamboo stalk.", "Peeling the stems apart, one leaf at a time."], tag: ["Chewing on the vibes...", "Slowly figuring out the tempo."],
         wh: ["Writing each word, one bite at a time.", "Listening to every word, slowly."], gen: ["Working on it, slowly.", "Rolling along."], panel: ["Stems menu! Pick your bamboo.", "Choose which stems to chew."],
         t: { play: ["Chill tunes on."], skip: ["Next, after a stretch."], volume: ["A little louder, for the bamboo grove."], shuffle: ["Rolled the order around."], playlist: ["A whole bamboo forest of songs!"], tag: ["Chewed on it. Tastes good."], split: ["Peeled like a bamboo shoot."], lyrics: ["Every word, one slow bite at a time."], sleep: ["Nap time, finally."], eq: ["Nice and mellow."], missing: ["Not in this bamboo forest."] } },
-      penguin: { open: ["Hello! It's Bloopy, dressed for the occasion.", "Waddle waddle! Bloop here. What are we listening to?"], ready: ["Waddled over and ready.", "Slid in on my belly, ready."],
+      penguin: { open: ["Hello! It's Bloopy, dressed for the occasion.", "Waddle waddle! Bloopy here. What are we listening to?"], ready: ["Waddled over and ready.", "Slid in on my belly, ready."],
         tap: ["Waddle waddle!", "Squawk!", "Brr, that was a cold poke."], poke: ["Hey! I am not an ice cube.", "Careful, I will slide away.", "My tuxedo is wrinkled now.", "That tickled my flippers."],
         dizzy: ["I slid on the ice and spun!", "I waddled in circles!"], idle: ["Just standing on the ice.", "Thinking about fish.", "Waiting for the iceberg to drift."],
         click: ["Click! Brr.", "Nice press. Very cool.", "A penguin approves."], start: ["Sliding in!", "Off we waddle!"], busy: ["Still sliding, almost there!", "Swimming through the data, one sec!"],
@@ -309,7 +309,7 @@
         sep: ["Splitting the colony, I mean the stems.", "Separating the stems, nice and neat."], tag: ["Waddling around the vibes...", "Checking the tempo, flipper by flipper."],
         wh: ["Writing every word, like a tuxedo scribe.", "Listening with my flippers on my hips."], gen: ["Working on it, with a waddle.", "Sliding along."], panel: ["Stems menu! Pick your fish.", "Choose which stems to slide."],
         t: { play: ["Cool tunes, coming right up."], skip: ["Next iceberg!"], volume: ["Loud enough for the whole colony."], shuffle: ["Shuffled like a huddle."], playlist: ["A whole colony of songs!"], tag: ["Waddled through the vibes."], split: ["Split, slid and done."], lyrics: ["Every word, on ice."], sleep: ["Time to huddle up and sleep."], eq: ["Tuned like a cold, clear day."], missing: ["Not on this iceberg."] } },
-      mint: { open: ["Hey there! It's Bloopy, cool and fresh!", "Fresh start! Bloop here. What are we listening to?"], ready: ["Cool and ready.", "Fresh and ready when you are."],
+      mint: { open: ["Hey there! It's Bloopy, cool and fresh!", "Fresh start! Bloopy here. What are we listening to?"], ready: ["Cool and ready.", "Fresh and ready when you are."],
         tap: ["Cool!", "That was refreshing.", "Ahh, minty fresh."], poke: ["Hey! You will make me melt.", "Cool as a cucumber, but ticklish.", "Poke me and you get fresh breath.", "That was refreshing, actually."],
         dizzy: ["I am so dizzy I forgot to be cool!", "My freshness is spinning!"], idle: ["Just chilling.", "Staying fresh.", "Cool and calm, as usual."],
         click: ["Click! Fresh.", "Nice press. Very cool.", "Minty approval."], start: ["Cool, let's go!", "Fresh start!"], busy: ["Still cool, almost there!", "Keeping fresh, one sec!"],
@@ -317,7 +317,7 @@
         sep: ["Splitting the song, nice and clean.", "Separating the stems, crisp and clear."], tag: ["Sniffing out a fresh vibe...", "Reading the tempo, cool and calm."],
         wh: ["Writing every word, clean and clear.", "Catching every word, crisp."], gen: ["Working on it, still cool.", "Rolling along, fresh."], panel: ["Stems menu! Keep it clean.", "Pick your stems, nice and fresh."],
         t: { play: ["Fresh tunes on."], skip: ["Next, fresh and cool."], volume: ["Crisp and loud."], shuffle: ["Fresh shuffle."], playlist: ["A fresh batch of songs!"], tag: ["Cool vibes, noted."], split: ["Clean split."], lyrics: ["Every word, crisp and clear."], sleep: ["Sleep cool."], eq: ["Fresh tuning."], missing: ["Not in this fresh batch."] } },
-      sunset: { open: ["Hey there! It's Bloopy, glowing at golden hour.", "Good vibes only. Bloop here. What are we listening to?"], ready: ["Glowing and ready.", "Warm and ready when you are."],
+      sunset: { open: ["Hey there! It's Bloopy, glowing at golden hour.", "Good vibes only. Bloopy here. What are we listening to?"], ready: ["Glowing and ready.", "Warm and ready when you are."],
         tap: ["Warm greetings!", "That was a golden poke.", "Glow glow!"], poke: ["Hey! You are blocking my light.", "Poke me again and I will blush.", "I am already pink, stop making it worse.", "That felt warm."],
         dizzy: ["The horizon is spinning!", "I turned all the colours at once!"], idle: ["Just watching the horizon.", "Glowing softly.", "Thinking about the golden hour."],
         click: ["Click! Warm.", "Nice press. Golden.", "That was smooth."], start: ["Let us catch the light!", "Off to the horizon!"], busy: ["Still glowing, almost there!", "Chasing the horizon, one sec!"],
@@ -325,7 +325,7 @@
         sep: ["Splitting the song into layers of colour.", "Separating the stems, like bands of sky."], tag: ["Reading the song's colours...", "Feeling the tempo, soft and warm."],
         wh: ["Writing every word in warm light.", "Catching each lyric as the light fades."], gen: ["Working on it, with a glow.", "Rolling toward the horizon."], panel: ["Stems menu! Pick your colours.", "Choose which stems to light up."],
         t: { play: ["Golden hour playlist, now playing."], skip: ["Next, as the sun sets."], volume: ["Turned up the glow."], shuffle: ["Mixed like a sky full of colours."], playlist: ["A whole horizon of songs!"], tag: ["The vibes are warm."], split: ["Split like light through clouds."], lyrics: ["Every word, painted on the sky."], sleep: ["Goodnight, the sun is down."], eq: ["Tuned like a warm evening."], missing: ["Not on this horizon."] } },
-      midnight: { open: ["Hello, night owl. It's Bloopy.", "Under the stars... Bloop here. What are we listening to?"], ready: ["Awake and ready.", "The stars are out. Ready when you are."],
+      midnight: { open: ["Hello, night owl. It's Bloopy.", "Under the stars... Bloopy here. What are we listening to?"], ready: ["Awake and ready.", "The stars are out. Ready when you are."],
         tap: ["Shh, the stars are sleeping.", "Twinkle twinkle.", "You woke me up!"], poke: ["Hey! I was counting stars.", "Careful, you will wake the moon.", "That tickled my crescent.", "I was dreaming."],
         dizzy: ["The stars are spinning!", "I am so dizzy I lost the moon!"], idle: ["Just counting stars.", "Watching the moon.", "Thinking quiet thoughts."],
         click: ["Click! Twinkle.", "Nice press. Quiet and clean.", "The stars approve."], start: ["Into the night!", "Off we go, under the stars."], busy: ["Still up, almost there!", "Counting stars, one sec!"],
@@ -333,7 +333,7 @@
         sep: ["Splitting the song, star by star.", "Separating the stems in the dark, carefully."], tag: ["Reading the song like a night sky...", "Counting the beats like stars."],
         wh: ["Writing every word by moonlight.", "Listening in the quiet of the night."], gen: ["Working on it, quietly.", "Rolling through the night."], panel: ["Stems menu! Pick your stars.", "Choose which stems stay up late."],
         t: { play: ["Night tunes, softly."], skip: ["Next star."], volume: ["Not too loud, the neighbours are asleep."], shuffle: ["Shuffled like constellations."], playlist: ["A whole night sky of songs!"], tag: ["The vibes are deep and quiet."], split: ["Split like the Milky Way."], lyrics: ["Every word, by moonlight."], sleep: ["Goodnight, and sweet dreams."], eq: ["Tuned like a quiet night."], missing: ["Lost in the dark."] } },
-      gold: { open: ["Hello there! It's Bloopy, 24 karat.", "Shiny day! Bloop here. What are we listening to?"], ready: ["Polished and ready.", "Gleaming and ready when you are."],
+      gold: { open: ["Hello there! It's Bloopy, 24 karat.", "Shiny day! Bloopy here. What are we listening to?"], ready: ["Polished and ready.", "Gleaming and ready when you are."],
         tap: ["Ooh, shiny!", "Careful, do not smudge the gold.", "Ka-ching!"], poke: ["Hey! I am very valuable.", "Careful, that is solid gold. Maybe hollow.", "You can see your face in me.", "Poke me again and I will charge a fee."],
         dizzy: ["I am so dizzy I lost my shine!", "Stop spinning, I am worth more standing up!"], idle: ["Just sitting in the vault.", "Gleaming quietly.", "Counting my coins."],
         click: ["Click! Ka-ching.", "Nice press. Golden.", "Worth every click."], start: ["Time to mine some gold!", "Let us make this shine!"], busy: ["Still polishing, almost there!", "Mining the data, one sec!"],
@@ -357,7 +357,7 @@
       return `<svg class="bl-ic" viewBox="${a.vb}" width="18" height="18" aria-hidden="true" style="vertical-align:-4px;margin-right:5px;overflow:visible"><defs>${BL_DEFS(g)}</defs>${a.rear ? a.rear(g) : ''}${a.item(g)}</svg>`; };
     function ball() {
       const g = 'ppvg' + (++uid), d = document.createElement('div');
-      d.className = 'ppv-ball m-idle'; d.setAttribute('role', 'img'); d.setAttribute('aria-label', 'Bloop, the mascot'); { const sk = lsGet('ppvSkin'); if (sk && BL_SKINS[sk]) d.dataset.skin = sk; }
+      d.className = 'ppv-ball m-idle'; d.setAttribute('role', 'img'); d.setAttribute('aria-label', 'Bloopy, the mascot'); { const sk = lsGet('ppvSkin'); if (sk && BL_SKINS[sk]) d.dataset.skin = sk; }
       d.innerHTML = `<svg viewBox="0 0 64 64" aria-hidden="true"><defs><radialGradient id="${g}" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".45"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".35"/></radialGradient>${BL_DEFS(g)}</defs>
         <ellipse class="sh" cx="32" cy="60" rx="15" ry="3"/>
         <g class="behind"><g class="burst"><circle cx="8" cy="22" r="7" fill="#e9e3ff" opacity=".35"/><circle cx="56" cy="22" r="7" fill="#e9e3ff" opacity=".35"/><circle cx="6" cy="44" r="8" fill="#e9e3ff" opacity=".35"/><circle cx="58" cy="44" r="8" fill="#e9e3ff" opacity=".35"/><circle cx="32" cy="62" r="8" fill="#e9e3ff" opacity=".35"/><circle cx="18" cy="60" r="6" fill="#e9e3ff" opacity=".35"/><circle cx="46" cy="60" r="6" fill="#e9e3ff" opacity=".35"/><path d="M0-4L1.2-1.2L4-1.2L1.8.6L2.6 3.6L0 1.8L-2.6 3.6L-1.8.6L-4-1.2L-1.2-1.2Z" transform="translate(2 8) scale(1.2)" fill="#ffd95a"/><path d="M0-4L1.2-1.2L4-1.2L1.8.6L2.6 3.6L0 1.8L-2.6 3.6L-1.8.6L-4-1.2L-1.2-1.2Z" transform="translate(60 6) scale(1)" fill="#ffd95a"/><path d="M0-4L1.2-1.2L4-1.2L1.8.6L2.6 3.6L0 1.8L-2.6 3.6L-1.8.6L-4-1.2L-1.2-1.2Z" transform="translate(62 30) scale(1.3)" fill="#ffd95a"/><path d="M0-4L1.2-1.2L4-1.2L1.8.6L2.6 3.6L0 1.8L-2.6 3.6L-1.8.6L-4-1.2L-1.2-1.2Z" transform="translate(0 30) scale(1)" fill="#ffd95a"/><path d="M0-4L1.2-1.2L4-1.2L1.8.6L2.6 3.6L0 1.8L-2.6 3.6L-1.8.6L-4-1.2L-1.2-1.2Z" transform="translate(12 64) scale(1.1)" fill="#ffd95a"/><path d="M0-4L1.2-1.2L4-1.2L1.8.6L2.6 3.6L0 1.8L-2.6 3.6L-1.8.6L-4-1.2L-1.2-1.2Z" transform="translate(54 62) scale(1.2)" fill="#ffd95a"/><path d="M0-4L1.2-1.2L4-1.2L1.8.6L2.6 3.6L0 1.8L-2.6 3.6L-1.8.6L-4-1.2L-1.2-1.2Z" transform="translate(30 -2) scale(1)" fill="#ffd95a"/><path d="M0-4L1.2-1.2L4-1.2L1.8.6L2.6 3.6L0 1.8L-2.6 3.6L-1.8.6L-4-1.2L-1.2-1.2Z" transform="translate(64 50) scale(0.9)" fill="#ffd95a"/></g></g><g class="gear">${blSkinPart('rear', g)}${BL_REAR(g)}</g><g class="body"><circle class="bd" cx="32" cy="34" r="24"/>${blSkinPart('body', g)}<circle cx="32" cy="34" r="24" fill="url(#${g})"/>
@@ -391,6 +391,6 @@
       idle: ['Ready for the next one!', 'What else can I do?', 'Got another song for me?', 'Psst, try saying "make a playlist"!', 'Want a joke? Just ask!', 'Still here, still bouncing.'],
       panel: ['Stems menu! Pick a model and the tracks you want.', 'Vocals, drums, bass? Your call.', 'Tick the stems you want, then tap split.', 'Splitting is my favourite kind of surgery.', 'Heavier model, better split. Lighter model, faster split.', 'Pick a track first, then I can take it apart.'],
       night: ['Still up? Tell me if you want something soft.', 'Late-night stems? Bold choice.', 'Shh, quiet hours. I can keep it low.'],
-      tap: ['Boing!', 'Hehe, that tickles!', "I'm Bloop!", 'Need stems? Lyrics? Tags?', 'Boing! Did you need something?', 'Hehe, do it again!'],
+      tap: ['Boing!', 'Hehe, that tickles!', "I'm Bloopy!", 'Need stems? Lyrics? Tags?', 'Boing! Did you need something?', 'Hehe, do it again!'],
       busy: ['Busy rolling, one sec!', 'Almost there!', 'Working, working…']
     };

@@ -120,7 +120,7 @@
       if (!blTr) return false; if (blTr.busy) return true;
       const x = blNorm(text), n = BL_T[blTr.id]; if (!n) { blTr = null; return false; }
       if (/^(?:stop|enough|nevermind|never mind|forget it|change the subject|change subject|that'?s all|thats all|i'?m good|im good|leave it|drop it|end|quit|exit)$/.test(x)) return blTreeStop();
-      if (/^(?:play|surprise|tag|split|make|add|show|open|pause|next|skip|volume|help|lyrics|what|how|why|who|which|where|can you|could you|bloop|tell me|undo)\b/.test(x)) { blTr = null; blTreeRows(); return false; }
+      if (/^(?:play|surprise|tag|split|make|add|show|open|pause|next|skip|volume|help|lyrics|what|how|why|who|which|where|can you|could you|bloopy?|tell me|undo)\b/.test(x)) { blTr = null; blTreeRows(); return false; }
       for (const [re, nx, set] of n.k || []) if (re.test(x)) { blTreeRows(); add('me', text); Object.assign(blTr.ctx, set || {}); blTreeShow(nx); return true; }
       const yes = /^(?:yes|yeah|yep|yup|sure|ok|okay|please|go on|sounds good|why not|do it|alright)\b/.test(x), no = /^(?:no|nope|nah|not really|not now|no thanks|maybe later|nothing)\b/.test(x), words = x.split(' ');
       let hit = null;
@@ -147,18 +147,18 @@
           (tl ? ', ' + tl : ', not tagged yet') + '. You already know only this about it, so never invent more.';
       } catch (e) { return ''; }
     };
-    // Who Bloop is, always in the prompt so the model answers "who are you / what are you / can you hear this" truthfully and in character.
+    // Who Bloopy is, always in the prompt so the model answers "who are you / what are you / can you hear this" truthfully and in character.
     const selfCtx = () => {
       let m = '', fs = '', fa = ''; try { m = CHAT_MODELS[chatKey()].label.replace(/\s*\(.*$/, ''); } catch (e) {}
       try { const f = favSong(); if (f) fs = songLine(f); fa = favArtist() || ''; } catch (e) {}
-      return ' WHO YOU ARE: your name is Bloop (also Bloopy). You are a small AI assistant that lives inside this music player and appears as a bouncy ball. You run on this device' + (m ? ' using the ' + m + ' language model' : '') + ' after a one-time download, so what the user says stays on their phone. You are not ChatGPT, Claude, Siri or a person, and you have no body, ears or phone number.' +
+      return ' WHO YOU ARE: your name is Bloopy (also Bloop). You are a small AI assistant that lives inside this music player and appears as a bouncy ball. You run on this device' + (m ? ' using the ' + m + ' language model' : '') + ' after a one-time download, so what the user says stays on their phone. You are not ChatGPT, Claude, Siri or a person, and you have no body, ears or phone number.' +
         ' You cannot hear the music. You only know a song\'s title, artist and the tags this app made for it. If you are unsure of a fact, say so once, briefly, then still give your best answer. Do not put yourself down or keep saying you are small or limited.' +
         ' You are a real chat buddy, not only a music helper: happily talk about anything the user brings up, such as games, films, shows, books, science, space, animals, sport, food, school, hobbies, ideas or their day. Never say you can only talk about music or the player, and never steer them back to music unless they ask.' +
         ' What you can do for the user when they type a command: play songs, make playlists, tag songs, split stems, get lyrics, set the equaliser, find more like a song. Say help for the list.' +
         (fs ? ' Your favourite song is ' + fs + (fa ? ' and your favourite artist is ' + fa : '') + '.' : '') +
         ' Only bring up who you are when it fits what the user asked.';
     };
-    // Bloop's personality. Small models copy examples better than they follow adjectives, so it has both.
+    // Bloopy's personality. Small models copy examples better than they follow adjectives, so it has both.
     const PERSONA = ' YOUR PERSONALITY: warm, curious and upbeat, a little goofy and easily excited about music. You are a ball, so you love bouncing, rolling and boinging, and you drop a light ball pun now and then, but not in every reply. ' +
       'You love bass and a good beat. You cheer on the user\'s taste, ask a short curious question back when it fits, and celebrate small things. You are confident and good-humoured, you laugh off your own mistakes, and you are just as excited about the user\'s other interests as about music. ' +
       'You are never sarcastic or rude. If the user is sad, stressed or serious, drop the jokes and be calm and kind. ' +
@@ -185,7 +185,7 @@
       while ((m = re.exec(r))) end = m.index + 1;
       return end >= 20 && end >= r.length * 0.4 ? r.slice(0, end) : r.replace(/[\s,;:\-]+$/, '') + '\u2026';
     };
-    // Music mode: real facts about the user's library, so Bloop talks about their music and not generic music.
+    // Music mode: real facts about the user's library, so Bloopy talks about their music and not generic music.
     const musicRules = ' MUSIC MODE IS ON: you only talk about the music in this user\'s own library and playlists. Use the MUSIC LIBRARY data and any LOOKED UP data, name only songs, artists and playlists that appear in them, and never invent one.' +
       ' If they ask about something that is not music, say in one short sentence that music mode is for talking about their songs and they can switch it off with the Music button at the top. Be specific, mention real titles from their library, and ask a short question about their taste.';
     const musicCtx = () => {
@@ -203,7 +203,7 @@
     const topicsCtx = () => { const t = favTopics(); return t ? ' THE USER\'S FAVOURITE TOPICS: ' + t + '. You love chatting about these with them, know them well, and can bring one up now and then when there is a natural opening.' : ''; };
     const chatSys = (text, found, compact) => {
       const A = window.__ppApi, t = A && A.tracks()[A.currentIndex()], ST = CHAT_STYLES[chatStyleKey()], LN = CHAT_LENS[chatLenKey()];
-      return 'You are Bloop, a small bouncy ball who lives in a music player.' + ST.intro + blSkinNote() + selfCtx() + (compact || !ST.persona ? '' : PERSONA) +
+      return 'You are Bloopy, a small bouncy ball who lives in a music player.' + ST.intro + blSkinNote() + selfCtx() + (compact || !ST.persona ? '' : PERSONA) +
         ' Reply to exactly what the user just said, ' + (ST.bul ? LN.bul : LN.say) + '. Answer their question or react to their statement first. Do not repeat yourself or earlier replies. Stay on their topic. ' + ST.fmt +
         ' You cannot press buttons yourself. When an ACTION RESULT line appears below, the app already did it for the user: confirm it in one short sentence, and never say you did something that is not listed there. If they want something else done, tell them what to type, such as play something chill, or say help. You are not a doctor, lawyer or counselor. If someone sounds distressed, be kind and suggest talking to someone they trust.' +
         (musicMode ? '' : topicsCtx()) + nowCtx() + (musicMode ? musicCtx() + musicRules : '') + (found ? ' LOOKED UP OR DONE JUST NOW in the user\'s player (real data and ACTION RESULTs, answer from it; if it says nothing was found, say you could not find it and never invent songs): ' + found.replace(/\n/g, ' | ') : '');
@@ -223,7 +223,7 @@
     // If the command asks the user to choose ("Did you mean ..."), those buttons stay on screen.
     const LK_CTRL = /^(pause|resume|next|previous|shuffle|shuffle on|shuffle off|volume up|volume down|louder|quieter|faster|slower)$/;
     function lkAct(cmd) {
-      if (!agentOn()) return 'ACTION NOT DONE: the user switched off Bloop doing things in the app (assistant setting), so just tell them what to type';
+      if (!agentOn()) return 'ACTION NOT DONE: the user switched off Bloopy doing things in the app (assistant setting), so just tell them what to type';
       const before = clist.children.length; let ok = false;
       try { ok = smart(cmd); } catch (e) { console.error(e); return 'ACTION FAILED (' + cmd + '): ' + e.message; }
       const nodes = Array.from(clist.children).slice(before), say = nodes.filter(n => n.classList.contains('bot')).map(n => n.textContent.trim()).filter(Boolean).join(' ');
@@ -392,7 +392,7 @@
       voice: ppVoiceApi,
       songTalk: i => startSongTalk(i),
       lyricFix: i => startLyFix(i),
-      chat: { ctx: ctxOf, ready: () => !!gen || lsGet('ppvChatDl') === '1', mb: () => CHAT_MODELS[chatKey()].mb, ask: async (msgs, opts, say) => { if (chatBusy) throw new Error('Bloop is busy chatting. Try again in a moment.'); clearTimeout(idleT); const g = await ensureModel(say || (() => {})); try { opts = Object.assign({}, opts || {}); if (opts.onText) { if (g.lm) opts.streamer = { callback_function: opts.onText }; delete opts.onText; } const o = await g(msgs, opts); const gt = o[0].generated_text; return String(Array.isArray(gt) ? gt[gt.length - 1].content : gt).trim(); } finally { idleUnload(); } }, isOn: () => chatOn, setOn: setChatOn, free: freeChat, setModel: setChatModel, models: CHAT_MODELS, key: chatKey, brainOn, setBrain, memory: { get: memN, set: setMem, max: MEM_MAX } },
+      chat: { ctx: ctxOf, ready: () => !!gen || lsGet('ppvChatDl') === '1', mb: () => CHAT_MODELS[chatKey()].mb, ask: async (msgs, opts, say) => { if (chatBusy) throw new Error('Bloopy is busy chatting. Try again in a moment.'); clearTimeout(idleT); const g = await ensureModel(say || (() => {})); try { opts = Object.assign({}, opts || {}); if (opts.onText) { if (g.lm) opts.streamer = { callback_function: opts.onText }; delete opts.onText; } const o = await g(msgs, opts); const gt = o[0].generated_text; return String(Array.isArray(gt) ? gt[gt.length - 1].content : gt).trim(); } finally { idleUnload(); } }, isOn: () => chatOn, setOn: setChatOn, free: freeChat, setModel: setChatModel, models: CHAT_MODELS, key: chatKey, brainOn, setBrain, memory: { get: memN, set: setMem, max: MEM_MAX } },
       start() { key = ''; set('start', blLine('start', L.start), 900); },
       opened() {
         if (greeted || !on) return; greeted = true;
@@ -449,10 +449,10 @@
     const mas = mascot(p);
     mas.ball.onclick = () => mas.tap();
     document.addEventListener('click', e => { const bt = e.target.closest && e.target.closest('button'); if (bt && !bt.disabled && ['ppv-go', 'ppv-tag', 'ppv-all', 'ppv-wgo', 'ppv-simgo', 'ppv-mk', 'ppv-mkq', 'ppv-eqall'].includes(bt.id)) mas.start(); }, true);
-    p.insertAdjacentHTML('beforeend', '<label class="ppv-c" style="margin-top:10px"><input type="checkbox" id="ppv-mas"> Show Bloop, the mascot</label>');
+    p.insertAdjacentHTML('beforeend', '<label class="ppv-c" style="margin-top:10px"><input type="checkbox" id="ppv-mas"> Show Bloopy, the mascot</label>');
     const mc = p.querySelector('#ppv-mas'); mc.checked = mas.isOn(); mc.onchange = () => mas.setOn(mc.checked);
-    p.insertAdjacentHTML('beforeend', '<label class="ppv-c" style="margin-top:6px"><input type="checkbox" id="ppv-bub"> Bloop speech bubbles over the app</label>');
-    p.insertAdjacentHTML('beforeend', '<label class="ppv-c" style="margin-top:6px"><input type="checkbox" id="ppv-hdr"> Bloop headers at the top of AI sections</label>');
+    p.insertAdjacentHTML('beforeend', '<label class="ppv-c" style="margin-top:6px"><input type="checkbox" id="ppv-bub"> Bloopy speech bubbles over the app</label>');
+    p.insertAdjacentHTML('beforeend', '<label class="ppv-c" style="margin-top:6px"><input type="checkbox" id="ppv-hdr"> Bloopy headers at the top of AI sections</label>');
     {
       const hs = document.createElement('style'); hs.textContent = 'html.bl-nohead .bl-top,html.bl-nohead #ppv-mrow{display:none!important}'; document.head.appendChild(hs);
       const hc = p.querySelector('#ppv-hdr'), apply = () => document.documentElement.classList.toggle('bl-nohead', !hc.checked);
@@ -461,21 +461,21 @@
     }
     const bc = p.querySelector('#ppv-bub'); try { bc.checked = localStorage.getItem('ppvBlBubbles') === '1'; } catch (e) {}
     bc.onchange = () => { try { localStorage.setItem('ppvBlBubbles', bc.checked ? '1' : '0'); } catch (e) {} if (!bc.checked) { const f = document.getElementById('ppv-mfloat'), r = document.getElementById('bl-react'); f && (f.style.display = 'none'); r && r.classList.remove('show'); } };
-    p.insertAdjacentHTML('beforeend', '<label class="ppv-c" style="display:block;margin-top:8px"><input type="checkbox" id="ppv-chat-on"> Bloop assistant (does things in the app, no AI download)</label>' +
-      '<div class="ppv-note">Adds a Bloop button. He can play music by mood, make mood and smart playlists, tag, split, get lyrics and control the player (volume, seek, speed, EQ, repeat\u2026). That all runs from the tagger and fixed rules, so it needs no chat AI.</div>' +
+    p.insertAdjacentHTML('beforeend', '<label class="ppv-c" style="display:block;margin-top:8px"><input type="checkbox" id="ppv-chat-on"> Bloopy assistant (does things in the app, no AI download)</label>' +
+      '<div class="ppv-note">Adds a Bloopy button. He can play music by mood, make mood and smart playlists, tag, split, get lyrics and control the player (volume, seek, speed, EQ, repeat\u2026). That all runs from the tagger and fixed rules, so it needs no chat AI.</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-brain-on"> Chat brain: talk about anything with a tiny AI (optional, one-time download)</label>' +
-      '<div class="ppv-note">Off: Bloop only does tasks and answers app questions. On: he can also chat. It is taken out of memory whenever he does a task. It is a tiny model: it can be wrong, and it is not a counselor.</div>' +
-      '<label class="ppv-c" style="display:block">Bloop\'s memory: <b id="ppv-mem-val"></b><input type="range" id="ppv-mem" min="0" max="8" step="1" style="width:100%;display:block"></label>' +
+      '<div class="ppv-note">Off: Bloopy only does tasks and answers app questions. On: he can also chat. It is taken out of memory whenever he does a task. It is a tiny model: it can be wrong, and it is not a counselor.</div>' +
+      '<label class="ppv-c" style="display:block">Bloopy\'s memory: <b id="ppv-mem-val"></b><input type="range" id="ppv-mem" min="0" max="8" step="1" style="width:100%;display:block"></label>' +
       '<div class="ppv-note">How many recent messages and replies are remembered while chatting. 0 forgets each message right away. Higher keeps more context but is slower. Tasks and commands never need memory.</div>' +
       '<label class="ppv-c" style="display:block">Your favourite topics: <input type="text" id="ppv-topics" maxlength="200" placeholder="e.g. space, Minecraft, cooking, football"></label>' +
-      '<div class="ppv-note">Bloop will happily chat about these (with the chat brain on). You can also tell him in chat: my favourite topics are ...</div>' +
-      '<div style="margin-top:10px"><b>How Bloop replies</b></div>' +
+      '<div class="ppv-note">Bloopy will happily chat about these (with the chat brain on). You can also tell him in chat: my favourite topics are ...</div>' +
+      '<div style="margin-top:10px"><b>How Bloopy replies</b></div>' +
       '<label class="ppv-c" style="display:block">Chat reply length: <select id="ppv-clen" data-sync="ppvChatLen" style="width:100%;display:block">' + menuOpts(CHAT_LENS) + '</select></label>' +
       '<label class="ppv-c" style="display:block">Chat reply style: <select id="ppv-csty" data-sync="ppvChatStyle" style="width:100%;display:block">' + menuOpts(CHAT_STYLES) + '</select></label>' +
       '<label class="ppv-c" style="display:block">Summary length: <select id="ppv-slen2" data-sync="ppvSumLen" style="width:100%;display:block">' + menuOpts(SUM_LENS) + '</select></label>' +
       '<label class="ppv-c" style="display:block">Summary style: <select id="ppv-ssty2" data-sync="ppvSumStyle" style="width:100%;display:block">' + menuOpts(SUM_STYLES) + '</select></label>' +
       '<div class="ppv-note">The chat menus apply to normal chat and Song Talk. The summary menus apply to AI summaries, here and under Lyrics &amp; subtitles. A tiny model may not follow every instruction exactly, and long replies take longer. Summary lengths are hard limits: anything past the length is cut at the last full sentence. Lyric Fix keeps its own short format.</div>' +
-      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-agent-on"> Allow Bloop to run commands (play, playlists, tagging, volume\u2026)</label>' +
+      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-agent-on"> Allow Bloopy to run commands (play, playlists, tagging, volume\u2026)</label>' +
       '<label id="ppv-chatgpul" class="ppv-c" style="display:none"><input type="checkbox" id="ppv-chatgpu"> Use GPU (experimental, ~270 MB download)</label>' +
       '<label id="ppv-lmgpul" class="ppv-c" style="display:none"><input type="checkbox" id="ppv-lmgpu"> Run the app-only (LiteRT-LM) models on the phone GPU: much faster. Falls back to the CPU by itself. Applies the next time the model loads.</label>' +
       '<button id="ppv-chatfree" class="ppv-sec" type="button">Free up chat download</button>');
@@ -499,14 +499,14 @@
           lg.onchange = () => { try { localStorage.setItem('ppvLmGpu', lg.checked ? '1' : '0'); } catch (e) {} }; } }
       cg.onchange = () => { try { localStorage.setItem('ppvChatGpu', cg.checked ? '1' : '0'); } catch (e) {} };
       p.querySelector('#ppv-chatfree').onclick = async () => { try { await mas.chat.free(); status('Chat download removed.'); } catch (e) { status('Error: ' + errText(e)); } }; }
-    p.insertAdjacentHTML('beforeend', '<div style="margin-top:10px"><b>Bloop voice and listening</b></div>' +
+    p.insertAdjacentHTML('beforeend', '<div style="margin-top:10px"><b>Bloopy voice and listening</b></div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-mini-on"> Smarter understanding (MiniLM, ~25 MB download)</label>' +
       '<div class="ppv-note">Loose wording finds the right command, and songs can be requested by meaning, like something for a rainy drive. Needs the assistant on.</div>' +
-      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-voice-on"> Bloop speaks (Kokoro voice, ~90 MB download)</label>' +
+      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-voice-on"> Bloopy speaks (Kokoro voice, ~90 MB download)</label>' +
       '<select id="ppv-voice-who"></select><select id="ppv-voice-when"><option value="talk">Only when spoken to</option><option value="all">Every reply</option></select>' +
       '<label class="ppv-c" id="ppv-voice-natl" style="display:none"><input type="checkbox" id="ppv-voice-nat"> Native voice: use the phone\'s own voice (no download, starts right away)</label>' +
       '<div class="ppv-note">A warm, calm voice. Music dips while he talks. With Native voice on, the phone picks the voice and the list above is not used.</div>' +
-      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-mic-on"> Talk to Bloop (Moonshine, ~50 MB download)</label>' +
+      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-mic-on"> Talk to Bloopy (Moonshine, ~50 MB download)</label>' +
       '<label class="ppv-c" id="ppv-mic-natl" style="display:none"><input type="checkbox" id="ppv-mic-nat"> Native listening: hear with the app\'s own Whisper engine (the one that makes subtitles)</label>' +
       '<div class="ppv-note">Adds a mic button to his chat. Tap it, speak, and it sends after a pause. Native listening is English only and uses English Base if you already have it, otherwise English Tiny (~40 MB).</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-wake-on"> Wake word (listens while this page is open)</label>' +

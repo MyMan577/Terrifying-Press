@@ -45,7 +45,7 @@
       return L.join(' ');
     }
     // ---------- Long, branching chats ("trees") ----------
-    // Mood talks that go many steps deep. Each step is a short Bloop message with tap-to-answer buttons, and typed replies work too
+    // Mood talks that go many steps deep. Each step is a short Bloopy message with tap-to-answer buttons, and typed replies work too
     // (yes / no, a button's words, or keywords like work, friend, lonely). Choices are remembered (blTr.ctx) and some steps run a
     // music command and then carry on ("How is it landing?"). Say stop at any time to leave. Safety phrases are caught before this runs.
     let blTr = null;                                                  // { id, ctx, bad, busy, timer }

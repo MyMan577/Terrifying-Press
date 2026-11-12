@@ -253,7 +253,7 @@
       const pf = sPF(); if (!((pf[t.dbId] || pf[id] || {}).count > 0)) why.push('you have not played it yet, so it counts as a new find');
       return '\u201c' + t.title + '\u201d is in ' + mixes.map(p => p.name).join(' and ') + ' because ' + (why.length ? why.join('; ') : 'it fits your overall taste') + '.';
     }
-    // ---------- Bloop extras: about 20 more commands, "why is <song> in my <playlist or mixes>" for any song, and phrases you teach him ----------
+    // ---------- Bloopy extras: about 20 more commands, "why is <song> in my <playlist or mixes>" for any song, and phrases you teach him ----------
     const blNrm = x => String(x).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
     const blSay = s => { add('bot', blTone(s)); return true; };
     const blDone = s => blSay('\u2713 ' + s);
@@ -303,9 +303,9 @@
     function blWhyPl(i, pl) {
       const A = window.__ppApi, t = A.tracks()[i], tgc = loadTags()[t.dbId];
       if (pl.liveKey) { const why = blReasons(i); return '\u201c' + t.title + '\u201d is in ' + pl.name + ' because ' + (why.length ? why.join('; ') : 'it fits your overall taste') + '.'; }
-      if (/^[^\p{L}\p{N}\s]/u.test(pl.name)) {                        // Bloop-made playlists have an emoji at the start of the name
-        if (!tgc) return '\u201c' + t.title + '\u201d is in ' + pl.name + '. Bloop made that playlist from your tags, but this song is not tagged, so I cannot say more. Tag it and ask again.';
-        return '\u201c' + t.title + '\u201d is in ' + pl.name + '. Bloop made that playlist from your tags, and this song is tagged ' + (vibes(tgc).slice(0, 4).join(', ') || 'with no clear mood') + (tgc.bpm ? ', at ' + tgc.bpm + ' BPM' : '') + '.';
+      if (/^[^\p{L}\p{N}\s]/u.test(pl.name)) {                        // Bloopy-made playlists have an emoji at the start of the name
+        if (!tgc) return '\u201c' + t.title + '\u201d is in ' + pl.name + '. Bloopy made that playlist from your tags, but this song is not tagged, so I cannot say more. Tag it and ask again.';
+        return '\u201c' + t.title + '\u201d is in ' + pl.name + '. Bloopy made that playlist from your tags, and this song is tagged ' + (vibes(tgc).slice(0, 4).join(', ') || 'with no clear mood') + (tgc.bpm ? ', at ' + tgc.bpm + ' BPM' : '') + '.';
       }
       return '\u201c' + t.title + '\u201d is in ' + pl.name + ', one of your own playlists. You added it by hand, and I do not keep a record of why.';
     }
@@ -348,9 +348,9 @@
     }
     // ---------- Keyword matching: commands from any wording. Words are normalised (synonyms, endings, filler words) and each
     // intent lists groups of words; an intent fires when every group has a word in the message and no excluded word is there.
-    const KW_FILLER = new Set(['the', 'a', 'an', 'please', 'can', 'could', 'would', 'will', 'you', 'your', 'i', 'im', 'me', 'to', 'of', 'just', 'now', 'some', 'bit', 'little', 'bloop', 'hey', 'ok', 'okay', 'do', 'so', 'be', 'maybe', 'kinda', 'kind', 'sort', 'slightly', 'perhaps', 'really']);
+    const KW_FILLER = new Set(['the', 'a', 'an', 'please', 'can', 'could', 'would', 'will', 'you', 'your', 'i', 'im', 'me', 'to', 'of', 'just', 'now', 'some', 'bit', 'little', 'bloop', 'bloopy', 'hey', 'ok', 'okay', 'do', 'so', 'be', 'maybe', 'kinda', 'kind', 'sort', 'slightly', 'perhaps', 'really']);
     const KW_SYN = { loud: 'volume', sound: 'volume', tunes: 'music', tune: 'song', songs: 'song', tracks: 'track', whats: 'what', louder: 'up', raise: 'up', increase: 'up', boost: 'up', bump: 'up', crank: 'up', higher: 'up', quieter: 'down', softer: 'down', lower: 'down', reduce: 'down', decrease: 'down', pause: 'stop', halt: 'stop', hold: 'stop', freeze: 'stop', unpause: 'resume', continue: 'resume', skip: 'next', another: 'next', prev: 'previous', back: 'back', silence: 'mute', randomize: 'shuffle', random: 'shuffle', quicker: 'faster', quick: 'faster', slow: 'slow', heard: 'hear', similar: 'similar', lyrics: 'lyric', words: 'lyric', separate: 'split', karaoke: 'split', isolate: 'split', analyse: 'analyze', tempo: 'bpm', collection: 'library', remaining: 'left', remain: 'left' };
-    const blFrame = s => String(s).replace(/^\s*(?:(?:bloop|hey|hi|ok|okay)[,:]?\s+)?(?:why (?:don['\u2019]?t|do not|not|dont) you|why not|how about|could you|would you|will you|can you|can u|do you think you could|would it be possible to|i need you to|i want you to|i'?d like you to|please)\s+/i, '').replace(/\b(?:maybe|kinda|kind of|sort of|perhaps|just real quick)\b,?\s*/gi, '');
+    const blFrame = s => String(s).replace(/^\s*(?:(?:bloopy?|hey|hi|ok|okay)[,:]?\s+)?(?:why (?:don['\u2019]?t|do not|not|dont) you|why not|how about|could you|would you|will you|can you|can u|do you think you could|would it be possible to|i need you to|i want you to|i'?d like you to|please)\s+/i, '').replace(/\b(?:maybe|kinda|kind of|sort of|perhaps|just real quick)\b,?\s*/gi, '');
     const KW_EQ = [['hip hop', 'hiphop'], ['late night', 'latenight'], ['v shape', 'vshape'], ['v-shape', 'vshape'], ['loudness', 'loudness'], ['classical', 'classical'], ['electronic', 'electronic'], ['acoustic', 'acoustic'], ['podcast', 'podcast'], ['bass', 'bass'], ['treble', 'treble'], ['vocal', 'vocal'], ['pop', 'pop'], ['rock', 'rock'], ['jazz', 'jazz'], ['edm', 'electronic'], ['rap', 'hiphop'], ['flat', 'flat'], ['off', 'flat'], ['normal', 'flat'], ['reset', 'flat']];
     const KW_NUMW = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, fifteen: 15, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, hundred: 100 };
     const kwTok = s => String(s).toLowerCase().replace(/['\u2019]/g, '').replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(w => w && !KW_FILLER.has(w)).map(w => { const b = KW_SYN[w] || (w.length > 4 ? w.replace(/(?:ing|ed|es|s)$/, '') : w); return KW_SYN[b] || b; });

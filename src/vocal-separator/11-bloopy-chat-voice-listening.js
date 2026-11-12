@@ -1,9 +1,9 @@
     // ---------- Opening lines (chat box and first greeting). Picked by time of day, never the same line twice in a row. ----------
     const BL_OPEN = {
-      any: ["Hey there! It's me, It's Bloopy! Ask me anything!", "Hi! Bloop here, bouncing in to help. What do you need?", "Yo! It's Bloop. Songs, stems, lyrics, playlists: pick one!", "Hello! I'm Bloop, and I'm ready when you are.", "Boing! Hi, it's Bloop. What are we listening to?", "Hey! Want to chat, or should I just play something?"],
-      morning: ["Good morning! It's Bloopy, ready for a new day of music!", "Morning! Bloop here. Coffee first, or a song first?"],
-      day: ["Hey there, it's Bloopy! How's your day going?", "Afternoon! Bloop here. Want something to keep you going?"],
-      night: ["Up late? It's me, Bloopy! Want something soft?", "Good evening! Bloop here. Tell me what you need, I'm all ears."]
+      any: ["Hey there! It's me, It's Bloopy! Ask me anything!", "Hi! Bloopy here, bouncing in to help. What do you need?", "Yo! It's Bloopy. Songs, stems, lyrics, playlists: pick one!", "Hello! I'm Bloopy, and I'm ready when you are.", "Boing! Hi, it's Bloopy. What are we listening to?", "Hey! Want to chat, or should I just play something?"],
+      morning: ["Good morning! It's Bloopy, ready for a new day of music!", "Morning! Bloopy here. Coffee first, or a song first?"],
+      day: ["Hey there, it's Bloopy! How's your day going?", "Afternoon! Bloopy here. Want something to keep you going?"],
+      night: ["Up late? It's me, Bloopy! Want something soft?", "Good evening! Bloopy here. Tell me what you need, I'm all ears."]
     };
     let blLastOpen = '';
     function blOpenLine() {
@@ -47,10 +47,10 @@
       set(m, blLine(k, lines), 6000); pop();
     }
 
-    // ---------- Chat with Bloop: a small on-device language model (choose one in settings) via transformers.js ----------
+    // ---------- Chat with Bloopy: a small on-device language model (choose one in settings) via transformers.js ----------
     // Off by default. App questions and crisis messages are answered from fixed text (no model needed, always reliable);
     // everything else goes to the small model. Chat is kept in memory only.
-    // Chat models. Pick one in the Bloop brain settings. file = the ONNX file in that repo, eos = end-of-turn tokens, mb = rough download size.
+    // Chat models. Pick one in the Bloopy brain settings. file = the ONNX file in that repo, eos = end-of-turn tokens, mb = rough download size.
     const CHAT_MODELS = {
       qwen05:  { id: 'onnx-community/Qwen2.5-0.5B-Instruct', label: 'Qwen2.5 0.5B (default, better, ~520 MB)', mb: 520, file: 'onnx/model_quantized.onnx', eos: ['<|im_end|>', '<|endoftext|>'], lid: 'llm_qwen05' },
       llama1b: { id: 'onnx-community/Llama-3.2-1B-Instruct', label: 'Llama 3.2 1B (most capable, ~1.3 GB, needs a strong phone)', mb: 1300, file: 'onnx/model_quantized.onnx', eos: ['<|eot_id|>', '<|end_of_text|>'], lid: 'llm_llama1b' },
@@ -74,7 +74,7 @@
     const webId = k => (CHAT_MODELS[k].lm ? CHAT_MODELS.qwen05 : CHAT_MODELS[k]).id;   // the browser cannot run .litertlm, so it uses Qwen instead
     let CHAT_MODEL = webId(chatKey());
     let pendingJob = null, holdModel = false, idleT = 0, chatOn = lsGet('ppvChat') === '1', gen = null, genP = null, chatBusy = false, dlOk = false, hist = [], musicMode = lsGet('ppvMusicMode') === '1', aiOnly = lsGet('ppvAiOnly') === '1';
-    // How many past exchanges (your message + Bloop's reply) he remembers during a chat. 0 = none. More memory = slower and more RAM on a tiny model.
+    // How many past exchanges (your message + Bloopy's reply) he remembers during a chat. 0 = none. More memory = slower and more RAM on a tiny model.
     const MEM_MAX = 8, memN = () => { const v = parseInt(lsGet('ppvMem'), 10); return isNaN(v) ? 4 : Math.max(0, Math.min(MEM_MAX, v)); };
     const setMem = v => { v = Math.max(0, Math.min(MEM_MAX, parseInt(v, 10) || 0)); lsSet('ppvMem', String(v)); hist = memN() ? hist.slice(-2 * memN()) : []; return v; };
     const cstyle = document.createElement('style');
@@ -99,18 +99,18 @@
       #ppv-chat .ch-mic svg{width:16px;height:16px}
       #ppv-chat .ch-mic.rec{background:#ff5c7c;border-color:#ff5c7c;color:#fff}`;
     document.head.appendChild(cstyle);
-    const cfab = document.createElement('div'); cfab.id = 'ppv-cfab'; cfab.setAttribute('role', 'button'); cfab.setAttribute('aria-label', 'Chat with Bloop');
+    const cfab = document.createElement('div'); cfab.id = 'ppv-cfab'; cfab.setAttribute('role', 'button'); cfab.setAttribute('aria-label', 'Chat with Bloopy');
     const cball = ball(); cfab.appendChild(cball);
     const cbox = document.createElement('div'); cbox.id = 'ppv-chat';
-    cbox.innerHTML = '<div class="ch-h"><b>Bloop</b><span class="ch-n">Your tiny helper in the player!.</span><button class="ch-c" data-a="aionly" aria-pressed="false" title="Send everything to the AI. Bloop will not jump in on keywords">AI only: off</button><button class="ch-c" data-a="music" aria-pressed="false" title="Only talk about the music in your library and playlists">Music: off</button><button class="ch-c" data-a="clear">Clear</button><button class="ch-c" data-a="x" aria-label="Close">&times;</button></div><div class="ch-l"></div><div class="ch-i"><input type="text" maxlength="400" placeholder="Say something to Bloop" enterkeyhint="send"><button data-a="mic" class="ch-mic" aria-label="Talk to Bloop" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg></button><button data-a="send">Send</button></div>';
+    cbox.innerHTML = '<div class="ch-h"><b>Bloopy</b><span class="ch-n">Your tiny helper in the player!.</span><button class="ch-c" data-a="aionly" aria-pressed="false" title="Send everything to the AI. Bloopy will not jump in on keywords">AI only: off</button><button class="ch-c" data-a="music" aria-pressed="false" title="Only talk about the music in your library and playlists">Music: off</button><button class="ch-c" data-a="clear">Clear</button><button class="ch-c" data-a="x" aria-label="Close">&times;</button></div><div class="ch-l"></div><div class="ch-i"><input type="text" maxlength="400" placeholder="Say something to Bloopy" enterkeyhint="send"><button data-a="mic" class="ch-mic" aria-label="Talk to Bloopy" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg></button><button data-a="send">Send</button></div>';
     document.body.append(cfab, cbox);
     const clist = cbox.querySelector('.ch-l'), cin = cbox.querySelector('input');
-    // Music mode: Bloop only talks about the user's own songs and playlists, using real library data in the prompt.
+    // Music mode: Bloopy only talks about the user's own songs and playlists, using real library data in the prompt.
     const musicBtn = cbox.querySelector('[data-a="music"]');
     const setMusicMode = v => {
       musicMode = !!v; lsSet('ppvMusicMode', musicMode ? '1' : '0'); hist = [];                 // a fresh memory, so the two modes do not mix
       musicBtn.textContent = musicMode ? 'Music: on' : 'Music: off'; musicBtn.setAttribute('aria-pressed', String(musicMode));
-      musicBtn.style.opacity = musicMode ? '1' : '.65'; cin.placeholder = musicMode ? 'Talk about your music' : 'Say something to Bloop';
+      musicBtn.style.opacity = musicMode ? '1' : '.65'; cin.placeholder = musicMode ? 'Talk about your music' : 'Say something to Bloopy';
     };
     setMusicMode(musicMode);
     // AI only: skip every keyword rule, command and scripted reply, and send the message straight to the AI. The crisis safety check still runs.
@@ -123,7 +123,7 @@
     const actions = btns => { const d = document.createElement('div'); d.className = 'ch-a'; btns.forEach(([t, fn]) => { const b = document.createElement('button'); b.textContent = t; b.onclick = () => { fn(b, d); }; d.appendChild(b); }); clist.appendChild(d); scrollDown(); return d; };
     // ---------- Voice and meaning (all optional, all on-device, all off until ticked) ----------
     // MiniLM (~25 MB): loose wording finds the right command, and songs are found by meaning ("something for a rainy drive").
-    // Kokoro (82M, ~90 MB): Bloop's voice. Moonshine tiny (~50 MB): speech to text. openWakeWord: three tiny ONNX files on onnxruntime-web.
+    // Kokoro (82M, ~90 MB): Bloopy's voice. Moonshine tiny (~50 MB): speech to text. openWakeWord: three tiny ONNX files on onnxruntime-web.
     // Each download is asked for once, then comes from the browser cache. Nothing here runs unless its checkbox is on.
     const MINI_ID = 'Xenova/all-MiniLM-L6-v2', KOKORO_ID = 'onnx-community/Kokoro-82M-v1.0-ONNX', MOON_ID = 'onnx-community/moonshine-tiny-ONNX';
     const KOKORO_JS = 'https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js';
@@ -261,7 +261,7 @@
       finally { semBusy = false; }
     }
 
-    // ---- Kokoro: Bloop speaks ----
+    // ---- Kokoro: Bloopy speaks ----
     let kP = null, kT = 0, kLoaded = false, spkId = 0, spkCtx = null, spkSrc = null, voiceAsked = false;
     // Native option (app only): the phone's own text-to-speech reads the reply, so nothing is downloaded. A failure drops back to Kokoro for the session.
     let vNatFailed = false, natTalk = false;
@@ -347,7 +347,7 @@
     function vPrime() { try { const C = window.AudioContext || window.webkitAudioContext; if (!speakOn() || !C) return; if (!spkCtx) spkCtx = new C(); if (spkCtx.state === 'suspended') spkCtx.resume(); } catch (e) {} }   // browsers want audio started from a tap
     function vTyped() { voiceTurn = false; vPrime(); stopSpeak(); }
 
-    // ---- Moonshine: Bloop listens ----
+    // ---- Moonshine: Bloopy listens ----
     let earsP = null, earsT = 0, dictating = false, dictStop = false;
     function getEars(say) {
       if (earsP) return earsP;
@@ -447,7 +447,7 @@
         const pcm = await recordUtterance(viaWake ? 6 : 0); micRelease(); held = false;
         if (pcm) {
           note.textContent = 'Transcribing\u2026';
-          text = (await hear(pcm, m => { note.textContent = m; })).trim().replace(/^(?:hey[, ]+)?(?:jarvis|computer|bloop|blue ?p)[,.!?]*\s*/i, '');
+          text = (await hear(pcm, m => { note.textContent = m; })).trim().replace(/^(?:hey[, ]+)?(?:jarvis|computer|bloopy?|blue ?p)[,.!?]*\s*/i, '');
         }
         if (!/[a-z0-9]{2}/i.test(text) || /^(?:you|thank you|thanks for watching|bye)[.!]*$/i.test(text)) { note.textContent = pcm ? 'I did not catch that.' : 'I did not hear anything.'; text = ''; }
       } catch (e) {

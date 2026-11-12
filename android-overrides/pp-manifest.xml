@@ -17,11 +17,11 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <!-- Game link codes: two phones connect by scanning each other's QR code. Asked for only when a player scans. -->
     <uses-permission android:name="android.permission.CAMERA" />
-    <!-- Talking to Bloop (mic button and wake word). Asked for only when listening is switched on and used. -->
+    <!-- Talking to Bloopy (mic button and wake word). Asked for only when listening is switched on and used. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
-    <!-- Bloop's native voice: Android 11+ only lets an app find the text-to-speech engine if it says so here -->
+    <!-- Bloopy's native voice: Android 11+ only lets an app find the text-to-speech engine if it says so here -->
     <queries>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />

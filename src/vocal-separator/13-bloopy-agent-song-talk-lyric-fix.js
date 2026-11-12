@@ -1,4 +1,4 @@
-    // ---------- Agent: Bloop does things when asked ----------
+    // ---------- Agent: Bloopy does things when asked ----------
     // Fixed command patterns, not model guesswork: a 135M model cannot be trusted to pick tools, and it must never claim
     // it did something it did not. Light actions run at once; heavy ones (split, tag all, lyrics) ask first.
     const agentOn = () => lsGet('ppvAgent') !== '0';
@@ -195,7 +195,7 @@
       // collapse straight repeats so the budget goes to new lines
       lyr = lyr.filter((q, i) => i === 0 || q.replace(/^\[[^\]]*\] /, '') !== lyr[i - 1].replace(/^\[[^\]]*\] /, ''));
       let cut = false; while (lyr.length > 8 && Math.ceil(lyr.join('\n').length / 3) > lyricTok) { lyr.pop(); cut = true; }
-      return 'You are Bloop, talking in depth with the user about ONE song: "' + t.title + '"' + (st.artist ? ' by ' + st.artist : '') + '. ' +
+      return 'You are Bloopy, talking in depth with the user about ONE song: "' + t.title + '"' + (st.artist ? ' by ' + st.artist : '') + '. ' +
         'Cover what they ask about: the LITERAL meaning (what the words actually say happens), the METAPHORICAL meaning (images, symbols, double meanings and what they stand for), and the COMPOSITION (structure, how the music, tempo, key, instruments and vocals support the words). ' +
         'Use the lyrics and facts below. You may add what you reliably know about this song and artist; never invent facts, and say clearly when something is interpretation rather than fact. ' +
         'Quote at most a short line at a time. Answer the question directly ' + (CHAT_STYLES[chatStyleKey()].bul ? CHAT_LENS[chatLenKey()].bul : CHAT_LENS[chatLenKey()].talk) + ', then you may suggest one thing to explore next. ' + CHAT_STYLES[chatStyleKey()].talk + '\n' +
@@ -206,7 +206,7 @@
     function endSongTalk(msg) {
       if (!songTalk) return; const lbl = songTalk.title; songTalk = null;
       if (stBar) { stBar.remove(); stBar = null; }
-      cin.placeholder = musicMode ? 'Talk about your music' : 'Say something to Bloop';
+      cin.placeholder = musicMode ? 'Talk about your music' : 'Say something to Bloopy';
       if (msg !== false) add('bot', blTone('Done talking about ' + lbl + '. Back to normal chat.'));
     }
     function startSongTalk(i) {
@@ -488,7 +488,7 @@
     function endLyFix(msg) {
       if (!lyFix) return; const F = lyFix; lyFix = null;
       if (lfBar) { lfBar.remove(); lfBar = null; }
-      cin.placeholder = musicMode ? 'Talk about your music' : 'Say something to Bloop';
+      cin.placeholder = musicMode ? 'Talk about your music' : 'Say something to Bloopy';
       if (msg !== false) add('bot', blTone(F.changed ? 'Saved. ' + F.changed + ' change' + (F.changed === 1 ? '' : 's') + ' to the lyrics of ' + F.t.title + '.' : 'Done. Nothing was changed.'));
     }
     function startLyFix(i) {
@@ -591,7 +591,7 @@
         || R(/\b(put|throw) something on\b/, 'play something');
     }
     function agentCore(raw, skip) {
-      let t = blFrame(String(raw)).trim().replace(/^(hey |hi |ok |okay )?(bloop[,:]?\s*)?/i, '').replace(/^((can|could|would|will) you( please)?|please|pls|i want you to|i'?d like you to|go ahead and)\s+/i, '').replace(/\s*(please|pls|thanks|thank you)[.!?]*$/i, '').replace(/[.!?]+$/, '').trim();
+      let t = blFrame(String(raw)).trim().replace(/^(hey |hi |ok |okay )?(bloopy?[,:]?\s*)?/i, '').replace(/^((can|could|would|will) you( please)?|please|pls|i want you to|i'?d like you to|go ahead and)\s+/i, '').replace(/\s*(please|pls|thanks|thank you)[.!?]*$/i, '').replace(/[.!?]+$/, '').trim();
       const A = window.__ppApi; if (!A || !t) return false;
       let m; const say = s => { add('bot', blTone(s)); return true; }, done = s => say('\u2713 ' + s);
       const click = id => { const b = $id(id); if (b && !b.disabled) { b.click(); return true; } return false; };

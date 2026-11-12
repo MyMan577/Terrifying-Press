@@ -92,9 +92,9 @@ Translate lyrics and subtitles between languages using on-device translation. Th
 
 Press Play tags your songs by mood and sound while the app is idle, then builds playlists from those tags and your listening history. You can ask for what you want in plain words, such as "piano slow", or let it build For You, Ones You May Like and Your Pattern mixes. You control how much it does: background tagging, surprise playlists and live smart playlists that follow your tags can each be switched on or off.
 
-**Bloop, the built-in assistant**
+**Bloopy, the built-in assistant**
 
-Bloop is a small chat assistant that lives inside the player. It can explain how features work, change settings for you, set EQ presets, find tracks similar to the one you are playing, and make playlists from a description. You can talk to it by voice and have it talk back, and everything it says and hears stays on your phone. Choose the chat model that fits your phone:
+Bloopy is a small chat assistant that lives inside the player. It can explain how features work, change settings for you, set EQ presets, find tracks similar to the one you are playing, and make playlists from a description. You can talk to it by voice and have it talk back, and everything it says and hears stays on your phone. Choose the chat model that fits your phone:
 
 | Model | Size | Good for |
 | --- | --- | --- |
@@ -106,7 +106,7 @@ Bloop is a small chat assistant that lives inside the player. It can explain how
 | Gemma 4 E2B | about 2.4 GB | High-end phones |
 | Gemma 4 E4B | about 3.7 GB | Flagship phones |
 
-Bloop is entirely optional. If you do not want it, turn off the mascot and the assistant button in settings and the rest of the player works exactly the same.
+Bloopy is entirely optional. If you do not want it, turn off the mascot and the assistant button in settings and the rest of the player works exactly the same.
 
 ## Also built in
 

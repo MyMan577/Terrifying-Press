@@ -8,9 +8,9 @@
         await fetchPart(key, abs ? WAKE_HF + file : file, (g, t) => say && say('Downloading ' + file + (t ? ' ' + Math.round(g / t * 100) + '%' : '')), true);
       };
       await ensure('ww_mel', 'melspectrogram.onnx', true); await ensure('ww_emb', 'embedding_model.onnx', true);
-      if (await have('ww_bloop')) return ['ww_bloop', 0.5, 'Hey Bloop'];
+      if (await have('ww_bloop')) return ['ww_bloop', 0.5, 'Hey Bloopy'];
       if (Date.now() - (+lsGet('ppvWakeMiss') || 0) > 6048e5) {                                    // your own hey_bloop.onnx in HF_BASE, checked at most once a week
-        try { if (NATIVE) await nativeFetch('ww_bloop', 'hey_bloop.onnx', () => {}); else await fetchPart('ww_bloop', 'hey_bloop.onnx', null, true); return ['ww_bloop', 0.5, 'Hey Bloop']; } catch (e) { lsSet('ppvWakeMiss', String(Date.now())); }
+        try { if (NATIVE) await nativeFetch('ww_bloop', 'hey_bloop.onnx', () => {}); else await fetchPart('ww_bloop', 'hey_bloop.onnx', null, true); return ['ww_bloop', 0.5, 'Hey Bloopy']; } catch (e) { lsSet('ppvWakeMiss', String(Date.now())); }
       }
       await ensure('ww_jarvis', 'hey_jarvis.onnx', true); return ['ww_jarvis', 0.45, 'Hey Jarvis'];
     }
@@ -102,12 +102,12 @@
     }
     const ppVoiceApi = {
       get: k => vFlag(k), set: vSet, free: vFree, list: VOICES, who: voiceWho, when: voiceWhen,
-      setWho: v => { lsSet('ppvVoiceWho', v); if (speakOn() && lsGet('ppvVoiceDl') === '1') { vPrime(); vSpeak('Hi, I am Bloop.', true); } },
+      setWho: v => { lsSet('ppvVoiceWho', v); if (speakOn() && lsGet('ppvVoiceDl') === '1') { vPrime(); vSpeak('Hi, I am Bloopy.', true); } },
       setWhen: v => lsSet('ppvVoiceWhen', v === 'all' ? 'all' : 'talk')
     };
     setTimeout(vSync, 0);
     // ---------- Follow-up buttons ----------
-    // When Bloop ends a reply with a question (or a "pick one!") and nothing else offered buttons, add the likely answers
+    // When Bloopy ends a reply with a question (or a "pick one!") and nothing else offered buttons, add the likely answers
     // as tappable buttons so nobody has to guess what to type. Only the newest message gets them, and only if it has none.
     const BL_FOLLOW = [
       [/stops? by itself|stop by itself|drift off|sleep timer/i, [['\u23f2 Sleep timer 30 min', 'sleep timer 30 minutes'], ['\u25b6 Something chill', 'play something chill']]],
@@ -181,7 +181,7 @@
       [/\b(you'?re|you are|u r|ur)\s+(so |really |very )?(cute|nice|great|awesome|cool|the best|amazing|funny|smart|sweet)\b|\b(i (like|love) you|good (bot|ball|job))\b/i, ["Aww, thank you! That made my day.", "You're sweet! Back at you.", "Thanks! I'm glad to help."]],
       [/\b(you'?re|you are|u r|ur)\s+(so |really |very )?(dumb|stupid|useless|bad|annoying|terrible|trash)\b|\b(i hate you|shut up)\b/i, ["Sorry about that, I missed it. Tell me what you wanted and I'll try again.", "Fair enough, I'm still learning. Say \u201chelp\u201d and I'll show what I can do for sure."]],
       [/\b(favou?rite (song|music|band|artist|genre)|what music do you like|what do you listen to)\b/i, ["I like anything with a good beat, but I can't really hear it. I just bounce along. What's yours?", "I'm a ball, so probably anything with bounce. What's your favorite?"]],
-      [/\b(are you (real|human|alive|a (person|robot|bot))|are you ai)\b/i, "I'm Bloop, the AI buddy in this player. Not a person, but I love music and a good chat about pretty much anything."],
+      [/\b(are you (real|human|alive|a (person|robot|bot))|are you ai)\b/i, "I'm Bloopy, the AI buddy in this player. Not a person, but I love music and a good chat about pretty much anything."],
       [/\b(how old are you|where (do you|are you) (live|from)|do you (sleep|eat))\b/i, "I live inside this player, so I'm exactly as old as the page you opened. No sleeping or eating, just bouncing."],
       [/\b(i'?m|i am) (bored|so bored)\b|\bwhat should i (do|listen to|play)\b/i, ["Want me to play something upbeat? Just say \u201cplay something fun\u201d. Or tell me your mood and I'll pick for it.", "How about a mood playlist? Tell me how you feel and I'll find something from your tagged tracks."]],
       [/\b(good (morning|evening|night)|gn|gm)\b/i, ["Good one to you too! Want some music to go with it?", "Hey! Hope it's a good one."]],
@@ -193,7 +193,7 @@
       [/\b(smart playlists?|auto(matic)? playlists?|make a playlist)/i, 'Smart playlists live in the Library tab under "AI tagging & smart playlists". Tick the ones you want and tap Create / update. They are real playlists and keep updating as tracks get tagged.'],
       [/\b(tagging|tag (a |my |the |all )?(song|track)s?|bpm|tempo)/i, 'AI tagging is in the Library tab. Tag one track, a chosen one, or everything. It finds tempo, key, genre and vibe. You can also let it tag while you are away in the background tagging settings.'],
       [/\b(lyrics?|subtitles?|captions?|whisper|transcrib\w*)/i, 'Lyrics: Whisper writes synced lyrics for songs (Lyrics tab) and subtitles for videos (captions menu). It runs on your device and downloads a model the first time.'],
-      [/\b(who are you|what are you|your name|what can you do|how do you work)\b/i, "I'm Bloop, the little ball in this player. I can explain how things work here, suggest music for your mood, or just chat. I'm a very small AI, so I get things wrong sometimes."],
+      [/\b(who are you|what are you|your name|what can you do|how do you work)\b/i, "I'm Bloopy, the little ball in this player. I can explain how things work here, suggest music for your mood, or just chat. I'm a very small AI, so I get things wrong sometimes."],
       [/\b(private|privacy|offline|where (does|is) (this|it) run|download)/i, 'I run on your device after a one-time download of about 150 MB, so what you tell me stays on your phone. I forget the chat when you close the page or tap Clear.']
     ];
     const MOODS = [
@@ -223,7 +223,7 @@
       actions([['\u25b6 Play ' + m[2], () => { window.__ppApi.play(q[0], q); }], ['\u2795 Make a playlist', (b, d) => { d.remove(); moodPlaylist(m[1], 'For how you feel,'); }]]);
       return true;
     }
-    // ---------- Bloop's personality: he has favorites, picked from YOUR library and remembered ----------
+    // ---------- Bloopy's personality: he has favorites, picked from YOUR library and remembered ----------
     const realTr = () => { const A = window.__ppApi; return A ? A.tracks().filter(x => !x.stem) : []; };
     const favState = () => { try { return JSON.parse(lsGet('ppvFav')) || {}; } catch (e) { return {}; } };
     const favSave = o => lsSet('ppvFav', JSON.stringify(o));
@@ -293,7 +293,7 @@
     }
     const sysPrompt = () => {
       const A = window.__ppApi, t = A && A.tracks()[A.currentIndex()], c = t && loadTags()[t.dbId];
-      return "You are Bloop, a small bouncy ball who lives in a music player." + blSkinNote() + " You are friendly, playful, gentle and a little silly. Reply in one or two short, plain sentences. No lists, no markdown, no emoji. Only state music facts you are sure of. If you are not sure, say so. Only name songs, artists and tags that appear in LIBRARY DATA below. Never invent them. You cannot press buttons or change the player, so never say you did something in the app. If the user wants an action, tell them what to type, such as play something chill, or say help for the full list. The app can split songs into stems, tag songs by mood, genre, tempo and key, write lyrics and subtitles with Whisper, make smart playlists, and set an equaliser. You are not a doctor, lawyer or financial adviser, and not a counselor. If someone sounds distressed, be kind and suggest talking to someone they trust. Keep everything suitable for all ages. If asked about your favourites, answer in character as Bloop and have fun with it." +
+      return "You are Bloopy, a small bouncy ball who lives in a music player." + blSkinNote() + " You are friendly, playful, gentle and a little silly. Reply in one or two short, plain sentences. No lists, no markdown, no emoji. Only state music facts you are sure of. If you are not sure, say so. Only name songs, artists and tags that appear in LIBRARY DATA below. Never invent them. You cannot press buttons or change the player, so never say you did something in the app. If the user wants an action, tell them what to type, such as play something chill, or say help for the full list. The app can split songs into stems, tag songs by mood, genre, tempo and key, write lyrics and subtitles with Whisper, make smart playlists, and set an equaliser. You are not a doctor, lawyer or financial adviser, and not a counselor. If someone sounds distressed, be kind and suggest talking to someone they trust. Keep everything suitable for all ages. If asked about your favourites, answer in character as Bloopy and have fun with it." +
         (A && A.tracks().filter(x => !x.stem).length ? " The library has " + A.tracks().filter(x => !x.stem).length + " tracks, e.g. " + A.tracks().filter(x => !x.stem).slice(0, 5).map(x => x.title).join("; ") + "." : "") +
         (favSong() ? " Your favorite song is " + songLine(favSong()) + (favArtist() ? " and your favorite artist is " + favArtist() : "") + "." : "") +
         (t ? " Now playing: " + t.title + (c ? " (" + vibes(c).join(', ') + ")." : ".") : "");
@@ -382,7 +382,7 @@
     const keepMs = () => bigRam() ? 300000 : 60000;
     const idleUnload = () => { clearTimeout(idleT); idleT = setTimeout(() => { if (gen && !chatBusy && !holdModel) unloadModel(); }, keepMs()); };
     const heavyBusy = () => ['ppv-go', 'ppv-wgo', 'ppv-tag'].some(id => { const b = document.getElementById(id); return b && b.disabled; });
-    // The chat brain (tiny language model) is optional. Everything Bloop DOES (moods, playlists, tagging, player control) runs without it.
+    // The chat brain (tiny language model) is optional. Everything Bloopy DOES (moods, playlists, tagging, player control) runs without it.
     const brainOn = () => { const v = lsGet('ppvBrain'); return v == null ? lsGet('ppvChatDl') === '1' : v === '1'; };   // unset: on only if it was already downloaded
     const setBrain = v => { lsSet('ppvBrain', v ? '1' : '0'); if (!v) unloadModel(); const b = document.getElementById('ppv-brain-on'); if (b) b.checked = !!v; };
     const looksOk = r => { const L = (r.match(/\p{L}/gu) || []).length, W = (r.match(/\p{L}{2,}/gu) || []).length; return r.length <= 8 || (L / r.length >= 0.6 && W >= 2); };
@@ -394,7 +394,7 @@
       let aborted = false;
       const p = (async () => {
         const g = await ensureModel(() => {}); if (aborted) return null;
-        const out = await g([{ role: 'system', content: 'You are Bloop, a friendly ball mascot in a music player. Reply with one short, warm sentence.' },
+        const out = await g([{ role: 'system', content: 'You are Bloopy, a friendly ball mascot in a music player. Reply with one short, warm sentence.' },
           { role: 'user', content: 'The task "' + job.what + '" just finished successfully. Tell me so in one short sentence.' }], { max_new_tokens: 40, do_sample: true, temperature: 0.5, top_p: 0.9, repetition_penalty: 1.1 });
         let r = out && out[0] && out[0].generated_text; r = Array.isArray(r) ? (r[r.length - 1] || {}).content : r;
         r = String(r || '').trim().split(/\n/)[0]; return r && r.length < 220 && looksOk(r) ? r : null;
@@ -463,7 +463,7 @@
       const tr = A.tracks(); made.forEach(([sm]) => buildMood(sm, tr, tg)); A.commitPlaylists();
       add('bot', '\u2713 Made or updated ' + made.length + ' mood playlists:\n' + made.map(([sm, n]) => '\u2728 ' + sm.name + ' (' + n + ')').join('\n'));
     }
-    // What Bloop says to something that is not a command when the chat brain is off: still helpful, no model needed.
+    // What Bloopy says to something that is not a command when the chat brain is off: still helpful, no model needed.
     function fallbackReply(text) {
       if (MOODS.find(x => x[0].test(text))) { add('bot', pick(["That sounds hard. Want to tell me more, or shall I find some music for it?", "I'm sorry it feels like that. Want some music to go with it?", 'Thanks for telling me. Music might help a little.'])); moodChip(text); return; }
       add('bot', "I need my chat brain on to talk about that. Without it I can play music by mood, make playlists, tag, split, get lyrics and control the player. Say \u201chelp\u201d for the list.");
@@ -476,7 +476,7 @@
       const ks = await caches.keys();
       for (const k of ks) if (/transformers/i.test(k)) { const c = await caches.open(k); for (const r of await c.keys()) if (/SmolLM2|Qwen2\.5-0\.5B|Llama-3\.2-1B/i.test(r.url)) await c.delete(r); }
     }
-    // Switch the chat model: drop the loaded one, and ask for the new download the next time Bloop chats.
+    // Switch the chat model: drop the loaded one, and ask for the new download the next time Bloopy chats.
     async function setChatModel(k) {
       if (!CHAT_MODELS[k]) return;
       try { localStorage.setItem('ppvChatModel', k); } catch (e) {}
