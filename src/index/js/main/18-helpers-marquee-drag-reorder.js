@@ -20,6 +20,7 @@
     playlistEl.innerHTML = '';
     const libCount = tracks.filter(t => !t.stem).length;
     const curView = effectiveView(), stemsView = curView === STEMS_VIEW;
+    ppSyncBrowseRow(stemsView);
     if (tracks.length === 0 || (libCount === 0 && curView === '__all__')){
       playlistEl.appendChild(emptyState);
       trackCount.textContent = tracks.length === 0 ? 'No tracks loaded' : 'No tracks loaded · ' + (tracks.length) + ' split';
@@ -37,6 +38,13 @@
     } else {
       indices = indices.filter(i => !tracks[i].stem);
     }
+    // Albums / Artists / Genres / Folders: either the list of groups, or the tracks of the one that was opened.
+    const br = ppBrowseActive(stemsView);
+    if (br && br.key != null){
+      const inGroup = indices.filter(i => ppInGroup(tracks[i], br.mode, br.key));
+      if (inGroup.length) indices = inGroup; else br.key = null;   // the group is gone (its last track was removed)
+    }
+    if (br && br.key == null){ selectContextIndices = []; dragScopeIndices = []; markActiveSort(); ppRenderGroups(indices, br.mode); return; }
     // Snapshot the playlist-ordered indices before the search box narrows
     // things down further - this is the actual queue a click should start
     // playing through, so a track started mid-search still plays out the
@@ -47,10 +55,13 @@
     if (sortMode){
       const cmp = sortCompareFor(sortMode);
       indices = indices.slice().sort((a, b) => cmp(tracks[a], tracks[b]));
+    } else if (br && br.mode === 'albums'){
+      indices = indices.map((i, n) => [i, n]).sort((a, b) => ppAlbumOrder(tracks[a[0]], tracks[b[0]]) || (a[1] - b[1])).map(x => x[0]);
     }
     markActiveSort();
     const contextIndices = indices.slice();
     selectContextIndices = contextIndices;
+    if (br) playlistEl.appendChild(ppGroupHeader(br, contextIndices));
     const searching = trackSearchQuery.length > 0;
     if (searching){
       indices = indices.filter(i => {
@@ -65,6 +76,7 @@
       : (filteringByPlaylist || searching)
         ? `${indices.length} of ${libCount} track${libCount>1?'s':''}`
         : `${libCount} track${libCount>1?'s':''}`;
+    if (br && !searching) trackCount.textContent = `${indices.length} track${indices.length!==1?'s':''}`;
     if (sortMode) trackCount.textContent += ` · sorted by ${sortMode}`;
 
     if (indices.length === 0){
@@ -85,7 +97,7 @@
       indices = indices.map((i, n) => [i, n]).sort((a, b) => (order.get(stemKey(tracks[a[0]])) - order.get(stemKey(tracks[b[0]]))) || (a[1] - b[1])).map(x => x[0]);
     }
     let lastStemKey = null, stemSecHidden = false;
-    const dragEnabled = !searching && !sortMode && !stemsView;
+    const dragEnabled = !searching && !sortMode && !stemsView && !br;
     dragScopeIndices = indices;
     dragScopePlaylist = filteringByPlaylist ? activePl : null;
 

@@ -125,6 +125,8 @@
       remoteUrl: t.remoteUrl || null,
       fileName: t.fileName || null,
       nativeUri: t.nativeUri || null, nativeArt: t.nativeArt || null, nativeLocal: t.nativeLocal || false, album: t.album || undefined,
+      genre: t.genre || undefined, trackNo: t.trackNo || undefined, disc: t.disc || undefined, year: t.year || undefined,
+      folder: t.folder || undefined, mdv: t.mdv || undefined,
       convertedFromVideo: t.convertedFromVideo || false,
       origExt: t.convertedFromVideo ? (t._origExt || 'mp4') : undefined,
       origArtist: t.convertedFromVideo ? (t._origArtist != null ? t._origArtist : 'Video') : undefined,
@@ -172,6 +174,7 @@
           const oExt = m.origExt || vx || 'mp4', oArtist = m.origArtist != null ? m.origArtist : (lost && m.artist && m.artist !== 'Unknown artist' ? m.artist : 'Video');
           tracks.push({ dbId: m.dbId, artDbId: m.artDbId || null, url: (window.Capacitor && Capacitor.convertFileSrc) ? Capacitor.convertFileSrc(m.nativeUri) : '',
             nativeUri: m.nativeUri, nativeArt: m.nativeArt || null, nativeLocal: !!m.nativeLocal, album: m.album || '', artUrl,
+            genre: m.genre || '', trackNo: m.trackNo || null, disc: m.disc || null, year: m.year || null, folder: m.folder || '', mdv: m.mdv || 0,
             kind: back ? 'video' : m.kind, ext: back ? oExt : (m.ext || 'mp4'), title: m.title, artist: back ? oArtist : m.artist, duration: m.duration, size: m.size != null ? m.size : null,
             width: back ? (m.origWidth || null) : (m.width || null), height: back ? (m.origHeight || null) : (m.height || null),
             playlistIds: Array.isArray(m.playlistIds) ? m.playlistIds : [], fileName: m.fileName || null,

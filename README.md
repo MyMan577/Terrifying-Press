@@ -63,6 +63,7 @@ The app does use the internet in a few specific situations, so you know exactly 
 - **Downloading AI models.** Each model is a one-time download. Once it is on your phone it works offline. You choose which ones to get.
 - **Lyrics lookup (optional).** If you turn on background lyric fetching, song titles are sent to lrclib.net and lyrics.ovh to find lyrics, which are then saved so they work offline. This is a single toggle in the lyrics settings. Turn it off and nothing is sent. You can also generate lyrics yourself with the on-device transcriber, which never sends anything anywhere.
 - **Translation language packs.** About 30 MB per language, downloaded the first time you use that language. After that, translation runs offline.
+- **Checking for updates (optional).** Once a day the app asks GitHub whether a newer build has been released, and offers it if so. Only the public release list is read, and nothing about you or your library is sent. Switch it off under Settings, App updates.
 - **Playing a game together (optional).** Obby Builder, Weapon Ball, Bastion Brawl and Kitchen Rush can link two phones by scanning QR codes. The phones then talk to each other directly, and only game data (positions, moves, the course) goes between them. To find each other, the phones ask a public STUN server (stun.l.google.com) for their network addresses. Nothing about your library is sent.
 
 ## AI features, all on your device
@@ -111,6 +112,8 @@ Bloopy is entirely optional. If you do not want it, turn off the mascot and the 
 ## Also built in
 
 - Scan phone: one tap in the Add menu finds all the music and videos on your phone and adds them to your library, with titles, artists, albums and cover art. It skips ringtones, alarms, notification sounds and voice recordings, and running it again only adds what is new. If you said no to media access earlier, tapping it asks again. You can still add files or whole folders by hand if you prefer to choose exactly what goes in.
+- Browse the library by album, artist, genre or folder, as well as the plain song list.
+- New on this phone: the app notices new music and videos on your phone and keeps them apart from your library, sorted into bundles by what each one looks like (an album, loose songs, podcasts, camera videos, screen recordings, voice messages and so on). You add or dismiss each bundle. Nothing joins your library by itself, and this can be switched off.
 - Plays audio and video, from local files and from web stream links.
 - Opens files from file managers, browsers and chat apps through "Open with".
 - Registers itself as a music player, so headset, car and assistant requests to open your music app can launch it.
@@ -151,7 +154,7 @@ The Games tab holds ten games that play offline, right inside the app. Your musi
 2. Download the latest `press-play-1.0.x.apk` to your phone.
 3. Open the file, and allow installs from your browser or file manager if Android asks.
 
-Every build is signed with the same key, so a new version installs over the old one and keeps your settings and library.
+Every build is signed with the same key, so a new version installs over the old one and keeps your settings and library. The app tells you when a newer version is out and takes you to the download.
 
 ## Build it yourself
 

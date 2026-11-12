@@ -465,6 +465,7 @@
     });
     if (Lib) {
       Lib.addListener('scanBatch', function (e) { if (N.hooks.entries) N.hooks.entries(e.entries || [], 'scan'); });
+      Lib.addListener('mediaChanged', function () { if (N.hooks.mediaChanged) N.hooks.mediaChanged(); });
       Lib.addListener('scanProgress', function (e) { if (N.hooks.scanProgress) N.hooks.scanProgress(e); });
       Lib.addListener('voiceSearch', function (e) { if (N.hooks.voiceSearch) N.hooks.voiceSearch(e.query || ''); });
       Lib.addListener('openUris', function (e) { if (N.hooks.entries) N.hooks.entries(e.entries || [], 'open'); });
@@ -738,6 +739,7 @@
     mediaAccess: function () { return Lib.mediaAccess(); },
     requestMediaAccess: function () { return Lib.requestMediaAccess(); },
     scanDevice: function (known, video) { return Lib.scanDevice({ known: known || [], video: video !== false }); },
+    mediaDetails: function (uris) { return Lib.mediaDetails({ uris: uris || [] }); },
     readText: function (uri) { return Lib.readText({ uri: uri }); },
     getPendingOpen: function () { return Lib.getPendingOpen(); },
     deleteLocal: function (uri) { return Lib.deleteLocal({ uri: uri }); },

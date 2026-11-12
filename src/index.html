@@ -22,6 +22,7 @@
 @@include index/css/main/07-speed-latency-eq-booster-knobs.css@@
 @@include index/css/main/08-layout-home-editions.css@@
 @@include index/css/main/09-video-page-extras-native.css@@
+@@include index/css/main/10-library-browse-inbox.css@@
 </style>
 </head>
 <body>
@@ -59,6 +60,7 @@
 <script id="pp-mp4-muxer">
 @@include index/js/vendor-mp4-muxer.js@@
 </script>
+<script src="pp-build.js"></script>
 <script src="native-bridge.js"></script>
 <script>/* safety net: if native-bridge.js is missing, run exactly as the plain web app */if(!window.PPNative){window.PPNative={available:false,enabled:false,hooks:{},lib:null,wrapMedia:function(e){return e},setSrc:function(e,t){e.src=t.url;return Promise.resolve()},raw:function(e){return e},active:function(){return false},videoActive:function(){return false},decorateAnalyser:function(){},queueNext:function(){},updateMeta:function(){},setFxProvider:function(){},mirror:function(){},setVideoFilterCss:function(){},boot:function(){return Promise.resolve()},sameUri:function(){return false},expectAdvance:function(){}};}</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
@@ -91,6 +93,7 @@
 @@include index/js/main/26-cutter-lossless-trim.js@@
 @@include index/js/main/27-cutter-fast-reencode.js@@
 @@include index/js/main/28-clip-naming-native-engine-glue.js@@
+@@include index/js/main/28b-library-browse-inbox.js@@
 @@include index/js/main/29-replaygain-url-m3u-bookmarks-chapters-lyrics.js@@
 @@include index/js/main/30-disc-clicker.js@@
 @@include index/js/main/31-disc-clicker-loop-portfolio.js@@
@@ -102,6 +105,9 @@
 </script>
 <script>
 @@include index/js/player-layout.js@@
+</script>
+<script id="pp-update">
+@@include index/js/pp-update.js@@
 </script>
 <script id="pp-addons">
 @@include index/js/pp-addons.js@@

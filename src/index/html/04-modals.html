@@ -2,6 +2,29 @@
 <div id="select-pl-menu"></div>
 <div id="track-edit-popover"></div>
 
+<div id="found-overlay">
+  <div id="found-modal" role="dialog" aria-modal="true" aria-labelledby="found-title">
+    <div id="found-header">
+      <h2 id="found-title">New on this phone</h2>
+      <p>Sorted by what each file looks like. That is a guess, so open a bundle to check it before you add it.</p>
+    </div>
+    <div id="found-body"></div>
+    <div id="found-footer">
+      <button type="button" id="found-skip-all">Dismiss all</button>
+      <div id="found-footer-actions">
+        <button type="button" class="sort-footer-btn" id="found-close">Close</button>
+        <button type="button" class="sort-footer-btn" id="found-add-all">Add all</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="update-banner" hidden>
+  <span id="update-banner-text"></span>
+  <button type="button" id="update-banner-get">Update</button>
+  <button type="button" id="update-banner-later">Later</button>
+</div>
+
 <div id="sort-modal-overlay">
   <div id="sort-modal">
     <div id="sort-modal-header">

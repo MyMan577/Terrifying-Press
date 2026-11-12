@@ -207,6 +207,7 @@
     dbDelete(removed.dbId).catch(()=>{}).then(refreshStorageEstimate);
     if (removed.nativeLocal && window.PPNative && PPNative.lib) PPNative.lib.deleteLocal(removed.nativeUri).catch(()=>{});
     if (removed.artDbId) dbDelete(removed.artDbId).catch(()=>{});
+    if (removed.nativeUri && !removed.nativeLocal) ppIgnoreUris([removed.nativeUri]);   // so a background look does not offer it again
     clearTimeout(subtitleSaveTimer);
     writeSubtitleEntry(removed.dbId, null);
     if (wasCurrent) setSubtitleCues([]);

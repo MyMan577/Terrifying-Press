@@ -46,6 +46,17 @@
           <option value="__all__">All tracks</option>
         </select>
       </div>
+      <div id="browse-row" role="tablist" aria-label="Browse the library by">
+        <button type="button" data-browse="songs" class="active">Songs</button>
+        <button type="button" data-browse="albums">Albums</button>
+        <button type="button" data-browse="artists">Artists</button>
+        <button type="button" data-browse="genres">Genres</button>
+        <button type="button" data-browse="folders">Folders</button>
+      </div>
+      <button type="button" id="found-row" hidden>
+        <span id="found-row-text">New on this phone</span>
+        <span id="found-row-count">0</span>
+      </button>
       <input type="file" id="file-input" accept="audio/*,video/*,.vtt,.srt,.ass,.ssa,.lrc" multiple>
       <input type="file" id="folder-input" accept="audio/*,video/*" multiple webkitdirectory directory style="display:none">
       <div id="playlist">
@@ -250,6 +261,36 @@
             <input type="checkbox" id="keep-mp3-conversions-toggle" checked>
             <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
           </label>
+        </div>
+      </div>
+      <div class="settings-section" id="auto-scan-section">
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Look for new files</div>
+            <div class="settings-row-sub">New music and videos on your phone wait under New on this phone in the Library, sorted into bundles, until you add them.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="auto-scan-toggle" checked>
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
+      </div>
+      <div class="settings-section" id="update-section">
+        <div class="settings-section-label">App updates</div>
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Check for updates</div>
+            <div class="settings-row-sub">Asks GitHub once a day whether a newer build of Press Play is out. Nothing about you or your library is sent.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="update-check-toggle" checked>
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
+        <div id="update-status">Version unknown</div>
+        <div id="update-btn-row">
+          <button id="update-check-btn" type="button">Check now</button>
+          <button id="update-get-btn" type="button" hidden>Download update</button>
         </div>
       </div>
       <div class="settings-section" id="playback-position-section">
