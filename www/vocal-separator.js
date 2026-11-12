@@ -765,7 +765,7 @@
       throw new Error('The downloaded model "' + key + '" was not a valid ONNX file (' + u8.length + ' bytes). I deleted it: press Split again to re-download.');
     }
     ort.env.wasm.wasmPaths = ORT;
-    const threads = lv && lv.custom ? (self.crossOriginIsolated && lv.threads ? Math.min(lv.threads, navigator.hardwareConcurrency || lv.threads) : 1) : !lv && self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;   // custom: the person's pick (needs Multi-thread on the web)
+    const threads = lv && lv.custom ? (self.crossOriginIsolated && lv.threads ? Math.min(lv.threads, navigator.hardwareConcurrency || lv.threads) : 1) : !lv && self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;   // custom: the person's pick
     const big = u8.length > 100e6;                                       // Demucs (316 MB): keep every extra copy of the weights out of memory
     const base = { graphOptimizationLevel: lv || big || key === 'mdx_voc' ? 'basic' : 'all' };
     if (big) { base.enableCpuMemArena = false; base.enableMemPattern = false; base.executionMode = 'sequential'; }   // MDX: 'all' makes the load slow and memory hungry
@@ -4780,7 +4780,7 @@
     async function dictate(viaWake) {
       if (dictating) { dictStop = true; return; }
       if (!micOn() || !chatOn) return;
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { add('bot', 'This browser will not give me the microphone here.'); return; }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { add('bot', 'This phone will not give me the microphone here.'); return; }
       if (heavyBusy()) { if (!viaWake) add('bot', "I'm busy with a heavy job right now, so I'm not listening. Ask me again when it's done."); return; }
       if (cbox.style.display !== 'flex') { cbox.style.display = 'flex'; delete cfab.dataset.unread; blAnchor(); }
       if (viaWake && lsGet('ppvEarsDl') !== '1') return;                                         // the wake word never starts a download
@@ -8681,7 +8681,6 @@
       '<div id="ppv-spl" style="margin-top:8px">Strength: <span id="ppv-sv">1</span><input id="ppv-sl" type="range" min="1" max="4" step="0.5" value="1" style="width:100%"><div style="opacity:.6;font-size:11px">Higher = less bleed, more watery artifacts</div><div style="margin-top:8px">Quality</div><select id="ppv-q"><option value="0">Standard</option><option value="1">Better (smooth seams, ~1.3x time)</option><option value="2">Best (+ averaged 2nd pass, ~2.7x time)</option></select></div>' +
       '<label id="ppv-gpu" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-gpuc"> Use GPU (faster, experimental)</label>' +
       '<label id="ppv-nn" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-nnc"> Phone GPU/NPU (experimental). Demucs always uses the CPU</label>' +
-      '<label id="ppv-mt" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-mtc"> Multi-thread (faster, uses more memory, reloads the app)</label>' +
       '<label id=\"ppv-vidl\" class=\"ppv-c\" style=\"display:block;margin-top:8px\"><input type=\"checkbox\" id=\"ppv-vid\"> Keep the original video (video tracks only)</label><div class=\"ppv-note\">Saves each stem as a video with its sound replaced. Takes the video\u2019s full length per stem, keep the screen on.</div>' +
       '<details><summary>Where split tracks go</summary><div class="ppv-note">Split tracks never count as new library tracks. They are all kept together under \u201cSplit tracks\u201d in the library\u2019s view selector.</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-mkpl"> Also make a playlist for each split song</label>' +
@@ -8791,17 +8790,6 @@
     lsel.value = ls('ppvLevel') || (ls('ppvLow') === '0' ? '0' : '2'); showLv(); gpu.checked = ls('ppvGpu') === '1'; if (navigator.gpu) $('#ppv-gpu').style.display = 'block';
     sl.oninput = () => { sv.textContent = sl.value; ls('ppvStrength', sl.value); };
     gpu.onchange = () => ls('ppvGpu', gpu.checked ? '1' : '0');
-    // Optional multi-threading: asks the service worker to add the COOP/COEP headers, then reloads once so they apply.
-    if ('serviceWorker' in navigator) {
-      const mt = $('#ppv-mtc'); $('#ppv-mt').style.display = 'block'; mt.checked = ls('ppvMT') === '1';
-      const tellSw = async on => { const reg = await navigator.serviceWorker.ready; const sw = navigator.serviceWorker.controller || reg.active; if (!sw) throw new Error('no service worker'); return new Promise(res => { const h = e => { if (e.data && e.data.type === 'isolation-set') { navigator.serviceWorker.removeEventListener('message', h); res(); } }; navigator.serviceWorker.addEventListener('message', h); sw.postMessage({ type: 'set-isolation', on }); setTimeout(res, 1500); }); };
-      mt.onchange = async () => {
-        const on = mt.checked; mt.disabled = true;
-        try { await tellSw(on); ls('ppvMT', on ? '1' : '0'); status(on ? 'Multi-thread on. Reloading the app…' : 'Multi-thread off. Reloading the app…'); setTimeout(() => location.reload(), 700); }
-        catch (e) { mt.checked = !on; mt.disabled = false; status('Could not change multi-thread: ' + errText(e)); }
-      };
-      if (ls('ppvMT') === '1' && !self.crossOriginIsolated) tellSw(true).then(() => { if (!self.crossOriginIsolated && !sessionStorage.getItem('ppvMTreload')) { sessionStorage.setItem('ppvMTreload', '1'); location.reload(); } }).catch(() => {});   // first run after installing the worker
-    }
     const mkpl = $('#ppv-mkpl'), pltab = $('#ppv-pltab');
     const syncPl = () => { pltab.disabled = !mkpl.checked; $('#ppv-tabl').style.opacity = mkpl.checked ? 1 : .5; };
     mkpl.checked = ls('ppvMkPl') === '1'; pltab.checked = ls('ppvPlTab') === '1'; syncPl();
@@ -8822,7 +8810,7 @@
     function syncCust() { $('#ppv-cust').style.display = +lsel.value === 4 ? 'block' : 'none'; }
     { const c = customLoad(); cEl.th.value = String(c.threads); cEl.rest.value = c.rest; cEl.rv.textContent = c.rest; cEl.lean.checked = !!c.lean; cEl.skip.checked = !!c.skip; cEl.smooth.checked = !!c.smooth; cEl.wake.checked = !!c.wake; cEl.blob.checked = !!c.blob; cEl.spin.checked = !!c.spin;
       if (NATIVE) $('#ppv-c-spinl').style.display = 'block';
-      $('#ppv-c-thn').textContent = NATIVE ? 'This phone reports ' + (navigator.hardwareConcurrency || '?') + ' cores. Auto uses the fast ones only (max 4). More threads is not always faster.' : 'On the web this needs Multi-thread ticked below (otherwise it runs on 1 thread).';
+      $('#ppv-c-thn').textContent = 'This phone reports ' + (navigator.hardwareConcurrency || '?') + ' cores. Auto uses the fast ones only (max 4). More threads is not always faster.';
       Object.values(cEl).forEach(e => { e.onchange = cSave; }); cEl.rest.oninput = cSave; syncCust(); showLv(); }
     const picked = () => [...p.querySelectorAll('#ppv-stems input:checked')].map(i => i.value);
     async function refresh() {
