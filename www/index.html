@@ -26856,7 +26856,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     box-shadow:0 16px 44px rgba(0,0,0,.6); color:#fff; font-family:inherit; transform-origin:top right; animation:ppgNpIn .16s ease-out; }
   @keyframes ppgNpIn{ from{ opacity:0; transform:scale(.94) translateY(-4px) } to{ opacity:1; transform:none } }
   #ppg-np .np-top{ display:flex; gap:12px; align-items:stretch; }
-  #ppg-np .np-art{ width:84px; height:84px; flex:none; border-radius:14px; background:#23242c center/cover no-repeat; display:grid; place-items:center; overflow:hidden;
+  #ppg-np .np-art{ width:76px; height:76px; flex:none; border-radius:14px; background:#23242c center/cover no-repeat; display:grid; place-items:center; overflow:hidden;
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.06); color:rgba(255,255,255,.35); }
   #ppg-np .np-art svg{ width:34px; height:34px; }
   #ppg-np .np-main{ flex:1; min-width:0; display:flex; flex-direction:column; justify-content:space-between; }
@@ -26873,13 +26873,37 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   #ppg-np .np-ctl .sk:active{ background:rgba(255,255,255,.1); }
   #ppg-np .np-ctl .pp{ width:38px; height:38px; border-radius:50%; background:#fff; color:#0c0d10; } #ppg-np .np-ctl .pp svg{ width:20px; height:20px; }
   #ppg-np .np-ctl .pp:active{ transform:scale(.93); }
-  #ppg-np .np-pills{ display:flex; gap:6px; margin-top:11px; padding-top:10px; border-top:1px solid rgba(255,255,255,.07); }
-  #ppg-np .np-pill{ flex:1; min-width:0; height:28px; padding:0 6px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05);
-    color:rgba(255,255,255,.82); font:600 11px/1 inherit; font-family:inherit; display:flex; align-items:center; justify-content:center; gap:4px; cursor:pointer;
-    white-space:nowrap; overflow:hidden; -webkit-tap-highlight-color:transparent; }
-  #ppg-np .np-pill svg{ width:13px; height:13px; flex:none; }
-  #ppg-np .np-pill.on{ background:color-mix(in srgb, var(--accent) 20%, transparent); border-color:color-mix(in srgb, var(--accent) 60%, transparent); color:#fff; }
+  /* under the artwork: shuffle + repeat */
+  #ppg-np .np-side{ display:flex; flex-direction:column; gap:6px; flex:none; }
+  #ppg-np .np-nat{ display:flex; gap:6px; }
+  #ppg-np .np-nat button{ flex:1; height:24px; border-radius:8px; border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.05); color:rgba(255,255,255,.75);
+    display:grid; place-items:center; padding:0; cursor:pointer; position:relative; -webkit-tap-highlight-color:transparent; }
+  #ppg-np .np-nat button svg{ width:13px; height:13px; }
+  #ppg-np .np-nat button.on{ color:#fff; background:color-mix(in srgb, var(--accent) 22%, transparent); border-color:color-mix(in srgb, var(--accent) 60%, transparent); }
+  #ppg-np .np-nat button .one{ position:absolute; right:3px; top:2px; font:800 7px/1 inherit; font-family:inherit; }
+  /* your quick-bar pills, small */
+  #ppg-np .np-pills{ display:flex; flex-wrap:wrap; gap:4px; margin-top:10px; padding-top:9px; border-top:1px solid rgba(255,255,255,.07); }
+  #ppg-np .np-pill{ height:22px; padding:0 8px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05);
+    color:rgba(255,255,255,.82); font:600 10px/1 inherit; font-family:inherit; display:inline-flex; align-items:center; gap:4px; cursor:pointer;
+    white-space:nowrap; max-width:46%; overflow:hidden; text-overflow:ellipsis; -webkit-tap-highlight-color:transparent; }
+  #ppg-np .np-pill svg{ width:11px; height:11px; flex:none; }
+  #ppg-np .np-pill.on, #ppg-np .np-pill.open{ background:color-mix(in srgb, var(--accent) 20%, transparent); border-color:color-mix(in srgb, var(--accent) 60%, transparent); color:#fff; }
   #ppg-np .np-pill:active{ transform:scale(.95); }
+  /* a pill's menu, compact: just its controls */
+  #ppg-np .np-sub{ margin-top:8px; padding:8px; border-radius:12px; background:rgba(255,255,255,.04); max-height:min(220px, 40vh); overflow:auto; display:flex; flex-direction:column; gap:7px; }
+  #ppg-np .np-sub:empty{ display:none; }
+  #ppg-np .np-row{ display:flex; align-items:center; gap:6px; font-size:10px; color:rgba(255,255,255,.6); }
+  #ppg-np .np-row > span:first-child{ flex:none; max-width:42%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #ppg-np .np-row .v{ flex:none; min-width:30px; text-align:right; color:#fff; font-variant-numeric:tabular-nums; }
+  #ppg-np .np-chips{ display:flex; flex-wrap:wrap; gap:4px; }
+  #ppg-np .np-chip{ height:22px; padding:0 8px; border-radius:7px; border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.05); color:rgba(255,255,255,.85);
+    font:600 10px/1 inherit; font-family:inherit; cursor:pointer; white-space:nowrap; -webkit-tap-highlight-color:transparent; }
+  #ppg-np .np-chip.on{ background:color-mix(in srgb, var(--accent) 24%, transparent); border-color:color-mix(in srgb, var(--accent) 60%, transparent); color:#fff; }
+  #ppg-np .np-chip:disabled, #ppg-np .np-chip.lock{ opacity:.35; }
+  #ppg-np .np-chip:active{ transform:scale(.95); }
+  #ppg-np .np-sub input[type=number]{ width:56px; height:22px; border-radius:7px; border:1px solid rgba(255,255,255,.14); background:rgba(0,0,0,.25); color:#fff; font:600 10px inherit; padding:0 6px; }
+  #ppg-back{ position:fixed; z-index:100001; left:50%; top:calc(env(safe-area-inset-top,0px) + 10px); transform:translateX(-50%); height:34px; padding:0 16px; border-radius:999px;
+    border:0; background:var(--accent); color:#0c0d10; font:700 13px/1 inherit; font-family:inherit; box-shadow:0 6px 20px rgba(0,0,0,.5); cursor:pointer; }
   #ppg-np .np-empty{ font-size:13px; color:rgba(255,255,255,.6); padding:6px 2px; }
   .ppg-tname{ flex:1; min-width:0; text-align:center; font-size:13px; font-weight:600; color:rgba(255,255,255,.7); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-right:52px; }
   .ppg-load{ position:absolute; left:0; right:0; bottom:0; top:var(--ppg-bar); z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
@@ -27011,100 +27035,213 @@ body.pp-lite .eq-band-pro { display:flex !important; }
       next: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM6 6l8.5 6L6 18z"/></svg>',
       play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
       pause: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>',
-      note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
-      shuf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>',
-      rep: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
-      speed: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg>',
-      sleep: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>'
+      note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>'
     };
     var $ = function(id){ return document.getElementById(id); };
-    var card = null, mini = null, host = null, timer = 0, dragging = false, sleepStep = 0;
-    var SPEEDS = [0.75, 1, 1.25, 1.5], SLEEPS = ['off', '15', '30', '60'];
+    var card = null, mini = null, host = null, timer = 0, dragging = false, openPill = null, sub = null, peek = null;
+    // pills whose whole tool is too big for the card: tapping one shows the player itself until "Back to game"
+    var BIG = { stems:1, mashup:1, appearance:1, marks:1, cutter:1 };
     function api(){ return window.__ppApi; }
     function cur(){ var a = api(); if (!a) return null; var i = a.currentIndex(), t = a.tracks(); return i >= 0 && t[i] ? t[i] : null; }
     function playing(){ var b = $('play-btn'); return !!(b && b.classList.contains('is-playing')); }
     function fmt(s){ s = Math.max(0, s || 0); var m = Math.floor(s / 60), x = Math.floor(s % 60); return m + ':' + (x < 10 ? '0' : '') + x; }
+    function fire(el, ev){ el.dispatchEvent(new Event(ev, { bubbles: true })); }
+    function visible(el){ return getComputedStyle(el).display !== 'none' && !el.hidden; }
+    // The quick-bar pills as the player shows them right now (same items, same order).
+    function quickPills(){
+      var row = $('extra-transport'); if (!row) return [];
+      return [].slice.call(row.children).filter(visible).map(function(w){
+        var name = w.getAttribute('data-item-wrapper') || w.id;
+        var btns = w.matches('button') ? [w] : [].slice.call(w.querySelectorAll(':scope > button'));
+        var dd = w.matches('button') ? null : [].slice.call(w.children).filter(function(c){ return c.tagName !== 'BUTTON'; })[0] || null;
+        return { name: name, w: w, btns: btns, dd: dd };
+      });
+    }
+    function isOn(b){ return b.classList.contains('active') || b.classList.contains('toggled') || b.classList.contains('selected') || b.getAttribute('aria-pressed') === 'true'; }
+    function labelFor(el){
+      var l = el.closest('label'); if (l) return l.textContent.trim();
+      if (el.id){ var f = document.querySelector('label[for="' + el.id + '"]'); if (f) return f.textContent.trim(); }
+      var prev = el.previousElementSibling;
+      while (prev && !prev.textContent.trim()) prev = prev.previousElementSibling;
+      if (prev && prev.tagName !== 'BUTTON' && prev.textContent.trim().length < 40) return prev.textContent.trim();
+      var row = el.parentElement && el.parentElement.previousElementSibling;
+      if (row && row.textContent.trim().length < 40) return row.textContent.trim().replace(/\s+\S+$/, '') || row.textContent.trim();
+      return el.getAttribute('aria-label') || el.title || '';
+    }
+    // Build a compact copy of a dropdown: its sliders, toggles, number fields and option buttons, nothing else.
+    function buildSub(dd){
+      sub.innerHTML = '';
+      var group = null, groupKey = null;
+      [].slice.call(dd.querySelectorAll('input, select, button')).forEach(function(el){
+        if (!visible(el) && el.type !== 'checkbox') return;
+        if (el.type === 'checkbox' && el.closest('label') && !visible(el.closest('label'))) return;
+        if (el.tagName === 'BUTTON'){
+          var key = Object.keys(el.dataset).filter(function(k){ return k !== 'reqLevel'; })[0] || 'solo';
+          if (!group || key !== groupKey || key === 'solo' && group.dataset.solo !== '1'){
+            group = document.createElement('div'); group.className = 'np-chips'; if (key === 'solo') group.dataset.solo = '1'; sub.appendChild(group); groupKey = key;
+          }
+          var c = document.createElement('button'); c.type = 'button'; c.className = 'np-chip';
+          c._src = el; c._label = function(){   // a bare On/Off (like EQ power) gets its name: "EQ: Off"
+            var t = el.textContent.trim().replace(/\s+/g, ' ');
+            if (/^(on|off)$/i.test(t)){
+              var nm = (el.getAttribute('aria-label') || el.title || 'Power').replace(/^(turn|toggle)\s+/i, '').replace(/\s+on(\s*\/\s*|\s+or\s+)off\b.*$/i, '').split(/[,(]/)[0].trim();
+              return nm.charAt(0).toUpperCase() + nm.slice(1) + ': ' + t;
+            }
+            return t || el.title || '•';
+          };
+          c.textContent = c._label();
+          c.addEventListener('click', function(){ el.click(); setTimeout(syncSub, 40); });
+          group.appendChild(c); return;
+        }
+        group = null;
+        var row = document.createElement('div'); row.className = 'np-row';
+        var name = document.createElement('span'); name.textContent = labelFor(el) || el.id; row.appendChild(name);
+        var m;
+        if (el.type === 'range'){
+          m = document.createElement('input'); m.type = 'range'; m.min = el.min; m.max = el.max; m.step = el.step || 'any';
+          m.addEventListener('input', function(){ el.value = m.value; fire(el, 'input'); paint(m); v.textContent = el.value; });
+          m.addEventListener('change', function(){ el.value = m.value; fire(el, 'change'); });
+          var v = document.createElement('span'); v.className = 'v'; row.appendChild(m); row.appendChild(v); m._v = v;
+        } else if (el.type === 'checkbox'){
+          m = document.createElement('button'); m.type = 'button'; m.className = 'np-chip'; m.textContent = el.checked ? 'On' : 'Off';
+          m.addEventListener('click', function(){ el.click(); setTimeout(syncSub, 40); });
+          row.style.justifyContent = 'space-between'; row.appendChild(m);
+        } else if (el.type === 'number'){
+          m = document.createElement('input'); m.type = 'number'; m.min = el.min; m.max = el.max; m.step = el.step || 'any';
+          m.addEventListener('change', function(){ el.value = m.value; fire(el, 'input'); fire(el, 'change'); });
+          row.appendChild(m);
+        } else if (el.tagName === 'SELECT'){
+          m = document.createElement('select'); m.innerHTML = el.innerHTML; m.className = 'np-chip';
+          m.addEventListener('change', function(){ el.value = m.value; fire(el, 'change'); });
+          row.appendChild(m);
+        } else return;
+        m._src = el; sub.appendChild(row);
+      });
+      syncSub();
+    }
+    function syncSub(){
+      if (!sub) return;
+      [].slice.call(sub.querySelectorAll('.np-chip, input, select')).forEach(function(m){
+        var el = m._src; if (!el) return;
+        if (m.tagName === 'BUTTON' && el.tagName === 'BUTTON'){ if (m._label){ var lt = m._label(); if (m.textContent !== lt) m.textContent = lt; } m.classList.toggle('on', isOn(el)); m.disabled = el.disabled; m.classList.toggle('lock', el.classList.contains('locked')); }
+        else if (el.type === 'checkbox'){ m.textContent = el.checked ? 'On' : 'Off'; m.classList.toggle('on', el.checked); m.disabled = el.disabled; }
+        else if (el.type === 'range' && document.activeElement !== m){ m.value = el.value; paint(m); if (m._v) m._v.textContent = el.value; }
+        else if ((el.type === 'number' || el.tagName === 'SELECT') && document.activeElement !== m) m.value = el.value;
+      });
+    }
+    // Big tools: show the player over the game (the game stays loaded) with a "Back to game" button.
+    function showPlayerFor(btn){
+      close();
+      host.style.visibility = 'hidden'; document.body.classList.remove('pp-gaming');
+      peek = document.createElement('button'); peek.id = 'ppg-back'; peek.type = 'button'; peek.textContent = '‹ Back to game';
+      peek.addEventListener('click', endPeek); document.body.appendChild(peek);
+      setTimeout(function(){ btn.click(); }, 30);
+    }
+    function endPeek(){ if (peek){ peek.remove(); peek = null; } if (host){ host.style.visibility = ''; if (host.classList.contains('open')) document.body.classList.add('pp-gaming'); } }
+    function renderPills(){
+      var box = card.querySelector('.np-pills'), items = quickPills();
+      var sig = items.map(function(it){ return it.name; }).join(',');
+      if (box.dataset.sig !== sig){
+        box.dataset.sig = sig; box.innerHTML = '';
+        items.forEach(function(it){
+          it.btns.forEach(function(src, k){
+            var b = document.createElement('button'); b.type = 'button'; b.className = 'np-pill'; b._it = it; b._src = src; b._k = k;
+            b.addEventListener('click', function(){
+              if (it.dd && k === 0){
+                if (openPill === it.name){ openPill = null; sub.innerHTML = ''; }
+                else { openPill = it.name; buildSub(it.dd); }
+              } else if (BIG[it.name]) showPlayerFor(src);
+              else src.click();
+              setTimeout(refresh, 60);
+            });
+            box.appendChild(b);
+          });
+        });
+        if (openPill && !items.some(function(it){ return it.name === openPill; })){ openPill = null; sub.innerHTML = ''; }
+      }
+      [].slice.call(box.children).forEach(function(b){
+        var src = b._src, ic = src.querySelector('svg');
+        var txt = src.textContent.trim().replace(/\s+/g, ' ') || src.title || b._it.name;
+        var looping = src.id === 'ab-loop-btn' && /^Looping/.test(src.title || '');
+        if (src.id === 'ab-loop-btn' && /point B/.test(src.title || '')) txt = 'A…';   // A set, waiting for B
+        var html = (ic ? ic.outerHTML : '') + '<span>' + txt + '</span>';
+        if (b._html !== html){ b._html = html; b.innerHTML = html; }
+        b.classList.toggle('on', isOn(src) || looping);
+        b.classList.toggle('open', openPill === b._it.name && b._k === 0);
+      });
+    }
     function build(){
       card = document.createElement('div'); card.id = 'ppg-np'; card.setAttribute('role', 'dialog'); card.setAttribute('aria-label', 'Now playing');
       card.innerHTML =
-        '<div class="np-top"><div class="np-art"></div><div class="np-main">' +
-          '<div><div class="np-t"></div><div class="np-a"></div></div>' +
-          '<div class="np-seek"><span class="np-c">0:00</span><input type="range" min="0" max="100" step="0.1" value="0" aria-label="Seek"><span class="np-d">0:00</span></div>' +
-          '<div class="np-ctl"><button type="button" class="sk" data-a="prev" aria-label="Previous">' + I.prev + '</button>' +
-            '<button type="button" class="pp" data-a="play" aria-label="Play or pause"></button>' +
-            '<button type="button" class="sk" data-a="next" aria-label="Next">' + I.next + '</button></div>' +
-        '</div></div>' +
-        '<div class="np-pills">' +
-          '<button type="button" class="np-pill" data-a="shuf">' + I.shuf + '<span>Shuffle</span></button>' +
-          '<button type="button" class="np-pill" data-a="rep">' + I.rep + '<span>Repeat</span></button>' +
-          '<button type="button" class="np-pill" data-a="speed">' + I.speed + '<span>1x</span></button>' +
-          '<button type="button" class="np-pill" data-a="sleep">' + I.sleep + '<span>Sleep</span></button>' +
-        '</div>';
+        '<div class="np-top"><div class="np-side"><div class="np-art"></div><div class="np-nat">' +
+            '<button type="button" data-a="shuf" aria-label="Shuffle"></button><button type="button" data-a="rep" aria-label="Repeat"></button></div></div>' +
+          '<div class="np-main">' +
+            '<div><div class="np-t"></div><div class="np-a"></div></div>' +
+            '<div class="np-seek"><span class="np-c">0:00</span><input type="range" min="0" max="100" step="0.1" value="0" aria-label="Seek"><span class="np-d">0:00</span></div>' +
+            '<div class="np-ctl"><button type="button" class="sk" data-a="prev" aria-label="Previous">' + I.prev + '</button>' +
+              '<button type="button" class="pp" data-a="play" aria-label="Play or pause"></button>' +
+              '<button type="button" class="sk" data-a="next" aria-label="Next">' + I.next + '</button></div>' +
+          '</div></div>' +
+        '<div class="np-pills"></div><div class="np-sub"></div>';
+      sub = card.querySelector('.np-sub');
+      // the natural buttons reuse the player's own icons
+      var sh = $('shuffle-btn'), rp = $('repeat-btn');
+      card.querySelector('[data-a="shuf"]').innerHTML = sh && sh.querySelector('svg') ? sh.querySelector('svg').outerHTML : 'S';
+      card.querySelector('[data-a="rep"]').innerHTML = (rp && rp.querySelector('svg') ? rp.querySelector('svg').outerHTML : 'R') + '<span class="one"></span>';
       card.addEventListener('click', function(e){
         var b = e.target.closest('[data-a]'); if (!b) return;
         var a = b.getAttribute('data-a');
-        if (a === 'prev') $('prev-btn').click();
-        else if (a === 'next') $('next-btn').click();
-        else if (a === 'play') $('play-btn').click();
-        else if (a === 'shuf') $('shuffle-btn').click();
-        else if (a === 'rep') $('repeat-btn').click();
-        else if (a === 'speed'){
-          var sl = $('speed-slider'), v = parseFloat(sl.value) || 1, i = SPEEDS.indexOf(v), nv = SPEEDS[(i + 1) % SPEEDS.length];
-          sl.value = nv; sl.dispatchEvent(new Event('input', { bubbles: true })); sl.dispatchEvent(new Event('change', { bubbles: true }));
-        } else if (a === 'sleep'){
-          var on = $('sleep-btn') && $('sleep-btn').classList.contains('toggled');
-          sleepStep = on ? (sleepStep + 1) % SLEEPS.length : 1;
-          var opt = document.querySelector('#sleep-dropdown [data-sleep="' + SLEEPS[sleepStep] + '"]'); if (opt) opt.click();
-        }
+        var map = { prev: 'prev-btn', next: 'next-btn', play: 'play-btn', shuf: 'shuffle-btn', rep: 'repeat-btn' };
+        if (map[a] && $(map[a])) $(map[a]).click();
         setTimeout(refresh, 60);
       });
-      var r = card.querySelector('input[type=range]');
+      var r = card.querySelector('.np-seek input');
       r.addEventListener('input', function(){ dragging = true; card.querySelector('.np-c').textContent = fmt(+r.value); paint(r); });
       r.addEventListener('change', function(){
-        var s = $('seek'); if (s){ s.value = r.value; s.dispatchEvent(new Event('input', { bubbles: true })); s.dispatchEvent(new Event('change', { bubbles: true })); }
+        var s = $('seek'); if (s){ s.value = r.value; fire(s, 'input'); fire(s, 'change'); }
         dragging = false; setTimeout(refresh, 80);
       });
       host.appendChild(card);
     }
-    function paint(r){ var mx = +r.max || 1; r.style.setProperty('--p', Math.min(100, (+r.value / mx) * 100) + '%'); }
+    function paint(r){ var lo = +r.min || 0, mx = (+r.max || 1) - lo; r.style.setProperty('--p', Math.max(0, Math.min(100, ((+r.value - lo) / (mx || 1)) * 100)) + '%'); }
     function refresh(){
       if (card && !card.isConnected){ clearInterval(timer); card = null; return; }
       var p = playing();
       if (mini){ mini.classList.toggle('playing', p); }
-      if (!card) return;
+      if (!card || card.style.display === 'none') return;
       var t = cur();
       card.querySelector('.np-t').textContent = t ? (t.title || 'Untitled') : 'Nothing playing';
       card.querySelector('.np-a').textContent = t ? (t.artist && t.artist !== '-' ? t.artist : (t.kind === 'video' ? 'Video' : 'Press Play')) : 'Pick a song from your library';
       var art = card.querySelector('.np-art'), src = t && window.__ppThumbSrc ? window.__ppThumbSrc(t) : null;
       if (art.dataset.src !== (src || '')){ art.dataset.src = src || ''; art.style.backgroundImage = src ? 'url("' + src.replace(/"/g, '%22') + '")' : ''; art.innerHTML = src ? '' : I.note; }
       card.querySelector('.pp').innerHTML = p ? I.pause : I.play;
-      var s = $('seek'), r = card.querySelector('input[type=range]');
+      var s = $('seek'), r = card.querySelector('.np-seek input');
       if (s && !dragging){ r.max = s.max || 100; r.value = s.value || 0; paint(r); card.querySelector('.np-c').textContent = fmt(+s.value); card.querySelector('.np-d').textContent = fmt(+s.max); }
-      var on = function(a, v){ var b = card.querySelector('[data-a="' + a + '"]'); if (b) b.classList.toggle('on', !!v); return b; };
-      on('shuf', $('shuffle-btn') && $('shuffle-btn').classList.contains('toggled'));
-      var rb = $('repeat-btn'), rOne = rb && rb.classList.contains('repeat-one');
-      on('rep', rb && rb.classList.contains('toggled')).querySelector('span').textContent = rOne ? 'Repeat 1' : 'Repeat';
-      var sp = parseFloat(($('speed-slider') || {}).value) || 1;
-      on('speed', Math.abs(sp - 1) > 0.001).querySelector('span').textContent = (Math.round(sp * 100) / 100) + 'x';
-      var sb = $('sleep-btn'), sOn = sb && sb.classList.contains('toggled');
-      on('sleep', sOn).querySelector('span').textContent = sOn ? (($('sleep-label') || {}).textContent || 'Sleep') : 'Sleep';
-      if (!sOn) sleepStep = 0;
+      var sh = $('shuffle-btn'), rp = $('repeat-btn');
+      card.querySelector('[data-a="shuf"]').classList.toggle('on', !!(sh && sh.classList.contains('toggled')));
+      card.querySelector('[data-a="rep"]').classList.toggle('on', !!(rp && rp.classList.contains('toggled')));
+      card.querySelector('[data-a="rep"] .one').textContent = rp && rp.classList.contains('repeat-one') ? '1' : '';
+      renderPills(); syncSub();
     }
     function open(){ if (!host) return; if (!card) build(); card.style.display = ''; mini.classList.add('on'); refresh(); clearInterval(timer); timer = setInterval(refresh, 250); }
-    function close(){ if (card) card.style.display = 'none'; if (mini) mini.classList.remove('on'); clearInterval(timer); timer = setInterval(function(){ if (!mini || !mini.isConnected){ clearInterval(timer); return; } mini.classList.toggle('playing', playing()); }, 1000); }
+    function close(){
+      if (card) card.style.display = 'none'; if (mini) mini.classList.remove('on');
+      clearInterval(timer); timer = setInterval(function(){ if (!mini || !mini.isConnected){ clearInterval(timer); return; } mini.classList.toggle('playing', playing()); }, 1000);
+    }
     function isOpen(){ return !!(card && card.style.display !== 'none'); }
     // a tap anywhere else (the game frame takes focus, so the app window blurs) closes it
     document.addEventListener('pointerdown', function(e){ if (isOpen() && !card.contains(e.target) && !mini.contains(e.target)) close(); }, true);
     window.addEventListener('blur', function(){ if (isOpen()) close(); });
     return {
       attach: function(bar, view){
-        host = view; card = null; clearInterval(timer);
+        endPeek(); host = view; card = null; sub = null; openPill = null; clearInterval(timer);
         mini = document.createElement('button'); mini.type = 'button'; mini.className = 'ppg-mini'; mini.setAttribute('aria-label', 'Now playing');
         mini.innerHTML = '<span class="eq"><i></i><i></i><i></i></span>';
         mini.addEventListener('click', function(){ isOpen() ? close() : open(); });
         bar.appendChild(mini);
         close();
-      }
+      },
+      endPeek: endPeek
     };
   })();
 
@@ -27152,6 +27289,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   }
   function hideGame(){
     if (!current) return;
+    if (window.__ppNowCard) window.__ppNowCard.endPeek();
     if (playObs){ playObs.disconnect(); playObs = null; }
     if (window.__ppHub) window.__ppHub.sessionEnd();
     view.classList.remove('open');
