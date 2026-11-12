@@ -93,12 +93,13 @@
     },
     lift(p, dt, S, q) {
       S.target = FK.keyed([[0, PO.idle], [0.1, PO.upA], [0.22, PO.upB], [0.4, PO.idle]], q.t); S.rate = 40;
-      if (q.t < 0.14 && p.vy < 0) p.vy = 1;   // (↑ is also jump: stay put while it's blown)
+      if (q.t < 0.3 && p.vy < 0) p.vy = 0;    // (↑ is also jump: stay put while it's blown and while it picks you up)
       if (q.t >= 0.14 && !q.done) {
         q.done = 1;
         if (S.lifts.length >= 2) { const o = S.lifts.shift(); S.fx.push({ k: 'ring', x: o.x, y: o.y, R: 1.1, c: C_FX, t: 0, life: 0.3 }); }
         const r = 0.85 + 0.2 * q.pw;
-        S.lifts.push({ x: pcx(p), y: p.y + p.h + r * 0.15, r, t: 0, life: 4.2 + 1.5 * q.pw, vy: -(2.7 + 0.8 * q.pw), cool: new Map(), on: false });
+        // it swells up under your feet and picks you up as it grows: you start out riding it
+        S.lifts.push({ x: pcx(p), y: p.y + p.h, r, t: 0, life: 4.6 + 1.5 * q.pw, vy: -(2.9 + 0.8 * q.pw), cool: new Map(), on: true });
         FK.tone(300, { dur: 0.3, vol: 0.14, type: 'sine', slide: 900 });
       }
       if (q.t > 0.4) S.seq = null;
@@ -181,16 +182,16 @@
       const L = S.lifts[i]; L.t += dt;
       const grow = Math.min(1, L.t / 0.25), r = L.r * grow, ny = L.y + L.vy * dt;
       const top = ny - r * 0.8;
-      let dead = L.t > L.life || FK.blocked(L.x - 0.2, ny - r - 0.1, 0.4, 0.2);
+      let dead = L.t > L.life || (L.t > 0.3 && FK.blocked(L.x - 0.2, ny - r - 0.3, 0.4, 0.15));   // pops under a ceiling (not on the floor it grew from)
       if (!dead) {
         const wasOn = L.on; L.y = ny;
         // riding: the top of the bubble is a little platform that moves up under your feet
         L.on = false;
         if (!S.seq || S.seq.kind !== 'ride') {
           const feet = p.y + p.h;
-          if (wasOn && !FK.keys().down && !(p.vy < -1) && Math.abs(pcx(p) - L.x) < r + 0.2) {
+          if (wasOn && !FK.keys().down && !(p.vy < -1 && L.t > 0.3) && Math.abs(pcx(p) - L.x) < Math.max(r, 0.5) + 0.2) {
             if (FK.blocked(p.x, top - p.h, p.w, p.h - 0.05)) dead = true;
-            else { p.y = top - p.h; p.vy = 0; p.onGround = true; L.on = true; S.selfMove = true; if (window._setJumpCount) window._setJumpCount(0); }
+            else { p.y = Math.min(p.y, top - p.h); p.vy = 0; p.onGround = true; L.on = true; S.selfMove = true; if (window._setJumpCount) window._setJumpCount(0); }   // (never pushes you down into the floor while it is still small)
           } else if (grow >= 1 && feet > top - 0.1 && FK.stand(p, top, L.x - r, L.x + r)) { L.on = true; S.selfMove = true; }
         }
         if (L.on) { riding = true; S.airUp = false; }
