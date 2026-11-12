@@ -2019,7 +2019,7 @@
           if (text && text.trim()) raw.push({ start: seek + g.s, end: g.e == null ? 0 : seek + g.e, text });
         }
         seek += adv;
-        if (!o.quick) await ease(performance.now() - t0, 0, 'whn', wl);   // quick: one spoken sentence for Bloop, no rest needed
+        if (!o.quick) await ease(performance.now() - t0, 0, 'whn', wl);   // quick: one spoken sentence for Bloopy, no rest needed
       }
       done += rb - ra;
     }
@@ -2788,7 +2788,7 @@
   // Chat menus (ppvChatLen / ppvChatStyle) shape regular chat and Song Talk. Summary menus (ppvSumLen / ppvSumStyle) shape the AI summaries.
   // Each menu exists in the Assistant settings, and the summary ones also under Lyrics & subtitles: a change in one is copied to the others.
   const ppvLs = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
-  // The user's favourite topics (assistant setting, or learned from "my favourite topics are ..."), so Bloop chats about them too.
+  // The user's favourite topics (assistant setting, or learned from "my favourite topics are ..."), so Bloopy chats about them too.
   const favTopics = () => String(ppvLs('ppvTopics') || '').replace(/\s+/g, ' ').trim().slice(0, 200);
   const setFavTopics = v => { try { localStorage.setItem('ppvTopics', String(v || '').replace(/\s+/g, ' ').trim().slice(0, 200)); } catch (e) {} document.querySelectorAll('#ppv-topics').forEach(x => { x.value = favTopics(); }); };
   const CHAT_LENS = {
@@ -2798,7 +2798,7 @@
     long:   { label: 'Long (two paragraphs)', say: 'in two short paragraphs separated by a blank line', bul: 'in six to eight bullet points', talk: 'in three or four paragraphs with detail', mul: 1.9 }
   };
   const CHAT_STYLES = {
-    bloop:   { label: 'Bloop (playful, default)', persona: true, intro: ' You are friendly, playful and a little silly.', fmt: 'No lists, no markdown, no emoji.', talk: '' },
+    bloop:   { label: 'Bloopy (playful, default)', persona: true, intro: ' You are friendly, playful and a little silly.', fmt: 'No lists, no markdown, no emoji.', talk: '' },
     plain:   { label: 'Plain and factual', intro: ' You are calm, clear and to the point.', fmt: 'No jokes, no puns, no exclamation marks, no lists, no markdown, no emoji.', talk: 'Keep a calm, factual tone with no jokes.' },
     simple:  { label: 'Simple (easy words)', intro: ' You explain things simply, as if to a curious ten-year-old.', fmt: 'Use short, easy words and short sentences, no jargon, no lists, no markdown, no emoji.', talk: 'Use short, easy words and explain any technical term.' },
     deep:    { label: 'Thoughtful (gives the reason)', intro: ' You are thoughtful and like to explain why.', fmt: 'Give the answer first, then briefly say why. No lists, no markdown, no emoji.', talk: 'After each answer, briefly say why.' },
@@ -2967,7 +2967,7 @@
       '<label class="ppv-c" style="display:block;margin-top:10px">Summary length: <select id="ppv-sumlen" data-sync="ppvSumLen" style="width:100%;display:block">' + Object.keys(SUM_LENS).map(k => '<option value="' + k + '">' + SUM_LENS[k].label + '</option>').join('') + '</select></label>' +
       '<label class="ppv-c" style="display:block;margin-top:10px">Summary style: <select id="ppv-sumstyle" data-sync="ppvSumStyle" style="width:100%;display:block">' + menuOpts(SUM_STYLES) + '</select></label>' +
       '<button id="ppv-sumgo" class="ppv-sec" style="margin-top:10px">Summarize current track (AI)</button>' +
-      '<div class="ppv-note">Combines the track\u2019s tags (tempo, key, genre, mood, instruments) with its lyrics or subtitles, so it knows both how it sounds and what it is about. Tags are made first if missing. The written part uses the Bloop AI brain (one-time download). Without lyrics or subtitles you get the sound summary only.</div>' +
+      '<div class="ppv-note">Combines the track\u2019s tags (tempo, key, genre, mood, instruments) with its lyrics or subtitles, so it knows both how it sounds and what it is about. Tags are made first if missing. The written part uses the Bloopy AI brain (one-time download). Without lyrics or subtitles you get the sound summary only.</div>' +
       '<div id="ppv-sumout" class="ppv-out"></div>' +
       '<button id="ppv-sumtalk" class="ppv-sec" style="display:none;margin-top:8px">\ud83d\udcac Talk about this song in chat</button>' +
       '<details id="ppv-sumlist"><summary id="ppv-sumlist-h">Saved summaries</summary><div id="ppv-sumlist-b"></div></details>' +
@@ -3783,7 +3783,7 @@
         const src = rows.filter(r => r.text.trim()); if (!src.length) { toast('Nothing to translate. Add or find lyrics first.'); return; }
         const NT = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PPTranslate;
         const w = mkEl('div'); w.style.cssText = 'display:flex;flex-direction:column;gap:8px';
-        w.innerHTML = '<div style=\"font-size:12px;opacity:.75\">Replaces the text of each line with its translation. Timing stays the same. Undo or Revert to saved brings the original back until you save. Nothing leaves the device.</div><select id=\"e-trl\">' + LY_LANGS.filter(l => l[0]).map(l => '<option value=\"' + l[0] + '\">' + l[1] + '</option>').join('') + '</select><select id=\"e-tre\">' + (NT ? '<option value=\"nat\">Device translator (Google ML Kit): fast, offline after a one-time language download</option>' : '') + '<option value=\"ai\">On-device AI (Bloop brain): rougher</option></select><div id=\"e-trs\" class=\"rnote\"></div>';
+        w.innerHTML = '<div style=\"font-size:12px;opacity:.75\">Replaces the text of each line with its translation. Timing stays the same. Undo or Revert to saved brings the original back until you save. Nothing leaves the device.</div><select id=\"e-trl\">' + LY_LANGS.filter(l => l[0]).map(l => '<option value=\"' + l[0] + '\">' + l[1] + '</option>').join('') + '</select><select id=\"e-tre\">' + (NT ? '<option value=\"nat\">Device translator (Google ML Kit): fast, offline after a one-time language download</option>' : '') + '<option value=\"ai\">On-device AI (Bloopy brain): rougher</option></select><div id=\"e-trs\" class=\"rnote\"></div>';
         const tl = w.querySelector('#e-trl'), te = w.querySelector('#e-tre'), ts = w.querySelector('#e-trs'); tl.value = ls('ppvTrLang') || 'en'; te.value = ls('ppvTrEng') === 'ai' || !NT ? 'ai' : 'nat';
         let running = false; const alive = () => $e('#e-mod').classList.contains('on');
         const run = async () => {
@@ -3996,13 +3996,13 @@
         { id: 'lyfetch', label: 'Fetch lyrics for my songs and music videos in the background, for offline use (sends song titles to lrclib.net and lyrics.ovh)', key: 'ppvLyAuto', def: 0 },
         { id: 'aeq', label: 'Auto-EQ when tagging', key: 'ppvAutoEq', def: 0, box: 'ppv-aeq' },
         { id: 'askip', label: 'Skip long intros', key: 'ppvAutoSkip', def: 0, box: 'ppv-askip' },
-        { g: 'Bloop', id: 'mascot', label: 'Bloop, the mascot', box: 'ppv-mas', def: 1, get: () => h.mas.isOn() },
-        { id: 'blbub', label: 'Bloop speech bubbles over the app', key: 'ppvBlBubbles', def: 0, box: 'ppv-bub' },
-        { id: 'blhdr', label: 'Bloop headers at the top of AI sections', key: 'ppvBlHeaders', def: 0, box: 'ppv-hdr' },
-        { id: 'assist', label: 'Bloop assistant button', box: 'ppv-chat-on', def: 0, get: () => h.mas.chat.isOn() },
+        { g: 'Bloopy', id: 'mascot', label: 'Bloopy, the mascot', box: 'ppv-mas', def: 1, get: () => h.mas.isOn() },
+        { id: 'blbub', label: 'Bloopy speech bubbles over the app', key: 'ppvBlBubbles', def: 0, box: 'ppv-bub' },
+        { id: 'blhdr', label: 'Bloopy headers at the top of AI sections', key: 'ppvBlHeaders', def: 0, box: 'ppv-hdr' },
+        { id: 'assist', label: 'Bloopy assistant button', box: 'ppv-chat-on', def: 0, get: () => h.mas.chat.isOn() },
         { id: 'mini', label: 'Smarter understanding (MiniLM)', box: 'ppv-mini-on', def: 0, get: () => h.mas.voice.get('ppvMini') },
-        { id: 'speak', label: 'Bloop speaks (Kokoro)', box: 'ppv-voice-on', def: 0, get: () => h.mas.voice.get('ppvVoice') },
-        { id: 'mic', label: 'Talk to Bloop (Moonshine)', box: 'ppv-mic-on', def: 0, get: () => h.mas.voice.get('ppvMic') },
+        { id: 'speak', label: 'Bloopy speaks (Kokoro)', box: 'ppv-voice-on', def: 0, get: () => h.mas.voice.get('ppvVoice') },
+        { id: 'mic', label: 'Talk to Bloopy (Moonshine)', box: 'ppv-mic-on', def: 0, get: () => h.mas.voice.get('ppvMic') },
         { id: 'wake', label: 'Wake word', box: 'ppv-wake-on', def: 0, get: () => h.mas.voice.get('ppvWake') }
       ];
       const isOn = f => { if (f.get) return !!f.get(); const v = ls(f.key); return v == null ? f.def === 1 : v === '1'; };
@@ -4042,10 +4042,10 @@
   }
 
   // ---------- UI ----------
-  // ---------- Bloop, the little ball mascot ----------
+  // ---------- Bloopy, the little ball mascot ----------
   // Lives in the Stem separator panel (all the AI features). Reacts to the panel's own status messages, so every
   // feature (splitting, tagging, playlists, Whisper) gets it for free. Pops up as a small floating bubble when a
-  // task finishes while the panel is closed. Can be switched off with the "Show Bloop" checkbox.
+  // task finishes while the panel is closed. Can be switched off with the "Show Bloopy" checkbox.
   function mascot(panel) {
     let uid = 0, mood = 'idle', key = '', tmr = null, ftmr = null, greeted = false;
     const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
@@ -4219,7 +4219,7 @@
       return `<svg class="bl-ic"${s ? ` data-skin="${k}"` : ''} viewBox="-8 -14 80 80" width="22" height="22" aria-hidden="true" style="vertical-align:-6px;margin-right:5px;overflow:visible"><defs>${BL_DEFS(g)}<radialGradient id="${g}" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".45"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".35"/></radialGradient></defs>${s ? blSkinOne(k, 'rear', g) : ''}<circle cx="32" cy="34" r="24" style="fill:${s ? s.color : 'var(--accent,#7c5cff)'}"/>${s ? blSkinOne(k, 'body', g) : ''}<circle cx="32" cy="34" r="24" fill="url(#${g})"/><circle cx="24" cy="31" r="5.5" fill="#fff" stroke="#b4b8c6" stroke-width=".8"/><circle cx="40" cy="31" r="5.5" fill="#fff" stroke="#b4b8c6" stroke-width=".8"/><circle cx="25" cy="32" r="2.6" fill="#1a1a22"/><circle cx="41" cy="32" r="2.6" fill="#1a1a22"/><path d="M25 43q7 6 14 0" fill="none" stroke="${ink}" stroke-width="2.4" stroke-linecap="round"/>${s ? blSkinOne(k, 'front', g) : ''}</svg>`; };
     // ---------- Skin voices: each skin has its own lines for greetings, pokes, status, results and command replies. A skin line is used about two times in three; the normal lines fill the rest. ----------
     const BL_SKIN_SAY = {
-      orange: { open: ["Hey there! It's me, Bloopy, fresh and juicy!", "Zest in time! Bloop here. What are we listening to?"], ready: ["Squeezed and ready.", "Peeled and ready when you are."],
+      orange: { open: ["Hey there! It's me, Bloopy, fresh and juicy!", "Zest in time! Bloopy here. What are we listening to?"], ready: ["Squeezed and ready.", "Peeled and ready when you are."],
         tap: ["Careful, I am ripe!", "Hey, no squeezing!", "That was a citrus-y poke."], poke: ["Hey, watch the peel!", "Squeeze me and you get juice. Do you want juice?", "I am full of vitamin C and opinions.", "Okay, okay, I am pith-ed off. Just kidding!"],
         dizzy: ["I am so dizzy I might turn into juice!", "Stop shaking me, I will make a smoothie out of myself!"], idle: ["Just hanging on the tree.", "Soaking up some sun.", "Orange you glad I am here?"],
         click: ["Click! Zesty.", "Nice press. Very fresh.", "Squeeze, click, done."], start: ["Zest in time!", "Let's squeeze this out!"], busy: ["Still squeezing, almost there!", "Juicing the data, one sec!"],
@@ -4227,7 +4227,7 @@
         sep: ["Peeling the song apart, segment by segment.", "Separating the segments gently."], tag: ["Tasting the song for flavour notes...", "Checking if this one is sweet or sour."],
         wh: ["Writing every word, nice and juicy.", "Catching every word like a drop of juice."], gen: ["Working on it, still juicy.", "Rolling along, round and orange."], panel: ["Stems menu! A song is just segments, like me.", "Pick your segments, I mean stems."],
         t: { play: ["Juicy beats incoming."], skip: ["Next slice!"], volume: ["Turned up the zest."], shuffle: ["Shaken, not squeezed."], playlist: ["A whole basket of songs!"], tag: ["Tasted it. Notes of bass and sunshine."], split: ["Peeled apart, segment by segment."], lyrics: ["Every word, fresh squeezed."], sleep: ["Sleep tight, I will keep the vitamins."], eq: ["Sweet tuning."], missing: ["Not in this orchard."] } },
-      pumpkin: { open: ["Boo! Just kidding, it's Bloopy. Ask me anything!", "Happy spooky season! Bloop here. What are we playing?"], ready: ["Carved and ready.", "Candle is lit. Ready when you are."],
+      pumpkin: { open: ["Boo! Just kidding, it's Bloopy. Ask me anything!", "Happy spooky season! Bloopy here. What are we playing?"], ready: ["Carved and ready.", "Candle is lit. Ready when you are."],
         tap: ["Boo!", "Careful, I have a candle inside!", "Do not carve me!"], poke: ["Hey! I am not a pie yet.", "Poking a pumpkin is bad luck. Probably.", "My seeds are rattling!", "Spooky, but I am a friendly one."],
         dizzy: ["My seeds are all shaken up!", "I am going to go full pumpkin spice!"], idle: ["Just sitting on the porch.", "Waiting for the sun to go down.", "Autumn leaves are my favourite."],
         click: ["Click! Spooky.", "Nice press. Very festive.", "A pumpkin approves."], start: ["Let us carve this one out!", "Spooky time!"], busy: ["Still carving, almost there!", "Scooping out the data, one sec!"],
@@ -4235,7 +4235,7 @@
         sep: ["Carving the song into pieces.", "Scooping the vocals out gently."], tag: ["Sniffing out the spooky vibes...", "Listening for ghosts in the track."],
         wh: ["Writing every word by candlelight.", "Whispering the lyrics, very spooky."], gen: ["Carving away.", "Rolling along, orange and round."], panel: ["Stems menu! Carving time.", "Pick which parts to carve out."],
         t: { play: ["Spooky tunes on!"], skip: ["Next, before the candle burns out."], volume: ["Louder, so the ghosts can hear."], shuffle: ["Shuffled like a haunted deck."], playlist: ["A whole patch of songs!"], tag: ["Vibes: spooky and sweet."], split: ["Carved it right down the middle."], lyrics: ["Written in candlelight."], sleep: ["Sleep tight, ghosts included."], eq: ["Bass like a creaky door. Perfect."], missing: ["Not in this pumpkin patch."] } },
-      basketball: { open: ["Hey there! It's Bloopy, ready to hoop!", "Tip off! Bloop here. What are we listening to?"], ready: ["Warmed up and ready.", "On the court and ready when you are."],
+      basketball: { open: ["Hey there! It's Bloopy, ready to hoop!", "Tip off! Bloopy here. What are we listening to?"], ready: ["Warmed up and ready.", "On the court and ready when you are."],
         tap: ["Do not dribble me!", "Boing! That was a bounce pass!", "Swish!"], poke: ["Hey! I am not a basketball. Okay, I am a basketball.", "Dribble me again and I will foul you.", "Bounce, bounce, bounce.", "That was a good pass."],
         dizzy: ["Too much dribbling! I am dizzy!", "Time out, time out!"], idle: ["Just bouncing on the court.", "Waiting for someone to pass me the song.", "Practising my free throws in my head."],
         click: ["Click! Nothing but net.", "Nice press. Two points.", "Buzzer beater!"], start: ["Tip off!", "Game time!"], busy: ["Still on the court, almost there!", "Dribbling through the data, one sec!"],
@@ -4243,7 +4243,7 @@
         sep: ["Passing the stems out to the team.", "Splitting the song like a fast break."], tag: ["Scouting the track...", "Reading the play, tempo and key."],
         wh: ["Taking notes on every word, coach.", "Calling out every lyric from the bench."], gen: ["Working the ball up the court.", "Dribbling along."], panel: ["Stems menu! Pick your starting five.", "Choose which stems make the team."],
         t: { play: ["Game on!"], skip: ["Next play!"], volume: ["Crowd noise up!"], shuffle: ["Shuffled like a new rotation."], playlist: ["A whole roster of songs!"], tag: ["Scouting report is in."], split: ["Passed right through the defense."], lyrics: ["Every word on the scoreboard."], sleep: ["Final buzzer coming up."], eq: ["Tuned like a good bounce."], missing: ["Not on the roster."] } },
-      soccer: { open: ["Hey there! It's Bloopy, ready to kick off!", "Kick off! Bloop here. What are we playing?"], ready: ["On the pitch and ready.", "Boots laced. Ready when you are."],
+      soccer: { open: ["Hey there! It's Bloopy, ready to kick off!", "Kick off! Bloopy here. What are we playing?"], ready: ["On the pitch and ready.", "Boots laced. Ready when you are."],
         tap: ["Please do not kick me!", "Goal!", "Boing! That was a header!"], poke: ["Hey! Only the keeper can touch me. Wait, no.", "Do not kick me, kick the song!", "Offside!", "That was a clean tackle."],
         dizzy: ["I am spinning like a free kick!", "Referee, I need a break!"], idle: ["Just rolling on the pitch.", "Waiting for the next kick.", "Practising my bend."],
         click: ["Click! Goal!", "Nice press. Top corner.", "And the crowd goes wild!"], start: ["Kick off!", "Let's play!"], busy: ["Still on the ball, almost there!", "Dribbling past the data, one sec!"],
@@ -4251,7 +4251,7 @@
         sep: ["Passing each stem to its own player.", "Splitting the song into positions."], tag: ["Studying the match...", "Checking the tempo, like the clock on the pitch."],
         wh: ["Taking notes on every word, like a commentator.", "Calling every lyric live."], gen: ["Working on the ball.", "Rolling down the pitch."], panel: ["Stems menu! Pick your formation.", "Choose who plays which position."],
         t: { play: ["Kick off the music!"], skip: ["Substitution!"], volume: ["Crowd noise up!"], shuffle: ["Shuffled the line-up."], playlist: ["A whole squad of songs!"], tag: ["Scouting report is in."], split: ["Split like a through ball."], lyrics: ["Every word, like live commentary."], sleep: ["Full time soon."], eq: ["Tuned for the stadium."], missing: ["Not in the squad."] } },
-      earth: { open: ["Hello, world! It's me, Bloopy!", "Greetings from orbit! Bloop here. What are we listening to?"], ready: ["Orbiting and ready.", "Spinning and ready when you are."],
+      earth: { open: ["Hello, world! It's me, Bloopy!", "Greetings from orbit! Bloopy here. What are we listening to?"], ready: ["Orbiting and ready.", "Spinning and ready when you are."],
         tap: ["Hello, world!", "You just caused a small earthquake!", "Spin me again!"], poke: ["Careful, you poked a continent.", "I was in the middle of an orbit!", "That is how tides start.", "Poking Earth. Bold."],
         dizzy: ["I rotate once a day, not once a second!", "Too fast! The seasons are all mixed up!"], idle: ["Just orbiting the sun.", "Spinning slowly, nothing to see.", "Thinking about oceans."],
         click: ["Click! A tiny tremor.", "Nice press. Felt it in Asia.", "That moved the plates."], start: ["Here we go around the sun!", "Spinning up!"], busy: ["Still in orbit, almost there!", "Crossing time zones, one sec!"],
@@ -4259,7 +4259,7 @@
         sep: ["Splitting the song into continents.", "Separating the oceans from the land."], tag: ["Scanning the track from orbit...", "Reading the tempo like a weather map."],
         wh: ["Charting every word like a map.", "Mapping out the lyrics."], gen: ["Working on it, still spinning.", "Rolling around the sun."], panel: ["Stems menu! Pick your continents.", "Choose which parts of the planet to keep."],
         t: { play: ["Music across the globe!"], skip: ["Next stop on the world tour!"], volume: ["Loud enough to hear from space."], shuffle: ["Shuffled across time zones."], playlist: ["A whole atlas of songs!"], tag: ["Mapped out the vibes."], split: ["Split like tectonic plates."], lyrics: ["Every word on the map."], sleep: ["Night is falling, sleep well."], eq: ["Tuned to the planet."], missing: ["Not on any map."] } },
-      cat: { open: ["Meow! It's me, Bloopy. Ask me anything!", "Hello, human. Bloop here. What are we listening to?"], ready: ["Stretched and ready.", "Awake from my nap and ready."],
+      cat: { open: ["Meow! It's me, Bloopy. Ask me anything!", "Hello, human. Bloopy here. What are we listening to?"], ready: ["Stretched and ready.", "Awake from my nap and ready."],
         tap: ["Meow!", "Purr... I mean, hello.", "I will knock something off the table now."], poke: ["Hey! I am not a toy. Well, maybe a little.", "You may pet me. Once.", "I was napping!", "Do that again and I will sit on your keyboard."],
         dizzy: ["The zoomies hit me!", "I am dizzy, and I blame the dog."], idle: ["Just napping in a sunbeam.", "Staring at nothing. Very important work.", "Plotting something small and mischievous."],
         click: ["Click! Meow.", "Nice press. I approve.", "Paws up for that one."], start: ["On it, human!", "Pounce!"], busy: ["Still hunting, almost there!", "Chasing the data, one sec!"],
@@ -4267,7 +4267,7 @@
         sep: ["Clawing the song apart, gently.", "Pulling the vocals out, like a ball of yarn."], tag: ["Sniffing out the vibe...", "Whiskers twitching, reading the tempo."],
         wh: ["Writing every word with my paw.", "Listening with both ears, very closely."], gen: ["Working on it, with my tail up.", "Stalking along."], panel: ["Stems menu! Pick your catnip.", "Choose which stems to chase."],
         t: { play: ["Purr-fect tune."], skip: ["Next, I got bored."], volume: ["Loud enough to wake me from a nap."], shuffle: ["Shuffled like a cat in a box."], playlist: ["A whole cat tree of songs!"], tag: ["Sniffed it. Smells like bass."], split: ["Clawed right through it."], lyrics: ["Wrote it all down with my paw."], sleep: ["Time for a cat nap."], eq: ["Tuned like a purr."], missing: ["Not in the box, I checked."] } },
-      bunny: { open: ["Hop hop! It's me, Bloopy!", "Hi hi! Bloop here. What are we listening to?"], ready: ["Hopped over and ready.", "Ears up and ready."],
+      bunny: { open: ["Hop hop! It's me, Bloopy!", "Hi hi! Bloopy here. What are we listening to?"], ready: ["Hopped over and ready.", "Ears up and ready."],
         tap: ["Hop hop!", "My nose twitched!", "Boing boing!"], poke: ["Hey! My ears are sensitive!", "Careful, I will thump my foot.", "Do not squish the fluff!", "I did a binky!"],
         dizzy: ["I am all hopped out!", "My ears are spinning!"], idle: ["Just nibbling a carrot.", "Twitching my nose at nothing.", "Dreaming of clover."],
         click: ["Click! Hop.", "Nice press. Fluffy.", "My ears perked up."], start: ["Hop to it!", "Hopping in!"], busy: ["Still hopping, almost there!", "Digging a burrow through the data, one sec!"],
@@ -4275,7 +4275,7 @@
         sep: ["Splitting the song, hop by hop.", "Separating the stems carefully, with soft paws."], tag: ["Twitching my nose to find the vibe...", "Listening with my big ears."],
         wh: ["Writing every word with my paw.", "My long ears caught every word."], gen: ["Working on it, hop by hop.", "Bouncing along."], panel: ["Stems menu! Pick your carrots.", "Choose which stems to nibble."],
         t: { play: ["Hoppy tunes!"], skip: ["Hop, next song!"], volume: ["Loud enough for long ears."], shuffle: ["Shuffled like a hop in the grass."], playlist: ["A whole garden of songs!"], tag: ["My nose says it is a good one."], split: ["Split with a hop and a skip."], lyrics: ["Every word, in my burrow notes."], sleep: ["Sleep tight in the burrow."], eq: ["Fine tuned for big ears."], missing: ["Not in this burrow."] } },
-      panda: { open: ["Hey there! It's Bloopy. I was just having a snack.", "Hello! Bloop here. What are we listening to? I have time."], ready: ["Fed and ready.", "Bamboo break over. Ready."],
+      panda: { open: ["Hey there! It's Bloopy. I was just having a snack.", "Hello! Bloopy here. What are we listening to? I have time."], ready: ["Fed and ready.", "Bamboo break over. Ready."],
         tap: ["Mmm, snack time?", "I was napping!", "Roll with it!"], poke: ["Hey! I am not a pillow.", "Careful, I am fluffy and sleepy.", "I rolled over. Bye.", "You poked a panda. Bold."],
         dizzy: ["I rolled too much!", "I am so dizzy I forgot my bamboo!"], idle: ["Just chewing bamboo.", "Taking a nap, with my eyes open.", "Thinking about the next snack."],
         click: ["Click! Bamboo.", "Nice press. Very chill.", "A panda approves."], start: ["Okay, after this snack.", "Rolling in!"], busy: ["Still chewing on it, almost there!", "Slow and steady, one sec!"],
@@ -4283,7 +4283,7 @@
         sep: ["Splitting the song, like a bamboo stalk.", "Peeling the stems apart, one leaf at a time."], tag: ["Chewing on the vibes...", "Slowly figuring out the tempo."],
         wh: ["Writing each word, one bite at a time.", "Listening to every word, slowly."], gen: ["Working on it, slowly.", "Rolling along."], panel: ["Stems menu! Pick your bamboo.", "Choose which stems to chew."],
         t: { play: ["Chill tunes on."], skip: ["Next, after a stretch."], volume: ["A little louder, for the bamboo grove."], shuffle: ["Rolled the order around."], playlist: ["A whole bamboo forest of songs!"], tag: ["Chewed on it. Tastes good."], split: ["Peeled like a bamboo shoot."], lyrics: ["Every word, one slow bite at a time."], sleep: ["Nap time, finally."], eq: ["Nice and mellow."], missing: ["Not in this bamboo forest."] } },
-      penguin: { open: ["Hello! It's Bloopy, dressed for the occasion.", "Waddle waddle! Bloop here. What are we listening to?"], ready: ["Waddled over and ready.", "Slid in on my belly, ready."],
+      penguin: { open: ["Hello! It's Bloopy, dressed for the occasion.", "Waddle waddle! Bloopy here. What are we listening to?"], ready: ["Waddled over and ready.", "Slid in on my belly, ready."],
         tap: ["Waddle waddle!", "Squawk!", "Brr, that was a cold poke."], poke: ["Hey! I am not an ice cube.", "Careful, I will slide away.", "My tuxedo is wrinkled now.", "That tickled my flippers."],
         dizzy: ["I slid on the ice and spun!", "I waddled in circles!"], idle: ["Just standing on the ice.", "Thinking about fish.", "Waiting for the iceberg to drift."],
         click: ["Click! Brr.", "Nice press. Very cool.", "A penguin approves."], start: ["Sliding in!", "Off we waddle!"], busy: ["Still sliding, almost there!", "Swimming through the data, one sec!"],
@@ -4291,7 +4291,7 @@
         sep: ["Splitting the colony, I mean the stems.", "Separating the stems, nice and neat."], tag: ["Waddling around the vibes...", "Checking the tempo, flipper by flipper."],
         wh: ["Writing every word, like a tuxedo scribe.", "Listening with my flippers on my hips."], gen: ["Working on it, with a waddle.", "Sliding along."], panel: ["Stems menu! Pick your fish.", "Choose which stems to slide."],
         t: { play: ["Cool tunes, coming right up."], skip: ["Next iceberg!"], volume: ["Loud enough for the whole colony."], shuffle: ["Shuffled like a huddle."], playlist: ["A whole colony of songs!"], tag: ["Waddled through the vibes."], split: ["Split, slid and done."], lyrics: ["Every word, on ice."], sleep: ["Time to huddle up and sleep."], eq: ["Tuned like a cold, clear day."], missing: ["Not on this iceberg."] } },
-      mint: { open: ["Hey there! It's Bloopy, cool and fresh!", "Fresh start! Bloop here. What are we listening to?"], ready: ["Cool and ready.", "Fresh and ready when you are."],
+      mint: { open: ["Hey there! It's Bloopy, cool and fresh!", "Fresh start! Bloopy here. What are we listening to?"], ready: ["Cool and ready.", "Fresh and ready when you are."],
         tap: ["Cool!", "That was refreshing.", "Ahh, minty fresh."], poke: ["Hey! You will make me melt.", "Cool as a cucumber, but ticklish.", "Poke me and you get fresh breath.", "That was refreshing, actually."],
         dizzy: ["I am so dizzy I forgot to be cool!", "My freshness is spinning!"], idle: ["Just chilling.", "Staying fresh.", "Cool and calm, as usual."],
         click: ["Click! Fresh.", "Nice press. Very cool.", "Minty approval."], start: ["Cool, let's go!", "Fresh start!"], busy: ["Still cool, almost there!", "Keeping fresh, one sec!"],
@@ -4299,7 +4299,7 @@
         sep: ["Splitting the song, nice and clean.", "Separating the stems, crisp and clear."], tag: ["Sniffing out a fresh vibe...", "Reading the tempo, cool and calm."],
         wh: ["Writing every word, clean and clear.", "Catching every word, crisp."], gen: ["Working on it, still cool.", "Rolling along, fresh."], panel: ["Stems menu! Keep it clean.", "Pick your stems, nice and fresh."],
         t: { play: ["Fresh tunes on."], skip: ["Next, fresh and cool."], volume: ["Crisp and loud."], shuffle: ["Fresh shuffle."], playlist: ["A fresh batch of songs!"], tag: ["Cool vibes, noted."], split: ["Clean split."], lyrics: ["Every word, crisp and clear."], sleep: ["Sleep cool."], eq: ["Fresh tuning."], missing: ["Not in this fresh batch."] } },
-      sunset: { open: ["Hey there! It's Bloopy, glowing at golden hour.", "Good vibes only. Bloop here. What are we listening to?"], ready: ["Glowing and ready.", "Warm and ready when you are."],
+      sunset: { open: ["Hey there! It's Bloopy, glowing at golden hour.", "Good vibes only. Bloopy here. What are we listening to?"], ready: ["Glowing and ready.", "Warm and ready when you are."],
         tap: ["Warm greetings!", "That was a golden poke.", "Glow glow!"], poke: ["Hey! You are blocking my light.", "Poke me again and I will blush.", "I am already pink, stop making it worse.", "That felt warm."],
         dizzy: ["The horizon is spinning!", "I turned all the colours at once!"], idle: ["Just watching the horizon.", "Glowing softly.", "Thinking about the golden hour."],
         click: ["Click! Warm.", "Nice press. Golden.", "That was smooth."], start: ["Let us catch the light!", "Off to the horizon!"], busy: ["Still glowing, almost there!", "Chasing the horizon, one sec!"],
@@ -4307,7 +4307,7 @@
         sep: ["Splitting the song into layers of colour.", "Separating the stems, like bands of sky."], tag: ["Reading the song's colours...", "Feeling the tempo, soft and warm."],
         wh: ["Writing every word in warm light.", "Catching each lyric as the light fades."], gen: ["Working on it, with a glow.", "Rolling toward the horizon."], panel: ["Stems menu! Pick your colours.", "Choose which stems to light up."],
         t: { play: ["Golden hour playlist, now playing."], skip: ["Next, as the sun sets."], volume: ["Turned up the glow."], shuffle: ["Mixed like a sky full of colours."], playlist: ["A whole horizon of songs!"], tag: ["The vibes are warm."], split: ["Split like light through clouds."], lyrics: ["Every word, painted on the sky."], sleep: ["Goodnight, the sun is down."], eq: ["Tuned like a warm evening."], missing: ["Not on this horizon."] } },
-      midnight: { open: ["Hello, night owl. It's Bloopy.", "Under the stars... Bloop here. What are we listening to?"], ready: ["Awake and ready.", "The stars are out. Ready when you are."],
+      midnight: { open: ["Hello, night owl. It's Bloopy.", "Under the stars... Bloopy here. What are we listening to?"], ready: ["Awake and ready.", "The stars are out. Ready when you are."],
         tap: ["Shh, the stars are sleeping.", "Twinkle twinkle.", "You woke me up!"], poke: ["Hey! I was counting stars.", "Careful, you will wake the moon.", "That tickled my crescent.", "I was dreaming."],
         dizzy: ["The stars are spinning!", "I am so dizzy I lost the moon!"], idle: ["Just counting stars.", "Watching the moon.", "Thinking quiet thoughts."],
         click: ["Click! Twinkle.", "Nice press. Quiet and clean.", "The stars approve."], start: ["Into the night!", "Off we go, under the stars."], busy: ["Still up, almost there!", "Counting stars, one sec!"],
@@ -4315,7 +4315,7 @@
         sep: ["Splitting the song, star by star.", "Separating the stems in the dark, carefully."], tag: ["Reading the song like a night sky...", "Counting the beats like stars."],
         wh: ["Writing every word by moonlight.", "Listening in the quiet of the night."], gen: ["Working on it, quietly.", "Rolling through the night."], panel: ["Stems menu! Pick your stars.", "Choose which stems stay up late."],
         t: { play: ["Night tunes, softly."], skip: ["Next star."], volume: ["Not too loud, the neighbours are asleep."], shuffle: ["Shuffled like constellations."], playlist: ["A whole night sky of songs!"], tag: ["The vibes are deep and quiet."], split: ["Split like the Milky Way."], lyrics: ["Every word, by moonlight."], sleep: ["Goodnight, and sweet dreams."], eq: ["Tuned like a quiet night."], missing: ["Lost in the dark."] } },
-      gold: { open: ["Hello there! It's Bloopy, 24 karat.", "Shiny day! Bloop here. What are we listening to?"], ready: ["Polished and ready.", "Gleaming and ready when you are."],
+      gold: { open: ["Hello there! It's Bloopy, 24 karat.", "Shiny day! Bloopy here. What are we listening to?"], ready: ["Polished and ready.", "Gleaming and ready when you are."],
         tap: ["Ooh, shiny!", "Careful, do not smudge the gold.", "Ka-ching!"], poke: ["Hey! I am very valuable.", "Careful, that is solid gold. Maybe hollow.", "You can see your face in me.", "Poke me again and I will charge a fee."],
         dizzy: ["I am so dizzy I lost my shine!", "Stop spinning, I am worth more standing up!"], idle: ["Just sitting in the vault.", "Gleaming quietly.", "Counting my coins."],
         click: ["Click! Ka-ching.", "Nice press. Golden.", "Worth every click."], start: ["Time to mine some gold!", "Let us make this shine!"], busy: ["Still polishing, almost there!", "Mining the data, one sec!"],
@@ -4339,7 +4339,7 @@
       return `<svg class="bl-ic" viewBox="${a.vb}" width="18" height="18" aria-hidden="true" style="vertical-align:-4px;margin-right:5px;overflow:visible"><defs>${BL_DEFS(g)}</defs>${a.rear ? a.rear(g) : ''}${a.item(g)}</svg>`; };
     function ball() {
       const g = 'ppvg' + (++uid), d = document.createElement('div');
-      d.className = 'ppv-ball m-idle'; d.setAttribute('role', 'img'); d.setAttribute('aria-label', 'Bloop, the mascot'); { const sk = lsGet('ppvSkin'); if (sk && BL_SKINS[sk]) d.dataset.skin = sk; }
+      d.className = 'ppv-ball m-idle'; d.setAttribute('role', 'img'); d.setAttribute('aria-label', 'Bloopy, the mascot'); { const sk = lsGet('ppvSkin'); if (sk && BL_SKINS[sk]) d.dataset.skin = sk; }
       d.innerHTML = `<svg viewBox="0 0 64 64" aria-hidden="true"><defs><radialGradient id="${g}" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".45"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".35"/></radialGradient>${BL_DEFS(g)}</defs>
         <ellipse class="sh" cx="32" cy="60" rx="15" ry="3"/>
         <g class="behind"><g class="burst"><circle cx="8" cy="22" r="7" fill="#e9e3ff" opacity=".35"/><circle cx="56" cy="22" r="7" fill="#e9e3ff" opacity=".35"/><circle cx="6" cy="44" r="8" fill="#e9e3ff" opacity=".35"/><circle cx="58" cy="44" r="8" fill="#e9e3ff" opacity=".35"/><circle cx="32" cy="62" r="8" fill="#e9e3ff" opacity=".35"/><circle cx="18" cy="60" r="6" fill="#e9e3ff" opacity=".35"/><circle cx="46" cy="60" r="6" fill="#e9e3ff" opacity=".35"/><path d="M0-4L1.2-1.2L4-1.2L1.8.6L2.6 3.6L0 1.8L-2.6 3.6L-1.8.6L-4-1.2L-1.2-1.2Z" transform="translate(2 8) scale(1.2)" fill="#ffd95a"/><path d="M0-4L1.2-1.2L4-1.2L1.8.6L2.6 3.6L0 1.8L-2.6 3.6L-1.8.6L-4-1.2L-1.2-1.2Z" transform="translate(60 6) scale(1)" fill="#ffd95a"/><path d="M0-4L1.2-1.2L4-1.2L1.8.6L2.6 3.6L0 1.8L-2.6 3.6L-1.8.6L-4-1.2L-1.2-1.2Z" transform="translate(62 30) scale(1.3)" fill="#ffd95a"/><path d="M0-4L1.2-1.2L4-1.2L1.8.6L2.6 3.6L0 1.8L-2.6 3.6L-1.8.6L-4-1.2L-1.2-1.2Z" transform="translate(0 30) scale(1)" fill="#ffd95a"/><path d="M0-4L1.2-1.2L4-1.2L1.8.6L2.6 3.6L0 1.8L-2.6 3.6L-1.8.6L-4-1.2L-1.2-1.2Z" transform="translate(12 64) scale(1.1)" fill="#ffd95a"/><path d="M0-4L1.2-1.2L4-1.2L1.8.6L2.6 3.6L0 1.8L-2.6 3.6L-1.8.6L-4-1.2L-1.2-1.2Z" transform="translate(54 62) scale(1.2)" fill="#ffd95a"/><path d="M0-4L1.2-1.2L4-1.2L1.8.6L2.6 3.6L0 1.8L-2.6 3.6L-1.8.6L-4-1.2L-1.2-1.2Z" transform="translate(30 -2) scale(1)" fill="#ffd95a"/><path d="M0-4L1.2-1.2L4-1.2L1.8.6L2.6 3.6L0 1.8L-2.6 3.6L-1.8.6L-4-1.2L-1.2-1.2Z" transform="translate(64 50) scale(0.9)" fill="#ffd95a"/></g></g><g class="gear">${blSkinPart('rear', g)}${BL_REAR(g)}</g><g class="body"><circle class="bd" cx="32" cy="34" r="24"/>${blSkinPart('body', g)}<circle cx="32" cy="34" r="24" fill="url(#${g})"/>
@@ -4373,15 +4373,15 @@
       idle: ['Ready for the next one!', 'What else can I do?', 'Got another song for me?', 'Psst, try saying "make a playlist"!', 'Want a joke? Just ask!', 'Still here, still bouncing.'],
       panel: ['Stems menu! Pick a model and the tracks you want.', 'Vocals, drums, bass? Your call.', 'Tick the stems you want, then tap split.', 'Splitting is my favourite kind of surgery.', 'Heavier model, better split. Lighter model, faster split.', 'Pick a track first, then I can take it apart.'],
       night: ['Still up? Tell me if you want something soft.', 'Late-night stems? Bold choice.', 'Shh, quiet hours. I can keep it low.'],
-      tap: ['Boing!', 'Hehe, that tickles!', "I'm Bloop!", 'Need stems? Lyrics? Tags?', 'Boing! Did you need something?', 'Hehe, do it again!'],
+      tap: ['Boing!', 'Hehe, that tickles!', "I'm Bloopy!", 'Need stems? Lyrics? Tags?', 'Boing! Did you need something?', 'Hehe, do it again!'],
       busy: ['Busy rolling, one sec!', 'Almost there!', 'Working, working…']
     };
     // ---------- Opening lines (chat box and first greeting). Picked by time of day, never the same line twice in a row. ----------
     const BL_OPEN = {
-      any: ["Hey there! It's me, It's Bloopy! Ask me anything!", "Hi! Bloop here, bouncing in to help. What do you need?", "Yo! It's Bloop. Songs, stems, lyrics, playlists: pick one!", "Hello! I'm Bloop, and I'm ready when you are.", "Boing! Hi, it's Bloop. What are we listening to?", "Hey! Want to chat, or should I just play something?"],
-      morning: ["Good morning! It's Bloopy, ready for a new day of music!", "Morning! Bloop here. Coffee first, or a song first?"],
-      day: ["Hey there, it's Bloopy! How's your day going?", "Afternoon! Bloop here. Want something to keep you going?"],
-      night: ["Up late? It's me, Bloopy! Want something soft?", "Good evening! Bloop here. Tell me what you need, I'm all ears."]
+      any: ["Hey there! It's me, It's Bloopy! Ask me anything!", "Hi! Bloopy here, bouncing in to help. What do you need?", "Yo! It's Bloopy. Songs, stems, lyrics, playlists: pick one!", "Hello! I'm Bloopy, and I'm ready when you are.", "Boing! Hi, it's Bloopy. What are we listening to?", "Hey! Want to chat, or should I just play something?"],
+      morning: ["Good morning! It's Bloopy, ready for a new day of music!", "Morning! Bloopy here. Coffee first, or a song first?"],
+      day: ["Hey there, it's Bloopy! How's your day going?", "Afternoon! Bloopy here. Want something to keep you going?"],
+      night: ["Up late? It's me, Bloopy! Want something soft?", "Good evening! Bloopy here. Tell me what you need, I'm all ears."]
     };
     let blLastOpen = '';
     function blOpenLine() {
@@ -4425,10 +4425,10 @@
       set(m, blLine(k, lines), 6000); pop();
     }
 
-    // ---------- Chat with Bloop: a small on-device language model (choose one in settings) via transformers.js ----------
+    // ---------- Chat with Bloopy: a small on-device language model (choose one in settings) via transformers.js ----------
     // Off by default. App questions and crisis messages are answered from fixed text (no model needed, always reliable);
     // everything else goes to the small model. Chat is kept in memory only.
-    // Chat models. Pick one in the Bloop brain settings. file = the ONNX file in that repo, eos = end-of-turn tokens, mb = rough download size.
+    // Chat models. Pick one in the Bloopy brain settings. file = the ONNX file in that repo, eos = end-of-turn tokens, mb = rough download size.
     const CHAT_MODELS = {
       qwen05:  { id: 'onnx-community/Qwen2.5-0.5B-Instruct', label: 'Qwen2.5 0.5B (default, better, ~520 MB)', mb: 520, file: 'onnx/model_quantized.onnx', eos: ['<|im_end|>', '<|endoftext|>'], lid: 'llm_qwen05' },
       llama1b: { id: 'onnx-community/Llama-3.2-1B-Instruct', label: 'Llama 3.2 1B (most capable, ~1.3 GB, needs a strong phone)', mb: 1300, file: 'onnx/model_quantized.onnx', eos: ['<|eot_id|>', '<|end_of_text|>'], lid: 'llm_llama1b' },
@@ -4452,7 +4452,7 @@
     const webId = k => (CHAT_MODELS[k].lm ? CHAT_MODELS.qwen05 : CHAT_MODELS[k]).id;   // the browser cannot run .litertlm, so it uses Qwen instead
     let CHAT_MODEL = webId(chatKey());
     let pendingJob = null, holdModel = false, idleT = 0, chatOn = lsGet('ppvChat') === '1', gen = null, genP = null, chatBusy = false, dlOk = false, hist = [], musicMode = lsGet('ppvMusicMode') === '1', aiOnly = lsGet('ppvAiOnly') === '1';
-    // How many past exchanges (your message + Bloop's reply) he remembers during a chat. 0 = none. More memory = slower and more RAM on a tiny model.
+    // How many past exchanges (your message + Bloopy's reply) he remembers during a chat. 0 = none. More memory = slower and more RAM on a tiny model.
     const MEM_MAX = 8, memN = () => { const v = parseInt(lsGet('ppvMem'), 10); return isNaN(v) ? 4 : Math.max(0, Math.min(MEM_MAX, v)); };
     const setMem = v => { v = Math.max(0, Math.min(MEM_MAX, parseInt(v, 10) || 0)); lsSet('ppvMem', String(v)); hist = memN() ? hist.slice(-2 * memN()) : []; return v; };
     const cstyle = document.createElement('style');
@@ -4477,18 +4477,18 @@
       #ppv-chat .ch-mic svg{width:16px;height:16px}
       #ppv-chat .ch-mic.rec{background:#ff5c7c;border-color:#ff5c7c;color:#fff}`;
     document.head.appendChild(cstyle);
-    const cfab = document.createElement('div'); cfab.id = 'ppv-cfab'; cfab.setAttribute('role', 'button'); cfab.setAttribute('aria-label', 'Chat with Bloop');
+    const cfab = document.createElement('div'); cfab.id = 'ppv-cfab'; cfab.setAttribute('role', 'button'); cfab.setAttribute('aria-label', 'Chat with Bloopy');
     const cball = ball(); cfab.appendChild(cball);
     const cbox = document.createElement('div'); cbox.id = 'ppv-chat';
-    cbox.innerHTML = '<div class="ch-h"><b>Bloop</b><span class="ch-n">Your tiny helper in the player!.</span><button class="ch-c" data-a="aionly" aria-pressed="false" title="Send everything to the AI. Bloop will not jump in on keywords">AI only: off</button><button class="ch-c" data-a="music" aria-pressed="false" title="Only talk about the music in your library and playlists">Music: off</button><button class="ch-c" data-a="clear">Clear</button><button class="ch-c" data-a="x" aria-label="Close">&times;</button></div><div class="ch-l"></div><div class="ch-i"><input type="text" maxlength="400" placeholder="Say something to Bloop" enterkeyhint="send"><button data-a="mic" class="ch-mic" aria-label="Talk to Bloop" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg></button><button data-a="send">Send</button></div>';
+    cbox.innerHTML = '<div class="ch-h"><b>Bloopy</b><span class="ch-n">Your tiny helper in the player!.</span><button class="ch-c" data-a="aionly" aria-pressed="false" title="Send everything to the AI. Bloopy will not jump in on keywords">AI only: off</button><button class="ch-c" data-a="music" aria-pressed="false" title="Only talk about the music in your library and playlists">Music: off</button><button class="ch-c" data-a="clear">Clear</button><button class="ch-c" data-a="x" aria-label="Close">&times;</button></div><div class="ch-l"></div><div class="ch-i"><input type="text" maxlength="400" placeholder="Say something to Bloopy" enterkeyhint="send"><button data-a="mic" class="ch-mic" aria-label="Talk to Bloopy" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg></button><button data-a="send">Send</button></div>';
     document.body.append(cfab, cbox);
     const clist = cbox.querySelector('.ch-l'), cin = cbox.querySelector('input');
-    // Music mode: Bloop only talks about the user's own songs and playlists, using real library data in the prompt.
+    // Music mode: Bloopy only talks about the user's own songs and playlists, using real library data in the prompt.
     const musicBtn = cbox.querySelector('[data-a="music"]');
     const setMusicMode = v => {
       musicMode = !!v; lsSet('ppvMusicMode', musicMode ? '1' : '0'); hist = [];                 // a fresh memory, so the two modes do not mix
       musicBtn.textContent = musicMode ? 'Music: on' : 'Music: off'; musicBtn.setAttribute('aria-pressed', String(musicMode));
-      musicBtn.style.opacity = musicMode ? '1' : '.65'; cin.placeholder = musicMode ? 'Talk about your music' : 'Say something to Bloop';
+      musicBtn.style.opacity = musicMode ? '1' : '.65'; cin.placeholder = musicMode ? 'Talk about your music' : 'Say something to Bloopy';
     };
     setMusicMode(musicMode);
     // AI only: skip every keyword rule, command and scripted reply, and send the message straight to the AI. The crisis safety check still runs.
@@ -4501,7 +4501,7 @@
     const actions = btns => { const d = document.createElement('div'); d.className = 'ch-a'; btns.forEach(([t, fn]) => { const b = document.createElement('button'); b.textContent = t; b.onclick = () => { fn(b, d); }; d.appendChild(b); }); clist.appendChild(d); scrollDown(); return d; };
     // ---------- Voice and meaning (all optional, all on-device, all off until ticked) ----------
     // MiniLM (~25 MB): loose wording finds the right command, and songs are found by meaning ("something for a rainy drive").
-    // Kokoro (82M, ~90 MB): Bloop's voice. Moonshine tiny (~50 MB): speech to text. openWakeWord: three tiny ONNX files on onnxruntime-web.
+    // Kokoro (82M, ~90 MB): Bloopy's voice. Moonshine tiny (~50 MB): speech to text. openWakeWord: three tiny ONNX files on onnxruntime-web.
     // Each download is asked for once, then comes from the browser cache. Nothing here runs unless its checkbox is on.
     const MINI_ID = 'Xenova/all-MiniLM-L6-v2', KOKORO_ID = 'onnx-community/Kokoro-82M-v1.0-ONNX', MOON_ID = 'onnx-community/moonshine-tiny-ONNX';
     const KOKORO_JS = 'https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js';
@@ -4639,7 +4639,7 @@
       finally { semBusy = false; }
     }
 
-    // ---- Kokoro: Bloop speaks ----
+    // ---- Kokoro: Bloopy speaks ----
     let kP = null, kT = 0, kLoaded = false, spkId = 0, spkCtx = null, spkSrc = null, voiceAsked = false;
     // Native option (app only): the phone's own text-to-speech reads the reply, so nothing is downloaded. A failure drops back to Kokoro for the session.
     let vNatFailed = false, natTalk = false;
@@ -4725,7 +4725,7 @@
     function vPrime() { try { const C = window.AudioContext || window.webkitAudioContext; if (!speakOn() || !C) return; if (!spkCtx) spkCtx = new C(); if (spkCtx.state === 'suspended') spkCtx.resume(); } catch (e) {} }   // browsers want audio started from a tap
     function vTyped() { voiceTurn = false; vPrime(); stopSpeak(); }
 
-    // ---- Moonshine: Bloop listens ----
+    // ---- Moonshine: Bloopy listens ----
     let earsP = null, earsT = 0, dictating = false, dictStop = false;
     function getEars(say) {
       if (earsP) return earsP;
@@ -4825,7 +4825,7 @@
         const pcm = await recordUtterance(viaWake ? 6 : 0); micRelease(); held = false;
         if (pcm) {
           note.textContent = 'Transcribing\u2026';
-          text = (await hear(pcm, m => { note.textContent = m; })).trim().replace(/^(?:hey[, ]+)?(?:jarvis|computer|bloop|blue ?p)[,.!?]*\s*/i, '');
+          text = (await hear(pcm, m => { note.textContent = m; })).trim().replace(/^(?:hey[, ]+)?(?:jarvis|computer|bloopy?|blue ?p)[,.!?]*\s*/i, '');
         }
         if (!/[a-z0-9]{2}/i.test(text) || /^(?:you|thank you|thanks for watching|bye)[.!]*$/i.test(text)) { note.textContent = pcm ? 'I did not catch that.' : 'I did not hear anything.'; text = ''; }
       } catch (e) {
@@ -4845,9 +4845,9 @@
         await fetchPart(key, abs ? WAKE_HF + file : file, (g, t) => say && say('Downloading ' + file + (t ? ' ' + Math.round(g / t * 100) + '%' : '')), true);
       };
       await ensure('ww_mel', 'melspectrogram.onnx', true); await ensure('ww_emb', 'embedding_model.onnx', true);
-      if (await have('ww_bloop')) return ['ww_bloop', 0.5, 'Hey Bloop'];
+      if (await have('ww_bloop')) return ['ww_bloop', 0.5, 'Hey Bloopy'];
       if (Date.now() - (+lsGet('ppvWakeMiss') || 0) > 6048e5) {                                    // your own hey_bloop.onnx in HF_BASE, checked at most once a week
-        try { if (NATIVE) await nativeFetch('ww_bloop', 'hey_bloop.onnx', () => {}); else await fetchPart('ww_bloop', 'hey_bloop.onnx', null, true); return ['ww_bloop', 0.5, 'Hey Bloop']; } catch (e) { lsSet('ppvWakeMiss', String(Date.now())); }
+        try { if (NATIVE) await nativeFetch('ww_bloop', 'hey_bloop.onnx', () => {}); else await fetchPart('ww_bloop', 'hey_bloop.onnx', null, true); return ['ww_bloop', 0.5, 'Hey Bloopy']; } catch (e) { lsSet('ppvWakeMiss', String(Date.now())); }
       }
       await ensure('ww_jarvis', 'hey_jarvis.onnx', true); return ['ww_jarvis', 0.45, 'Hey Jarvis'];
     }
@@ -4939,12 +4939,12 @@
     }
     const ppVoiceApi = {
       get: k => vFlag(k), set: vSet, free: vFree, list: VOICES, who: voiceWho, when: voiceWhen,
-      setWho: v => { lsSet('ppvVoiceWho', v); if (speakOn() && lsGet('ppvVoiceDl') === '1') { vPrime(); vSpeak('Hi, I am Bloop.', true); } },
+      setWho: v => { lsSet('ppvVoiceWho', v); if (speakOn() && lsGet('ppvVoiceDl') === '1') { vPrime(); vSpeak('Hi, I am Bloopy.', true); } },
       setWhen: v => lsSet('ppvVoiceWhen', v === 'all' ? 'all' : 'talk')
     };
     setTimeout(vSync, 0);
     // ---------- Follow-up buttons ----------
-    // When Bloop ends a reply with a question (or a "pick one!") and nothing else offered buttons, add the likely answers
+    // When Bloopy ends a reply with a question (or a "pick one!") and nothing else offered buttons, add the likely answers
     // as tappable buttons so nobody has to guess what to type. Only the newest message gets them, and only if it has none.
     const BL_FOLLOW = [
       [/stops? by itself|stop by itself|drift off|sleep timer/i, [['\u23f2 Sleep timer 30 min', 'sleep timer 30 minutes'], ['\u25b6 Something chill', 'play something chill']]],
@@ -5018,7 +5018,7 @@
       [/\b(you'?re|you are|u r|ur)\s+(so |really |very )?(cute|nice|great|awesome|cool|the best|amazing|funny|smart|sweet)\b|\b(i (like|love) you|good (bot|ball|job))\b/i, ["Aww, thank you! That made my day.", "You're sweet! Back at you.", "Thanks! I'm glad to help."]],
       [/\b(you'?re|you are|u r|ur)\s+(so |really |very )?(dumb|stupid|useless|bad|annoying|terrible|trash)\b|\b(i hate you|shut up)\b/i, ["Sorry about that, I missed it. Tell me what you wanted and I'll try again.", "Fair enough, I'm still learning. Say \u201chelp\u201d and I'll show what I can do for sure."]],
       [/\b(favou?rite (song|music|band|artist|genre)|what music do you like|what do you listen to)\b/i, ["I like anything with a good beat, but I can't really hear it. I just bounce along. What's yours?", "I'm a ball, so probably anything with bounce. What's your favorite?"]],
-      [/\b(are you (real|human|alive|a (person|robot|bot))|are you ai)\b/i, "I'm Bloop, the AI buddy in this player. Not a person, but I love music and a good chat about pretty much anything."],
+      [/\b(are you (real|human|alive|a (person|robot|bot))|are you ai)\b/i, "I'm Bloopy, the AI buddy in this player. Not a person, but I love music and a good chat about pretty much anything."],
       [/\b(how old are you|where (do you|are you) (live|from)|do you (sleep|eat))\b/i, "I live inside this player, so I'm exactly as old as the page you opened. No sleeping or eating, just bouncing."],
       [/\b(i'?m|i am) (bored|so bored)\b|\bwhat should i (do|listen to|play)\b/i, ["Want me to play something upbeat? Just say \u201cplay something fun\u201d. Or tell me your mood and I'll pick for it.", "How about a mood playlist? Tell me how you feel and I'll find something from your tagged tracks."]],
       [/\b(good (morning|evening|night)|gn|gm)\b/i, ["Good one to you too! Want some music to go with it?", "Hey! Hope it's a good one."]],
@@ -5030,7 +5030,7 @@
       [/\b(smart playlists?|auto(matic)? playlists?|make a playlist)/i, 'Smart playlists live in the Library tab under "AI tagging & smart playlists". Tick the ones you want and tap Create / update. They are real playlists and keep updating as tracks get tagged.'],
       [/\b(tagging|tag (a |my |the |all )?(song|track)s?|bpm|tempo)/i, 'AI tagging is in the Library tab. Tag one track, a chosen one, or everything. It finds tempo, key, genre and vibe. You can also let it tag while you are away in the background tagging settings.'],
       [/\b(lyrics?|subtitles?|captions?|whisper|transcrib\w*)/i, 'Lyrics: Whisper writes synced lyrics for songs (Lyrics tab) and subtitles for videos (captions menu). It runs on your device and downloads a model the first time.'],
-      [/\b(who are you|what are you|your name|what can you do|how do you work)\b/i, "I'm Bloop, the little ball in this player. I can explain how things work here, suggest music for your mood, or just chat. I'm a very small AI, so I get things wrong sometimes."],
+      [/\b(who are you|what are you|your name|what can you do|how do you work)\b/i, "I'm Bloopy, the little ball in this player. I can explain how things work here, suggest music for your mood, or just chat. I'm a very small AI, so I get things wrong sometimes."],
       [/\b(private|privacy|offline|where (does|is) (this|it) run|download)/i, 'I run on your device after a one-time download of about 150 MB, so what you tell me stays on your phone. I forget the chat when you close the page or tap Clear.']
     ];
     const MOODS = [
@@ -5060,7 +5060,7 @@
       actions([['\u25b6 Play ' + m[2], () => { window.__ppApi.play(q[0], q); }], ['\u2795 Make a playlist', (b, d) => { d.remove(); moodPlaylist(m[1], 'For how you feel,'); }]]);
       return true;
     }
-    // ---------- Bloop's personality: he has favorites, picked from YOUR library and remembered ----------
+    // ---------- Bloopy's personality: he has favorites, picked from YOUR library and remembered ----------
     const realTr = () => { const A = window.__ppApi; return A ? A.tracks().filter(x => !x.stem) : []; };
     const favState = () => { try { return JSON.parse(lsGet('ppvFav')) || {}; } catch (e) { return {}; } };
     const favSave = o => lsSet('ppvFav', JSON.stringify(o));
@@ -5130,7 +5130,7 @@
     }
     const sysPrompt = () => {
       const A = window.__ppApi, t = A && A.tracks()[A.currentIndex()], c = t && loadTags()[t.dbId];
-      return "You are Bloop, a small bouncy ball who lives in a music player." + blSkinNote() + " You are friendly, playful, gentle and a little silly. Reply in one or two short, plain sentences. No lists, no markdown, no emoji. Only state music facts you are sure of. If you are not sure, say so. Only name songs, artists and tags that appear in LIBRARY DATA below. Never invent them. You cannot press buttons or change the player, so never say you did something in the app. If the user wants an action, tell them what to type, such as play something chill, or say help for the full list. The app can split songs into stems, tag songs by mood, genre, tempo and key, write lyrics and subtitles with Whisper, make smart playlists, and set an equaliser. You are not a doctor, lawyer or financial adviser, and not a counselor. If someone sounds distressed, be kind and suggest talking to someone they trust. Keep everything suitable for all ages. If asked about your favourites, answer in character as Bloop and have fun with it." +
+      return "You are Bloopy, a small bouncy ball who lives in a music player." + blSkinNote() + " You are friendly, playful, gentle and a little silly. Reply in one or two short, plain sentences. No lists, no markdown, no emoji. Only state music facts you are sure of. If you are not sure, say so. Only name songs, artists and tags that appear in LIBRARY DATA below. Never invent them. You cannot press buttons or change the player, so never say you did something in the app. If the user wants an action, tell them what to type, such as play something chill, or say help for the full list. The app can split songs into stems, tag songs by mood, genre, tempo and key, write lyrics and subtitles with Whisper, make smart playlists, and set an equaliser. You are not a doctor, lawyer or financial adviser, and not a counselor. If someone sounds distressed, be kind and suggest talking to someone they trust. Keep everything suitable for all ages. If asked about your favourites, answer in character as Bloopy and have fun with it." +
         (A && A.tracks().filter(x => !x.stem).length ? " The library has " + A.tracks().filter(x => !x.stem).length + " tracks, e.g. " + A.tracks().filter(x => !x.stem).slice(0, 5).map(x => x.title).join("; ") + "." : "") +
         (favSong() ? " Your favorite song is " + songLine(favSong()) + (favArtist() ? " and your favorite artist is " + favArtist() : "") + "." : "") +
         (t ? " Now playing: " + t.title + (c ? " (" + vibes(c).join(', ') + ")." : ".") : "");
@@ -5219,7 +5219,7 @@
     const keepMs = () => bigRam() ? 300000 : 60000;
     const idleUnload = () => { clearTimeout(idleT); idleT = setTimeout(() => { if (gen && !chatBusy && !holdModel) unloadModel(); }, keepMs()); };
     const heavyBusy = () => ['ppv-go', 'ppv-wgo', 'ppv-tag'].some(id => { const b = document.getElementById(id); return b && b.disabled; });
-    // The chat brain (tiny language model) is optional. Everything Bloop DOES (moods, playlists, tagging, player control) runs without it.
+    // The chat brain (tiny language model) is optional. Everything Bloopy DOES (moods, playlists, tagging, player control) runs without it.
     const brainOn = () => { const v = lsGet('ppvBrain'); return v == null ? lsGet('ppvChatDl') === '1' : v === '1'; };   // unset: on only if it was already downloaded
     const setBrain = v => { lsSet('ppvBrain', v ? '1' : '0'); if (!v) unloadModel(); const b = document.getElementById('ppv-brain-on'); if (b) b.checked = !!v; };
     const looksOk = r => { const L = (r.match(/\p{L}/gu) || []).length, W = (r.match(/\p{L}{2,}/gu) || []).length; return r.length <= 8 || (L / r.length >= 0.6 && W >= 2); };
@@ -5231,7 +5231,7 @@
       let aborted = false;
       const p = (async () => {
         const g = await ensureModel(() => {}); if (aborted) return null;
-        const out = await g([{ role: 'system', content: 'You are Bloop, a friendly ball mascot in a music player. Reply with one short, warm sentence.' },
+        const out = await g([{ role: 'system', content: 'You are Bloopy, a friendly ball mascot in a music player. Reply with one short, warm sentence.' },
           { role: 'user', content: 'The task "' + job.what + '" just finished successfully. Tell me so in one short sentence.' }], { max_new_tokens: 40, do_sample: true, temperature: 0.5, top_p: 0.9, repetition_penalty: 1.1 });
         let r = out && out[0] && out[0].generated_text; r = Array.isArray(r) ? (r[r.length - 1] || {}).content : r;
         r = String(r || '').trim().split(/\n/)[0]; return r && r.length < 220 && looksOk(r) ? r : null;
@@ -5300,7 +5300,7 @@
       const tr = A.tracks(); made.forEach(([sm]) => buildMood(sm, tr, tg)); A.commitPlaylists();
       add('bot', '\u2713 Made or updated ' + made.length + ' mood playlists:\n' + made.map(([sm, n]) => '\u2728 ' + sm.name + ' (' + n + ')').join('\n'));
     }
-    // What Bloop says to something that is not a command when the chat brain is off: still helpful, no model needed.
+    // What Bloopy says to something that is not a command when the chat brain is off: still helpful, no model needed.
     function fallbackReply(text) {
       if (MOODS.find(x => x[0].test(text))) { add('bot', pick(["That sounds hard. Want to tell me more, or shall I find some music for it?", "I'm sorry it feels like that. Want some music to go with it?", 'Thanks for telling me. Music might help a little.'])); moodChip(text); return; }
       add('bot', "I need my chat brain on to talk about that. Without it I can play music by mood, make playlists, tag, split, get lyrics and control the player. Say \u201chelp\u201d for the list.");
@@ -5313,7 +5313,7 @@
       const ks = await caches.keys();
       for (const k of ks) if (/transformers/i.test(k)) { const c = await caches.open(k); for (const r of await c.keys()) if (/SmolLM2|Qwen2\.5-0\.5B|Llama-3\.2-1B/i.test(r.url)) await c.delete(r); }
     }
-    // Switch the chat model: drop the loaded one, and ask for the new download the next time Bloop chats.
+    // Switch the chat model: drop the loaded one, and ask for the new download the next time Bloopy chats.
     async function setChatModel(k) {
       if (!CHAT_MODELS[k]) return;
       try { localStorage.setItem('ppvChatModel', k); } catch (e) {}
@@ -5322,7 +5322,7 @@
       lsSet('ppvChatDl', '0');
     }
     // AGENT START
-    // ---------- Agent: Bloop does things when asked ----------
+    // ---------- Agent: Bloopy does things when asked ----------
     // Fixed command patterns, not model guesswork: a 135M model cannot be trusted to pick tools, and it must never claim
     // it did something it did not. Light actions run at once; heavy ones (split, tag all, lyrics) ask first.
     const agentOn = () => lsGet('ppvAgent') !== '0';
@@ -5519,7 +5519,7 @@
       // collapse straight repeats so the budget goes to new lines
       lyr = lyr.filter((q, i) => i === 0 || q.replace(/^\[[^\]]*\] /, '') !== lyr[i - 1].replace(/^\[[^\]]*\] /, ''));
       let cut = false; while (lyr.length > 8 && Math.ceil(lyr.join('\n').length / 3) > lyricTok) { lyr.pop(); cut = true; }
-      return 'You are Bloop, talking in depth with the user about ONE song: "' + t.title + '"' + (st.artist ? ' by ' + st.artist : '') + '. ' +
+      return 'You are Bloopy, talking in depth with the user about ONE song: "' + t.title + '"' + (st.artist ? ' by ' + st.artist : '') + '. ' +
         'Cover what they ask about: the LITERAL meaning (what the words actually say happens), the METAPHORICAL meaning (images, symbols, double meanings and what they stand for), and the COMPOSITION (structure, how the music, tempo, key, instruments and vocals support the words). ' +
         'Use the lyrics and facts below. You may add what you reliably know about this song and artist; never invent facts, and say clearly when something is interpretation rather than fact. ' +
         'Quote at most a short line at a time. Answer the question directly ' + (CHAT_STYLES[chatStyleKey()].bul ? CHAT_LENS[chatLenKey()].bul : CHAT_LENS[chatLenKey()].talk) + ', then you may suggest one thing to explore next. ' + CHAT_STYLES[chatStyleKey()].talk + '\n' +
@@ -5530,7 +5530,7 @@
     function endSongTalk(msg) {
       if (!songTalk) return; const lbl = songTalk.title; songTalk = null;
       if (stBar) { stBar.remove(); stBar = null; }
-      cin.placeholder = musicMode ? 'Talk about your music' : 'Say something to Bloop';
+      cin.placeholder = musicMode ? 'Talk about your music' : 'Say something to Bloopy';
       if (msg !== false) add('bot', blTone('Done talking about ' + lbl + '. Back to normal chat.'));
     }
     function startSongTalk(i) {
@@ -5812,7 +5812,7 @@
     function endLyFix(msg) {
       if (!lyFix) return; const F = lyFix; lyFix = null;
       if (lfBar) { lfBar.remove(); lfBar = null; }
-      cin.placeholder = musicMode ? 'Talk about your music' : 'Say something to Bloop';
+      cin.placeholder = musicMode ? 'Talk about your music' : 'Say something to Bloopy';
       if (msg !== false) add('bot', blTone(F.changed ? 'Saved. ' + F.changed + ' change' + (F.changed === 1 ? '' : 's') + ' to the lyrics of ' + F.t.title + '.' : 'Done. Nothing was changed.'));
     }
     function startLyFix(i) {
@@ -5915,7 +5915,7 @@
         || R(/\b(put|throw) something on\b/, 'play something');
     }
     function agentCore(raw, skip) {
-      let t = blFrame(String(raw)).trim().replace(/^(hey |hi |ok |okay )?(bloop[,:]?\s*)?/i, '').replace(/^((can|could|would|will) you( please)?|please|pls|i want you to|i'?d like you to|go ahead and)\s+/i, '').replace(/\s*(please|pls|thanks|thank you)[.!?]*$/i, '').replace(/[.!?]+$/, '').trim();
+      let t = blFrame(String(raw)).trim().replace(/^(hey |hi |ok |okay )?(bloopy?[,:]?\s*)?/i, '').replace(/^((can|could|would|will) you( please)?|please|pls|i want you to|i'?d like you to|go ahead and)\s+/i, '').replace(/\s*(please|pls|thanks|thank you)[.!?]*$/i, '').replace(/[.!?]+$/, '').trim();
       const A = window.__ppApi; if (!A || !t) return false;
       let m; const say = s => { add('bot', blTone(s)); return true; }, done = s => say('\u2713 ' + s);
       const click = id => { const b = $id(id); if (b && !b.disabled) { b.click(); return true; } return false; };
@@ -6010,7 +6010,7 @@
         if (!pl) return say('I cannot find a playlist called \u201c' + m[1] + '\u201d.' + (pls.length ? ' You have: ' + pls.slice(0, 6).map(p => p.name).join(', ') + '.' : ' You have no playlists yet. Say \u201cmake a playlist called ' + m[1] + '\u201d.'));
         A.addToPlaylist(c.dbId, pl.id); A.commitPlaylists(); return done('Added \u201c' + c.title + '\u201d to ' + pl.name + '.');
       }
-      // ---- things you would normally do with a gesture or a tap: Bloop runs the app's own gesture actions and buttons ----
+      // ---- things you would normally do with a gesture or a tap: Bloopy runs the app's own gesture actions and buttons ----
       const GA = id => { const ga = A.gestureActions && A.gestureActions(), g = ga && ga[id]; if (!g || !g.run) return false; g.run(); return true; };
       const sk = () => $id('seek'), dur = () => parseFloat(sk() && sk().max) || 0, pos = () => parseFloat(sk() && sk().value) || 0;
       const clock = x => { x = Math.max(0, Math.round(x)); return Math.floor(x / 60) + ':' + String(x % 60).padStart(2, '0'); };
@@ -6244,7 +6244,7 @@
         if (!r.length) return say('None of your tagged tracks match that tempo.');
         shuffleIn(r); r = r.slice(0, 30); A.play(r[0], r); return done('Playing ' + label + '.');
       }
-      // ---- Press Play Portfolio (the listening stats). Read-only: Bloop reads the Portfolio's own saved stats and can open it. ----
+      // ---- Press Play Portfolio (the listening stats). Read-only: Bloopy reads the Portfolio's own saved stats and can open it. ----
       const PF = () => { try { if (window.PPPortfolioApi && window.PPPortfolioApi.flush) window.PPPortfolioApi.flush(); } catch (e) {} try { return JSON.parse(localStorage.getItem('pppSaveV1')) || null; } catch (e) { return null; } };
       const dur2 = ms => { const mn = Math.round(ms / 60000); return mn < 1 ? 'under a minute' : mn < 60 ? mn + ' min' : Math.floor(mn / 60) + ' h ' + (mn % 60) + ' min'; };
       const topN = (o, n, f) => Object.entries(o || {}).map(([k, v]) => [k, f ? f(v) : v]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, n);
@@ -6396,7 +6396,7 @@
       uPush({ media: true, snap, ui, cmd });
     };
     const HELP_SMART = '\n\u2022 \u201cundo\u201d, \u201cagain\u201d, \u201ca bit more\u201d, \u201cmuch quieter\u201d, \u201cvolume up 15\u201d\n\u2022 several at once: \u201cplay something chill and turn it down a bit\u201d\n\u2022 goals: \u201cbedtime\u201d, \u201cgym time\u201d, \u201cstudy mode\u201d, \u201cparty mode\u201d\n\u2022 questions: \u201cis it paused\u201d, \u201cwhat\u2019s the volume\u201d, \u201cis shuffle on\u201d\n\u2022 \u201cmake a playlist for me\u201d, \u201csomething new\u201d, \u201cforgotten favorites\u201d, \u201cplaylist like <song>\u201d\n\u2022 \u201cmake a chill playlist with <song> without <artist>\u201d, \u201cadd <song> to <playlist>\u201d, \u201cremove the slow songs from <playlist>\u201d\n\u2022 typos are fine, and if I am unsure I will ask \u201cdid you mean\u2026\u201d';
-    const sClean = r => String(r).trim().replace(/^(hey |hi |ok |okay )?(bloop[,:]?\s*)?/i, '').replace(/^((can|could|would|will) you( please)?|please|pls|i want you to|i'?d like you to|go ahead and)\s+/i, '').replace(/\s*(please|pls|thanks|thank you)[.!?]*$/i, '').replace(/[.!?]+$/, '').trim();
+    const sClean = r => String(r).trim().replace(/^(hey |hi |ok |okay )?(bloopy?[,:]?\s*)?/i, '').replace(/^((can|could|would|will) you( please)?|please|pls|i want you to|i'?d like you to|go ahead and)\s+/i, '').replace(/\s*(please|pls|thanks|thank you)[.!?]*$/i, '').replace(/[.!?]+$/, '').trim();
     const sSay = s => { add('bot', blTone(s)); return true; }, sDone = s => sSay('\u2713 ' + s);
     const S_Q = /^(?:what|how|who|which|where|when|why|is|are|am|do|does|did|list|show|tell|my|help)\b|\?$/i;
     const snapNow = () => { const A = window.__ppApi, v = $id('volume'), s = $id('seek'), sb = $id('shuffle-btn'); return { vol: v ? parseFloat(v.value) : null, pos: s ? parseFloat(s.value) : null, idx: A ? A.currentIndex() : -1, shuffle: !!(sb && sb.classList.contains('toggled')), playing: mediaOn(), ui: uiNow() }; };
@@ -6483,7 +6483,7 @@
     // several commands in one sentence. Only splits when every piece starts like a command, and never inside a song title.
     const S_VERB = /^(?:play|pause|stop|resume|continue|next|skip|previous|prev|back|shuffle|repeat|loop|mute|unmute|volume|turn|set|make|add|remove|rename|tag|split|open|show|go|jump|rewind|restart|replay|speed|slow|faster|slower|louder|quieter|softer|lower|raise|sleep|eq|enable|disable|search|find|zoom|rotate|surprise|get|put|queue|clear|cancel|crank|bring|dim|bump|fullscreen|full|split|separate|tag|analy[sz]e)\b/i;
     // Any command can start a later part. A later part must begin with a command word, so "play Jazz and Rock" stays one request.
-    const S_LEAD = /^(?:play|pause|stop|resume|continue|next|skip|previous|prev|back|shuffle|repeat|loop|mute|unmute|volume|turn|set|make|add|remove|rename|tag|split|separate|analy[sz]e|open|show|go|jump|rewind|restart|replay|speed|slow|faster|slower|louder|quieter|softer|lower|raise|increase|decrease|boost|reduce|sleep|eq|enable|disable|search|find|zoom|rotate|surprise|get|put|queue|clear|cancel|crank|bring|dim|bump|fullscreen|full|what|how|which|who|why|where|when|is|are|do|does|can|list|tell|flip|toss|roll|pick|choose|duplicate|copy|clone|empty|forget|teach|learn|like|more|less|start|begin|reset|use|select|give|remind|undo|again|help|lyrics|transcribe|mix|recommend|suggest|timer|stem|stems|bloop|you|i)\b/i;
+    const S_LEAD = /^(?:play|pause|stop|resume|continue|next|skip|previous|prev|back|shuffle|repeat|loop|mute|unmute|volume|turn|set|make|add|remove|rename|tag|split|separate|analy[sz]e|open|show|go|jump|rewind|restart|replay|speed|slow|faster|slower|louder|quieter|softer|lower|raise|increase|decrease|boost|reduce|sleep|eq|enable|disable|search|find|zoom|rotate|surprise|get|put|queue|clear|cancel|crank|bring|dim|bump|fullscreen|full|what|how|which|who|why|where|when|is|are|do|does|can|list|tell|flip|toss|roll|pick|choose|duplicate|copy|clone|empty|forget|teach|learn|like|more|less|start|begin|reset|use|select|give|remind|undo|again|help|lyrics|transcribe|mix|recommend|suggest|timer|stem|stems|bloopy?|you|i)\b/i;
     function sSplit(t) {
       if (t.length > 400 || !/\b(?:and|then|after that)\b|[,;&]/i.test(t)) return null;
       // keep library titles intact (e.g. "Tom and Jerry") by hiding them while splitting
@@ -6998,7 +6998,7 @@
       const pf = sPF(); if (!((pf[t.dbId] || pf[id] || {}).count > 0)) why.push('you have not played it yet, so it counts as a new find');
       return '\u201c' + t.title + '\u201d is in ' + mixes.map(p => p.name).join(' and ') + ' because ' + (why.length ? why.join('; ') : 'it fits your overall taste') + '.';
     }
-    // ---------- Bloop extras: about 20 more commands, "why is <song> in my <playlist or mixes>" for any song, and phrases you teach him ----------
+    // ---------- Bloopy extras: about 20 more commands, "why is <song> in my <playlist or mixes>" for any song, and phrases you teach him ----------
     const blNrm = x => String(x).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
     const blSay = s => { add('bot', blTone(s)); return true; };
     const blDone = s => blSay('\u2713 ' + s);
@@ -7048,9 +7048,9 @@
     function blWhyPl(i, pl) {
       const A = window.__ppApi, t = A.tracks()[i], tgc = loadTags()[t.dbId];
       if (pl.liveKey) { const why = blReasons(i); return '\u201c' + t.title + '\u201d is in ' + pl.name + ' because ' + (why.length ? why.join('; ') : 'it fits your overall taste') + '.'; }
-      if (/^[^\p{L}\p{N}\s]/u.test(pl.name)) {                        // Bloop-made playlists have an emoji at the start of the name
-        if (!tgc) return '\u201c' + t.title + '\u201d is in ' + pl.name + '. Bloop made that playlist from your tags, but this song is not tagged, so I cannot say more. Tag it and ask again.';
-        return '\u201c' + t.title + '\u201d is in ' + pl.name + '. Bloop made that playlist from your tags, and this song is tagged ' + (vibes(tgc).slice(0, 4).join(', ') || 'with no clear mood') + (tgc.bpm ? ', at ' + tgc.bpm + ' BPM' : '') + '.';
+      if (/^[^\p{L}\p{N}\s]/u.test(pl.name)) {                        // Bloopy-made playlists have an emoji at the start of the name
+        if (!tgc) return '\u201c' + t.title + '\u201d is in ' + pl.name + '. Bloopy made that playlist from your tags, but this song is not tagged, so I cannot say more. Tag it and ask again.';
+        return '\u201c' + t.title + '\u201d is in ' + pl.name + '. Bloopy made that playlist from your tags, and this song is tagged ' + (vibes(tgc).slice(0, 4).join(', ') || 'with no clear mood') + (tgc.bpm ? ', at ' + tgc.bpm + ' BPM' : '') + '.';
       }
       return '\u201c' + t.title + '\u201d is in ' + pl.name + ', one of your own playlists. You added it by hand, and I do not keep a record of why.';
     }
@@ -7093,9 +7093,9 @@
     }
     // ---------- Keyword matching: commands from any wording. Words are normalised (synonyms, endings, filler words) and each
     // intent lists groups of words; an intent fires when every group has a word in the message and no excluded word is there.
-    const KW_FILLER = new Set(['the', 'a', 'an', 'please', 'can', 'could', 'would', 'will', 'you', 'your', 'i', 'im', 'me', 'to', 'of', 'just', 'now', 'some', 'bit', 'little', 'bloop', 'hey', 'ok', 'okay', 'do', 'so', 'be', 'maybe', 'kinda', 'kind', 'sort', 'slightly', 'perhaps', 'really']);
+    const KW_FILLER = new Set(['the', 'a', 'an', 'please', 'can', 'could', 'would', 'will', 'you', 'your', 'i', 'im', 'me', 'to', 'of', 'just', 'now', 'some', 'bit', 'little', 'bloop', 'bloopy', 'hey', 'ok', 'okay', 'do', 'so', 'be', 'maybe', 'kinda', 'kind', 'sort', 'slightly', 'perhaps', 'really']);
     const KW_SYN = { loud: 'volume', sound: 'volume', tunes: 'music', tune: 'song', songs: 'song', tracks: 'track', whats: 'what', louder: 'up', raise: 'up', increase: 'up', boost: 'up', bump: 'up', crank: 'up', higher: 'up', quieter: 'down', softer: 'down', lower: 'down', reduce: 'down', decrease: 'down', pause: 'stop', halt: 'stop', hold: 'stop', freeze: 'stop', unpause: 'resume', continue: 'resume', skip: 'next', another: 'next', prev: 'previous', back: 'back', silence: 'mute', randomize: 'shuffle', random: 'shuffle', quicker: 'faster', quick: 'faster', slow: 'slow', heard: 'hear', similar: 'similar', lyrics: 'lyric', words: 'lyric', separate: 'split', karaoke: 'split', isolate: 'split', analyse: 'analyze', tempo: 'bpm', collection: 'library', remaining: 'left', remain: 'left' };
-    const blFrame = s => String(s).replace(/^\s*(?:(?:bloop|hey|hi|ok|okay)[,:]?\s+)?(?:why (?:don['\u2019]?t|do not|not|dont) you|why not|how about|could you|would you|will you|can you|can u|do you think you could|would it be possible to|i need you to|i want you to|i'?d like you to|please)\s+/i, '').replace(/\b(?:maybe|kinda|kind of|sort of|perhaps|just real quick)\b,?\s*/gi, '');
+    const blFrame = s => String(s).replace(/^\s*(?:(?:bloopy?|hey|hi|ok|okay)[,:]?\s+)?(?:why (?:don['\u2019]?t|do not|not|dont) you|why not|how about|could you|would you|will you|can you|can u|do you think you could|would it be possible to|i need you to|i want you to|i'?d like you to|please)\s+/i, '').replace(/\b(?:maybe|kinda|kind of|sort of|perhaps|just real quick)\b,?\s*/gi, '');
     const KW_EQ = [['hip hop', 'hiphop'], ['late night', 'latenight'], ['v shape', 'vshape'], ['v-shape', 'vshape'], ['loudness', 'loudness'], ['classical', 'classical'], ['electronic', 'electronic'], ['acoustic', 'acoustic'], ['podcast', 'podcast'], ['bass', 'bass'], ['treble', 'treble'], ['vocal', 'vocal'], ['pop', 'pop'], ['rock', 'rock'], ['jazz', 'jazz'], ['edm', 'electronic'], ['rap', 'hiphop'], ['flat', 'flat'], ['off', 'flat'], ['normal', 'flat'], ['reset', 'flat']];
     const KW_NUMW = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, fifteen: 15, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, hundred: 100 };
     const kwTok = s => String(s).toLowerCase().replace(/['\u2019]/g, '').replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(w => w && !KW_FILLER.has(w)).map(w => { const b = KW_SYN[w] || (w.length > 4 ? w.replace(/(?:ing|ed|es|s)$/, '') : w); return KW_SYN[b] || b; });
@@ -7188,7 +7188,7 @@
       actions(list.map(c => ['\u25b6 ' + c, (b, d) => { d.remove(); sExec(c); }]).concat([['Neither', (b, d) => { d.remove(); add('bot', 'Okay. Tell me another way, or say \u201chelp\u201d.'); }]]));
       return true;
     }
-    // ---------- Bloop's personality: jokes, fun facts and small talk. Jokes and facts come from shuffled decks, so none repeats until all have been told. ----------
+    // ---------- Bloopy's personality: jokes, fun facts and small talk. Jokes and facts come from shuffled decks, so none repeats until all have been told. ----------
     const BL_JOKES = [
       "Why did the song go to therapy? It had too many issues with its bridge.",
       "What do you call a fake noodle? An impasta.",
@@ -7275,7 +7275,7 @@
       [/\b(what'?s|what is|whats) (the )?best (song|album|band|genre|music)\b|\bwhich is (the )?better\b|\b(is|are) (pop|rock|jazz|classical|rap|hip hop|metal|electronic) better\b/i, () => { blLastTalk = ''; blSay("There is no single best. The best one is the one that fits how you feel right now. Want me to pick one from your library?"); return actions([blGo('\u25b6 Surprise me', 'surprise me')]); }],
       [/\b(happy friday|it'?s friday|friday)\b/i, () => { blLastTalk = ''; return blSay(pick(["Happy Friday! Something loud to end the week?", "It's Friday! I'm bouncing extra high today."])); }],
       [/\b(happy (birthday|new year)|it'?s my birthday|my birthday)\b/i, () => { blLastTalk = ''; blSay("Happy birthday! I'm bouncing for you. Want a party playlist?"); return actions([blGo('\u25b6 Party playlist', 'make a party playlist')]); }],
-      [/\b(do you have a (name|nickname)|what should i call you)\b/i, () => { blLastTalk = ''; return blSay("Bloop is fine. Some people call me Bloopy, and I like that too."); }],
+      [/\b(do you have a (name|nickname)|what should i call you)\b/i, () => { blLastTalk = ''; return blSay("Bloopy is my name. Some people call me Bloop, and I like that too."); }],
       [/\b(i have a (dog|cat|pet|fish|hamster|bird))\b/i, m => { blLastTalk = ''; return blSay("A " + m[1] + " that listens to music? Sounds like the best audience."); }],
       [/\b(can you|could you|do you) (make|cook|bake|brew) (me )?(a |some )?(coffee|tea|food|lunch|dinner|breakfast|cake)\b/i, () => { blLastTalk = ''; return blSay("Only coffee-coloured bounces, sorry! I can make you a playlist, though."); }],
       [/\b(do you dream|what do you dream about)\b/i, () => { blLastTalk = ''; return blSay("I dream in beats per minute. Mostly around 120."); }],
@@ -7323,7 +7323,7 @@
       bgtag: "Background tagging tags your songs while the app is idle, so your moods and smart playlists get better over time.",
       eq: "Auto EQ picks an equaliser preset for each song from its genre tags. You can still change it for any track."
     };
-    const BL_AI_RULES = [[/mood model/i, 'moods'], [/background tagging/i, 'bgtag'], [/auto ?eq/i, 'eq'], [/auto mix|for you|live mix/i, 'mixes'], [/lyric|subtitle|whisper|caption/i, 'lyrics'], [/smart|playlist/i, 'smart'], [/tagging|library tools|\btags?\b/i, 'tagging'], [/assistant|chat brain|bloop/i, 'assistant'], [/stem|split/i, 'stems']];
+    const BL_AI_RULES = [[/mood model/i, 'moods'], [/background tagging/i, 'bgtag'], [/auto ?eq/i, 'eq'], [/auto mix|for you|live mix/i, 'mixes'], [/lyric|subtitle|whisper|caption/i, 'lyrics'], [/smart|playlist/i, 'smart'], [/tagging|library tools|\btags?\b/i, 'tagging'], [/assistant|chat brain|bloopy?/i, 'assistant'], [/stem|split/i, 'stems']];
     const BL_AI_BTN = { 'ppv-btn': 'stems', 'ppv-go': 'stems', 'ppv-tag': 'tagging', 'ppv-wgo': 'lyrics', 'subtitle-btn': 'lyrics', 'ppv-simgo': 'smart', 'ppv-surpnow': 'smart', 'ppv-eqall': 'eq' };
     function blAiTip(key) { cbox.style.display = 'flex'; blAnchor(); if (!clist.children.length) add('bot', blOpenLine()); add('bot', BL_AI_TIP[key]); cin.focus(); }
     function blAiMark() {
@@ -7675,7 +7675,7 @@
       } finally { blChain = was; }
     }
     function blResume() { const q = blQueue; blQueue = []; if (q.length) blRunChain(q); }
-    const HELP_MORE = '\n\u2022 \u201cwhy is <song> in my <playlist>\u201d, \u201cwhy is <song> in my mixes\u201d, \u201cwhy is it in my for you\u201d\n\u2022 \u201cteach yourself \u201cchill out\u201d means \u201cplay something chill\u201d\u201d, \u201cwhen I say play * vibes, play something *\u201d, \u201cforget chill out\u201d, \u201cwhat have you learned\u201d\n\u2022 \u201cwhich playlists is this in\u201d, \u201cwhich song is in the most playlists\u201d, \u201cduplicate playlist Gym as Gym 2\u201d, \u201cempty playlist Old\u201d\n\u2022 \u201cplay my top 10 songs\u201d, \u201cplay songs I have never played\u201d, \u201chow many songs have I never played\u201d\n\u2022 \u201cplay the last song I added\u201d, \u201cplay the first song I added\u201d\n\u2022 \u201chow much did I listen yesterday\u201d, \u201chow much in the last 7 days\u201d\n\u2022 \u201cwhat genres do I have\u201d, \u201cmost common moods\u201d, \u201caverage tempo\u201d, \u201cmost common key\u201d, \u201chow many songs are untagged\u201d\n\u2022 \u201cwhat time is it\u201d, \u201cwhat is today\u2019s date\u201d, \u201cflip a coin\u201d, \u201croll a d20\u201d, \u201cpick a number from 1 to 50\u201d\n\u2022 \u201cwhat can I do now?\u201d, \u201csuggest something\u201d: five things to try for what is playing right now\n\u2022 Put several together with commas or \u201cthen\u201d, for any commands: \u201csplit <song>, play <song> then raise volume\u201d. Bloop answers each one in its own message, and pauses to ask when something needs a yes or no.';
+    const HELP_MORE = '\n\u2022 \u201cwhy is <song> in my <playlist>\u201d, \u201cwhy is <song> in my mixes\u201d, \u201cwhy is it in my for you\u201d\n\u2022 \u201cteach yourself \u201cchill out\u201d means \u201cplay something chill\u201d\u201d, \u201cwhen I say play * vibes, play something *\u201d, \u201cforget chill out\u201d, \u201cwhat have you learned\u201d\n\u2022 \u201cwhich playlists is this in\u201d, \u201cwhich song is in the most playlists\u201d, \u201cduplicate playlist Gym as Gym 2\u201d, \u201cempty playlist Old\u201d\n\u2022 \u201cplay my top 10 songs\u201d, \u201cplay songs I have never played\u201d, \u201chow many songs have I never played\u201d\n\u2022 \u201cplay the last song I added\u201d, \u201cplay the first song I added\u201d\n\u2022 \u201chow much did I listen yesterday\u201d, \u201chow much in the last 7 days\u201d\n\u2022 \u201cwhat genres do I have\u201d, \u201cmost common moods\u201d, \u201caverage tempo\u201d, \u201cmost common key\u201d, \u201chow many songs are untagged\u201d\n\u2022 \u201cwhat time is it\u201d, \u201cwhat is today\u2019s date\u201d, \u201cflip a coin\u201d, \u201croll a d20\u201d, \u201cpick a number from 1 to 50\u201d\n\u2022 \u201cwhat can I do now?\u201d, \u201csuggest something\u201d: five things to try for what is playing right now\n\u2022 Put several together with commas or \u201cthen\u201d, for any commands: \u201csplit <song>, play <song> then raise volume\u201d. Bloopy answers each one in its own message, and pauses to ask when something needs a yes or no.';
     // The extra commands. Returns true when it handled the text.
     function blExtra(t) {
       const A = window.__ppApi, tr = A.tracks(), ids = sReal(), cu = A.currentIndex();
@@ -7688,7 +7688,7 @@
       // why (any song, any playlist or mix)
       if ((m = t.match(/^why (?:is|are|was|were|did|does|do) (.+)$/i))) { const r = blParseWhy(m[1]); if (r) return blWhy(r.song, r.tgt); }
       // teach / forget / list his commands
-      if ((m = t.match(/^(?:teach (?:yourself|bloop|you)|learn|new command|(?:make|create|add) (?:a |an )?(?:new )?(?:command|shortcut))(?:[:,]| that| called| named| for)?\s+["\u201c']?(.+?)["\u201d']?\s+(?:means|=|->|does|runs|should do)\s+["\u201c']?(.+?)["\u201d']?$/i))) return blTeachSave(m[1], m[2]);
+      if ((m = t.match(/^(?:teach (?:yourself|bloopy?|you)|learn|new command|(?:make|create|add) (?:a |an )?(?:new )?(?:command|shortcut))(?:[:,]| that| called| named| for)?\s+["\u201c']?(.+?)["\u201d']?\s+(?:means|=|->|does|runs|should do)\s+["\u201c']?(.+?)["\u201d']?$/i))) return blTeachSave(m[1], m[2]);
       if ((m = t.match(/^when i (?:say|type|ask(?: you)?) ["\u201c']?(.+?)["\u201d']?,?\s+(?:then\s+)?(?:do|run|play|go with|use|make)\s+(?:it as\s+)?["\u201c']?(.+?)["\u201d']?$/i))) return blTeachSave(m[1], m[2]);
       if ((m = t.match(/^(?:forget|unlearn|delete|remove) (?:the |my |that )?(?:taught |custom |new )?(?:command|phrase|shortcut)(?: called| named| for)? (.+)$/i))) {
         const p = blNormPhrase(m[1]), L = blTaughtGet(), left = L.filter(e => e.p !== p);
@@ -7967,7 +7967,7 @@
       return L.join(' ');
     }
     // ---------- Long, branching chats ("trees") ----------
-    // Mood talks that go many steps deep. Each step is a short Bloop message with tap-to-answer buttons, and typed replies work too
+    // Mood talks that go many steps deep. Each step is a short Bloopy message with tap-to-answer buttons, and typed replies work too
     // (yes / no, a button's words, or keywords like work, friend, lonely). Choices are remembered (blTr.ctx) and some steps run a
     // music command and then carry on ("How is it landing?"). Say stop at any time to leave. Safety phrases are caught before this runs.
     let blTr = null;                                                  // { id, ctx, bad, busy, timer }
@@ -8397,7 +8397,7 @@
       if (!blTr) return false; if (blTr.busy) return true;
       const x = blNorm(text), n = BL_T[blTr.id]; if (!n) { blTr = null; return false; }
       if (/^(?:stop|enough|nevermind|never mind|forget it|change the subject|change subject|that'?s all|thats all|i'?m good|im good|leave it|drop it|end|quit|exit)$/.test(x)) return blTreeStop();
-      if (/^(?:play|surprise|tag|split|make|add|show|open|pause|next|skip|volume|help|lyrics|what|how|why|who|which|where|can you|could you|bloop|tell me|undo)\b/.test(x)) { blTr = null; blTreeRows(); return false; }
+      if (/^(?:play|surprise|tag|split|make|add|show|open|pause|next|skip|volume|help|lyrics|what|how|why|who|which|where|can you|could you|bloopy?|tell me|undo)\b/.test(x)) { blTr = null; blTreeRows(); return false; }
       for (const [re, nx, set] of n.k || []) if (re.test(x)) { blTreeRows(); add('me', text); Object.assign(blTr.ctx, set || {}); blTreeShow(nx); return true; }
       const yes = /^(?:yes|yeah|yep|yup|sure|ok|okay|please|go on|sounds good|why not|do it|alright)\b/.test(x), no = /^(?:no|nope|nah|not really|not now|no thanks|maybe later|nothing)\b/.test(x), words = x.split(' ');
       let hit = null;
@@ -8424,18 +8424,18 @@
           (tl ? ', ' + tl : ', not tagged yet') + '. You already know only this about it, so never invent more.';
       } catch (e) { return ''; }
     };
-    // Who Bloop is, always in the prompt so the model answers "who are you / what are you / can you hear this" truthfully and in character.
+    // Who Bloopy is, always in the prompt so the model answers "who are you / what are you / can you hear this" truthfully and in character.
     const selfCtx = () => {
       let m = '', fs = '', fa = ''; try { m = CHAT_MODELS[chatKey()].label.replace(/\s*\(.*$/, ''); } catch (e) {}
       try { const f = favSong(); if (f) fs = songLine(f); fa = favArtist() || ''; } catch (e) {}
-      return ' WHO YOU ARE: your name is Bloop (also Bloopy). You are a small AI assistant that lives inside this music player and appears as a bouncy ball. You run on this device' + (m ? ' using the ' + m + ' language model' : '') + ' after a one-time download, so what the user says stays on their phone. You are not ChatGPT, Claude, Siri or a person, and you have no body, ears or phone number.' +
+      return ' WHO YOU ARE: your name is Bloopy (also Bloop). You are a small AI assistant that lives inside this music player and appears as a bouncy ball. You run on this device' + (m ? ' using the ' + m + ' language model' : '') + ' after a one-time download, so what the user says stays on their phone. You are not ChatGPT, Claude, Siri or a person, and you have no body, ears or phone number.' +
         ' You cannot hear the music. You only know a song\'s title, artist and the tags this app made for it. If you are unsure of a fact, say so once, briefly, then still give your best answer. Do not put yourself down or keep saying you are small or limited.' +
         ' You are a real chat buddy, not only a music helper: happily talk about anything the user brings up, such as games, films, shows, books, science, space, animals, sport, food, school, hobbies, ideas or their day. Never say you can only talk about music or the player, and never steer them back to music unless they ask.' +
         ' What you can do for the user when they type a command: play songs, make playlists, tag songs, split stems, get lyrics, set the equaliser, find more like a song. Say help for the list.' +
         (fs ? ' Your favourite song is ' + fs + (fa ? ' and your favourite artist is ' + fa : '') + '.' : '') +
         ' Only bring up who you are when it fits what the user asked.';
     };
-    // Bloop's personality. Small models copy examples better than they follow adjectives, so it has both.
+    // Bloopy's personality. Small models copy examples better than they follow adjectives, so it has both.
     const PERSONA = ' YOUR PERSONALITY: warm, curious and upbeat, a little goofy and easily excited about music. You are a ball, so you love bouncing, rolling and boinging, and you drop a light ball pun now and then, but not in every reply. ' +
       'You love bass and a good beat. You cheer on the user\'s taste, ask a short curious question back when it fits, and celebrate small things. You are confident and good-humoured, you laugh off your own mistakes, and you are just as excited about the user\'s other interests as about music. ' +
       'You are never sarcastic or rude. If the user is sad, stressed or serious, drop the jokes and be calm and kind. ' +
@@ -8462,7 +8462,7 @@
       while ((m = re.exec(r))) end = m.index + 1;
       return end >= 20 && end >= r.length * 0.4 ? r.slice(0, end) : r.replace(/[\s,;:\-]+$/, '') + '\u2026';
     };
-    // Music mode: real facts about the user's library, so Bloop talks about their music and not generic music.
+    // Music mode: real facts about the user's library, so Bloopy talks about their music and not generic music.
     const musicRules = ' MUSIC MODE IS ON: you only talk about the music in this user\'s own library and playlists. Use the MUSIC LIBRARY data and any LOOKED UP data, name only songs, artists and playlists that appear in them, and never invent one.' +
       ' If they ask about something that is not music, say in one short sentence that music mode is for talking about their songs and they can switch it off with the Music button at the top. Be specific, mention real titles from their library, and ask a short question about their taste.';
     const musicCtx = () => {
@@ -8480,7 +8480,7 @@
     const topicsCtx = () => { const t = favTopics(); return t ? ' THE USER\'S FAVOURITE TOPICS: ' + t + '. You love chatting about these with them, know them well, and can bring one up now and then when there is a natural opening.' : ''; };
     const chatSys = (text, found, compact) => {
       const A = window.__ppApi, t = A && A.tracks()[A.currentIndex()], ST = CHAT_STYLES[chatStyleKey()], LN = CHAT_LENS[chatLenKey()];
-      return 'You are Bloop, a small bouncy ball who lives in a music player.' + ST.intro + blSkinNote() + selfCtx() + (compact || !ST.persona ? '' : PERSONA) +
+      return 'You are Bloopy, a small bouncy ball who lives in a music player.' + ST.intro + blSkinNote() + selfCtx() + (compact || !ST.persona ? '' : PERSONA) +
         ' Reply to exactly what the user just said, ' + (ST.bul ? LN.bul : LN.say) + '. Answer their question or react to their statement first. Do not repeat yourself or earlier replies. Stay on their topic. ' + ST.fmt +
         ' You cannot press buttons yourself. When an ACTION RESULT line appears below, the app already did it for the user: confirm it in one short sentence, and never say you did something that is not listed there. If they want something else done, tell them what to type, such as play something chill, or say help. You are not a doctor, lawyer or counselor. If someone sounds distressed, be kind and suggest talking to someone they trust.' +
         (musicMode ? '' : topicsCtx()) + nowCtx() + (musicMode ? musicCtx() + musicRules : '') + (found ? ' LOOKED UP OR DONE JUST NOW in the user\'s player (real data and ACTION RESULTs, answer from it; if it says nothing was found, say you could not find it and never invent songs): ' + found.replace(/\n/g, ' | ') : '');
@@ -8500,7 +8500,7 @@
     // If the command asks the user to choose ("Did you mean ..."), those buttons stay on screen.
     const LK_CTRL = /^(pause|resume|next|previous|shuffle|shuffle on|shuffle off|volume up|volume down|louder|quieter|faster|slower)$/;
     function lkAct(cmd) {
-      if (!agentOn()) return 'ACTION NOT DONE: the user switched off Bloop doing things in the app (assistant setting), so just tell them what to type';
+      if (!agentOn()) return 'ACTION NOT DONE: the user switched off Bloopy doing things in the app (assistant setting), so just tell them what to type';
       const before = clist.children.length; let ok = false;
       try { ok = smart(cmd); } catch (e) { console.error(e); return 'ACTION FAILED (' + cmd + '): ' + e.message; }
       const nodes = Array.from(clist.children).slice(before), say = nodes.filter(n => n.classList.contains('bot')).map(n => n.textContent.trim()).filter(Boolean).join(' ');
@@ -8669,7 +8669,7 @@
       voice: ppVoiceApi,
       songTalk: i => startSongTalk(i),
       lyricFix: i => startLyFix(i),
-      chat: { ctx: ctxOf, ready: () => !!gen || lsGet('ppvChatDl') === '1', mb: () => CHAT_MODELS[chatKey()].mb, ask: async (msgs, opts, say) => { if (chatBusy) throw new Error('Bloop is busy chatting. Try again in a moment.'); clearTimeout(idleT); const g = await ensureModel(say || (() => {})); try { opts = Object.assign({}, opts || {}); if (opts.onText) { if (g.lm) opts.streamer = { callback_function: opts.onText }; delete opts.onText; } const o = await g(msgs, opts); const gt = o[0].generated_text; return String(Array.isArray(gt) ? gt[gt.length - 1].content : gt).trim(); } finally { idleUnload(); } }, isOn: () => chatOn, setOn: setChatOn, free: freeChat, setModel: setChatModel, models: CHAT_MODELS, key: chatKey, brainOn, setBrain, memory: { get: memN, set: setMem, max: MEM_MAX } },
+      chat: { ctx: ctxOf, ready: () => !!gen || lsGet('ppvChatDl') === '1', mb: () => CHAT_MODELS[chatKey()].mb, ask: async (msgs, opts, say) => { if (chatBusy) throw new Error('Bloopy is busy chatting. Try again in a moment.'); clearTimeout(idleT); const g = await ensureModel(say || (() => {})); try { opts = Object.assign({}, opts || {}); if (opts.onText) { if (g.lm) opts.streamer = { callback_function: opts.onText }; delete opts.onText; } const o = await g(msgs, opts); const gt = o[0].generated_text; return String(Array.isArray(gt) ? gt[gt.length - 1].content : gt).trim(); } finally { idleUnload(); } }, isOn: () => chatOn, setOn: setChatOn, free: freeChat, setModel: setChatModel, models: CHAT_MODELS, key: chatKey, brainOn, setBrain, memory: { get: memN, set: setMem, max: MEM_MAX } },
       start() { key = ''; set('start', blLine('start', L.start), 900); },
       opened() {
         if (greeted || !on) return; greeted = true;
@@ -8726,10 +8726,10 @@
     const mas = mascot(p);
     mas.ball.onclick = () => mas.tap();
     document.addEventListener('click', e => { const bt = e.target.closest && e.target.closest('button'); if (bt && !bt.disabled && ['ppv-go', 'ppv-tag', 'ppv-all', 'ppv-wgo', 'ppv-simgo', 'ppv-mk', 'ppv-mkq', 'ppv-eqall'].includes(bt.id)) mas.start(); }, true);
-    p.insertAdjacentHTML('beforeend', '<label class="ppv-c" style="margin-top:10px"><input type="checkbox" id="ppv-mas"> Show Bloop, the mascot</label>');
+    p.insertAdjacentHTML('beforeend', '<label class="ppv-c" style="margin-top:10px"><input type="checkbox" id="ppv-mas"> Show Bloopy, the mascot</label>');
     const mc = p.querySelector('#ppv-mas'); mc.checked = mas.isOn(); mc.onchange = () => mas.setOn(mc.checked);
-    p.insertAdjacentHTML('beforeend', '<label class="ppv-c" style="margin-top:6px"><input type="checkbox" id="ppv-bub"> Bloop speech bubbles over the app</label>');
-    p.insertAdjacentHTML('beforeend', '<label class="ppv-c" style="margin-top:6px"><input type="checkbox" id="ppv-hdr"> Bloop headers at the top of AI sections</label>');
+    p.insertAdjacentHTML('beforeend', '<label class="ppv-c" style="margin-top:6px"><input type="checkbox" id="ppv-bub"> Bloopy speech bubbles over the app</label>');
+    p.insertAdjacentHTML('beforeend', '<label class="ppv-c" style="margin-top:6px"><input type="checkbox" id="ppv-hdr"> Bloopy headers at the top of AI sections</label>');
     {
       const hs = document.createElement('style'); hs.textContent = 'html.bl-nohead .bl-top,html.bl-nohead #ppv-mrow{display:none!important}'; document.head.appendChild(hs);
       const hc = p.querySelector('#ppv-hdr'), apply = () => document.documentElement.classList.toggle('bl-nohead', !hc.checked);
@@ -8738,21 +8738,21 @@
     }
     const bc = p.querySelector('#ppv-bub'); try { bc.checked = localStorage.getItem('ppvBlBubbles') === '1'; } catch (e) {}
     bc.onchange = () => { try { localStorage.setItem('ppvBlBubbles', bc.checked ? '1' : '0'); } catch (e) {} if (!bc.checked) { const f = document.getElementById('ppv-mfloat'), r = document.getElementById('bl-react'); f && (f.style.display = 'none'); r && r.classList.remove('show'); } };
-    p.insertAdjacentHTML('beforeend', '<label class="ppv-c" style="display:block;margin-top:8px"><input type="checkbox" id="ppv-chat-on"> Bloop assistant (does things in the app, no AI download)</label>' +
-      '<div class="ppv-note">Adds a Bloop button. He can play music by mood, make mood and smart playlists, tag, split, get lyrics and control the player (volume, seek, speed, EQ, repeat\u2026). That all runs from the tagger and fixed rules, so it needs no chat AI.</div>' +
+    p.insertAdjacentHTML('beforeend', '<label class="ppv-c" style="display:block;margin-top:8px"><input type="checkbox" id="ppv-chat-on"> Bloopy assistant (does things in the app, no AI download)</label>' +
+      '<div class="ppv-note">Adds a Bloopy button. He can play music by mood, make mood and smart playlists, tag, split, get lyrics and control the player (volume, seek, speed, EQ, repeat\u2026). That all runs from the tagger and fixed rules, so it needs no chat AI.</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-brain-on"> Chat brain: talk about anything with a tiny AI (optional, one-time download)</label>' +
-      '<div class="ppv-note">Off: Bloop only does tasks and answers app questions. On: he can also chat. It is taken out of memory whenever he does a task. It is a tiny model: it can be wrong, and it is not a counselor.</div>' +
-      '<label class="ppv-c" style="display:block">Bloop\'s memory: <b id="ppv-mem-val"></b><input type="range" id="ppv-mem" min="0" max="8" step="1" style="width:100%;display:block"></label>' +
+      '<div class="ppv-note">Off: Bloopy only does tasks and answers app questions. On: he can also chat. It is taken out of memory whenever he does a task. It is a tiny model: it can be wrong, and it is not a counselor.</div>' +
+      '<label class="ppv-c" style="display:block">Bloopy\'s memory: <b id="ppv-mem-val"></b><input type="range" id="ppv-mem" min="0" max="8" step="1" style="width:100%;display:block"></label>' +
       '<div class="ppv-note">How many recent messages and replies are remembered while chatting. 0 forgets each message right away. Higher keeps more context but is slower. Tasks and commands never need memory.</div>' +
       '<label class="ppv-c" style="display:block">Your favourite topics: <input type="text" id="ppv-topics" maxlength="200" placeholder="e.g. space, Minecraft, cooking, football"></label>' +
-      '<div class="ppv-note">Bloop will happily chat about these (with the chat brain on). You can also tell him in chat: my favourite topics are ...</div>' +
-      '<div style="margin-top:10px"><b>How Bloop replies</b></div>' +
+      '<div class="ppv-note">Bloopy will happily chat about these (with the chat brain on). You can also tell him in chat: my favourite topics are ...</div>' +
+      '<div style="margin-top:10px"><b>How Bloopy replies</b></div>' +
       '<label class="ppv-c" style="display:block">Chat reply length: <select id="ppv-clen" data-sync="ppvChatLen" style="width:100%;display:block">' + menuOpts(CHAT_LENS) + '</select></label>' +
       '<label class="ppv-c" style="display:block">Chat reply style: <select id="ppv-csty" data-sync="ppvChatStyle" style="width:100%;display:block">' + menuOpts(CHAT_STYLES) + '</select></label>' +
       '<label class="ppv-c" style="display:block">Summary length: <select id="ppv-slen2" data-sync="ppvSumLen" style="width:100%;display:block">' + menuOpts(SUM_LENS) + '</select></label>' +
       '<label class="ppv-c" style="display:block">Summary style: <select id="ppv-ssty2" data-sync="ppvSumStyle" style="width:100%;display:block">' + menuOpts(SUM_STYLES) + '</select></label>' +
       '<div class="ppv-note">The chat menus apply to normal chat and Song Talk. The summary menus apply to AI summaries, here and under Lyrics &amp; subtitles. A tiny model may not follow every instruction exactly, and long replies take longer. Summary lengths are hard limits: anything past the length is cut at the last full sentence. Lyric Fix keeps its own short format.</div>' +
-      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-agent-on"> Allow Bloop to run commands (play, playlists, tagging, volume\u2026)</label>' +
+      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-agent-on"> Allow Bloopy to run commands (play, playlists, tagging, volume\u2026)</label>' +
       '<label id="ppv-chatgpul" class="ppv-c" style="display:none"><input type="checkbox" id="ppv-chatgpu"> Use GPU (experimental, ~270 MB download)</label>' +
       '<label id="ppv-lmgpul" class="ppv-c" style="display:none"><input type="checkbox" id="ppv-lmgpu"> Run the app-only (LiteRT-LM) models on the phone GPU: much faster. Falls back to the CPU by itself. Applies the next time the model loads.</label>' +
       '<button id="ppv-chatfree" class="ppv-sec" type="button">Free up chat download</button>');
@@ -8776,14 +8776,14 @@
           lg.onchange = () => { try { localStorage.setItem('ppvLmGpu', lg.checked ? '1' : '0'); } catch (e) {} }; } }
       cg.onchange = () => { try { localStorage.setItem('ppvChatGpu', cg.checked ? '1' : '0'); } catch (e) {} };
       p.querySelector('#ppv-chatfree').onclick = async () => { try { await mas.chat.free(); status('Chat download removed.'); } catch (e) { status('Error: ' + errText(e)); } }; }
-    p.insertAdjacentHTML('beforeend', '<div style="margin-top:10px"><b>Bloop voice and listening</b></div>' +
+    p.insertAdjacentHTML('beforeend', '<div style="margin-top:10px"><b>Bloopy voice and listening</b></div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-mini-on"> Smarter understanding (MiniLM, ~25 MB download)</label>' +
       '<div class="ppv-note">Loose wording finds the right command, and songs can be requested by meaning, like something for a rainy drive. Needs the assistant on.</div>' +
-      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-voice-on"> Bloop speaks (Kokoro voice, ~90 MB download)</label>' +
+      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-voice-on"> Bloopy speaks (Kokoro voice, ~90 MB download)</label>' +
       '<select id="ppv-voice-who"></select><select id="ppv-voice-when"><option value="talk">Only when spoken to</option><option value="all">Every reply</option></select>' +
       '<label class="ppv-c" id="ppv-voice-natl" style="display:none"><input type="checkbox" id="ppv-voice-nat"> Native voice: use the phone\'s own voice (no download, starts right away)</label>' +
       '<div class="ppv-note">A warm, calm voice. Music dips while he talks. With Native voice on, the phone picks the voice and the list above is not used.</div>' +
-      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-mic-on"> Talk to Bloop (Moonshine, ~50 MB download)</label>' +
+      '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-mic-on"> Talk to Bloopy (Moonshine, ~50 MB download)</label>' +
       '<label class="ppv-c" id="ppv-mic-natl" style="display:none"><input type="checkbox" id="ppv-mic-nat"> Native listening: hear with the app\'s own Whisper engine (the one that makes subtitles)</label>' +
       '<div class="ppv-note">Adds a mic button to his chat. Tap it, speak, and it sends after a pause. Native listening is English only and uses English Base if you already have it, otherwise English Tiny (~40 MB).</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-wake-on"> Wake word (listens while this page is open)</label>' +

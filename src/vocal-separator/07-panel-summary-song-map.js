@@ -232,7 +232,7 @@
   // Chat menus (ppvChatLen / ppvChatStyle) shape regular chat and Song Talk. Summary menus (ppvSumLen / ppvSumStyle) shape the AI summaries.
   // Each menu exists in the Assistant settings, and the summary ones also under Lyrics & subtitles: a change in one is copied to the others.
   const ppvLs = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
-  // The user's favourite topics (assistant setting, or learned from "my favourite topics are ..."), so Bloop chats about them too.
+  // The user's favourite topics (assistant setting, or learned from "my favourite topics are ..."), so Bloopy chats about them too.
   const favTopics = () => String(ppvLs('ppvTopics') || '').replace(/\s+/g, ' ').trim().slice(0, 200);
   const setFavTopics = v => { try { localStorage.setItem('ppvTopics', String(v || '').replace(/\s+/g, ' ').trim().slice(0, 200)); } catch (e) {} document.querySelectorAll('#ppv-topics').forEach(x => { x.value = favTopics(); }); };
   const CHAT_LENS = {
@@ -242,7 +242,7 @@
     long:   { label: 'Long (two paragraphs)', say: 'in two short paragraphs separated by a blank line', bul: 'in six to eight bullet points', talk: 'in three or four paragraphs with detail', mul: 1.9 }
   };
   const CHAT_STYLES = {
-    bloop:   { label: 'Bloop (playful, default)', persona: true, intro: ' You are friendly, playful and a little silly.', fmt: 'No lists, no markdown, no emoji.', talk: '' },
+    bloop:   { label: 'Bloopy (playful, default)', persona: true, intro: ' You are friendly, playful and a little silly.', fmt: 'No lists, no markdown, no emoji.', talk: '' },
     plain:   { label: 'Plain and factual', intro: ' You are calm, clear and to the point.', fmt: 'No jokes, no puns, no exclamation marks, no lists, no markdown, no emoji.', talk: 'Keep a calm, factual tone with no jokes.' },
     simple:  { label: 'Simple (easy words)', intro: ' You explain things simply, as if to a curious ten-year-old.', fmt: 'Use short, easy words and short sentences, no jargon, no lists, no markdown, no emoji.', talk: 'Use short, easy words and explain any technical term.' },
     deep:    { label: 'Thoughtful (gives the reason)', intro: ' You are thoughtful and like to explain why.', fmt: 'Give the answer first, then briefly say why. No lists, no markdown, no emoji.', talk: 'After each answer, briefly say why.' },
@@ -411,7 +411,7 @@
       '<label class="ppv-c" style="display:block;margin-top:10px">Summary length: <select id="ppv-sumlen" data-sync="ppvSumLen" style="width:100%;display:block">' + Object.keys(SUM_LENS).map(k => '<option value="' + k + '">' + SUM_LENS[k].label + '</option>').join('') + '</select></label>' +
       '<label class="ppv-c" style="display:block;margin-top:10px">Summary style: <select id="ppv-sumstyle" data-sync="ppvSumStyle" style="width:100%;display:block">' + menuOpts(SUM_STYLES) + '</select></label>' +
       '<button id="ppv-sumgo" class="ppv-sec" style="margin-top:10px">Summarize current track (AI)</button>' +
-      '<div class="ppv-note">Combines the track\u2019s tags (tempo, key, genre, mood, instruments) with its lyrics or subtitles, so it knows both how it sounds and what it is about. Tags are made first if missing. The written part uses the Bloop AI brain (one-time download). Without lyrics or subtitles you get the sound summary only.</div>' +
+      '<div class="ppv-note">Combines the track\u2019s tags (tempo, key, genre, mood, instruments) with its lyrics or subtitles, so it knows both how it sounds and what it is about. Tags are made first if missing. The written part uses the Bloopy AI brain (one-time download). Without lyrics or subtitles you get the sound summary only.</div>' +
       '<div id="ppv-sumout" class="ppv-out"></div>' +
       '<button id="ppv-sumtalk" class="ppv-sec" style="display:none;margin-top:8px">\ud83d\udcac Talk about this song in chat</button>' +
       '<details id="ppv-sumlist"><summary id="ppv-sumlist-h">Saved summaries</summary><div id="ppv-sumlist-b"></div></details>' +

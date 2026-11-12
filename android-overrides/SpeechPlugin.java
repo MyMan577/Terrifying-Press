@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Bloop's native voice: reads a sentence out loud with the phone's own text-to-speech engine. Nothing is downloaded by the app.
+ * Bloopy's native voice: reads a sentence out loud with the phone's own text-to-speech engine. Nothing is downloaded by the app.
  * speak() resolves with done=true when the sentence was read to the end, done=false when it was cut short by stop() or a newer speak().
  */
 @CapacitorPlugin(name = "PPSpeech")

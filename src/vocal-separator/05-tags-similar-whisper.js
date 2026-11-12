@@ -353,7 +353,7 @@
           if (text && text.trim()) raw.push({ start: seek + g.s, end: g.e == null ? 0 : seek + g.e, text });
         }
         seek += adv;
-        if (!o.quick) await ease(performance.now() - t0, 0, 'whn', wl);   // quick: one spoken sentence for Bloop, no rest needed
+        if (!o.quick) await ease(performance.now() - t0, 0, 'whn', wl);   // quick: one spoken sentence for Bloopy, no rest needed
       }
       done += rb - ra;
     }

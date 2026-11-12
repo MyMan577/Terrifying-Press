@@ -196,7 +196,7 @@
     return false;
   }
   const goTab = v => { if (v === 'playlists') openPlId = null; slideTo(v); };
-  // Bloop ("open my Chill playlist"): shows that playlist's own page on the Playlists tab, closing the full player first.
+  // Bloopy ("open my Chill playlist"): shows that playlist's own page on the Playlists tab, closing the full player first.
   window.__ppOpenPlaylist = id => {
     if (!body.classList.contains('player-layout')) return false;
     if (body.hasAttribute('data-pl-player')) closePlayer();

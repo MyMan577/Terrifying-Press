@@ -1,4 +1,4 @@
-    // ---------- Bloop's personality: jokes, fun facts and small talk. Jokes and facts come from shuffled decks, so none repeats until all have been told. ----------
+    // ---------- Bloopy's personality: jokes, fun facts and small talk. Jokes and facts come from shuffled decks, so none repeats until all have been told. ----------
     const BL_JOKES = [
       "Why did the song go to therapy? It had too many issues with its bridge.",
       "What do you call a fake noodle? An impasta.",
@@ -85,7 +85,7 @@
       [/\b(what'?s|what is|whats) (the )?best (song|album|band|genre|music)\b|\bwhich is (the )?better\b|\b(is|are) (pop|rock|jazz|classical|rap|hip hop|metal|electronic) better\b/i, () => { blLastTalk = ''; blSay("There is no single best. The best one is the one that fits how you feel right now. Want me to pick one from your library?"); return actions([blGo('\u25b6 Surprise me', 'surprise me')]); }],
       [/\b(happy friday|it'?s friday|friday)\b/i, () => { blLastTalk = ''; return blSay(pick(["Happy Friday! Something loud to end the week?", "It's Friday! I'm bouncing extra high today."])); }],
       [/\b(happy (birthday|new year)|it'?s my birthday|my birthday)\b/i, () => { blLastTalk = ''; blSay("Happy birthday! I'm bouncing for you. Want a party playlist?"); return actions([blGo('\u25b6 Party playlist', 'make a party playlist')]); }],
-      [/\b(do you have a (name|nickname)|what should i call you)\b/i, () => { blLastTalk = ''; return blSay("Bloop is fine. Some people call me Bloopy, and I like that too."); }],
+      [/\b(do you have a (name|nickname)|what should i call you)\b/i, () => { blLastTalk = ''; return blSay("Bloopy is my name. Some people call me Bloop, and I like that too."); }],
       [/\b(i have a (dog|cat|pet|fish|hamster|bird))\b/i, m => { blLastTalk = ''; return blSay("A " + m[1] + " that listens to music? Sounds like the best audience."); }],
       [/\b(can you|could you|do you) (make|cook|bake|brew) (me )?(a |some )?(coffee|tea|food|lunch|dinner|breakfast|cake)\b/i, () => { blLastTalk = ''; return blSay("Only coffee-coloured bounces, sorry! I can make you a playlist, though."); }],
       [/\b(do you dream|what do you dream about)\b/i, () => { blLastTalk = ''; return blSay("I dream in beats per minute. Mostly around 120."); }],
@@ -133,7 +133,7 @@
       bgtag: "Background tagging tags your songs while the app is idle, so your moods and smart playlists get better over time.",
       eq: "Auto EQ picks an equaliser preset for each song from its genre tags. You can still change it for any track."
     };
-    const BL_AI_RULES = [[/mood model/i, 'moods'], [/background tagging/i, 'bgtag'], [/auto ?eq/i, 'eq'], [/auto mix|for you|live mix/i, 'mixes'], [/lyric|subtitle|whisper|caption/i, 'lyrics'], [/smart|playlist/i, 'smart'], [/tagging|library tools|\btags?\b/i, 'tagging'], [/assistant|chat brain|bloop/i, 'assistant'], [/stem|split/i, 'stems']];
+    const BL_AI_RULES = [[/mood model/i, 'moods'], [/background tagging/i, 'bgtag'], [/auto ?eq/i, 'eq'], [/auto mix|for you|live mix/i, 'mixes'], [/lyric|subtitle|whisper|caption/i, 'lyrics'], [/smart|playlist/i, 'smart'], [/tagging|library tools|\btags?\b/i, 'tagging'], [/assistant|chat brain|bloopy?/i, 'assistant'], [/stem|split/i, 'stems']];
     const BL_AI_BTN = { 'ppv-btn': 'stems', 'ppv-go': 'stems', 'ppv-tag': 'tagging', 'ppv-wgo': 'lyrics', 'subtitle-btn': 'lyrics', 'ppv-simgo': 'smart', 'ppv-surpnow': 'smart', 'ppv-eqall': 'eq' };
     function blAiTip(key) { cbox.style.display = 'flex'; blAnchor(); if (!clist.children.length) add('bot', blOpenLine()); add('bot', BL_AI_TIP[key]); cin.focus(); }
     function blAiMark() {
