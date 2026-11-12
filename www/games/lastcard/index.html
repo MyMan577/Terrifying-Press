@@ -480,8 +480,11 @@ function toast(t){const e=$('#toast');e.textContent=t;e.classList.remove('on');v
 function mkBots(n){const nm=sh([...NAMES]);return Array.from({length:n},(_,i)=>({name:nm[i]+(S.mode==='teams'&&i===1?' ★':''),hand:[],aggr:.7+Math.random()*.6,save:.6+Math.random()*.6,forget:(.04+Math.random()*.16)*(S.lvl==='hard'?.3:S.lvl==='easy'?2:1),speed:(.8+Math.random()*.5)*(S.lvl==='hard'?1.15:S.lvl==='easy'?.85:1),susp:.35+Math.random()*.3+(S.lvl==='hard'?.15:S.lvl==='easy'?-.15:0),guile:.8+Math.random()*.5,fav:COLS[Math.random()*4|0],dsk:Math.min(.97,Math.max(.2,.35+Math.random()*.55+(S.lvl==='hard'?.1:S.lvl==='easy'?-.1:0))),drx:230+Math.random()*190}))}
 async function newGame(){if(G){G.over=1;clearTimeout(G.jt);G.jr=null;G.hr=null;G.ar=null;G.pick=null}$('#menu').hidden=true;$('#end').hidden=true;for(const q of['#co','#cl','#rq','#hp','#ac','#acb','#picker','#catch','#chal','#xp','#mp'])$(q).hidden=true;document.querySelectorAll('.say,.cf,.stg,.pkb,#minip,body>.card').forEach(e=>e.remove());
  G={p:[{name:'You',human:1,hand:[]},...mkBots(S.bots)],deck:(COLS.splice(0,4,...LC),setPicker(),document.body.classList.remove('dk'),mkDeck()),side:'L',know:Array.from({length:S.bots+1},()=>({c:new Set(),v:new Set(),h:new Set()})),disc:[],dl:1,dir:1,cur:0,col:'r',pend:0,pt:'',over:0,busy:1};
- for(let k=1;k<4&&G.deck.length<S.hs*(S.bots+1)+8;k++)G.deck.push(...mkDeck().map(x=>({...x,id:x.id+k*1000})));
- let c;if(S.mode==='allwild')c={id:9999,c:COLS[Math.random()*4|0],v:'0',fk:1};else while((c=dpop()).c==='k'||isNaN(c.v)){G.deck.unshift(c)}G.disc.push(c);G.col=c.c;G.pw=G.p.map(()=>1);if(S.mode==='tri'){G.tp=[{d:G.disc,col:G.col,w:0}];for(let k=1;k<3;k++){let x;while((x=dpop()).c==='k'||isNaN(x.v))G.deck.unshift(x);G.tp.push({d:[x],col:x.c,w:0})}G.ov=[0,1,2].map(()=>({n:0,l:tpLim()}));G.tn=0;G.tw=0;G.tc=0;tpLit()}
+ /* The deck modifier can switch off so many cards that the deck can't start a game. Every card off: play with the
+    full deck. Too few for the deal: add more packs of what's left. No number card to start on: see startCard. */
+ if(!G.deck.length){const dx=S.dex;S.dex={};try{G.deck=mkDeck()}finally{S.dex=dx}toast('Every card is switched off in the Deck modifier, so this game uses the full deck')}
+ for(let k=1;k<200&&G.deck.length<S.hs*(S.bots+1)+8;k++)G.deck.push(...mkDeck().map(x=>({...x,id:x.id+k*1000})));
+ let c;if(S.mode==='allwild')c={id:9999,c:COLS[Math.random()*4|0],v:'0',fk:1};else c=startCard(9999);G.disc.push(c);G.col=c.c;G.pw=G.p.map(()=>1);if(S.mode==='tri'){G.tp=[{d:G.disc,col:G.col,w:0}];for(let k=1;k<3;k++){const x=startCard(9999-k);G.tp.push({d:[x],col:x.c,w:0})}G.ov=[0,1,2].map(()=>({n:0,l:tpLim()}));G.tn=0;G.tw=0;G.tc=0;tpLit()}
  const n=S.bots;$('#seats').innerHTML='';
  for(let i=1;i<=n;i++){const a=2*Math.PI*i/(n+1),e=document.createElement('div');e.className='seat';e.id='s'+i;
   e.style.left=50-40*Math.sin(a)+'%';e.style.top=46+34*Math.cos(a)+'%';e.onclick=()=>{if(G.pick){const r=G.pick;G.pick=null;r(i)}};$('#seats').appendChild(e)}
@@ -496,6 +499,12 @@ async function newGame(){if(G){G.over=1;clearTimeout(G.jt);G.jr=null;G.hr=null;G
    for(let k=0;k<hh;k++)for(let i=1;i<G.p.length;i++){const x=dpop();if(x){G.p[i].hand.push(x);ex++}}
    if(w1||w4||hh||ap||hs)render()}
   G.dl=0;G.busy=0;loop()}catch(e){}}
+/* A card to start a pile on: a colored number card. Draws as usual, then searches the deck (cards set to 0% can't be
+   drawn); with no number card at all it's a plain 0 that isn't really in the deck, like All Wild uses. */
+function startCard(id){const num=x=>x&&x.c!=='k'&&!isNaN(x.v);
+ for(let t=G.deck.length;t>0;t--){const x=dpop();if(num(x))return x;if(x)G.deck.unshift(x)}
+ G.nx=null;const i=G.deck.findIndex(num);if(i>=0)return G.deck.splice(i,1)[0];
+ const f={id,c:COLS[Math.random()*4|0],v:'0',fk:1};if(S.mode==='flip')f.f={c:DC[Math.random()*4|0],v:'0'};return f}
 function render(){renderSeats();renderHand();renderMid()}
 function rackStyle(i,o,fan){const sp=14;return`position:absolute;margin:0;left:calc(50% + ${(o*sp).toFixed(1)}px - var(--cw)/2);bottom:0;--cw:calc(var(--mw)*1.5);--ch:calc(var(--mw)*2.22);transform-origin:50% 140%;transform:rotate(${fan?(o*5).toFixed(1):0}deg);filter:drop-shadow(0 4px 3px #0008)`}
 const seatRot=i=>{const a=2*Math.PI*i/G.p.length,dx=40*Math.sin(a)*innerWidth/100,dy=-34*Math.cos(a)*innerHeight/100;return Math.atan2(dx,-dy)*180/Math.PI}
