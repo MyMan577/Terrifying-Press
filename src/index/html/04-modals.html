@@ -1,0 +1,287 @@
+<div id="track-pl-popover"></div>
+<div id="select-pl-menu"></div>
+<div id="track-edit-popover"></div>
+
+<div id="sort-modal-overlay">
+  <div id="sort-modal">
+    <div id="sort-modal-header">
+      <h2>Manual order</h2>
+      <p>Click tracks below in the order to play them.</p>
+    </div>
+    <div id="sort-modal-body">
+      <p class="sort-section-label" id="sort-pool-label">All tracks</p>
+      <div id="sort-pool"></div>
+      <p class="sort-section-label">New order</p>
+      <div id="sort-result">
+        <div id="sort-result-empty">Click a track above to add it here</div>
+      </div>
+    </div>
+    <div id="sort-modal-footer">
+      <button id="sort-reset-btn">Reset</button>
+      <div id="sort-footer-actions">
+        <button class="sort-footer-btn" id="sort-cancel-btn">Cancel</button>
+        <button class="sort-footer-btn" id="sort-apply-btn" disabled>Apply</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="rename-modal-overlay">
+  <div id="rename-modal">
+    <div id="rename-modal-header">
+      <h2>Batch rename</h2>
+      <p>Match tracks by keyword in the <strong>track name</strong> or the <strong>artist</strong>, then set their artist, rename them, strip text out of them (placeholders, tags and so on), or add text to them, all at once.</p>
+    </div>
+    <div id="rename-modal-body">
+      <div class="rename-field" id="rename-mode-field">
+        <label for="rename-mode">Action</label>
+        <select id="rename-mode">
+          <option value="artist">Set artist</option>
+          <option value="title">Rename track name</option>
+          <option value="remove">Remove text</option>
+          <option value="add">Add text</option>
+        </select>
+      </div>
+      <div class="rename-field">
+        <label for="rename-keywords">Match keywords (track name)</label>
+        <input type="text" id="rename-keywords" placeholder="e.g. live at wembley, remix" autocomplete="off">
+        <select id="rename-match-by" aria-label="Match keywords in" style="margin-top:8px">
+          <option value="title">Match in track name</option>
+          <option value="artist">Match in artist</option>
+        </select>
+        <p class="rename-hint" id="rename-keywords-hint">Comma-separated. Any track whose title contains one of these (case-insensitive) will match.</p>
+      </div>
+      <div class="rename-field">
+        <label for="rename-new-name">Rename matched tracks to</label>
+        <input type="text" id="rename-new-name" placeholder="New artist name" maxlength="200">
+        <p class="rename-hint" id="rename-value-hint" style="display:none"></p>
+      </div>
+      <div class="rename-field" id="rename-extra-field" style="display:none">
+        <div id="rename-extra-row">
+          <select id="rename-field-select" aria-label="Apply to">
+            <option value="title">Apply to track name</option>
+            <option value="artist">Apply to artist</option>
+          </select>
+          <select id="rename-pos-select" aria-label="Position">
+            <option value="end">At the end</option>
+            <option value="start">At the start</option>
+          </select>
+        </div>
+      </div>
+      <div id="rename-matches-label">Enter keywords above to preview matches</div>
+      <div id="rename-matches-list"></div>
+    </div>
+    <div id="rename-modal-footer">
+      <span id="rename-match-count"></span>
+      <div id="rename-footer-actions">
+        <button class="sort-footer-btn" id="rename-cancel-btn">Cancel</button>
+        <button class="sort-footer-btn" id="rename-apply-btn" disabled>Rename</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="thumbnail-modal-overlay">
+  <div id="thumbnail-modal">
+    <div id="thumbnail-modal-header">
+      <h2>Change thumbnail</h2>
+      <p id="thumbnail-modal-track-name">-</p>
+    </div>
+    <div id="thumbnail-modal-body">
+      <div id="thumbnail-preview-wrap">
+        <img id="thumbnail-preview-img" alt="">
+        <div id="thumbnail-preview-fallback">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg>
+          No thumbnail
+        </div>
+      </div>
+
+      <div id="thumbnail-frame-picker">
+        <p class="thumbnail-section-label">Pick a frame from the video</p>
+        <video id="thumbnail-scrub-video" muted playsinline></video>
+        <input type="range" id="thumbnail-scrub-range" min="0" max="100" step="0.1" value="0">
+        <button type="button" id="thumbnail-use-frame-btn" disabled>Use this frame</button>
+      </div>
+
+      <div id="thumbnail-upload-row">
+        <p class="thumbnail-section-label">Or use a custom image</p>
+        <button type="button" class="thumbnail-upload-btn" id="thumbnail-upload-btn">🖼️ Upload image…</button>
+        <button type="button" class="thumbnail-remove-btn" id="thumbnail-remove-btn">Remove custom thumbnail</button>
+        <input type="file" id="thumbnail-file-input" accept="image/*" style="display:none">
+      </div>
+    </div>
+    <div id="thumbnail-modal-footer">
+      <button class="sort-footer-btn" id="thumbnail-close-btn">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="cutter-modal-overlay">
+  <div id="cutter-modal">
+    <div id="cutter-modal-header">
+      <h2>Trim &amp; export clip</h2>
+      <p id="cutter-modal-track-name">-</p>
+    </div>
+    <div id="cutter-modal-body">
+      <div id="cutter-range-wrap">
+        <div id="cutter-range-track"></div>
+        <div id="cutter-range-fill"></div>
+        <div id="cutter-playhead"></div>
+        <div class="cutter-handle" id="cutter-handle-start" tabindex="0" role="slider" aria-label="Clip start" aria-valuemin="0"></div>
+        <div class="cutter-handle" id="cutter-handle-end" tabindex="0" role="slider" aria-label="Clip end" aria-valuemin="0"></div>
+      </div>
+      <div id="cutter-time-row">
+        <div class="cutter-time-field">
+          <label for="cutter-start-input">Start</label>
+          <div class="cutter-time-field-inputs">
+            <input type="text" id="cutter-start-input" value="0:00" inputmode="numeric" autocomplete="off">
+            <button class="cutter-set-btn" id="cutter-start-now-btn" title="Set to current playhead position">Now</button>
+          </div>
+        </div>
+        <div class="cutter-time-field">
+          <label for="cutter-end-input">End</label>
+          <div class="cutter-time-field-inputs">
+            <input type="text" id="cutter-end-input" value="0:00" inputmode="numeric" autocomplete="off">
+            <button class="cutter-set-btn" id="cutter-end-now-btn" title="Set to current playhead position">Now</button>
+          </div>
+        </div>
+      </div>
+      <div id="cutter-duration-row">
+        <span>Clip length</span>
+        <strong id="cutter-duration-label">0:00</strong>
+      </div>
+      <div id="cutter-format-row">
+        <span class="cutter-format-label">Export as</span>
+        <div id="cutter-format-btns"></div>
+      </div>
+      <div id="cutter-mp3-quality-row">
+        <label for="cutter-mp3-quality">MP3 bitrate</label>
+        <select id="cutter-mp3-quality">
+          <option value="128">128 kbps</option>
+          <option value="192" selected>192 kbps</option>
+          <option value="320">320 kbps</option>
+        </select>
+      </div>
+      <div id="cutter-fx-box">
+        <label id="cutter-fx-master"><input type="checkbox" id="cutter-fx-master-input"> <span>Apply my current effects to the clip</span></label>
+        <p id="cutter-fx-sub">Uses whatever is set in the player right now. Preview plays with the same effects, so the export sounds the same.</p>
+        <div id="cutter-fx-list"></div>
+        <div id="cutter-fx-note"></div>
+      </div>
+      <div id="cutter-name-row">
+        <label for="cutter-name-style">File name</label>
+        <select id="cutter-name-style">
+          <option value="title_cut">Title_cut</option>
+          <option value="artist_title">Artist - Title_cut</option>
+          <option value="title_time">Title + time range</option>
+          <option value="custom">Custom…</option>
+        </select>
+        <input type="text" id="cutter-name-input" maxlength="80" placeholder="Type a file name" autocomplete="off">
+        <div id="cutter-name-preview"></div>
+      </div>
+      <div id="cutter-video-hint"></div>
+      <button id="cutter-preview-btn">
+        <svg id="cutter-preview-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        <span id="cutter-preview-label">Preview selection</span>
+      </button>
+      <div id="cutter-progress-wrap">
+        <span id="cutter-progress-label">Exporting…</span>
+        <div id="cutter-progress-track"><div id="cutter-progress-fill"></div></div>
+      </div>
+      <div id="cutter-error"></div>
+    </div>
+    <div id="cutter-modal-footer">
+      <button class="sort-footer-btn" id="cutter-cancel-btn">Close</button>
+      <button class="sort-footer-btn" id="cutter-hide-btn" style="display:none;" title="Close this window and keep exporting in the background">Hide</button>
+      <button class="sort-footer-btn" id="cutter-export-btn">Export clip</button>
+    </div>
+  </div>
+</div>
+<div id="cutter-export-chip" role="button" tabindex="0" title="Tap to reopen the export window">
+  <span id="cutter-chip-text">Exporting…</span>
+  <div id="cutter-chip-track"><div id="cutter-chip-fill"></div></div>
+</div>
+
+<div id="customize-modal-overlay">
+  <div id="customize-modal">
+    <div id="customize-modal-header">
+      <h2>Customize appearance</h2>
+      <p>Set a color, gradient, or image for each area of the player</p>
+    </div>
+    <div id="customize-modal-body">
+      <div id="customize-tabs">
+        <button class="customize-tab active" data-target="app">App background</button>
+        <button class="customize-tab" data-target="playlist">Playlist</button>
+        <button class="customize-tab" data-target="controls">Media &amp; controls</button>
+        <button class="customize-tab" data-target="immersive">Immersive mode</button>
+      </div>
+      <p id="customize-tab-hint" class="customize-tab-hint"></p>
+
+      <div id="customize-preview"></div>
+
+      <div class="customize-type-row">
+        <button class="customize-type-btn active" data-type="default">Default</button>
+        <button class="customize-type-btn" data-type="color">Color</button>
+        <button class="customize-type-btn" data-type="gradient">Gradient</button>
+        <button class="customize-type-btn" data-type="image">Image</button>
+      </div>
+
+      <div class="customize-group" id="customize-group-color">
+        <div class="customize-row">
+          <label>Background color</label>
+          <input type="color" class="customize-color-input" id="customize-color-input" value="#0c0d10">
+        </div>
+      </div>
+
+      <div class="customize-group" id="customize-group-gradient">
+        <div class="customize-row">
+          <label>Gradient colors</label>
+          <div class="customize-gradient-colors">
+            <div><input type="color" class="customize-color-input" id="customize-gradient-color1" value="#0c0d10"></div>
+            <div><input type="color" class="customize-color-input" id="customize-gradient-color2" value="#3a5f57"></div>
+          </div>
+        </div>
+        <div class="customize-row">
+          <label>Angle <span class="customize-range-value" id="customize-gradient-angle-value">135°</span></label>
+          <input type="range" class="customize-range" id="customize-gradient-angle" min="0" max="360" step="5" value="135">
+        </div>
+      </div>
+
+      <div class="customize-group" id="customize-group-image">
+        <div class="customize-row">
+          <input type="file" id="customize-image-input" accept="image/*" style="display:none;">
+          <button class="customize-upload-btn" id="customize-image-upload-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span id="customize-image-upload-label">Choose image…</span>
+          </button>
+          <div id="customize-image-name"></div>
+        </div>
+        <div class="customize-row">
+          <label>Fit</label>
+          <select class="customize-select" id="customize-image-fit">
+            <option value="cover">Cover (fill area)</option>
+            <option value="contain">Contain (fit whole image)</option>
+            <option value="tile">Tile (repeat)</option>
+          </select>
+        </div>
+        <div class="customize-row">
+          <label>Darken for readability <span class="customize-range-value" id="customize-image-dim-value">30%</span></label>
+          <input type="range" class="customize-range" id="customize-image-dim" min="0" max="85" step="5" value="30">
+        </div>
+      </div>
+      <div class="customize-row" id="customize-button-color-row" style="display:none;">
+        <label>Button color</label>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <input type="color" class="customize-color-input" id="customize-button-color-input" value="#6ee7d0">
+          <button class="settings-toggle-btn" id="customize-button-color-reset-btn">Use default</button>
+        </div>
+      </div>
+    </div>
+    <div id="customize-modal-footer">
+      <button class="sort-footer-btn" id="customize-reset-btn">Reset this area</button>
+      <button class="sort-footer-btn" id="customize-done-btn">Done</button>
+    </div>
+  </div>
+</div>
+
+

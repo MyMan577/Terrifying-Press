@@ -1,6 +1,7 @@
 // Safety check run before every APK build: makes sure the app's JavaScript has no syntax errors,
 // so a broken change can never be published as a release.
-// Checks www/*.js and every inline <script> block in www/index.html. Usage: node .github/scripts/check-web.js
+// Checks www/*.js and every inline <script> block in www/index.html.
+// Usage: python3 tools/assemble.py && node .github/scripts/check-web.js   (assemble.py builds index.html and vocal-separator.js from src/)
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');

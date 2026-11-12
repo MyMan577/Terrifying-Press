@@ -1,0 +1,204 @@
+  @font-face{ font-family:'Plus Jakarta Sans'; font-style:normal; font-weight:200 800; font-display:swap; src:url('fonts/plus-jakarta-sans-latin.woff2') format('woff2');
+    unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+  @font-face{ font-family:'Plus Jakarta Sans'; font-style:normal; font-weight:200 800; font-display:swap; src:url('fonts/plus-jakarta-sans-latin-ext.woff2') format('woff2');
+    unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF; }
+
+  /* ---- type ---- */
+  html:has(body.pp-refined), body.pp-refined{ font-family:'Plus Jakarta Sans','Inter',-apple-system,'Segoe UI',Roboto,sans-serif; -webkit-font-smoothing:antialiased; }
+  body.pp-refined{ --line:#2b2d35; --r-line:rgba(255,255,255,.09); --r-line-strong:rgba(255,255,255,.14);
+    --r-card:linear-gradient(180deg,#1d1f26 0%,#16171c 100%); --r-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 12px 32px -12px rgba(0,0,0,.65);
+    --r-spring:cubic-bezier(.3,1.45,.45,1); --r-ease:cubic-bezier(.2,.8,.2,1); }
+  body.pp-refined .ph-app-title{ font-size:24px; font-weight:800; letter-spacing:-.025em; }
+  body.pp-refined #sidebar-header h1{ font-size:20px; font-weight:800; letter-spacing:-.02em; padding-right:110px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  body.pp-refined .ph-sec-head h2{ font-size:18px; font-weight:750; letter-spacing:-.015em; }
+  body.pp-refined .ph-count{ font-weight:600; opacity:.8; }
+  body.pp-refined .ph-trk-title, body.pp-refined .track-title{ font-weight:650; letter-spacing:-.005em; }
+  body.pp-refined .settings-row-title{ font-size:13.5px; font-weight:650; letter-spacing:-.005em; }
+  body.pp-refined .settings-row-sub{ line-height:1.5; }
+  body.pp-refined .pp-sg-title{ font-size:12px; font-weight:750; text-transform:uppercase; letter-spacing:.09em; color:var(--text-dim); margin:0 6px 10px; }
+  body.pp-refined .settings-section-label{ font-weight:700; letter-spacing:.1em; }
+  body.pp-refined #np-title{ font-weight:800; letter-spacing:-.02em; }
+  body.pp-refined #pl-tabbar button{ font-weight:650; letter-spacing:.01em; }
+
+  /* ---- surfaces and lines ---- */
+  body.pp-refined .pp-sg-card{ background:var(--r-card); border:1px solid var(--r-line-strong); border-radius:18px; box-shadow:var(--r-shadow); }
+  body.pp-refined .pp-sg-card .settings-section, body.pp-refined .pp-adv-body .settings-section{ border-bottom:1px solid var(--r-line); }
+  body.pp-refined .pp-adv, body.pp-refined .pp-sg-card > .settings-section + .pp-adv{ border-top:1px solid var(--r-line); }
+  body.pp-refined .settings-section{ border-bottom-color:var(--r-line); }
+  body.pp-refined .pp-sg{ margin-top:22px; }
+  body.pp-refined .ph-thumb{ border-radius:14px; border:0; box-shadow:0 0 0 1px rgba(255,255,255,.07) inset, 0 10px 24px -10px rgba(0,0,0,.8); }
+  body.pp-refined .ph-thumb img{ transition:transform .5s var(--r-ease); }
+  body.pp-refined .ph-card.cur .ph-thumb{ box-shadow:0 0 0 2px var(--accent), 0 10px 26px -8px color-mix(in srgb, var(--accent) 55%, transparent); }
+  body.pp-refined.ph-selecting .ph-card.sel .ph-thumb{ box-shadow:0 0 0 2px var(--accent); }
+  /* the card rows scroll sideways, which also clips top and bottom: give the ring and its glow room (layout unchanged) */
+  body.pp-refined .ph-row:not(.expanded){ padding-top:4px; margin-top:-4px; padding-bottom:18px; margin-bottom:-12px; }
+  body.pp-refined .ph-card:active .ph-thumb img{ transform:scale(1.04); }
+  body.pp-refined .ph-chip{ background:rgba(255,255,255,.045); border-color:var(--r-line-strong); font-weight:650; padding:8px 15px; }
+  body.pp-refined .ph-chip.on, body.pp-refined .ph-chip.active, body.pp-refined .ph-chip[aria-pressed="true"]{ color:#fff; background:linear-gradient(135deg, color-mix(in srgb, var(--accent) 30%, transparent), color-mix(in srgb, var(--accent) 12%, transparent)); border-color:color-mix(in srgb, var(--accent) 65%, transparent); box-shadow:0 4px 14px -6px color-mix(in srgb, var(--accent) 70%, transparent); }
+  body.pp-refined #sidebar-header{ border-bottom:1px solid var(--r-line); }
+  body.pp-refined.player-layout .track{ border-radius:12px; transition:background .2s, scale .25s var(--r-spring); }
+  body.pp-refined.player-layout .track.active{ background:linear-gradient(90deg, color-mix(in srgb, var(--accent) 16%, transparent), color-mix(in srgb, var(--accent) 4%, transparent));
+    box-shadow:inset 3px 0 0 var(--accent); }
+  body.pp-refined .track-thumb, body.pp-refined .track img{ border-radius:9px; }
+  body.pp-refined input[type=text], body.pp-refined input[type=search], body.pp-refined select{ border-radius:11px; }
+
+  /* glass tab bar with a sliding indicator */
+  body.pp-refined.player-layout #pl-tabbar{ background:rgba(17,18,22,.82); -webkit-backdrop-filter:blur(22px) saturate(1.4); backdrop-filter:blur(22px) saturate(1.4);
+    border-top:1px solid var(--r-line-strong); box-shadow:0 -10px 30px -12px rgba(0,0,0,.7); }
+  body.pp-refined #pl-tabbar button{ position:relative; z-index:1; transition:color .25s; }
+  body.pp-refined #pl-tabbar button svg{ transition:translate .35s var(--r-spring), scale .35s var(--r-spring); }
+  body.pp-refined #pl-tabbar button.active svg{ translate:0 -1px; scale:1.08; }
+  #pl-tab-ind{ display:none; }
+  body.pp-refined.player-layout #pl-tab-ind{ display:block; position:absolute; z-index:0; top:7px; left:0; width:56px; height:30px; border-radius:999px; pointer-events:none;
+    background:color-mix(in srgb, var(--accent) 16%, transparent); box-shadow:0 0 18px -4px color-mix(in srgb, var(--accent) 55%, transparent);
+    transition:transform .45s var(--r-spring); }
+
+  /* glass mini-player */
+  body.pp-refined.player-layout #pl-mini, body.pp-refined.player-layout.pl-has-track:not([data-pl-player]) #pl-mini{ background:rgba(30,31,38,.78); -webkit-backdrop-filter:blur(22px) saturate(1.5); backdrop-filter:blur(22px) saturate(1.5);
+    border:1px solid var(--r-line-strong); border-radius:16px; box-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 14px 34px -10px rgba(0,0,0,.8); }
+  body.pp-refined #pl-mini-art{ border-radius:10px; border:0; box-shadow:0 0 0 1px rgba(255,255,255,.08) inset, 0 4px 12px rgba(0,0,0,.5); }
+  body.pp-refined #pl-mini-title{ font-weight:700; letter-spacing:-.01em; }
+  body.pp-refined #pl-mini-prog{ height:3px; background:rgba(255,255,255,.08); }
+  body.pp-refined #pl-mini-prog i{ background:linear-gradient(90deg, color-mix(in srgb, var(--accent) 60%, #fff 0%), var(--accent)); box-shadow:0 0 10px var(--accent); border-radius:0 3px 3px 0; }
+
+  /* player controls */
+  body.pp-refined #play-btn{ box-shadow:0 10px 28px -8px rgba(0,0,0,.8), 0 0 0 6px rgba(255,255,255,.05); transition:scale .3s var(--r-spring), box-shadow .3s; }
+  body.pp-refined .pill-btn{ background:rgba(255,255,255,.05); border-color:var(--r-line-strong); font-weight:650; }
+  body.pp-refined .pill-btn.toggled, body.pp-refined .ctrl-btn.toggled{ color:var(--accent); }
+
+  /* switches with a springy knob */
+  body.pp-refined .settings-switch-track{ transition:background .3s; box-shadow:inset 0 1px 2px rgba(0,0,0,.4); }
+  body.pp-refined .settings-switch-thumb{ transition:transform .4s var(--r-spring) !important; box-shadow:0 2px 6px rgba(0,0,0,.5); }
+  body.pp-refined .settings-switch input:checked + .settings-switch-track{ background:linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, #000 0%), var(--accent-dim)); }
+
+  /* ---- press feedback: everything tappable gives a little ---- */
+  /* :where() keeps these at zero specificity: anything that already has its own transition keeps it */
+  :where(body.pp-refined) :where(button, .ph-card, .ph-chip, .pill-btn, .ctrl-btn, .settings-toggle-btn, .ph-trk){ transition-property:scale, background, color, border-color, box-shadow, opacity; transition-duration:.28s; transition-timing-function:cubic-bezier(.3,1.45,.45,1); }
+  :where(body.pp-refined) :where(button, .ph-chip, .pill-btn, .ctrl-btn, .settings-toggle-btn):active{ scale:.94; transition-duration:.08s; }
+  :where(body.pp-refined) :where(.ph-card, .ph-trk):active{ scale:.97; transition-duration:.08s; }
+  body.pp-refined.player-layout .track:active{ scale:.985; }
+
+  /* ---- motion: screens ease in, items follow one after another ---- */
+  @keyframes ppRIn{ from{ opacity:0; translate:0 10px; } to{ opacity:1; translate:0 0; } }
+  @keyframes ppRUp{ from{ opacity:.4; translate:0 36px; } to{ opacity:1; translate:0 0; } }
+  @keyframes ppRRise{ 0%{ opacity:0; translate:0 24px; scale:.96; } 70%{ opacity:1; translate:0 -3px; scale:1.01; } 100%{ translate:0 0; scale:1; } }
+  body.pp-refined .pp-r-in{ animation:ppRIn .38s var(--r-ease) both; }
+  body.pp-refined .pp-r-stag{ animation:ppRIn .42s var(--r-ease) both; animation-delay:calc(var(--i, 0) * 32ms); }
+  body.pp-refined .pp-r-up{ animation:ppRUp .42s var(--r-ease) both; }
+  body.pp-refined .pp-r-rise{ animation:ppRRise .55s var(--r-ease) both; }
+
+  /* ================= motion, part two: nothing snaps =================
+     Menus, popovers and pages ease in AND out. Closing works through "display ... allow-discrete": the element stays
+     drawn until its fade has finished. Popovers only move up and down (never scale), so code that measures them still gets true sizes. */
+  @keyframes ppRFwd{ from{ opacity:0; translate:30px 0; } to{ opacity:1; translate:0 0; } }
+  @keyframes ppRBack{ from{ opacity:0; translate:-30px 0; } to{ opacity:1; translate:0 0; } }
+  @keyframes ppRPop{ 0%{ scale:.55; opacity:.2; rotate:-25deg; } 60%{ scale:1.14; opacity:1; rotate:0deg; } 100%{ scale:1; } }
+  @keyframes ppRTog{ 0%{ scale:.9; } 55%{ scale:1.07; } 100%{ scale:1; } }
+  @keyframes ppRSwap{ from{ opacity:0; translate:0 7px; } to{ opacity:1; translate:0 0; } }
+  body.pp-refined .pp-r-fwd{ animation:ppRFwd .34s var(--r-ease) both; }
+  body.pp-refined .pp-r-back{ animation:ppRBack .34s var(--r-ease) both; }
+  body.pp-refined .pp-r-pop{ animation:ppRPop .38s var(--r-ease) both; }
+  body.pp-refined .pp-r-swap{ animation:ppRSwap .32s var(--r-ease) both; }
+
+  /* buttons that bring their own transition (so the zero-specificity rule above never reached them) */
+  body.pp-refined :is(.pill-btn, .ctrl-btn, .ph-back, .ph-link, .ppg-back, .ppg-exit, .ppx-tab, .ppx-tile, .ppx-btn, .ppx-seg button, .settings-toggle-btn),
+  body.pp-refined #pl-back, body.pp-refined #menu-btn, body.pp-refined #immersive-btn, body.pp-refined #menu-close-btn, body.pp-refined #pl-mini button{
+    transition:scale .3s var(--r-spring), background .25s, color .25s, border-color .25s, box-shadow .25s, opacity .25s; }
+  body.pp-refined :is(.pill-btn, .ctrl-btn, .ph-back, .ph-link, .ppg-back, .ppg-exit, .ppx-tab, .ppx-tile, .ppx-btn, .ppx-seg button, .settings-toggle-btn):active,
+  body.pp-refined #pl-back:active, body.pp-refined #menu-btn:active, body.pp-refined #immersive-btn:active, body.pp-refined #menu-close-btn:active, body.pp-refined #pl-mini button:active{
+    scale:.9; transition-duration:.08s; }
+  body.pp-refined .pill-btn.toggled, body.pp-refined .ctrl-btn.toggled, body.pp-refined .ppx-tab.on, body.pp-refined .ppx-seg button.on{ animation:ppRTog .36s var(--r-ease); }
+  body.pp-refined .pill-btn.toggled{ box-shadow:0 4px 14px -7px color-mix(in srgb, var(--accent) 80%, transparent); }
+  body.pp-refined .pill-btn.open{ border-color:color-mix(in srgb, var(--accent) 60%, transparent); color:var(--text); }
+  body.pp-refined #play-btn :is(.ico-play, .ico-pause){ animation:ppRPop .34s var(--r-ease); }
+  body.pp-refined input[type=checkbox]{ transition:scale .3s var(--r-spring); }
+  body.pp-refined input[type=checkbox]:active{ scale:.8; transition-duration:.08s; }
+  body.pp-refined .settings-switch:active .settings-switch-thumb{ scale:1.18 .9; }
+  body.pp-refined .settings-switch-thumb{ transition:transform .4s var(--r-spring), scale .25s var(--r-ease), background .3s !important; }
+
+  /* popovers (speed, EQ, sleep, sort, add...) */
+  body.pp-refined :is(#sort-dropdown, #add-dropdown, #track-edit-popover, #track-pl-popover, #select-pl-menu, #viz-sens-dropdown, #subtitle-dropdown, #sleep-dropdown, #filter-dropdown, #pip-dropdown, #speed-dropdown, #latency-dropdown, #memc-dropdown, #upscale-dropdown, #boost-dropdown, #fx-dropdown, #eq-dropdown):not(#menu-panel *){ opacity:0; translate:0 10px; pointer-events:none;
+    transition:opacity .26s cubic-bezier(.7,0,1,1), translate .32s var(--r-spring), display .28s allow-discrete; }
+  body.pp-refined :is(#sort-dropdown, #add-dropdown, #track-edit-popover, #track-pl-popover, #select-pl-menu, #viz-sens-dropdown, #subtitle-dropdown, #sleep-dropdown, #filter-dropdown, #pip-dropdown, #speed-dropdown, #latency-dropdown, #memc-dropdown, #upscale-dropdown, #boost-dropdown, #fx-dropdown, #eq-dropdown).open:not(#menu-panel *){ opacity:1; translate:0 0; pointer-events:auto; transition:opacity .18s var(--r-ease), translate .32s var(--r-spring), display .28s allow-discrete; }
+  @starting-style{ body.pp-refined :is(#sort-dropdown, #add-dropdown, #track-edit-popover, #track-pl-popover, #select-pl-menu, #viz-sens-dropdown, #subtitle-dropdown, #sleep-dropdown, #filter-dropdown, #pip-dropdown, #speed-dropdown, #latency-dropdown, #memc-dropdown, #upscale-dropdown, #boost-dropdown, #fx-dropdown, #eq-dropdown).open:not(#menu-panel *){ opacity:0; translate:0 10px; } }
+
+  /* dialogs and the side menu */
+  body.pp-refined :is(#sort-modal-overlay, #rename-modal-overlay, #thumbnail-modal-overlay, #cutter-modal-overlay, #customize-modal-overlay, #ppxp-rank-modal-overlay, #ppxp-expshop-modal-overlay, #ppxp-quiz-modal-overlay, #menu-overlay, #pp-mar-overlay){ opacity:0; pointer-events:none; transition:opacity .28s cubic-bezier(.7,0,1,1), display .3s allow-discrete; }
+  body.pp-refined :is(#sort-modal-overlay, #rename-modal-overlay, #thumbnail-modal-overlay, #cutter-modal-overlay, #customize-modal-overlay, #ppxp-rank-modal-overlay, #ppxp-expshop-modal-overlay, #ppxp-quiz-modal-overlay, #menu-overlay, #pp-mar-overlay).open{ opacity:1; pointer-events:auto; transition:opacity .24s var(--r-ease), display .3s allow-discrete; }
+  @starting-style{ body.pp-refined :is(#sort-modal-overlay, #rename-modal-overlay, #thumbnail-modal-overlay, #cutter-modal-overlay, #customize-modal-overlay, #ppxp-rank-modal-overlay, #ppxp-expshop-modal-overlay, #ppxp-quiz-modal-overlay, #menu-overlay, #pp-mar-overlay).open{ opacity:0; } }
+  body.pp-refined :is(#sort-modal-overlay, #rename-modal-overlay, #thumbnail-modal-overlay, #cutter-modal-overlay, #customize-modal-overlay, #ppxp-rank-modal-overlay, #ppxp-expshop-modal-overlay, #ppxp-quiz-modal-overlay, #menu-overlay, #pp-mar-overlay) > *{ translate:0 18px; transition:translate .36s var(--r-spring); }
+  body.pp-refined :is(#sort-modal-overlay, #rename-modal-overlay, #thumbnail-modal-overlay, #cutter-modal-overlay, #customize-modal-overlay, #ppxp-rank-modal-overlay, #ppxp-expshop-modal-overlay, #ppxp-quiz-modal-overlay, #menu-overlay, #pp-mar-overlay).open > *{ translate:0 0; }
+  @starting-style{ body.pp-refined :is(#sort-modal-overlay, #rename-modal-overlay, #thumbnail-modal-overlay, #cutter-modal-overlay, #customize-modal-overlay, #ppxp-rank-modal-overlay, #ppxp-expshop-modal-overlay, #ppxp-quiz-modal-overlay, #menu-overlay, #pp-mar-overlay).open > *{ translate:0 18px; } }
+  body.pp-refined #menu-overlay > #menu-panel{ animation:none; translate:100% 0; transition:translate .34s var(--r-ease); }
+  body.pp-refined #menu-overlay.open > #menu-panel{ translate:0 0; }
+  @starting-style{ body.pp-refined #menu-overlay.open > #menu-panel{ translate:100% 0; } }
+
+  /* the player page rises to open and sinks to close; its corner buttons pop in */
+  body.pp-refined.player-layout #main{ opacity:0; translate:0 9%; transition:opacity .26s cubic-bezier(.5,0,1,1), translate .28s cubic-bezier(.4,0,1,1), visibility 0s .28s; }   /* the script replaces this with a shrink into the playing card or row when there is one */
+  body.pp-refined.player-layout[data-pl-player] #main{ opacity:1; translate:none; transition:opacity .3s var(--r-ease), translate .44s var(--r-ease), visibility 0s; }
+  @starting-style{
+    body.pp-refined.player-layout[data-pl-player] #pl-back, body.pp-refined.player-layout[data-pl-player] #menu-btn, body.pp-refined.player-layout[data-pl-player] #immersive-btn{ opacity:0; scale:.5; }
+  }
+
+  /* tab bar and mini-player slide away and back instead of blinking */
+  body.pp-refined.player-layout #pl-tabbar{ transition:translate .42s var(--r-ease), opacity .25s, display .32s allow-discrete; }
+  body.pp-refined.player-layout[data-pl-player] #pl-tabbar{ translate:0 100%; opacity:0; }
+  @starting-style{ body.pp-refined.player-layout:not([data-pl-player]) #pl-tabbar{ translate:0 100%; opacity:0; } }
+  body.pp-refined.player-layout #pl-mini{ align-items:center; gap:10px; position:fixed; left:8px; right:8px; z-index:55; overflow:hidden; cursor:pointer;
+    bottom:calc(var(--pl-bar) + env(safe-area-inset-bottom, 0px) + 6px); height:calc(var(--pl-mini) - 6px); padding:0 6px 0 8px;
+    opacity:0; translate:0 20px; pointer-events:none;
+    transition:opacity .25s var(--r-ease), translate .42s var(--r-spring), scale .3s var(--r-spring), display .3s allow-discrete; }
+  body.pp-refined.player-layout.pl-has-track:not([data-pl-player]) #pl-mini{ opacity:1; translate:0 0; pointer-events:auto; }
+  @starting-style{ body.pp-refined.player-layout.pl-has-track:not([data-pl-player]) #pl-mini{ opacity:0; translate:0 20px; } }
+  body.pp-refined.player-layout #pl-mini:active:not(:has(button:active)){ scale:.975; transition-duration:.25s, .42s, .08s, .3s; }
+  body.pp-refined #pl-mini-prog i{ transition:width .5s linear; }
+  body.pp-refined #pl-mini-art img{ transition:opacity .3s; }
+
+  /* Games: the page and the Points hub close as softly as they open */
+  body.pp-refined :is(#pp-games, #ppx-hub){ transition:opacity .24s var(--r-ease), transform .34s var(--r-ease), display .44s allow-discrete; }
+  body.pp-refined :is(#pp-games, #ppx-hub):not(.shown){ pointer-events:none; }
+  body.pp-refined .ppg-art{ transition:transform .3s var(--r-spring); }
+  body.pp-refined .ppx-bar i{ transition:width .5s var(--r-ease); }
+
+
+  /* ---- the player's own controls: nothing blinks while watching ---- */
+  @keyframes ppRZin{ from{ scale:.8; opacity:.5; } to{ scale:1; opacity:1; } }
+  @keyframes ppRZout{ from{ scale:1.18; opacity:.6; } to{ scale:1; opacity:1; } }
+  body.pp-refined .pp-r-zin{ animation:ppRZin .5s var(--r-ease) both; }
+  body.pp-refined .pp-r-zout{ animation:ppRZout .45s var(--r-ease) both; }
+  /* video page: a tap brings the controls in from the edges they live on, and they leave the same way */
+  body.pp-refined.player-layout.pl-video[data-pl-player] #controls-col{ translate:0 28px; transition:opacity .3s var(--r-ease), translate .44s var(--r-ease); }
+  body.pp-refined.player-layout.pl-video[data-pl-player].pl-ui-show #controls-col{ translate:0 0; }
+  body.pp-refined.player-layout.pl-video[data-pl-player] #menu-btn, body.pp-refined.player-layout.pl-video[data-pl-player] #video-tools,
+  body.pp-refined.player-layout.pl-video[data-pl-player] #pl-back, body.pp-refined.player-layout.pl-video[data-pl-player] #pl-pin-btn{
+    transition:opacity .3s var(--r-ease), translate .44s var(--r-ease), scale .3s var(--r-spring), background .2s, color .2s, border-color .2s; }
+  body.pp-refined.player-layout.pl-video[data-pl-player]:not(.pl-ui-show) :is(#menu-btn, #video-tools){ translate:0 -18px; }
+  body.pp-refined.player-layout.pl-video[data-pl-player]:not(.pl-ui-show) #pl-back,
+  body.pp-refined.player-layout.pl-video[data-pl-player]:not(.pl-ui-show):not(.pl-ctl-hide) #pl-pin-btn{ translate:0 18px; }
+  body.pp-refined #pl-pin-btn:active{ scale:.9; transition-duration:.08s; }
+  /* visualizer page, immersive: the controls sink away below the disc and rise back */
+  body.pp-refined.player-layout[data-pl-player]:not(.pl-video) #controls-col{ transition:opacity .3s var(--r-ease), translate .46s var(--r-ease), display .46s allow-discrete; }
+  body.pp-refined.player-layout.immersive[data-pl-player]:not(.pl-video) #controls-col{ opacity:0; translate:0 46px; pointer-events:none; margin-bottom:calc(-1 * var(--pl-ctl-h, 320px)); }
+  @starting-style{ body.pp-refined.player-layout[data-pl-player]:not(.immersive):not(.pl-video) #controls-col{ opacity:0; translate:0 46px; } }
+  body.pp-refined.player-layout[data-pl-player] #pl-back{ transition:scale .3s var(--r-spring), background .25s, color .25s, opacity .25s, display .25s allow-discrete; }
+  body.pp-refined.player-layout.immersive[data-pl-player] #pl-back{ opacity:0; scale:.5; }
+  /* bookmarks / chapters / lyrics panel and the transcript sheet */
+  body.pp-refined #extras-panel{ opacity:0; translate:0 18px; pointer-events:none; transition:opacity .22s var(--r-ease), translate .36s var(--r-spring), display .28s allow-discrete; }
+  body.pp-refined #extras-panel.open{ opacity:1; translate:0 0; pointer-events:auto; }
+  @starting-style{ body.pp-refined #extras-panel.open{ opacity:0; translate:0 18px; } }
+  body.pp-refined #extras-panel .pp-pane.active{ animation:ppRIn .3s var(--r-ease); }
+  body.pp-refined #sub-tx{ translate:0 100%; transition:translate .4s var(--r-ease), display .4s allow-discrete; }
+  body.pp-refined #sub-tx.open{ translate:0 0; }
+  @starting-style{ body.pp-refined #sub-tx.open{ translate:0 100%; } }
+
+
+  /* ---- touch: every tap squeezes, springs back and leaves a soft glow where the finger landed (see the script) ---- */
+  .pp-r-ripple{ position:fixed; z-index:2147483646; overflow:hidden; pointer-events:none; contain:strict; }
+  .pp-r-ripple i{ position:absolute; border-radius:50%; translate:-50% -50%;
+    background:radial-gradient(circle, color-mix(in srgb, var(--accent) 22%, rgba(255,255,255,.2)) 0%, color-mix(in srgb, var(--accent) 12%, rgba(255,255,255,.1)) 55%, transparent 72%); }
+
+  @media (prefers-reduced-motion: reduce){
+    body.pp-refined .pp-r-in, body.pp-refined .pp-r-stag, body.pp-refined .pp-r-up, body.pp-refined .pp-r-rise, body.pp-refined .pp-r-fwd, body.pp-refined .pp-r-back,
+    body.pp-refined .pp-r-pop, body.pp-refined .pp-r-swap, body.pp-refined .pp-r-zin, body.pp-refined .pp-r-zout, body.pp-refined #extras-panel .pp-pane.active, body.pp-refined .toggled, body.pp-refined .ppx-tab.on, body.pp-refined .ppx-seg button.on, body.pp-refined #play-btn svg{ animation:none !important; }
+    body.pp-refined *{ transition-duration:.01ms !important; }
+  }

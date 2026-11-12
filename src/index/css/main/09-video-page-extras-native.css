@@ -1,0 +1,252 @@
+  /* ---------- Video playback page: full-screen picture, tap for controls ---------- */
+  body.player-layout.pl-video[data-pl-player] #main{
+    padding:0; gap:0; background:#000; justify-content:center; align-items:stretch;
+    flex-direction:column; overflow:hidden;
+  }
+  body.player-layout.pl-video[data-pl-player] #video-wrap{
+    position:fixed; inset:0; width:100%; height:100%; max-width:none; max-height:none;
+    margin:0; border:none; border-radius:0; background:#000;
+  }
+  body.player-layout.pl-video[data-pl-player] #video-el,
+  body.player-layout.pl-video[data-pl-player] #video-delay-canvas,
+  body.player-layout.pl-video[data-pl-player] #memc-canvas{
+    width:100%; height:100%; max-height:none; object-fit:contain; border-radius:0;
+  }
+  body.player-layout.pl-video[data-pl-player] #immersive-btn{ display:none; }
+  body.player-layout.pl-video[data-pl-player] #menu-btn{ right:14px; }
+  body.player-layout.pl-video[data-pl-player] #video-tools{ top:14px; right:58px; z-index:8; }
+
+  /* The controls become an overlay along the bottom: no bar, no panel
+     background; buttons keep full-strength symbols. Hidden until a tap. */
+  body.player-layout.pl-video[data-pl-player] #controls-col,
+  body.player-layout.pl-video[data-pl-player] #controls-col.custom-bg-active{
+    position:fixed; left:0; right:0; bottom:0; top:auto; z-index:75;
+    width:auto; max-width:none; margin:0; flex:none;
+    padding:0 clamp(14px, 4vw, 40px) max(14px, env(safe-area-inset-bottom, 0px));
+    background:transparent !important; backdrop-filter:none; border:none; box-shadow:none;
+    opacity:0; pointer-events:none; transition:opacity .2s;
+    --line:rgba(255,255,255,.4); --text-dim:#fff; --text:#fff;
+  }
+  body.player-layout.pl-video[data-pl-player] #controls-col *{ text-shadow:0 1px 3px rgba(0,0,0,.95); }
+  body.player-layout.pl-video[data-pl-player] #controls-col svg{ filter:drop-shadow(0 1px 3px rgba(0,0,0,.95)); }
+  body.player-layout.pl-video[data-pl-player] #controls-col #seek-wrap{ filter:drop-shadow(0 1px 2px rgba(0,0,0,.9)); }
+  body.player-layout.pl-video[data-pl-player] #now-playing{ margin:0 0 6px; }
+  body.player-layout.pl-video[data-pl-player] #extra-transport{ display:flex; }
+  body.player-layout.pl-video[data-pl-player] #play-btn,
+  body.player-layout.pl-video[data-pl-player] #play-btn:hover{ background:transparent; color:#fff; }
+  body.player-layout.pl-video[data-pl-player] #transport{ margin:2px 0 8px; }
+
+  body.player-layout.pl-video[data-pl-player] #pl-back,
+  body.player-layout.pl-video[data-pl-player] #menu-btn,
+  body.player-layout.pl-video[data-pl-player] #video-tools{
+    opacity:0; pointer-events:none; transition:opacity .2s, background .15s, color .15s;
+  }
+  body.player-layout.pl-video[data-pl-player].pl-ui-show #controls-col{ opacity:1; }
+  body.player-layout.pl-video[data-pl-player].pl-ui-show #pl-back,
+  body.player-layout.pl-video[data-pl-player].pl-ui-show #menu-btn,
+  body.player-layout.pl-video[data-pl-player].pl-ui-show #video-tools{ opacity:1; pointer-events:auto; }
+  /* Only the real controls catch touches, so a tap on empty space (even in
+     the middle of the bar) falls through to the video and hides it again. */
+  body.player-layout.pl-video[data-pl-player].pl-ui-show #controls-col :is(button, input, select, [role="slider"], [id$="-dropdown"], #seek-wrap){
+    pointer-events:auto;
+  }
+
+  /* Pin button: bottom right of the video page, just above the controls bar.
+     When pinned, the controls stay up instead of auto-hiding. */
+  #pl-pin-btn{ display:none; }
+  body.player-layout.pl-video[data-pl-player] #pl-pin-btn{
+    display:flex; align-items:center; justify-content:center;
+    position:fixed; z-index:80;
+    right:max(14px, env(safe-area-inset-right, 0px));
+    bottom:max(14px, env(safe-area-inset-bottom, 0px));
+    width:36px; height:36px; border-radius:8px;
+    background:rgba(0,0,0,0.5); border:1px solid var(--line);
+    color:#fff; cursor:pointer;
+    opacity:0; pointer-events:none;
+    transition:opacity .2s, background .15s, color .15s;
+  }
+  body.player-layout.pl-video[data-pl-player].pl-ui-show #pl-pin-btn,
+  body.player-layout.pl-video[data-pl-player].pl-ctl-hide #pl-pin-btn{ opacity:1; pointer-events:auto; }
+  body.player-layout.pl-video[data-pl-player].pl-ctl-hide #pl-pin-btn{ opacity:.6; }
+  #pl-pin-btn .pin-slash{ display:none; }
+  #pl-pin-btn.hidden-mode .pin-slash{ display:block; }
+  body.player-layout.pl-video[data-pl-player] #pl-pin-btn:hover{ background:rgba(0,0,0,0.75); color:var(--accent); }
+  #pl-pin-btn svg{ width:18px; height:18px; }
+  #pl-pin-btn.pinned, #pl-pin-btn.hidden-mode{ color:var(--accent); border-color:var(--accent); background:rgba(0,0,0,0.75); }
+  #pl-pin-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+
+
+  /* ---------- Play button: static icons, always visible ---------- */
+  #play-btn .ico-pause{ display:none; }
+  #play-btn.is-playing .ico-play{ display:none; }
+  #play-btn.is-playing .ico-pause{ display:block; }
+  #play-btn svg{ fill:currentColor; flex:0 0 auto; }
+  /* Video player page: give the button its own solid backing and a plain
+     white icon (no filter, no inherited transparency) so it can never blend
+     into the video or vanish. */
+  body.player-layout.pl-video[data-pl-player] #play-btn,
+  body.player-layout.pl-video[data-pl-player] #play-btn:hover,
+  body.player-layout.pl-video[data-pl-player] #play-btn:active{
+    position:relative; z-index:2;
+    background:rgba(0,0,0,.55) !important; color:#fff !important;
+    border:2px solid rgba(255,255,255,.9) !important;
+    opacity:1 !important;
+  }
+  body.player-layout.pl-video[data-pl-player] #play-btn svg{
+    display:none; fill:#fff !important; color:#fff !important; filter:none !important; opacity:1 !important;
+  }
+  body.player-layout.pl-video[data-pl-player] #play-btn:not(.is-playing) .ico-play,
+  body.player-layout.pl-video[data-pl-player] #play-btn.is-playing .ico-pause{ display:block !important; }
+
+  /* Regular (non-video) player: same always-visible play button. */
+  #play-btn, #play-btn:hover, #play-btn:active{
+    position:relative; z-index:2;
+    background:rgba(0,0,0,.55) !important; color:#fff !important;
+    border:2px solid rgba(255,255,255,.9) !important;
+    opacity:1 !important;
+  }
+  #play-btn svg{ display:none; fill:#fff !important; color:#fff !important; filter:none !important; opacity:1 !important; }
+  #play-btn:not(.is-playing) .ico-play,
+  #play-btn.is-playing .ico-pause{ display:block !important; }
+
+  /* FPS counter: sit below the back button (top-left, 36px tall) instead of under it. */
+  body.player-layout[data-pl-player] #fps-counter{
+    top:calc(max(14px, env(safe-area-inset-top, 0px)) + 36px + 8px); left:14px;
+  }
+
+  /* Video page: Back button lives bottom-left (clear of the fps counter at the
+     top-left). The controls reserve room for it: a row beneath them in portrait,
+     a left gutter in landscape. */
+  body.player-layout.pl-video[data-pl-player] #pl-back{
+    top:auto; left:max(14px, env(safe-area-inset-left, 0px));
+    bottom:max(14px, env(safe-area-inset-bottom, 0px));
+  }
+  body.player-layout.pl-video[data-pl-player] #controls-col,
+  body.player-layout.pl-video[data-pl-player] #controls-col.custom-bg-active{
+    padding-bottom:max(14px, env(safe-area-inset-bottom, 0px));
+  }
+  /* Portrait: the volume bar sits in the same bottom row as Back (left) and Pin (right), between them,
+     instead of above a separate 46px strip reserved for those buttons (that strip pushed every other
+     control up by ~60px). The footer escapes the column's side padding and keeps the button zones clear. */
+  @media not all and (max-height:480px) and (orientation:landscape){
+    body.player-layout.pl-video[data-pl-player] #controls-footer{
+      box-sizing:border-box; width:auto; max-width:none; height:36px; margin:6px calc(-1 * clamp(14px, 4vw, 40px)) 0;
+      padding:0 calc(max(14px, env(safe-area-inset-right, 0px)) + 36px + 10px) 0 calc(max(14px, env(safe-area-inset-left, 0px)) + 36px + 10px);
+      align-items:center; justify-content:center;
+    }
+    body.player-layout.pl-video[data-pl-player] #vol-row{ width:min(280px, 100%); max-width:100%; margin:0 auto; }
+  }
+  @media (max-height:480px) and (orientation:landscape){
+    body.player-layout.pl-video[data-pl-player] #controls-col,
+    body.player-layout.pl-video[data-pl-player] #controls-col.custom-bg-active{
+      padding-bottom:max(14px, env(safe-area-inset-bottom, 0px));
+      padding-left:calc(max(14px, env(safe-area-inset-left, 0px)) + 50px);
+      padding-right:calc(max(14px, env(safe-area-inset-right, 0px)) + 50px);
+    }
+  }
+
+  /* Phone held sideways: give the Library / Settings / Home lists the room.
+     The pinned title header goes, and the tab bar and mini-player slim down,
+     so the scrolling area is ~50% taller instead of two rows of list. */
+  @media (max-height:480px) and (orientation:landscape){
+    :root{ --pl-bar:42px; --pl-mini:52px; }
+    body.player-layout #sidebar-header{ display:none; }
+    body.player-layout #pl-tabbar button{ flex-direction:row; gap:8px; font-size:12px; }
+    body.player-layout #pl-tabbar button svg{ width:18px; height:18px; }
+    body.player-layout.pl-has-track:not([data-pl-player]) #pl-mini{ padding:0 6px 0 6px; gap:8px; }
+    body.player-layout #pl-mini-art{ width:32px; height:32px; }
+    body.player-layout #pl-mini button{ width:34px; height:34px; }
+  }
+
+  /* Library / Settings: the whole page scrolls as one (title header included)
+     instead of a small box between a pinned header and the mini-player. The
+     sidebar runs down to the tab bar; bottom padding lets the last row scroll
+     clear of the floating mini-player. */
+  body.player-layout #sidebar,
+  body.player-layout.pl-has-track:not([data-pl-player]) #sidebar{
+    /* !important: the portrait drag-resize saves an inline height/max-height on
+       #sidebar, which otherwise pins this screen to a small saved box. */
+    height:auto !important; max-height:none !important; min-height:0 !important;
+    bottom:calc(var(--pl-bar) + env(safe-area-inset-bottom, 0px));
+    overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch;
+  }
+  body.player-layout.pl-has-track:not([data-pl-player]) #sidebar{
+    padding-bottom:calc(var(--pl-mini) + 8px);
+  }
+  body.player-layout #sidebar > *{ flex-shrink:0; }
+  body.player-layout .sidebar-pane,
+  body.player-layout .sidebar-pane.active{ flex:0 0 auto; min-height:0; overflow:visible; }
+
+  /* Gesture settings: the extra tab only exists while the media player layout is on. */
+  #gesture-mode-tabs{ display:none; margin-top:14px; }
+  body.player-layout #gesture-mode-tabs{ display:flex; }
+  #gesture-pm-pane{ display:none; }
+  body.player-layout #gestures-config[data-gm="pm"] #gesture-std-pane{ display:none; }
+  body.player-layout #gestures-config[data-gm="pm"] #gesture-pm-pane{ display:block; }
+
+  /* Phone held sideways: art on the left, controls on the right. */
+  @media (max-height:480px) and (orientation:landscape){
+    body.player-layout #main{ flex-direction:row; justify-content:center; gap:28px; padding:10px 24px 10px 64px; }
+    body.player-layout #viz-wrap{ width:min(52dvh, 40vw); height:min(52dvh, 40vw); }
+    /* The controls column takes whatever width is left beside the art (it used to be a fixed 420px that could not shrink, so on
+       narrower phones it ran past the edge and the centred row got pushed off to the left), and everything inside it is centred. */
+    body.player-layout #controls-col, body.player-layout #controls-col.custom-bg-active{ flex:1 1 0; min-width:0; max-width:560px; align-items:stretch; text-align:center; }
+    body.player-layout #now-playing{ margin-bottom:10px; text-align:center; }
+    body.player-layout #now-playing #np-title{ text-align:center; font-size:clamp(17px, 5dvh, 22px); }
+    body.player-layout #now-playing #np-artist{ font-size:13px; }
+    body.player-layout #seek-row{ width:100%; max-width:none; margin:0 0 4px; }
+    /* Bigger controls for the bigger space: roomier buttons, thicker sliders, larger thumbs. */
+    body.player-layout #transport{ justify-content:center; gap:clamp(16px, 3.5vw, 34px); margin:6px 0 10px; }
+    body.player-layout #transport .ctrl-btn{ padding:10px; }
+    body.player-layout #transport .ctrl-btn svg{ width:28px; height:28px; }
+    body.player-layout #play-btn{ width:68px; height:68px; flex-basis:68px; }
+    body.player-layout #play-btn svg{ width:32px; height:32px; }
+    body.player-layout #seek, body.player-layout #volume{ height:6px; border-radius:3px; }
+    body.player-layout #seek::-webkit-slider-thumb, body.player-layout #volume::-webkit-slider-thumb{ width:17px; height:17px; }
+    body.player-layout #seek::-moz-range-thumb, body.player-layout #volume::-moz-range-thumb{ width:17px; height:17px; }
+    body.player-layout #controls-footer{ width:100%; max-width:none; justify-content:center; margin:6px 0 0; }
+    body.player-layout #vol-row{ width:min(340px, 100%); margin:0 auto; gap:12px; }
+    body.player-layout #vol-row svg{ width:20px; height:20px; }
+    body.player-layout #extra-transport{ display:none; }
+  }
+
+  /* ---------- Extras: bookmarks / chapters / lyrics / M3U ---------- */
+  #extras-panel{display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(380px,92vw);max-height:70vh;flex-direction:column;background:var(--bg-elev);border:1px solid var(--line);border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.6);z-index:300;overflow:hidden}
+  #extras-panel.open{display:flex}
+  .pp-tabs{display:flex;border-bottom:1px solid var(--line);flex-shrink:0}
+  .pp-tabs button{flex:1;padding:11px 6px;background:none;border:0;border-bottom:2px solid transparent;color:var(--text-dim);font-size:12.5px;font-weight:600;cursor:pointer}
+  .pp-tabs button.active{color:var(--accent);border-bottom-color:var(--accent)}
+  .pp-tabs #pp-close{flex:0 0 44px}
+  .pp-pane{display:none;padding:12px;overflow:auto}
+  .pp-pane.active{display:block}
+  .pp-btn{background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 12px;font-size:12.5px;cursor:pointer}
+  .pp-btn:hover{border-color:var(--accent);color:var(--accent)}
+  .pp-wide{width:100%;margin-bottom:10px}
+  .pp-row{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+  .pp-item{display:flex;align-items:center;gap:10px;padding:8px 6px;border-radius:8px;cursor:pointer;font-size:13px}
+  .pp-item:hover{background:#1d1e23}
+  .pp-item.active{color:var(--accent)}
+  .pp-item .pp-time{font-variant-numeric:tabular-nums;color:var(--text-dim);min-width:48px}
+  .pp-item .pp-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pp-item .pp-del{background:none;border:0;color:var(--text-dim);font-size:16px;cursor:pointer;padding:0 6px}
+  .pp-item .pp-del:hover{color:var(--danger)}
+  .pp-empty{color:var(--text-dim);font-size:12.5px;padding:8px 2px;line-height:1.5}
+  #ly-plain{white-space:pre-wrap;font-size:13px;line-height:1.6;color:var(--text-dim)}
+  #lyrics-overlay{position:absolute;left:-14%;right:-14%;bottom:-48px;text-align:center;pointer-events:none;z-index:4;display:none}
+  #lyrics-overlay.show{display:block}
+  #lyrics-overlay .ly-cur{font-size:16px;font-weight:600;color:var(--text);text-shadow:0 1px 8px rgba(0,0,0,.9);min-height:20px}
+  #lyrics-overlay .ly-next{font-size:12.5px;color:var(--text-dim);margin-top:2px;text-shadow:0 1px 6px rgba(0,0,0,.9);min-height:16px}
+  .pp-set-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+
+  /* Forces the WebView to rebuild the video layer (stale layer after #main flips from hidden to visible). */
+  body.pl-kick #video-wrap{ transform:translateZ(0); opacity:.999; }
+
+  /* ---- native video surface: the page is see-through above the video box ---- */
+  html.pp-native-video #video-wrap{ background:transparent !important; border-radius:0 !important; border-color:transparent !important; }
+  html.pp-native-video #video-el{ visibility:hidden; }
+  /* Native video (beta): the page's own video canvases would cover the native picture, and layers painted under the
+     video box (the home screen behind the full-screen player) would show through the see-through backgrounds. */
+  html.pp-native-video #memc-canvas, html.pp-native-video #video-delay-canvas{ display:none !important; }
+  .pp-hole-hide{ visibility:hidden !important; }
+  .pp-hole-anc{ background:transparent !important; background-image:none !important; -webkit-backdrop-filter:none !important; backdrop-filter:none !important; }

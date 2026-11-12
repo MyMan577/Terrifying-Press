@@ -1,0 +1,357 @@
+  /* ---------- Filter dropdown ---------- */
+  #filter-dropdown{
+    display:none;
+    position:absolute;
+    top:calc(100% + 8px);
+    right:0;
+    background:var(--bg-elev);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:8px;
+    min-width:210px;
+    max-height:min(420px, 70vh);
+    overflow-y:auto;
+    z-index:20;
+    box-shadow:0 8px 24px rgba(0,0,0,0.4);
+    transform: translateX(var(--clamp-shift-x, 0px));
+  }
+  #filter-dropdown.open{ display:block; }
+  #pip-dropdown{
+    display:none;
+    position:absolute;
+    top:calc(100% + 8px);
+    right:0;
+    background:var(--bg-elev);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:8px;
+    width:min(280px, calc(100vw - 24px));
+    z-index:20;
+    box-shadow:0 8px 24px rgba(0,0,0,0.4);
+    transform: translateX(var(--clamp-shift-x, 0px));
+  }
+  #pip-dropdown.open{ display:block; }
+  #pip-dd-hint{ font-size:11px; line-height:1.4; color:var(--text-dim); margin:0; padding:0 8px 6px; }
+  #pip-dropdown .enhance-row{ padding:6px 8px; }
+  #pip-dropdown .pip-dd-label{ flex:1 1 auto; font-size:12px; color:var(--text); }
+  #pip-dropdown .pip-dd-label small{ display:block; font-size:10px; color:var(--text-dim); margin-top:1px; }
+  #pip-dd-status{ font-size:11px; line-height:1.4; color:var(--text-dim); margin:2px 0 8px; padding:0 8px; }
+  #pip-dd-status.warn{ color:var(--accent); }
+  #pip-dd-start{
+    display:block; width:calc(100% - 16px); margin:0 8px 2px; padding:9px 8px;
+    background:var(--bg); border:1px solid var(--accent-dim); color:var(--accent);
+    border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;
+  }
+  #pip-dd-start:hover{ background:#1a2422; border-color:var(--accent); }
+  .tool-dropdown-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    gap:6px;
+    padding:0 8px 8px 8px;
+  }
+  .tool-dropdown-grid button{
+    padding:7px 4px;
+    background:var(--bg);
+    border:1px solid var(--line);
+    color:var(--text-dim);
+    border-radius:6px;
+    font-size:11px;
+    cursor:pointer;
+  }
+  .tool-dropdown-grid button:hover{ border-color:var(--accent-dim); color:var(--text); }
+  .tool-dropdown-grid button.active{ border-color:var(--accent); color:var(--accent); background:#1a2422; }
+  #filter-dropdown #filter-intensity{
+    display:block;
+    width:calc(100% - 16px);
+    margin:0 8px 6px 8px;
+    accent-color:var(--accent);
+  }
+  .enhance-row{
+    display:flex; align-items:center; gap:10px;
+    padding:4px 8px;
+  }
+  .enhance-row-label{
+    flex:0 0 90px;
+    font-size:11px; color:var(--text-dim);
+  }
+  .enhance-row input[type=range]{
+    flex:1; accent-color:var(--accent);
+  }
+  .enhance-row .settings-switch{ margin-left:auto; }
+
+  /* ---------- Immersive mode ---------- */
+  #immersive-btn{
+    position:fixed;
+    top:14px; right:14px;
+    z-index:50;
+    width:34px; height:34px;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(0,0,0,0.5);
+    border:1px solid var(--line);
+    border-radius:8px;
+    color:var(--text);
+    cursor:pointer;
+    transition:background .15s, color .15s, opacity .2s;
+  }
+  #immersive-btn:hover{ background:rgba(0,0,0,0.75); color:var(--accent); }
+  #immersive-btn svg{ width:16px; height:16px; }
+  body.immersive #immersive-btn{
+    color:var(--accent);
+    opacity:.35;
+  }
+  body.immersive #immersive-btn:hover{ opacity:1; }
+
+  body.immersive #sidebar{ display:none; }
+  body.immersive #app{ grid-template-columns:1fr; }
+  body.immersive #app{ height:100vh; height:100dvh; }
+  body.immersive #main{ padding:0; height:100vh; height:100dvh; }
+  body.immersive #controls-col{ display:none; }
+  body.immersive #video-tools{ opacity:0; transition:opacity .2s; }
+  body.immersive #video-wrap:hover #video-tools,
+  body.immersive #video-wrap:focus-within #video-tools,
+  body.immersive #video-tools:has([id$="-dropdown"].open){ opacity:1; }
+  body.immersive #viz-wrap{
+    width:min(100vh, 100vw);
+    height:min(100vh, 100vw);
+    max-width:100vw;
+    max-height:100vh;
+    margin-bottom:0;
+  }
+  body.immersive #video-wrap{
+    width:100vw;
+    max-width:100vw;
+    height:100vh; height:100dvh;
+    max-height:100vh; max-height:100dvh;
+    margin:0;
+    border-radius:0;
+    border:none;
+  }
+  body.immersive #video-el{
+    width:100%; height:100%;
+    max-height:100vh; max-height:100dvh;
+    object-fit:contain;
+    border-radius:0;
+  }
+  body.immersive #video-delay-canvas{
+    max-height:100vh; max-height:100dvh;
+    object-fit:contain;
+    border-radius:0;
+  }
+  body.immersive #main{ overflow:hidden; }
+
+  /* ---------- Settings menu button (was the floating customize-btn slot) ---------- */
+  #menu-btn{
+    position:fixed;
+    top:14px; right:56px;
+    z-index:50;
+    width:34px; height:34px;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(0,0,0,0.5);
+    border:1px solid var(--line);
+    border-radius:8px;
+    color:var(--text);
+    cursor:pointer;
+    transition:background .15s, color .15s, opacity .2s;
+  }
+  #menu-btn:hover{ background:rgba(0,0,0,0.75); color:var(--accent); }
+  #menu-btn svg{ width:16px; height:16px; }
+  body.immersive #menu-btn{ opacity:.35; }
+  body.immersive #menu-btn:hover{ opacity:1; }
+
+  /* ---------- Settings menu (sidebar for non-media controls) ---------- */
+  #menu-overlay{
+    display:none;
+    position:fixed; inset:0;
+    background:rgba(0,0,0,0.5);
+    z-index:130;
+    justify-content:flex-end;
+  }
+  #menu-overlay.open{ display:flex; }
+  #menu-panel{
+    width:min(380px, 92vw);
+    height:100%;
+    background:var(--bg-elev);
+    border-left:1px solid var(--line);
+    display:flex; flex-direction:column;
+    animation: menu-slide-in .18s ease;
+  }
+  @keyframes menu-slide-in{ from{ transform:translateX(24px); opacity:.4; } to{ transform:translateX(0); opacity:1; } }
+  #menu-panel-header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px 20px 14px 20px;
+    border-bottom:1px solid var(--line);
+    flex-shrink:0;
+  }
+  #menu-panel-header h2{ margin:0; font-size:15px; font-weight:600; }
+  #menu-close-btn{
+    background:none; border:none; color:var(--text-dim);
+    font-size:22px; line-height:1; cursor:pointer;
+    padding:2px 7px; border-radius:6px;
+  }
+  #menu-close-btn:hover{ color:var(--accent); background:#1d1e23; }
+  #menu-panel-body{ flex:1; overflow-y:auto; padding:4px 20px 26px 20px; }
+
+  .menu-section-label{ font-size:11px; color:var(--text-dim); letter-spacing:0.3px; margin:16px 0 3px 0; }
+  .menu-section-hint{ font-size:11.5px; color:var(--text-dim); margin:0 0 4px 0; line-height:1.5; }
+
+  .menu-item{ padding:14px 0; border-bottom:1px solid var(--line); }
+  .menu-item:last-child{ border-bottom:none; }
+  .menu-item-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+  .menu-item-title{ display:flex; align-items:center; gap:9px; font-size:13px; font-weight:500; }
+  .menu-item-title svg{ width:16px; height:16px; color:var(--text-dim); flex-shrink:0; }
+  .qb-toggle{
+    display:flex; align-items:center; gap:6px;
+    font-size:10.5px; color:var(--text-dim);
+    cursor:pointer; white-space:nowrap; flex-shrink:0;
+  }
+  .qb-toggle input{ accent-color:var(--accent); cursor:pointer; }
+  /* Shown once 6 pills are already on the quick bar, on the remaining
+     unchecked options, so it's clear why they can't be added without
+     first removing one. */
+  .qb-toggle-disabled{ opacity:.4; cursor:not-allowed; }
+  .qb-toggle-disabled input{ cursor:not-allowed; }
+  .menu-item-slot{ min-width:0; }
+
+  /* Buttons that get relocated into the menu render as full-width rows
+     instead of small pills/icons; the same elements keep their normal
+     pill/icon look when moved into the quick bar instead. */
+  #menu-panel .pill-btn{
+    width:100%;
+    justify-content:flex-start;
+    border-radius:8px;
+    padding:9px 12px;
+    font-size:13px;
+  }
+  #menu-panel .pill-btn svg{ width:15px; height:15px; margin-right:2px; }
+
+  /* Dropdowns become static, always-visible inline blocks inside the menu
+     rather than absolute-positioned popovers. */
+  #menu-panel #speed-dropdown,
+  #menu-panel #eq-dropdown,
+  #menu-panel #sleep-dropdown,
+  #menu-panel #viz-sens-dropdown,
+  #menu-panel #memc-dropdown,
+  #menu-panel #upscale-dropdown,
+  #menu-panel #boost-dropdown,
+  #menu-panel #fx-dropdown,
+  #menu-panel #latency-dropdown{
+    display:block !important;
+    position:static;
+    transform:none;
+    width:auto; max-width:none;
+    background:none; border:none; box-shadow:none;
+    padding:10px 2px 0 2px; margin:0;
+  }
+
+  /* ---------- Customize UI modal ---------- */
+  #customize-modal-overlay{
+    display:none;
+    position:fixed; inset:0;
+    background:rgba(0,0,0,0.6);
+    z-index:110;
+    align-items:center;
+    justify-content:center;
+  }
+  #customize-modal-overlay.open{ display:flex; }
+  #customize-modal{
+    background:var(--bg-elev);
+    border:1px solid var(--line);
+    border-radius:14px;
+    width:min(560px, 94vw);
+    max-height:88vh;
+    display:flex; flex-direction:column;
+    overflow:hidden;
+  }
+  #customize-modal-header{ padding:18px 22px 14px 22px; border-bottom:1px solid var(--line); }
+  #customize-modal-header h2{ margin:0 0 3px 0; font-size:15px; font-weight:600; }
+  #customize-modal-header p{ margin:0; font-size:12px; color:var(--text-dim); }
+  #customize-modal-body{ padding:18px 22px; overflow-y:auto; }
+
+  #customize-tabs{ display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+  .customize-tab-hint{
+    font-size:11px; color:var(--text-dim); margin:0 0 14px 0;
+    min-height:14px;
+  }
+  .customize-tab{
+    padding:7px 11px;
+    background:transparent;
+    border:1px solid var(--line);
+    color:var(--text-dim);
+    border-radius:20px;
+    font-size:11.5px;
+    cursor:pointer;
+    transition:border-color .12s, color .12s, background .12s;
+  }
+  .customize-tab:hover{ border-color:var(--accent-dim); color:var(--text); }
+  .customize-tab.active{ color:var(--accent); border-color:var(--accent-dim); background:rgba(110,231,208,0.08); }
+
+  #customize-preview{
+    height:64px;
+    border-radius:10px;
+    border:1px solid var(--line);
+    margin-bottom:18px;
+    background-color:var(--bg);
+    background-size:cover;
+    background-position:center;
+    background-repeat:no-repeat;
+  }
+
+  .customize-type-row{ display:flex; gap:8px; margin-bottom:16px; }
+  .customize-type-btn{
+    flex:1;
+    padding:8px 6px;
+    background:transparent;
+    border:1px solid var(--line);
+    color:var(--text-dim);
+    border-radius:8px;
+    font-size:12px;
+    cursor:pointer;
+    transition:border-color .12s, color .12s, background .12s;
+  }
+  .customize-type-btn:hover{ border-color:var(--accent-dim); color:var(--text); }
+  .customize-type-btn.active{ color:var(--accent); border-color:var(--accent-dim); background:rgba(110,231,208,0.08); }
+
+  .customize-group{ display:none; }
+  .customize-group.show{ display:block; }
+
+  .customize-row{ margin-bottom:14px; }
+  .customize-row label{ display:block; font-size:11px; color:var(--text-dim); margin-bottom:6px; }
+  .customize-color-input{
+    -webkit-appearance:none; appearance:none;
+    width:100%; height:36px;
+    padding:0; border:1px solid var(--line); border-radius:7px;
+    background:none; cursor:pointer;
+  }
+  .customize-color-input::-webkit-color-swatch-wrapper{ padding:3px; }
+  .customize-color-input::-webkit-color-swatch{ border:none; border-radius:5px; }
+
+  .customize-gradient-colors{ display:flex; gap:10px; }
+  .customize-gradient-colors > div{ flex:1; }
+
+  .customize-range{ width:100%; accent-color:var(--accent); }
+  .customize-range-value{ font-size:11px; color:var(--text-dim); float:right; }
+
+  .customize-upload-btn{
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    width:100%; padding:9px 12px;
+    background:transparent; border:1px dashed var(--line); color:var(--text);
+    border-radius:8px; font-size:12px; cursor:pointer;
+  }
+  .customize-upload-btn:hover{ border-color:var(--accent-dim); color:var(--accent); }
+  .customize-upload-btn svg{ width:14px; height:14px; }
+
+  .customize-select{
+    width:100%; background:var(--bg); border:1px solid var(--line); color:var(--text);
+    border-radius:7px; padding:7px 8px; font-size:12px;
+  }
+
+  #customize-image-name{
+    font-size:11px; color:var(--text-dim); margin-top:8px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+
+  #customize-modal-footer{
+    display:flex; justify-content:space-between; align-items:center; gap:8px;
+    padding:14px 22px; border-top:1px solid var(--line);
+  }
+

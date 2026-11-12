@@ -1,0 +1,365 @@
+  /* ---------- Speed dropdown (continuous slider, not fixed presets) ---------- */
+  #speed-dropdown{
+    display:none;
+    position:absolute;
+    bottom:calc(100% + 8px);
+    left:0;
+    background:var(--bg-elev);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:10px 12px 9px 12px;
+    width:200px;
+    max-width:calc(100vw - 24px);
+    z-index:20;
+    box-shadow:0 8px 24px rgba(0,0,0,0.4);
+    transform: translateX(var(--clamp-shift-x, 0px));
+  }
+  #speed-dropdown.open{ display:block; }
+  .speed-dropdown-row{
+    display:flex; align-items:center; justify-content:space-between;
+    font-size:11px; color:var(--text-dim);
+    margin-bottom:8px;
+  }
+  #speed-dropdown-value{
+    color:var(--accent); font-weight:600; font-variant-numeric: tabular-nums;
+  }
+  #speed-slider{
+    width:100%;
+    background: linear-gradient(to right, var(--accent) var(--speed-pct,20%), var(--line) var(--speed-pct,20%));
+  }
+  .speed-range-labels{
+    display:flex; justify-content:space-between;
+    font-size:10px; color:var(--text-dim);
+    margin-top:5px;
+  }
+  #speed-dropdown button.full-row{
+    display:block; width:100%; text-align:center;
+    margin-top:9px; padding:7px 8px;
+    background:none; border:1px solid var(--line); color:var(--text);
+    font-size:11px; border-radius:6px; cursor:pointer;
+  }
+  #speed-dropdown button.full-row:hover{ border-color:var(--accent-dim); color:var(--accent); background:#1d1e23; }
+
+  /* ---------- Latency dropdown (subtitle sync offset) ---------- */
+  #latency-dropdown, #memc-dropdown, #upscale-dropdown, #boost-dropdown, #fx-dropdown{
+    display:none;
+    position:absolute;
+    bottom:calc(100% + 8px);
+    left:0;
+    background:var(--bg-elev);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:10px 12px 9px 12px;
+    width:220px;
+    max-width:calc(100vw - 24px);
+    z-index:20;
+    box-shadow:0 8px 24px rgba(0,0,0,0.4);
+    transform: translateX(var(--clamp-shift-x, 0px));
+  }
+  #latency-dropdown.open, #memc-dropdown.open, #upscale-dropdown.open, #boost-dropdown.open, #fx-dropdown.open{ display:block; }
+  #memc-dropdown, #upscale-dropdown, #boost-dropdown, #fx-dropdown{ width:250px; }
+  #boost-dropdown #boost-section, #fx-dropdown #fx-section{ border-top:none; margin-top:0; }
+  #memc-dropdown button.full-row, #upscale-dropdown button.full-row{ display:block; width:100%; }
+  #latency-dropdown.ruler-open{ width:300px; }
+  .latency-dropdown-row{
+    display:flex; align-items:center; justify-content:space-between;
+    font-size:11px; color:var(--text-dim);
+    margin-bottom:8px;
+  }
+  #latency-dropdown-value{ color:var(--accent); font-weight:600; font-variant-numeric: tabular-nums; }
+  #latency-slider{ width:100%; }
+  .latency-range-labels{
+    display:flex; justify-content:space-between;
+    font-size:10px; color:var(--text-dim);
+    margin-top:5px;
+  }
+  #latency-dropdown button.full-row{
+    display:block; width:100%; text-align:center;
+    margin-top:9px; padding:7px 8px;
+    background:none; border:1px solid var(--line); color:var(--text);
+    font-size:11px; border-radius:6px; cursor:pointer;
+  }
+  #latency-dropdown button.full-row:hover{ border-color:var(--accent-dim); color:var(--accent); background:#1d1e23; }
+  .latency-preset-row{
+    display:flex; align-items:center; gap:6px;
+    margin-top:9px;
+  }
+  #latency-preset-input{
+    width:56px; flex-shrink:0; text-align:center;
+    background:var(--bg); border:1px solid var(--line); color:var(--text);
+    border-radius:6px; padding:7px 6px; font-size:11px; font-family:inherit;
+  }
+  #latency-preset-input:focus{ outline:none; border-color:var(--accent-dim); }
+  #latency-preset-btn{
+    flex:1; min-width:0; text-align:center;
+    padding:7px 8px;
+    background:none; border:1px solid var(--line); color:var(--text);
+    font-size:11px; border-radius:6px; cursor:pointer;
+  }
+  #latency-preset-btn:hover{ border-color:var(--accent-dim); color:var(--accent); background:#1d1e23; }
+  #latency-preset-btn.toggled{ color:var(--accent); border-color:var(--accent-dim); background:color-mix(in srgb, var(--accent) 8%, transparent); }
+  #latency-ruler-wrap{ margin-top:2px; }
+  #latency-ruler{
+    width:100%; height:60px;
+    display:block;
+    background:#111116;
+    border:1px solid var(--line);
+    border-radius:6px;
+    overflow:visible;
+  }
+  #latency-ruler .ruler-bar{ stroke:var(--text-dim); stroke-width:3; }
+  #latency-ruler .ruler-bar.hit{ stroke:var(--accent); stroke-width:3; }
+  #latency-ruler .ruler-label{
+    fill:var(--text-dim);
+    font-size:7px;
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    text-anchor:middle;
+  }
+  #latency-ruler .ruler-label.hit{ fill:var(--accent); font-weight:600; }
+  #latency-ruler .ruler-playhead{
+    stroke:#fff; stroke-width:3;
+  }
+
+  /* ---------- Equalizer dropdown ---------- */
+  #eq-dropdown{
+    display:none;
+    position:absolute;
+    bottom:calc(100% + 8px);
+    left:50%;
+    /* Combines with the JS-driven horizontal clamp below: the dropdown is
+       normally centered on its pill (-50%), and gets nudged further left
+       or right by --clamp-shift-x only when that would otherwise push it
+       past the edge of the screen - which happens easily for the EQ pill
+       since, at 320px wide, it's the widest quick-bar dropdown. */
+    transform: translateX(calc(-50% + var(--clamp-shift-x, 0px)));
+    background:var(--bg-elev);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:10px;
+    width:320px;
+    max-width:80vw;
+    z-index:20;
+    box-shadow:0 8px 24px rgba(0,0,0,0.4);
+  }
+  #eq-dropdown.open{ display:block; }
+  #eq-header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 2px 6px 2px;
+  }
+  .eq-power-btn{
+    padding:4px 10px;
+    background:var(--bg);
+    border:1px solid var(--line);
+    color:var(--text-dim);
+    border-radius:20px;
+    font-size:11px;
+    font-weight:600;
+    cursor:pointer;
+    transition:border-color .12s, color .12s, background .12s;
+  }
+  .eq-power-btn:hover{ border-color:var(--accent-dim); color:var(--text); }
+  .eq-power-btn.on{ color:#08110f; background:var(--accent); border-color:var(--accent); }
+  #eq-preset-row{ flex-wrap:wrap; }
+  #eq-preset-row button{ font-size:10px; padding:5px 3px; flex:1 1 28%; min-width:58px; }
+  #eq-bands{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    gap:4px;
+    padding:14px 2px 2px 2px;
+  }
+  .eq-band{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+    flex:1;
+    min-width:0;
+  }
+  /* Level 6 unlock: two extra bands (500Hz, 6K). Hidden, not removed, so
+     no DOM/audio-graph rebuilding is needed when they unlock - just a
+     class toggle from refreshEqBandLocks(). */
+  #eq-bands{ gap:2px; }
+  .eq-band-gain{ font-size:9px; letter-spacing:-0.2px; }
+  .eq-band-pro{ display:none; }
+  .eq-band-pro.unlocked{ display:flex; }
+  .eq-band-gain{
+    font-size:10px;
+    color:var(--text-dim);
+    font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+  }
+  .eq-band-slider-wrap{
+    height:96px;
+    width:100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .eq-band-slider-wrap input[type=range]{
+    width:96px;
+    height:3px;
+    margin:0;
+    transform:rotate(-90deg);
+  }
+  .eq-band-freq{
+    font-size:9px;
+    color:var(--text-dim);
+    white-space:nowrap;
+  }
+  #eq-reset-btn{ margin-top:6px; text-align:center; }
+
+  /* ---------- Volume booster ---------- */
+  #boost-section{
+    border-top:1px solid var(--line);
+    margin-top:10px;
+    padding-top:2px;
+  }
+  .boost-row{
+    display:flex; align-items:center; gap:8px;
+    padding:4px 2px;
+  }
+  .boost-row-label{
+    font-size:11px; color:var(--text-dim);
+    flex:0 0 62px;
+  }
+  .boost-row input[type=range]{
+    flex:1; min-width:0;
+    accent-color:var(--accent);
+  }
+  .boost-row-val{
+    font-size:11px; color:var(--text);
+    font-variant-numeric:tabular-nums;
+    flex:0 0 38px;
+    text-align:right;
+  }
+  .boost-hint{
+    font-size:10px; color:var(--text-dim);
+    line-height:1.4;
+    margin:6px 2px 8px 2px;
+  }
+  .override-toggle{
+    display:flex; align-items:center; gap:7px;
+    padding:6px 2px 2px 2px;
+    font-size:11.5px; color:var(--text-dim);
+    cursor:pointer; user-select:none;
+  }
+  .override-toggle input[type=checkbox]{
+    accent-color:var(--accent);
+    width:14px; height:14px; flex-shrink:0; cursor:pointer;
+  }
+  .override-toggle:hover{ color:var(--text); }
+  .boost-row.is-override-target input[type=range]:disabled{ opacity:0.4; }
+
+  /* ---------- DJ-style rotary knobs ---------- */
+  #fx-section{
+    border-top:1px solid var(--line);
+    margin-top:10px;
+    padding-top:2px;
+  }
+  .dj-knobs-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:20px 22px;
+    justify-content:center;
+    padding:10px 2px 4px 2px;
+  }
+  .dj-knob-wrap{
+    display:flex; flex-direction:column; align-items:center;
+    gap:6px;
+    user-select:none;
+  }
+  .dj-knob{
+    --knob-pct: 0;
+    position:relative;
+    width:54px; height:54px;
+    border-radius:50%;
+    background:radial-gradient(circle at 50% 40%, #22242a, var(--bg-elev) 72%);
+    box-shadow:inset 0 1px 2px rgba(0,0,0,0.55), inset 0 -1px 1px rgba(255,255,255,0.04);
+    cursor:ns-resize;
+    touch-action:none;
+    outline:none;
+  }
+  .dj-knob::before{
+    /* Fill ring: tracks --knob-pct across a 270deg sweep starting at the
+       7-o'clock position, matching the indicator's rotation range below. */
+    content:'';
+    position:absolute; inset:-5px;
+    border-radius:50%;
+    background:conic-gradient(from -135deg,
+      var(--accent) calc(var(--knob-pct) * 270deg),
+      var(--line) 0deg);
+    -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+            mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+    pointer-events:none;
+  }
+  .dj-knob:hover{ box-shadow:inset 0 1px 2px rgba(0,0,0,0.55), 0 0 0 3px var(--accent-dim); }
+  .dj-knob:focus-visible{ box-shadow:inset 0 1px 2px rgba(0,0,0,0.55), 0 0 0 3px var(--accent); }
+  .dj-knob.dragging{ box-shadow:inset 0 1px 2px rgba(0,0,0,0.55), 0 0 0 3px var(--accent); }
+  .dj-knob-indicator{
+    position:absolute;
+    top:50%; left:50%;
+    width:2px; height:40%;
+    border-radius:2px;
+    background:var(--accent);
+    transform-origin:top center;
+    transform:translate(-50%, 0) rotate(-135deg);
+    pointer-events:none;
+  }
+  .dj-knob-name{
+    font-size:10.5px; font-weight:600; color:var(--text-dim);
+  }
+  .dj-knob-val{
+    font-size:11px; color:var(--text);
+    font-variant-numeric:tabular-nums;
+  }
+
+  /* ---------- Extra transport row (speed / A-B loop / sleep timer) ---------- */
+  #extra-transport{
+    display:flex; align-items:center; justify-content:center;
+    flex-wrap:wrap;
+    gap:10px;
+    margin-bottom:14px;
+    width:100%;
+    max-width:100%;
+  }
+  .pill-btn{
+    position:relative;
+    display:flex; align-items:center; justify-content:center; gap:5px;
+    padding:6px 11px;
+    min-width:64px;
+    box-sizing:border-box;
+    background:transparent;
+    border:1px solid var(--line);
+    color:var(--text-dim);
+    border-radius:20px;
+    font-size:12px;
+    cursor:pointer;
+    transition:border-color .12s, color .12s, background .12s;
+  }
+  .pill-btn svg{ width:14px; height:14px; }
+  .pill-btn:hover{ border-color:var(--accent-dim); color:var(--text); }
+  /* Same fix as .ctrl-btn.toggled above: derive the tint from --accent
+     instead of a fixed teal rgba() so custom button colors actually show. */
+  .pill-btn.toggled{ color:var(--accent); border-color:var(--accent-dim); background:color-mix(in srgb, var(--accent) 8%, transparent); }
+  .pill-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+
+  /* ---------- A/B loop markers on seek bar ---------- */
+  #seek-wrap{ position:relative; flex:1; display:flex; align-items:center; }
+  #seek-wrap input[type=range]{ width:100%; }
+  .ab-marker{
+    position:absolute;
+    top:50%;
+    width:2px; height:12px;
+    background:var(--accent);
+    transform:translate(-50%, -50%);
+    pointer-events:none;
+    display:none;
+    z-index:3;
+  }
+  .ab-marker.on{ display:block; }
+
+  @media (prefers-reduced-motion: reduce){
+    * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+
