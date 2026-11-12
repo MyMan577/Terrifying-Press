@@ -4149,12 +4149,13 @@ let jumpJustPressed = false;
   
   
   let _staticDirty = true;
+  let _typeIndexDirty = true;   // getTilesByType rebuilds its index after any change to the level's tiles
   function invalidateStaticTileCache() { _staticDirty = true; }
 
   class TileMap extends Map {
-    set(k, v)    { const r = super.set(k, v);    invalidateStaticTileCache(); return r; }
-    delete(k)    { const r = super.delete(k);    invalidateStaticTileCache(); return r; }
-    clear()      { const r = super.clear();       invalidateStaticTileCache(); return r; }
+    set(k, v)    { const r = super.set(k, v);    _typeIndexDirty = true; invalidateStaticTileCache(); return r; }
+    delete(k)    { const r = super.delete(k);    _typeIndexDirty = true; invalidateStaticTileCache(); return r; }
+    clear()      { const r = super.clear();       _typeIndexDirty = true; invalidateStaticTileCache(); return r; }
   }
   const world = { tiles: new TileMap(), goal: { x: 280, y: 50, w: 1, h: 1 }, spawn: { x: 2.5, y: 50 }, checkpoint: null };
 
@@ -13308,6 +13309,7 @@ function applyTileEffect(tile) {
   
   const _tilesByType = new Map(); 
   function _rebuildTileTypeIndex() {
+    _typeIndexDirty = false;
     _tilesByType.clear();
     for (const tile of world.tiles.values()) {
       if (!_tilesByType.has(tile.type)) _tilesByType.set(tile.type, new Set());
@@ -13323,6 +13325,7 @@ function applyTileEffect(tile) {
     if (s) s.delete(tile);
   }
   function getTilesByType(type) {
+    if (_typeIndexDirty) _rebuildTileTypeIndex();
     return _tilesByType.get(type) || _emptySet;
   }
   const _emptySet = new Set();
@@ -13332,6 +13335,7 @@ function applyTileEffect(tile) {
   
   
   
+  const _NON_SOLID_E_SET = new Set(['goal','dashCharge','dashRefill','windRight','windUp','checkpoint','key','door1','door2','door4','laser','plate','switch','speedBoost','speedSlow','lava','thorn','bumper','warp','magnet','pulse','coin','cosmicCoin','hpPickup','repulsor','noclip','zipline','roulette','inverter','acidpit','blackhole','shrink','cursed','spike','gravityFlip','sawH','sawV','frozen','noclip','ghost','charSign']);
   function getTilesNear(bx, by, bw, bh, padding) {
     padding = padding || 0;
     const x0 = Math.floor(bx - padding);
@@ -15138,12 +15142,13 @@ function applyTileEffect(tile) {
          }
 
          
-         const inGravZone = Array.from(world.tiles.values()).some(t => t.type === 'gravityFlip' && rectsOverlap(pRect, {x:t.x,y:t.y,w:1,h:1}));
+         let inGravZone = false;
+         for (const t of getTilesByType('gravityFlip')) if (rectsOverlap(pRect, {x:t.x,y:t.y,w:1,h:1})) { inGravZone = true; break; }
          if (!inGravZone) player.gravityFlipped = false;
 
          
          const pCx = player.x + player.w / 2, pCy = _moveCenterY();
-         for (const tile of world.tiles.values()) {
+         for (const tile of [...getTilesByType('magnet'), ...getTilesByType('blackhole')]) {   // was every tile in the level
            if (tile.type === 'magnet') {
              const mCx = tile.x + 0.5, mCy = tile.y + 0.5;
              const dx = mCx - pCx, dy = mCy - pCy;
@@ -15180,7 +15185,7 @@ function applyTileEffect(tile) {
          }
 
          
-         for (const tile of world.tiles.values()) {
+         for (const tile of [...getTilesByType('sawH'), ...getTilesByType('sawV')]) {
            if (tile.type !== 'sawH' && tile.type !== 'sawV') continue;
            const sawX = tile.type === 'sawH' ? tile.x + tile.sawOffset : tile.x;
            const sawY = tile.type === 'sawV' ? tile.y + tile.sawOffset : tile.y;
@@ -15572,7 +15577,7 @@ if (grapple.active && grapple.mode === 'swing') {
 
          player.inRefillZone = false;
          if (!won && player.dashCharges < player.maxDashes) {
-           for (const [key, tile] of world.tiles) {
+           for (const tile of getTilesByType('dashRefill')) { const key = tile.x + ',' + tile.y;
              if (tile.type === 'dashRefill') {
                if (rectsOverlap(pRect, { x: tile.x, y: tile.y, w: 1, h: 1 })) {
                  player.inRefillZone = true; player.refillTimer += dt;
@@ -15585,7 +15590,9 @@ if (grapple.active && grapple.mode === 'swing') {
          if (!player.inRefillZone) player.refillTimer = 0;
 
          if (!won && player.dashCharges < player.maxDashes) {
-           for (const [key, tile] of world.tiles) {
+           for (const tile of [...getTilesByType('dashCharge')]) {
+             let key = tile.x + ',' + tile.y;   // map key; fall back to a search if this tile is stored under another one
+             if (world.tiles.get(key) !== tile) { key = null; for (const [k, v] of world.tiles) if (v === tile) { key = k; break; } if (key == null) continue; }
              if (tile.type === 'dashCharge') {
                if (rectsOverlap(pRect, { x: tile.x + 0.2, y: tile.y + 0.2, w: 0.6, h: 0.6 })) {
                  player.dashCharges++; collectedTiles.set(key, {...tile}); world.tiles.delete(key); setMessage(`⚡ Dash charge +1!`); for (let i = 0; i < 8; i++) particles.push({ x: (tile.x + 0.5) * TILE, y: (tile.y + 0.5) * TILE, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4 - 2, life: 0.4, color: '#ff6b9d', size: 2 + Math.random() * 2 }); break;
@@ -16107,13 +16114,13 @@ d.vy *= 0.85;
         const _eDt = (e._thrown && necroThrowWindow > 0 && necroThrowTarget === e) ? dt * NECRO_CINEMATIC_TIMESCALE : dt;
         if (!isFlyer) {
           e.vy += (e._thrown ? 14 : 28) * _eDt; 
-          const NON_SOLID_E = ['goal','dashCharge','dashRefill','windRight','windUp','checkpoint','key','door1','door2','door4','laser','plate','switch','speedBoost','speedSlow','lava','thorn','bumper','warp','magnet','pulse','coin','cosmicCoin','hpPickup','repulsor','noclip','zipline','roulette','inverter','acidpit','blackhole','shrink','cursed','spike','gravityFlip','sawH','sawV','frozen','noclip','ghost','charSign'];
+          const NON_SOLID_E = _NON_SOLID_E_SET;   // a Set built once (was a 40-item array searched per tile)
 
           
           e.x += e.vx * _eDt;
           if (!e._thrown) { 
-          for (const tile of world.tiles.values()) {
-            if (NON_SOLID_E.includes(tile.type)) continue;
+          for (const tile of getTilesNear(e.x, e.y, e.w, e.h, 0)) {   // only tiles it can touch, not the whole level
+            if (NON_SOLID_E.has(tile.type)) continue;
             if (tile.type && tile.type.startsWith('enemy_')) continue;
             const tr = { x: tile.x, y: tile.y, w: 1, h: 1 };
             if (!rectsOverlap({x:e.x,y:e.y,w:e.w,h:e.h}, tr)) continue;
@@ -16150,8 +16157,8 @@ d.vy *= 0.85;
               for (let k = 0; k < 12; k++) particles.push({ x:(e.x+e.w/2)*TILE+(Math.random()-0.5)*20, y:viewH-20+(Math.random()-0.5)*10, vx:(Math.random()-0.5)*7, vy:-Math.random()*5-2, life:0.55, color:k%2===0?'#f87171':'#fbbf24', size:3+Math.random()*3 });
               continue;
             }
-            for (const tile of world.tiles.values()) {
-              if (NON_SOLID_E.includes(tile.type)) continue;
+            for (const tile of getTilesNear(e.x, e.y, e.w, e.h, 0)) {
+              if (NON_SOLID_E.has(tile.type)) continue;
               if (tile.type && tile.type.startsWith('enemy_')) continue;
               const tr = { x: tile.x, y: tile.y, w: 1, h: 1 };
               if (!rectsOverlap({x:e.x,y:e.y,w:e.w,h:e.h}, tr)) continue;
@@ -22890,57 +22897,88 @@ function resolveCollisions(axis, dt) {
   ]);
 
   
+  // ── Tile rendering ────────────────────────────────────────────────
+  // Static tiles are baked into an offscreen canvas that covers the view plus a margin, at the screen's pixel density,
+  // and only re-baked when the camera nears the edge of that area, the level changes, or a tile changes state. Before,
+  // the cache covered exactly the view at 1x and was rebuilt on every camera move, so the moment you moved (any touch),
+  // every frame cleared it, looped over every tile in the level twice and redrew all visible tiles: frames dropped.
+  // Tiles are found through a chunk grid, so per-frame work depends on what's on screen, not on the level's size.
   let _staticCanvas = null, _staticCtx = null;
-  let _staticCamX = -9999, _staticCamY = -9999; 
-
+  let _bakeX = 0, _bakeY = 0, _bakeW = 0, _bakeH = 0, _bakeScale = 1, _bakeSig = '';
+  const _bakedStatic = new WeakSet();          // tiles currently drawn into the cache
+  const BAKE_MARGIN = TILE * 8;                // extra baked area on each side of the view
+  const CHUNK = 8;                             // tiles per grid chunk side
+  let _tileIndex = null, _tileSpan = 1, _moverTiles = [];
+  const _origInvalidate = invalidateStaticTileCache;
+  invalidateStaticTileCache = function () { _tileIndex = null; _origInvalidate(); };
+  // Tile state that changes how a tile looks during play: tiles carrying any of it are drawn live, never baked.
+  const VOLATILE_KEYS = ['active', 'unlocked', 'crumbleState', 'fakerGone', 'groupOn', 'drillHits', 'bomberTimer', 'bomberArmed', 'pulseTimer'];
+  const LIVE_TYPES = new Set(['charSign']);    // drawn with the clock
+  function _isLiveTile(t) {
+    if (ANIMATED_TILE_TYPES.has(t.type) || LIVE_TYPES.has(t.type)) return true;
+    for (let i = 0; i < VOLATILE_KEYS.length; i++) if (t[VOLATILE_KEYS[i]] !== undefined) return true;
+    return false;
+  }
+  function _buildTileIndex() {
+    _tileIndex = new Map(); _moverTiles = []; _tileSpan = 1;
+    for (const t of world.tiles.values()) {
+      if (t.type === 'mover') { _moverTiles.push(t); continue; }
+      const k = Math.floor(t.x / CHUNK) + ',' + Math.floor(t.y / CHUNK);
+      let a = _tileIndex.get(k); if (!a) _tileIndex.set(k, a = []);
+      a.push(t);
+      _tileSpan = Math.max(_tileSpan, t.w || 1, t.h || 1);
+    }
+  }
+  // Calls fn for every tile whose origin is in the tile range (plus the widest tile's span), and every mover.
+  function _forTilesIn(minTX, maxTX, minTY, maxTY, fn) {
+    if (!_tileIndex) _buildTileIndex();
+    const sp = _tileSpan - 1;
+    const c0x = Math.floor((minTX - sp) / CHUNK), c1x = Math.floor(maxTX / CHUNK);
+    const c0y = Math.floor((minTY - sp) / CHUNK), c1y = Math.floor(maxTY / CHUNK);
+    for (let cy = c0y; cy <= c1y; cy++) for (let cx = c0x; cx <= c1x; cx++) {
+      const a = _tileIndex.get(cx + ',' + cy); if (!a) continue;
+      for (let i = 0; i < a.length; i++) { const t = a[i]; if (t.x + (t.w || 1) - 1 < minTX || t.x > maxTX || t.y + (t.h || 1) - 1 < minTY || t.y > maxTY) continue; fn(t); }
+    }
+    for (let i = 0; i < _moverTiles.length; i++) {
+      const t = _moverTiles[i], tx = (movers.find(m => m.id === t.id)?.x ?? t.x);
+      if (tx < minTX || tx > maxTX || t.y < minTY || t.y > maxTY) continue;
+      fn(t);
+    }
+  }
   function _ensureStaticCanvas() {
-    const w = Math.ceil(viewW), h = Math.ceil(viewH);
-    if (w <= 0 || h <= 0) return; 
-    if (!_staticCanvas || _staticCanvas.width !== w || _staticCanvas.height !== h) {
-      _staticCanvas = document.createElement('canvas');
-      _staticCanvas.width = w;
-      _staticCanvas.height = h;
+    const w = Math.ceil(viewW + 2 * BAKE_MARGIN), h = Math.ceil(viewH + 2 * BAKE_MARGIN);
+    if (w <= 0 || h <= 0) return;
+    let sc = Math.max(1, dpr);
+    while (w * sc * h * sc > 12e6 && sc > 1) sc = Math.max(1, sc - 0.25);   // keep the cache under ~48 MB
+    if (!_staticCanvas || _bakeW !== w || _bakeH !== h || _bakeScale !== sc) {
+      if (!_staticCanvas) _staticCanvas = document.createElement('canvas');
+      _staticCanvas.width = Math.ceil(w * sc); _staticCanvas.height = Math.ceil(h * sc);
       _staticCtx = _staticCanvas.getContext('2d');
+      _bakeW = w; _bakeH = h; _bakeScale = sc;
       _staticDirty = true;
     }
   }
-
-  
   function _rebakeStaticTiles() {
     _ensureStaticCanvas();
     if (!_staticCtx) return;
+    _bakeX = Math.floor(cam.x - BAKE_MARGIN); _bakeY = Math.floor(cam.y - BAKE_MARGIN);
+    _staticCtx.setTransform(1, 0, 0, 1, 0, 0);
     _staticCtx.clearRect(0, 0, _staticCanvas.width, _staticCanvas.height);
-
-    
-    const margin = TILE * 1;
-    const minTX = Math.floor((cam.x - margin) / TILE);
-    const maxTX = Math.ceil((cam.x + viewW + margin) / TILE);
-    const minTY = Math.floor((cam.y - margin) / TILE);
-    const maxTY = Math.ceil((cam.y + viewH + margin) / TILE);
-
-    
-    const realCtx = ctx;
-    ctx = _staticCtx;
-    ctx.save();
-    
-
-    for (const tile of world.tiles.values()) {
-      if (ANIMATED_TILE_TYPES.has(tile.type)) continue;
-      if (tile.type === 'crumble' && tile.crumbleState === 'gone') continue;
-      const tx = tile.type === 'mover' ? (movers.find(m => m.id === tile.id)?.x ?? tile.x) : tile.x;
-      if (tx < minTX || tx > maxTX || tile.y < minTY || tile.y > maxTY) continue;
-      drawTile(tile);
-    }
-
-    ctx.restore();
-    ctx = realCtx;
-
+    _staticCtx.setTransform(_bakeScale, 0, 0, _bakeScale, 0, 0);
+    const realCtx = ctx, cx0 = cam.x, cy0 = cam.y;
+    ctx = _staticCtx; cam.x = _bakeX; cam.y = _bakeY;          // drawTile places tiles at (tile - cam)
+    try {
+      ctx.save();
+      _forTilesIn(Math.floor(_bakeX / TILE) - 1, Math.ceil((_bakeX + _bakeW) / TILE) + 1, Math.floor(_bakeY / TILE) - 1, Math.ceil((_bakeY + _bakeH) / TILE) + 1, tile => {
+        if (_isLiveTile(tile)) { _bakedStatic.delete(tile); return; }
+        drawTile(tile); _bakedStatic.add(tile);
+      });
+      ctx.restore();
+    } finally { ctx = realCtx; cam.x = cx0; cam.y = cy0; }
     _staticDirty = false;
-    _staticCamX = cam.x;
-    _staticCamY = cam.y;
+    _bakeSig = mode;
   }
 
-  
   function drawAllTiles() {
     const margin = TILE * 2;
     const minTX = Math.floor((cam.x - margin) / TILE);
@@ -22948,24 +22986,28 @@ function resolveCollisions(axis, dt) {
     const minTY = Math.floor((cam.y - margin) / TILE);
     const maxTY = Math.ceil((cam.y + viewH + margin) / TILE);
 
-    
     _ensureStaticCanvas();
-    const camMoved = (_staticCamX !== cam.x || _staticCamY !== cam.y);
-    if (_staticDirty || camMoved) _rebakeStaticTiles();
-    if (_staticCanvas && _staticCanvas.width > 0 && _staticCanvas.height > 0) {
-      ctx.drawImage(_staticCanvas, 0, 0);
-    }
+    const outside = cam.x < _bakeX || cam.y < _bakeY || cam.x + viewW > _bakeX + _bakeW || cam.y + viewH > _bakeY + _bakeH;
+    if (_staticDirty || outside || _bakeSig !== mode) _rebakeStaticTiles();
 
-    
-    for (const tile of world.tiles.values()) {
-      if (!ANIMATED_TILE_TYPES.has(tile.type)) continue;
-      if (tile.type === 'crumble' && tile.crumbleState === 'gone') continue;
-      const tx = tile.type === 'mover' ? (movers.find(m => m.id === tile.id)?.x ?? tile.x) : tile.x;
-      if (tx < minTX || tx > maxTX || tile.y < minTY || tile.y > maxTY) continue;
-      drawTile(tile);
+    // live tiles every frame; a tile that changed between live and static marks the cache stale for the next frame
+    let stale = false;
+    _forTilesIn(minTX, maxTX, minTY, maxTY, tile => {
+      if (_isLiveTile(tile)) { if (_bakedStatic.has(tile)) stale = true; }
+      else if (!_bakedStatic.has(tile)) stale = true;
+    });
+    if (stale) { _staticDirty = true; _rebakeStaticTiles(); }
+
+    if (_staticCanvas && _staticCanvas.width > 0 && _staticCanvas.height > 0) {
+      ctx.drawImage(_staticCanvas, _bakeX - cam.x, _bakeY - cam.y, _bakeW, _bakeH);
     }
+    _forTilesIn(minTX, maxTX, minTY, maxTY, tile => {
+      if (!_isLiveTile(tile)) return;
+      if (tile.type === 'crumble' && tile.crumbleState === 'gone') return;
+      drawTile(tile);
+    });
   }
-  
+
 
   // Per-character attack visuals, pulled out of draw() so a second fighter (Smash CPU) can be drawn with them too.
   function _fxFormSwitcher() {
@@ -26451,7 +26493,7 @@ function resolveCollisions(axis, dt) {
   renderCosmicShopPanel();
   renderCosmicHud();
   requestAnimationFrame(loop);
-  document.addEventListener('click', e => { const flash = document.createElement('div'); flash.style.cssText = `position: fixed; left: ${e.clientX}px; top: ${e.clientY}px; width: 20px; height: 20px; border-radius: 50%; background: rgba(255, 100, 100, 0.8); transform: translate(-50%, -50%); pointer-events: none; z-index: 9999; transition: opacity 0.3s;`; document.body.appendChild(flash); setTimeout(() => { flash.style.opacity = '0'; }, 10); setTimeout(() => flash.remove(), 300); }, true);
+  // (a debug red dot that was added to the page on every tap is gone: it cost a style/layout pass per tap)
 
   
   
@@ -27964,11 +28006,17 @@ function resolveCollisions(axis, dt) {
     localStorage.setItem('obby_ms_unlocked', JSON.stringify([...msUnlocked]));
   }
 
+  // Called on every attack, jump, coin... Saving and rebuilding the milestone list's HTML on each one cost work on every
+  // tap, so both are coalesced: the save at most once a second (and on hide/close), the list shortly after the last change.
+  let _msSaveT = 0, _msRenderT = 0;
+  function _msFlushSave() { if (_msSaveT) { clearTimeout(_msSaveT); _msSaveT = 0; saveMsStats(); } }
+  window.addEventListener('pagehide', _msFlushSave);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) _msFlushSave(); });
   function msIncrement(stat, by) {
     msStats[stat] = (msStats[stat] || 0) + (by || 1);
-    saveMsStats();
+    if (!_msSaveT) _msSaveT = setTimeout(() => { _msSaveT = 0; saveMsStats(); }, 1000);
     checkMilestones();
-    renderMilestonePanel();
+    if (!_msRenderT) _msRenderT = setTimeout(() => { _msRenderT = 0; renderMilestonePanel(); }, 400);
   }
 
   function checkMilestones() {
