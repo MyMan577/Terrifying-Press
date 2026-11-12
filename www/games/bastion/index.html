@@ -1455,6 +1455,25 @@ function shuffle(arr) {
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
 
+// ── Sharp rendering on high-density screens ─────────────────────
+// The game was drawn at CSS-pixel size and stretched by the browser (about 3.5x on a big phone), which made it blurry.
+// The canvas now holds devicePixelRatio times more pixels (capped), but canvas.width / canvas.height still report the
+// CSS size, so every layout, HUD and touch calculation in the game is unchanged. A base scale maps drawing onto the
+// bigger canvas; shadow blur/offset don't follow transforms, so they're scaled by the same factor.
+const GFX_DPR_MAX = 3;
+let gfxDpr = 1, _logW = canvas.width, _logH = canvas.height;
+(function sharpCanvas() {
+  const CP = HTMLCanvasElement.prototype, XP = CanvasRenderingContext2D.prototype;
+  const dW = Object.getOwnPropertyDescriptor(CP, 'width'), dH = Object.getOwnPropertyDescriptor(CP, 'height');
+  const base = () => ctx.setTransform(gfxDpr, 0, 0, gfxDpr, 0, 0);
+  Object.defineProperty(canvas, 'width',  { configurable: true, get() { return _logW; }, set(v) { _logW = +v || 0; dW.set.call(canvas, Math.round(_logW * gfxDpr)); base(); } });
+  Object.defineProperty(canvas, 'height', { configurable: true, get() { return _logH; }, set(v) { _logH = +v || 0; dH.set.call(canvas, Math.round(_logH * gfxDpr)); base(); } });
+  for (const k of ['shadowBlur', 'shadowOffsetX', 'shadowOffsetY']) {
+    const d = Object.getOwnPropertyDescriptor(XP, k);
+    Object.defineProperty(ctx, k, { configurable: true, get() { return d.get.call(ctx) / gfxDpr; }, set(v) { d.set.call(ctx, v * gfxDpr); } });
+  }
+})();
+
 // ── Size canvas to fill the window ──────────────────────────────
 const HUD_H = 130; // pixels reserved at bottom for cards + elixir
 
@@ -1549,6 +1568,7 @@ function resize() {
   const w = Math.round(vw);
   const h = Math.round(vh);
 
+  gfxDpr = Math.min(GFX_DPR_MAX, Math.max(1, window.devicePixelRatio || 1));
   canvas.width  = w;
   canvas.height = h;
   canvas.style.width  = w + 'px';
