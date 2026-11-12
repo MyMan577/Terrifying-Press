@@ -40262,7 +40262,8 @@ window._claimLBro = function() {
   if (!document.getElementById('ppEmoteStyle')) {
     const sty = document.createElement('style'); sty.id = 'ppEmoteStyle';
     sty.textContent = `
-      #ppEmoteBtn { position:absolute; right:80px; top:136px; z-index:100; width:52px; height:52px; border-radius:50%; display:none;
+      /* top edge, just left of the zoom buttons (it used to sit over the play area on the right); drag it anywhere */
+      #ppEmoteBtn { position:absolute; right:78px; top:6px; z-index:100; width:52px; height:52px; border-radius:50%; display:none;
         align-items:center; justify-content:center; padding:0; overflow:hidden; cursor:pointer; touch-action:none;
         border:2px solid rgba(255,255,255,.75); background:radial-gradient(circle at 35% 30%, #4a3d7a, #1d1733); box-shadow:0 0 12px rgba(139,92,255,.5); }
       #ppEmoteBtn canvas, #ppEmoteWheel canvas { width:100%; height:100%; display:block; pointer-events:none; }
@@ -40282,7 +40283,9 @@ window._claimLBro = function() {
       #ppEmoteWheel .mid span { display:block; font-weight:400; font-size:10px; opacity:.75; margin-top:2px; }
       #ppEmoteWheel .mid .pg { display:flex; justify-content:center; gap:10px; margin-top:6px; }
       #ppEmoteWheel .mid .pg button { width:34px; height:34px; border-radius:50%; border:2px solid rgba(255,255,255,.75); background:#2a2150; color:#fff; font:800 18px sans-serif; padding:0; cursor:pointer; }
-      @media (max-height: 500px) { #ppEmoteBtn { top:98px; right:72px; transform:scale(.85); } }
+      #ppEmoteBtn { transform:scale(.75); transform-origin:top right; }
+      #ppEmoteBtn.dragging { transition:none; opacity:.85; }
+      @media (max-height: 500px) { #ppEmoteBtn { top:4px; right:66px; transform:scale(.7); } }
     `;
     document.head.appendChild(sty);
   }
@@ -40341,15 +40344,48 @@ window._claimLBro = function() {
     if (btn) return;
     btn = document.createElement('button'); btn.id = 'ppEmoteBtn'; btn.title = 'Emotes (Z)';
     btnCanvas = sized(document.createElement('canvas'), 52, 52); btn.appendChild(btnCanvas);
-    const tog = ev => { ev.preventDefault(); ev.stopPropagation(); if (wheelOpen) closeWheel(); else openWheel(); };
-    btn.addEventListener('touchstart', tog, { passive: false }); btn.addEventListener('mousedown', tog);
+    const tog = () => { if (wheelOpen) closeWheel(); else openWheel(); };
+    // Tap = open/close the wheel. Drag (past 8 px) = move the button; the spot is remembered.
+    const POS_KEY = 'ppEmoteBtnPos';
+    const place = (x, y) => {
+      const r = btn.getBoundingClientRect();
+      x = Math.max(2, Math.min(innerWidth - r.width - 2, x)); y = Math.max(2, Math.min(innerHeight - r.height - 2, y));
+      btn.style.left = x + 'px'; btn.style.top = y + 'px'; btn.style.right = 'auto'; btn.style.transformOrigin = 'top left';
+    };
+    const restore = () => { try { const p = JSON.parse(localStorage.getItem(POS_KEY)); if (p && isFinite(p.x) && isFinite(p.y) && btn.style.display !== 'none') place(p.x, p.y); } catch (e) {} };
+    let d = null;
+    btn.addEventListener('touchstart', ev => {
+      ev.preventDefault(); ev.stopPropagation();
+      const t = ev.changedTouches[0], r = btn.getBoundingClientRect();
+      d = { id: t.identifier, sx: t.clientX, sy: t.clientY, ox: r.left, oy: r.top, moved: false };
+    }, { passive: false });
+    btn.addEventListener('touchmove', ev => {
+      if (!d) return; ev.preventDefault();
+      const t = [...ev.changedTouches].find(x => x.identifier === d.id); if (!t) return;
+      const dx = t.clientX - d.sx, dy = t.clientY - d.sy;
+      if (!d.moved && Math.hypot(dx, dy) < 8) return;
+      if (!d.moved) { d.moved = true; btn.classList.add('dragging'); if (wheelOpen) closeWheel(); }
+      place(d.ox + dx, d.oy + dy);
+    }, { passive: false });
+    const end = ev => {
+      if (!d) return; ev.preventDefault();
+      const t = [...ev.changedTouches].find(x => x.identifier === d.id); if (!t) return;
+      if (d.moved) { btn.classList.remove('dragging'); const r = btn.getBoundingClientRect(); try { localStorage.setItem(POS_KEY, JSON.stringify({ x: r.left, y: r.top })); } catch (e) {} }
+      else if (ev.type === 'touchend') tog();
+      d = null;
+    };
+    btn.addEventListener('touchend', end, { passive: false }); btn.addEventListener('touchcancel', end, { passive: false });
+    btn.addEventListener('mousedown', ev => { ev.preventDefault(); ev.stopPropagation(); tog(); });
     document.body.appendChild(btn);
+    window.addEventListener('resize', restore);
+    btn._restorePos = restore;
   }
   ensureBtn();
   // the button shows your character waving (redrawn a few times a second)
   let btnT = 0;
   (window._rafHubTickers = window._rafHubTickers || []).push(function _ppEmoteBtnTick(dt) {
     if (!btn || btn.style.display === 'none') return;
+    if (!btn._posDone && btn._restorePos) { btn._posDone = true; btn._restorePos(); }   // put it back where you dragged it
     btnT += dt; if (btnT < 1 / 20) return;
     preview(btnCanvas, 52, 52, 'wave', (performance.now() / 1000) % 2.2, 0.9);
     btnT = 0;
