@@ -27565,6 +27565,12 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   body.pp-refined #sub-tx.open{ translate:0 0; }
   @starting-style{ body.pp-refined #sub-tx.open{ translate:0 100%; } }
 
+
+  /* ---- touch: every tap squeezes, springs back and leaves a soft glow where the finger landed (see the script) ---- */
+  .pp-r-ripple{ position:fixed; z-index:2147483646; overflow:hidden; pointer-events:none; contain:strict; }
+  .pp-r-ripple i{ position:absolute; border-radius:50%; translate:-50% -50%;
+    background:radial-gradient(circle, color-mix(in srgb, var(--accent) 22%, rgba(255,255,255,.2)) 0%, color-mix(in srgb, var(--accent) 12%, rgba(255,255,255,.1)) 55%, transparent 72%); }
+
   @media (prefers-reduced-motion: reduce){
     body.pp-refined .pp-r-in, body.pp-refined .pp-r-stag, body.pp-refined .pp-r-up, body.pp-refined .pp-r-rise, body.pp-refined .pp-r-fwd, body.pp-refined .pp-r-back,
     body.pp-refined .pp-r-pop, body.pp-refined .pp-r-swap, body.pp-refined .pp-r-zin, body.pp-refined .pp-r-zout, body.pp-refined #extras-panel .pp-pane.active, body.pp-refined .toggled, body.pp-refined .ppx-tab.on, body.pp-refined .ppx-seg button.on, body.pp-refined #play-btn svg{ animation:none !important; }
@@ -27711,6 +27717,62 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     window.addEventListener('resize', function(){ seen = null; queue(); });
     queue();
   });
+  // ---- touch feedback ----
+  // CSS :active is gone the instant a quick tap ends, so on a phone most taps showed nothing. Here every tap gets the
+  // whole motion: the control squeezes under the finger, springs back when let go (even after the shortest tap), and a
+  // soft glow spreads from the exact spot touched. Rows and cards wait a moment first, so scrolling a list doesn't set them off.
+  var TAP = 'button, [role="button"], summary, select.pill-btn, .ph-card, .ph-pl, .ph-trk, .track, .ppg-card',
+      TAP_BIG = '.ph-card, .ph-pl, .ph-trk, .track, .ppg-card, .ppx-tile, .ppx-card, #pl-mini',
+      SPRING = 'cubic-bezier(.3,1.45,.45,1)';
+  var press = null;   // { el, t, anim, timer, x, y, big }
+  function ripple(el, x, y){
+    var r = el.getBoundingClientRect(); if (!r.width || !r.height) return;
+    var box = document.createElement('span'), dot = document.createElement('i');
+    box.className = 'pp-r-ripple';
+    box.style.cssText = 'left:' + r.left + 'px;top:' + r.top + 'px;width:' + r.width + 'px;height:' + r.height + 'px;border-radius:' + getComputedStyle(el).borderRadius;
+    var lx = x - r.left, ly = y - r.top, d = 2 * Math.hypot(Math.max(lx, r.width - lx), Math.max(ly, r.height - ly)) * 1.4;
+    dot.style.cssText = 'left:' + lx + 'px;top:' + ly + 'px;width:' + d + 'px;height:' + d + 'px';
+    box.appendChild(dot); (document.fullscreenElement || body).appendChild(box);
+    var grow = dot.animate([{ scale: '.12', opacity: 1 }, { scale: '1', opacity: 1 }], { duration: Math.min(520, 260 + d * .5), easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'forwards' });
+    return { box: box, dot: dot, grow: grow };
+  }
+  function fade(rp){
+    if (!rp) return;
+    var a = rp.box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 380, easing: 'ease-out', fill: 'forwards' });
+    a.onfinish = a.oncancel = function(){ if (rp.box.parentNode) rp.box.parentNode.removeChild(rp.box); };
+  }
+  function pressDown(p){
+    if (p.down || !p.el.isConnected) return;
+    p.down = true; p.t = performance.now();
+    p.anim = p.el.animate([{ scale: p.big ? '.965' : '.9' }], { duration: 110, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'forwards' });
+    p.rp = ripple(p.el, p.x, p.y);
+  }
+  function pressUp(p, cancelled){
+    clearTimeout(p.timer);
+    if (!p.down){ if (cancelled) return; pressDown(p); }   // a tap quicker than the wait still gets its motion
+    var wait = Math.max(0, 90 - (performance.now() - p.t));
+    setTimeout(function(){
+      try { p.anim.cancel(); } catch(e){}
+      if (p.el.isConnected) p.el.animate([{ scale: p.big ? '.965' : '.9' }, { scale: p.big ? '1.008' : '1.03', offset: .55 }, { scale: '1' }], { duration: cancelled ? 220 : 420, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      fade(p.rp);
+    }, cancelled ? 0 : wait);
+  }
+  document.addEventListener('pointerdown', function(e){
+    if (press){ pressUp(press, true); press = null; }
+    if (!refined() || calm.matches || (e.pointerType === 'mouse' && e.button !== 0) || !e.target.closest) return;
+    var el = e.target.closest(TAP + ', ' + TAP_BIG);
+    if (!el || el.disabled || el.getAttribute('aria-disabled') === 'true' || !el.animate || el.closest('.no-press')) return;
+    var p = press = { el: el, x: e.clientX, y: e.clientY, big: el.matches(TAP_BIG), down: false, id: e.pointerId };
+    if (p.big && e.pointerType !== 'mouse') p.timer = setTimeout(function(){ pressDown(p); }, 70); else pressDown(p);
+  }, { capture: true, passive: true });
+  function end(cancelled){ return function(e){ if (press && (e.pointerId == null || e.pointerId === press.id)){ var p = press; press = null; pressUp(p, cancelled); } }; }
+  document.addEventListener('pointerup', end(false), { capture: true, passive: true });
+  document.addEventListener('pointercancel', end(true), { capture: true, passive: true });
+  window.addEventListener('blur', end(true));
+  // a finger that slides well off its starting point is dragging, not tapping
+  document.addEventListener('pointermove', function(e){
+    if (press && e.pointerId === press.id && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 14 && press.big){ var p = press; press = null; pressUp(p, true); }
+  }, { capture: true, passive: true });
   ['pp-r-in', 'pp-r-up', 'pp-r-rise', 'pp-r-stag', 'pp-r-fwd', 'pp-r-back', 'pp-r-pop', 'pp-r-swap', 'pp-r-zin', 'pp-r-zout'].forEach(function(c){
     document.addEventListener('animationend', function(e){ if (e.target.classList && e.target.classList.contains(c)) e.target.classList.remove(c); }, true);
   });
