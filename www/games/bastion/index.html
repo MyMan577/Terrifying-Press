@@ -1468,6 +1468,16 @@ let gfxDpr = 1, _logW = canvas.width, _logH = canvas.height;
   const base = () => ctx.setTransform(gfxDpr, 0, 0, gfxDpr, 0, 0);
   Object.defineProperty(canvas, 'width',  { configurable: true, get() { return _logW; }, set(v) { _logW = +v || 0; dW.set.call(canvas, Math.round(_logW * gfxDpr)); base(); } });
   Object.defineProperty(canvas, 'height', { configurable: true, get() { return _logH; }, set(v) { _logH = +v || 0; dH.set.call(canvas, Math.round(_logH * gfxDpr)); base(); } });
+  // Canvas text names 'Exo 2' with no fallback, so before the web font loads (or offline) it all came out in Times.
+  // Give any font without a generic family a sans-serif fallback.
+  const dF = Object.getOwnPropertyDescriptor(XP, 'font'), fCache = new Map(), GENERIC = /(serif|sans-serif|monospace|system-ui|cursive|fantasy|emoji)\s*$/i;
+  Object.defineProperty(ctx, 'font', { configurable: true, get() { return dF.get.call(ctx); }, set(v) {
+    let f = fCache.get(v);
+    // 'Exo 2' unquoted is invalid CSS (a name can't start with a digit), so the browser dropped those font settings
+    // entirely and kept the previous font: text came out in random sizes. Quote it.
+    if (f === undefined) { f = String(v).replace(/(^|[\s,])Exo 2(?=\s*(,|$))/, "$1'Exo 2'"); if (!GENERIC.test(f)) f += ', system-ui, sans-serif'; if (fCache.size < 500) fCache.set(v, f); }
+    dF.set.call(ctx, f);
+  } });
   for (const k of ['shadowBlur', 'shadowOffsetX', 'shadowOffsetY']) {
     const d = Object.getOwnPropertyDescriptor(XP, k);
     Object.defineProperty(ctx, k, { configurable: true, get() { return d.get.call(ctx) / gfxDpr; }, set(v) { d.set.call(ctx, v * gfxDpr); } });
@@ -19823,19 +19833,129 @@ function drawEmotes(L) {
   }
 }
 
-function drawTower(t) {
-  if (t.hp<=0) {
-    ctx.fillStyle='#555';
-    ctx.beginPath(); ctx.ellipse(t.x,t.y,t.size*1.2,t.size*0.6,0,0,Math.PI*2); ctx.fill();
-    return;
+// ── Health bars ──────────────────────────────────────────────────
+// Rounded bar with a dark rim and a glossy fill in the team's colour (blue = you, red = the enemy). Damage leaves a
+// pale chunk that drains away a moment later, so hits read at a glance. The trail lives in a WeakMap: nothing is
+// added to the unit/tower objects (they're synced in multiplayer).
+const _hpTrail = new WeakMap();
+const TOWER_DRAW_SCALE = 0.85;
+const HP_COLS = { player: ['#7cc4ff', '#2f7fe8', '#1b4f9c'], enemy: ['#ff8a8a', '#e3354a', '#8f1626'] };
+function drawHpBar(obj, x, y, w, h, pct, team) {
+  pct = Math.max(0, Math.min(1, pct || 0));
+  const now = performance.now();
+  let tr = _hpTrail.get(obj);
+  if (!tr) { tr = { v: pct, t: now, hold: 0 }; _hpTrail.set(obj, tr); }
+  if (pct > tr.v) tr.v = pct;                                  // healed: no trail
+  else if (pct < tr.v - 1e-4 && tr.hold < now - 600) tr.hold = now; // fresh damage: hold the trail briefly
+  const dt = Math.min(0.1, (now - tr.t) / 1000); tr.t = now;
+  if (now - tr.hold > 350) tr.v = Math.max(pct, tr.v - dt * 0.9);
+  const c = HP_COLS[team] || HP_COLS.enemy, r = h / 2;
+  ctx.save();
+  // rim + track
+  ctx.fillStyle = 'rgba(8,10,18,0.85)';
+  ctx.beginPath(); ctx.roundRect(x - 1, y - 1, w + 2, h + 2, r + 1); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.clip();
+  // damage trail
+  if (tr.v > pct) { ctx.fillStyle = 'rgba(255,240,200,0.85)'; ctx.fillRect(x + w * pct, y, w * (tr.v - pct), h); }
+  // fill
+  if (pct > 0) {
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, c[0]); g.addColorStop(0.45, c[1]); g.addColorStop(1, c[2]);
+    ctx.fillStyle = g; ctx.fillRect(x, y, w * pct, h);
+    ctx.fillStyle = 'rgba(255,255,255,0.28)'; ctx.fillRect(x, y, w * pct, Math.max(1, h * 0.35));   // gloss
   }
+  // segment ticks on longer bars
+  if (w > 26) { ctx.fillStyle = 'rgba(0,0,0,0.22)'; for (let i = 1; i < 4; i++) ctx.fillRect(x + w * i / 4 - 0.5, y, 1, h); }
+  ctx.restore();
+}
+
+// ── Towers ───────────────────────────────────────────────────────
+// Drawn inside the same box as before (body x±0.7s, y-2.5s..y; battlements to y-2.8s; plinth x±0.8s) so the
+// crowns, troop icons, the sleeping overlay and ability rings still line up.
+function drawTowerBody(x, y, s, color, plinth, isKing) {
+  ctx.save();
+  // ground shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.32)';
+  ctx.beginPath(); ctx.ellipse(x, y + s * 0.95, s * 1.15, s * 0.42, 0, 0, Math.PI * 2); ctx.fill();
+  // plinth
+  const pg = ctx.createLinearGradient(0, y - s * 0.3, 0, y + s * 0.9);
+  pg.addColorStop(0, shade(plinth, 35)); pg.addColorStop(0.25, plinth); pg.addColorStop(1, shade(plinth, -35));
+  ctx.fillStyle = pg;
+  ctx.beginPath(); ctx.roundRect(x - s * 0.8, y - s * 0.3, s * 1.6, s * 1.2, s * 0.16); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';                                       // plinth blocks
+  for (let i = 1; i < 4; i++) ctx.fillRect(x - s * 0.8 + s * 0.4 * i - 0.5, y + s * 0.3, 1, s * 0.6);
+  ctx.fillRect(x - s * 0.8, y + s * 0.3, s * 1.6, 1);
+  // body: shaded like a round tower
+  const L = x - s * 0.7, W = s * 1.4, T = y - s * 2.5, H = s * 2.5;
+  const bg = ctx.createLinearGradient(L, 0, L + W, 0);
+  bg.addColorStop(0, shade(color, -60)); bg.addColorStop(0.3, shade(color, 18)); bg.addColorStop(0.5, color); bg.addColorStop(1, shade(color, -75));
+  ctx.fillStyle = bg;
+  ctx.beginPath(); ctx.roundRect(L, T, W, H, [s * 0.08, s * 0.08, 0, 0]); ctx.fill();
+  // brick courses
+  ctx.save(); ctx.clip();
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  const row = s * 0.42;
+  for (let k = 1, yy = T + row; yy < y; k++, yy += row) {
+    ctx.fillRect(L, yy, W, 1);
+    const off = (k % 2) * s * 0.35;
+    for (let xx = L + off + s * 0.35; xx < L + W; xx += s * 0.7) ctx.fillRect(xx, yy - row, 1, row);
+  }
+  // soft top light and bottom dark
+  const vg = ctx.createLinearGradient(0, T, 0, y);
+  vg.addColorStop(0, 'rgba(255,255,255,0.14)'); vg.addColorStop(0.5, 'rgba(255,255,255,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.25)');
+  ctx.fillStyle = vg; ctx.fillRect(L, T, W, H);
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.roundRect(L, T, W, H, [s * 0.08, s * 0.08, 0, 0]); ctx.stroke();
+  // trim band under the battlements (gold on kings)
+  ctx.fillStyle = isKing ? '#e8c35a' : shade(color, -35);
+  ctx.fillRect(L - s * 0.05, T, W + s * 0.1, s * 0.22);
+  ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(L - s * 0.05, T, W + s * 0.1, 1);
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1; ctx.strokeRect(L - s * 0.05, T, W + s * 0.1, s * 0.22);
+  // battlements
+  for (let i = 0; i < 3; i++) {
+    const mx = L + i * (s * 0.5) + (i === 2 ? s * 0.015 : 0), mw = s * 0.37, my = y - s * 2.8;
+    const mg = ctx.createLinearGradient(0, my, 0, T);
+    mg.addColorStop(0, shade(color, 40)); mg.addColorStop(1, shade(color, -10));
+    ctx.fillStyle = mg;
+    ctx.beginPath(); ctx.roundRect(mx, my, mw, s * 0.32, [s * 0.06, s * 0.06, 0, 0]); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.stroke();
+  }
+  // arrow slit and (kings) a door
+  ctx.fillStyle = 'rgba(10,8,20,0.75)';
+  ctx.beginPath(); ctx.roundRect(x - s * 0.07, T + s * 0.62, s * 0.14, s * 0.55, s * 0.07); ctx.fill();
+  if (isKing) {
+    ctx.beginPath(); ctx.moveTo(x - s * 0.24, y); ctx.lineTo(x - s * 0.24, y - s * 0.45);
+    ctx.arc(x, y - s * 0.45, s * 0.24, Math.PI, 0); ctx.lineTo(x + s * 0.24, y); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+function drawTowerRubble(x, y, s) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(x, y + s * 0.3, s * 1.25, s * 0.55, 0, 0, Math.PI * 2); ctx.fill();
+  const stones = [[-0.7, 0.1, 0.38], [-0.15, -0.05, 0.46], [0.5, 0.12, 0.36], [-0.4, 0.38, 0.3], [0.2, 0.35, 0.34], [0.78, 0.36, 0.22], [-0.85, 0.42, 0.2]];
+  for (const [dx, dy, r] of stones) {
+    const cx = x + dx * s, cy = y + dy * s, rr = r * s;
+    const g = ctx.createLinearGradient(0, cy - rr, 0, cy + rr);
+    g.addColorStop(0, '#8d8a85'); g.addColorStop(1, '#4a4743');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(cx - rr, cy + rr * 0.4); ctx.lineTo(cx - rr * 0.6, cy - rr * 0.7); ctx.lineTo(cx + rr * 0.5, cy - rr * 0.8);
+    ctx.lineTo(cx + rr, cy + rr * 0.1); ctx.lineTo(cx + rr * 0.4, cy + rr * 0.7); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 1; ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawTower(t) {
+  // drawn at 85% of the tower's gameplay size so the art and its health bar fit the screen (t.size itself is untouched)
+  const s = t.size * TOWER_DRAW_SCALE;
+  if (t.hp<=0) { drawTowerRubble(t.x, t.y, s); return; }
   const color = t.team==='player'?'#3a8eff':'#e8304a';
-  const s = t.size;
-
-  ctx.fillStyle='rgba(0,0,0,0.3)';
-  ctx.beginPath(); ctx.ellipse(t.x,t.y+s,s*1.1,s*0.4,0,0,Math.PI*2); ctx.fill();
-
-  ctx.fillStyle = t.isKing
+  const plinth = t.isKing
     ? (t.isUndeadKing   ? '#2a1040'
      : t.isHourglassKing? '#2a1a40'
      : t.isVortexKing   ? '#0a2035'
@@ -19843,14 +19963,7 @@ function drawTower(t) {
      : t.isWarlordKing  ? '#2a0a0a'
      : '#8b6914')
     : '#6b5010';
-  ctx.fillRect(t.x-s*0.8,t.y-s*0.3,s*1.6,s*1.2);
-
-  const grad=ctx.createLinearGradient(t.x-s,t.y-s*2.5,t.x+s,t.y);
-  grad.addColorStop(0,color); grad.addColorStop(1,shade(color,-40));
-  ctx.fillStyle=grad; ctx.fillRect(t.x-s*0.7,t.y-s*2.5,s*1.4,s*2.5);
-
-  ctx.fillStyle=shade(color,20);
-  for (let i=0;i<3;i++) ctx.fillRect(t.x-s*0.7+i*(s*0.5),t.y-s*2.8,s*0.35,s*0.5);
+  drawTowerBody(t.x, t.y, s, color, plinth, t.isKing);
 
   if (t.isKing) {
     if (t.isUndeadKing) {
@@ -19928,17 +20041,22 @@ function drawTower(t) {
     ctx.restore();
   }
 
-  const bw=s*2.5, bh=5, bx=t.x-bw/2;
-  // Clamp bar position so it never clips off the top or bottom of the arena
-  const L_t = layout();
-  const byRaw = t.y-s*3.4;
-  const by = Math.max(8, Math.min(L_t.ARENA_H - 20, byRaw));
+  const bw=s*2.5, bh=6, bx=t.x-bw/2;
+  // The bar and its number sit above the tower. If that would be off screen or under the match bar along the top
+  // (the enemy king), they go just below the tower instead.
+  const L_t = layout(), rs_t = renderScale();
+  const topSafe = (30 - rs_t.oy) / rs_t.sy;        // 30 screen px: clear of the top bar
+  const byRaw = t.y-s*(t.isKing ? 3.85 : 3.4);   // kings: clear of the crown
+  const below = byRaw - 12 < topSafe;
+  const by = below ? t.y + s*1.05 + 12 : Math.min(L_t.ARENA_H - 20, byRaw);
   const pct=t.hp/t.maxHp;
-  ctx.fillStyle='#111'; ctx.fillRect(bx,by,bw,bh);
-  ctx.fillStyle=pct>0.5?'#2ecc71':pct>0.25?'#f39c12':'#e74c3c';
-  ctx.fillRect(bx,by,bw*pct,bh);
-  ctx.font='9px Exo 2'; ctx.fillStyle='#ddd'; ctx.textAlign='center';
-  ctx.fillText(Math.floor(t.hp),t.x,by-2);
+  drawHpBar(t, bx, by, bw, bh, pct, t.team);
+  ctx.save();
+  ctx.font='800 10px Exo 2'; ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+  ctx.lineJoin='round'; ctx.lineWidth=2.5; ctx.strokeStyle='rgba(0,0,0,0.75)';
+  ctx.strokeText(Math.floor(t.hp),t.x,by-2);
+  ctx.fillStyle='#fff'; ctx.fillText(Math.floor(t.hp),t.x,by-2);
+  ctx.restore();
 
   // ── Tower Troop special overlays ──────────────────────────────
   if (!t.isKing) {
@@ -20826,9 +20944,7 @@ function drawUnit(u) {
         ctx.fillStyle='#f5c842'; ctx.fillRect(u.x-bw/2, u.y-s*2.2, bw*lifePct, 4);
         // HP bar
         const hpPct = u.hp/u.maxHp;
-        ctx.fillStyle='#111'; ctx.fillRect(u.x-bw/2, u.y-s*2.7, bw, 4);
-        ctx.fillStyle = hpPct>0.5?'#2ecc71':hpPct>0.25?'#f39c12':'#e74c3c';
-        ctx.fillRect(u.x-bw/2, u.y-s*2.7, bw*hpPct, 4);
+        drawHpBar(u, u.x-bw/2, u.y-s*2.7, bw, 4, hpPct, u.team);
         ctx.font='9px Exo 2'; ctx.fillStyle='#ddd'; ctx.textAlign='center';
         ctx.fillText(Math.floor(u.hp), u.x, u.y - s*3.1);
       }
@@ -20867,9 +20983,7 @@ function drawUnit(u) {
   }
 
   const bw=s*2.2, pct=u.hp/u.maxHp;
-  ctx.fillStyle='#111'; ctx.fillRect(u.x-bw/2, drawY-s-8, bw, 4);
-  ctx.fillStyle=pct>0.6?'#2ecc71':pct>0.3?'#f39c12':'#e74c3c';
-  ctx.fillRect(u.x-bw/2, drawY-s-8, bw*pct, 4);
+  drawHpBar(u, u.x-bw/2, drawY-s-8, bw, 4, pct, u.team);
 
   // Minigunner: ammo pip bar + reload arc
   if (u.isMinigunner && u._mgAmmo !== undefined) {
