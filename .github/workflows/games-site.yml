@@ -11,7 +11,8 @@ on:
     branches: [main]
     paths:
       - 'www/games/**'
-      - 'www/index.html'   # the Games screen and the Disc Clicker come from here
+      - 'src/**'           # www/index.html is built from these parts; the Games screen and the Disc Clicker come from it
+      - 'tools/assemble.py'
       - 'www/pp-*.js'
       - 'web/**'
       - 'tools/build_games_site.py'
@@ -36,6 +37,10 @@ jobs:
     steps:
       - name: Get the code
         uses: actions/checkout@v7
+
+      # www/index.html is not stored in the repo: it is joined from the parts in src/.
+      - name: Build the app files from their parts
+        run: python3 tools/assemble.py
 
       # Fills web/index.html from the app's own Games code and copies the games and Points/Playground scripts.
       # Fails if a piece it needs has moved in www/index.html, or if any script has a syntax error.

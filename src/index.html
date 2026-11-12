@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<script>
+@@include index/js/heartbeat-and-save.js@@
+</script>
+<script id="pp-gate-core">
+@@include index/js/pp-gate-core.js@@
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Press Play Media</title>
+<meta name="theme-color" content="#0c0d10">
+<style>
+@@include index/css/main/01-sidebar-settings-xp.css@@
+@@include index/css/main/02-playlist-library-popovers.css@@
+@@include index/css/main/03-modals-rename-thumbnail-cutter.css@@
+@@include index/css/main/04-multi-select-detailed-main.css@@
+@@include index/css/main/05-video-gestures-subtitles.css@@
+@@include index/css/main/06-filters-settings-menu-customize.css@@
+@@include index/css/main/07-speed-latency-eq-booster-knobs.css@@
+@@include index/css/main/08-layout-home-editions.css@@
+@@include index/css/main/09-video-page-extras-native.css@@
+</style>
+</head>
+<body>
+<style id="pp-loader-style">
+@@include index/css/pp-loader.css@@
+</style>
+<div id="pp-loader" role="status" aria-live="polite" aria-label="Loading">
+  <div class="pp-ld-bars"><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="pp-ld-spin pp-ld-lite"><svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></div>
+  <div class="pp-ld-spin pp-ld-plus"><svg viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></svg></div>
+  <div class="pp-ld-spin pp-ld-premium"><i></i><i></i><b></b></div>
+  <div class="pp-ld-title">Press Play Media</div>
+  <div class="pp-ld-sub">Loading library…</div>
+</div>
+<script>
+(function(){
+  var l=document.getElementById('pp-loader');
+  try{
+    var ed=localStorage.getItem('ppPlaygroundMode')==='1'?'playground':localStorage.getItem('ppLiteMode')==='1'?'lite':localStorage.getItem('ppPlusMode')==='1'?'plus':localStorage.getItem('ppPremiumMode')==='1'?'premium':'';
+    if(ed&&l){
+      l.setAttribute('data-ed',ed);
+      var t=l.querySelector('.pp-ld-title');
+      if(t)t.insertAdjacentHTML('beforeend','<span class="pp-ld-ed" data-ed="'+ed+'">'+{lite:'Lite',plus:'Plus',premium:'Premium',playground:'Playground'}[ed]+'</span>');
+    }
+  }catch(e){}
+  setTimeout(function(){var x=document.getElementById('pp-loader');if(x)x.remove()},15000);
+})();
+</script>
+@@include index/html/01-menu-and-effects.html@@
+@@include index/html/02-sidebar.html@@
+@@include index/html/03-player.html@@
+@@include index/html/04-modals.html@@
+@@include index/html/05-tabbar-and-mini-player.html@@
+<script id="jsmediatags-script" src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.7/jsmediatags.min.js"></script>
+<script id="pp-mp4-muxer">
+@@include index/js/vendor-mp4-muxer.js@@
+</script>
+<script src="native-bridge.js"></script>
+<script>/* safety net: if native-bridge.js is missing, run exactly as the plain web app */if(!window.PPNative){window.PPNative={available:false,enabled:false,hooks:{},lib:null,wrapMedia:function(e){return e},setSrc:function(e,t){e.src=t.url;return Promise.resolve()},raw:function(e){return e},active:function(){return false},videoActive:function(){return false},decorateAnalyser:function(){},queueNext:function(){},updateMeta:function(){},setFxProvider:function(){},mirror:function(){},setVideoFilterCss:function(){},boot:function(){return Promise.resolve()},sameUri:function(){return false},expectAdvance:function(){}};}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+<script>
+@@include index/js/main/01-playlists-sidebar-tabs.js@@
+@@include index/js/main/02-playlist-selector-add-popover.js@@
+@@include index/js/main/03-audio-lead-storage.js@@
+@@include index/js/main/04-settings-persistence-toasts.js@@
+@@include index/js/main/05-backup-loop-position-subtitle-parsing.js@@
+@@include index/js/main/06-subtitles-video-delay.js@@
+@@include index/js/main/07-motion-smoothing.js@@
+@@include index/js/main/08-quality-decoding-fps.js@@
+@@include index/js/main/09-dropdowns-subtitle-look-translate-transcript.js@@
+@@include index/js/main/10-fullscreen-rotate-pip-gestures.js@@
+@@include index/js/main/11-two-finger-gestures-ui-customize.js@@
+@@include index/js/main/12-video-filters-auto-levels.js@@
+@@include index/js/main/13-settings-menu-quick-bar-background-audio.js@@
+@@include index/js/main/14-media-session-speed-loop-sleep-eq.js@@
+@@include index/js/main/15-volume-booster-knobs.js@@
+@@include index/js/main/16-booster-ui-audio-graph-latency-ruler.js@@
+@@include index/js/main/17-sidebar-resize-visualizer.js@@
+@@include index/js/main/18-helpers-marquee-drag-reorder.js@@
+@@include index/js/main/19-multi-select.js@@
+@@include index/js/main/20-tag-and-thumbnail-editing.js@@
+@@include index/js/main/21-separator-hooks-controls.js@@
+@@include index/js/main/22-shortcuts-zoom-file-loading-search.js@@
+@@include index/js/main/23-drag-drop-sorting-batch-rename.js@@
+@@include index/js/main/24-cutter.js@@
+@@include index/js/main/25-cutter-effects.js@@
+@@include index/js/main/26-cutter-lossless-trim.js@@
+@@include index/js/main/27-cutter-fast-reencode.js@@
+@@include index/js/main/28-clip-naming-native-engine-glue.js@@
+@@include index/js/main/29-replaygain-url-m3u-bookmarks-chapters-lyrics.js@@
+@@include index/js/main/30-disc-clicker.js@@
+@@include index/js/main/31-disc-clicker-loop-portfolio.js@@
+@@include index/js/main/32-portfolio-stats-xp-leveling.js@@
+@@include index/js/main/33-ranks-unlocks-exp-shop.js@@
+@@include index/js/main/34-streak-badge-backgrounds-eq-slots.js@@
+@@include index/js/main/35-perks-accent-rank-and-shop-modals.js@@
+@@include index/js/main/36-playmedia-quiz.js@@
+</script>
+<script>
+@@include index/js/player-layout.js@@
+</script>
+<script id="pp-addons">
+@@include index/js/pp-addons.js@@
+</script>
+<script id="pp-transitions">
+@@include index/js/pp-transitions.js@@
+</script>
+<script id="pp-addons2">
+@@include index/js/pp-addons2.js@@
+</script>
+<style id="pp-lite-style">
+@@include index/css/pp-lite.css@@
+</style>
+<script id="pp-lite">
+@@include index/js/pp-lite.js@@
+</script>
+<script id="pp-plus">
+@@include index/js/pp-plus.js@@
+</script>
+<script id="pp-snapshot">
+@@include index/js/pp-snapshot.js@@
+</script>
+<script id="pp-tools">
+@@include index/js/pp-tools.js@@
+</script>
+<script id="pp-premium">
+@@include index/js/pp-premium.js@@
+</script>
+<script id="pp-marathon">
+@@include index/js/pp-marathon.js@@
+</script>
+<script id="pp-eqtouch">
+@@include index/js/pp-eqtouch.js@@
+</script>
+<style id="pp-settings-groups-css">
+@@include index/css/pp-settings-groups.css@@
+</style>
+<script id="pp-settings-groups">
+@@include index/js/pp-settings-groups.js@@
+</script>
+<script>
+@@include index/js/loader-finish.js@@
+</script>
+<!-- ===== Games: special button, games page, full-screen game view ===== -->
+<style id="pp-games-style">
+@@include index/css/pp-games.css@@
+</style>
+<script id="pp-games-js">
+@@include index/js/pp-games.js@@
+</script>
+<script src="./pp-points.js?v=20261108n"></script>   <!-- Press Play Points: quests, achievements and shop on the Games page. Bump v= when it changes -->
+<script src="./pp-playground.js?v=20261112b"></script>
+<script src="./pp-playground-album.js?v=20261108a"></script>
+<script src="./pp-playground-lab.js?v=20261108a"></script>   <!-- Press Play Playground (the fourth app mode): hub, orders, charms, wheel. Bump v= when it changes -->
+<script src="./pp-playground-stars.js?v=20261108a"></script>   <!-- Playground Star Shop: Stars for Points, boosts, shields, the vault -->
+<script src="./vocal-separator.js?v=20261030a" defer></script>
+<script src="./pp-mashup.js?v=20261111c" defer></script>   <!-- mashup mode -->   <!-- bump v= each time vocal-separator.js changes so phones fetch the new copy -->
+
+<!-- ===================== Refined look (Settings > Appearance > Refined look, on by default) =====================
+     Everything below only applies while body has .pp-refined, so switching it off gives back the plain look exactly. -->
+<style id="pp-refined-css">
+@@include index/css/pp-refined.css@@
+</style>
+<script id="pp-refined">
+@@include index/js/pp-refined.js@@
+</script>
+</body>
+</html>

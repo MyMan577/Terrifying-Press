@@ -1,0 +1,480 @@
+  <div id="main">
+    <svg width="0" height="0" style="position:absolute;overflow:hidden;pointer-events:none;" aria-hidden="true">
+      <defs>
+        <!-- Sharpen: a convolution kernel where the center weight and the
+             surrounding negative weights are both driven by --sharpen-amt,
+             so 0 is an identity kernel (no-op, byte-identical passthrough)
+             and turning the slider up progressively exaggerates edges.
+             edgeMode="duplicate" is set explicitly (rather than left at
+             its default) so the kernel repeats the nearest real pixel past
+             the edge of the filter region instead of sampling undefined
+             color there; preserveAlpha is left off so the convolution runs
+             in premultiplied color space - with it on, the boundary between
+             actual video pixels and the surrounding letterbox padding
+             convolves each RGB channel independently of alpha, which is
+             what was producing a green tint along the letterbox edges. -->
+        <filter id="sharpen-filter" x="-2%" y="-2%" width="104%" height="104%" color-interpolation-filters="sRGB">
+          <feConvolveMatrix id="sharpen-matrix" order="3" edgeMode="duplicate"
+            kernelMatrix="0 0 0 0 1 0 0 0 0" result="sharpened"/>
+          <!-- Clip the result back to where the source actually has picture.
+               edgeMode="duplicate" smears the outermost video pixels into any
+               transparent area around them (the letterbox bars, and the filter
+               region's padding), which is what turned the black bars into the
+               video's edge colors on some render paths. Masking by the
+               original alpha keeps those areas transparent, so the black
+               #video-wrap background shows through as normal. -->
+          <feComposite in="sharpened" in2="SourceAlpha" operator="in"/>
+        </filter>
+        <!-- Local contrast ("clarity"): classic unsharp-mask - blur a copy,
+             subtract it from the original to isolate mid-frequency detail,
+             then add that back on top, scaled by --clarity-amt. At 0 the
+             blended-in detail layer has zero gain and the output matches
+             the source exactly.
+
+             The filter region is padded 4% beyond the video's own bounds so
+             the blur has real margin to sample outside the frame - shrinking
+             the region to exactly 0/0/100%/100% removes that margin, and
+             without it the blur is clipped right at the true edge, leaving a
+             thin unblurred strip there that the detail math reads as "no
+             local difference" (a dead band with no clarity effect at all).
+
+             But that padding can't be left as plain empty space, because the
+             padded area is genuinely transparent (it's outside the video
+             element, not just outside the visible frame within it) - blurring
+             opaque frame content straight into that transparency fades the
+             blurred copy toward transparent near the border while the
+             source stays fully opaque, and the unsharp-mask math amplifies
+             that gap into a bright/white fringe.
+
+             feMorphology (dilate) fixes this: it spreads each edge pixel's
+             own color outward by "radius" before anything is blurred, so
+             the padding is filled with duplicated real edge color instead of
+             emptiness. That gives feGaussianBlur real image data across the
+             whole margin (radius is comfortably larger than stdDeviation, so
+             the blur never reaches past dilated content into true
+             transparency) - eliminating both the white-fringe bug and the
+             dead edge band in one fix, without having to shrink the region.
+
+             Every stage below is a feComposite, deliberately - NOT
+             feComponentTransfer. feComponentTransfer unpremultiplies its
+             input by that input's own alpha before touching any color
+             channel, then re-premultiplies after. feComposite's arithmetic
+             operator instead just runs its formula on whatever raw numbers
+             are stored per channel, alpha included - no implicit divide.
+             That distinction matters here because the very first step
+             computes alpha as 1*1 + (-1)*1 + 0.5 = 0.5 (same k2/k3/k4
+             formula applied to alpha as to color, since both inputs are
+             opaque). Piping that into feComponentTransfer would silently
+             divide every color value by 0.5 - i.e. double it - before the
+             boost was even applied, which is why the slightest touch of
+             the slider produced a wildly oversized darken. Staying in
+             feComposite for every step means that stray 0.5 alpha is just
+             an unused number; it never touches the color math. -->
+        <filter id="clarity-filter" x="-4%" y="-4%" width="108%" height="108%" color-interpolation-filters="sRGB">
+          <feMorphology in="SourceGraphic" operator="dilate" radius="8" result="edge-extended"/>
+          <feGaussianBlur in="edge-extended" stdDeviation="4" edgeMode="duplicate" result="blurred"/>
+          <!-- detail = (source - blurred) + 0.5. The +0.5 bias keeps both
+               the "brighter than local average" and "darker than local
+               average" halves of the signal inside the 0..1 range that
+               gets clamped after every filter step - without it, anywhere
+               source is darker than its local blur would come out negative
+               and get clamped to 0 right here, permanently discarding the
+               darken half of the effect. -->
+          <feComposite in="SourceGraphic" in2="blurred" operator="arithmetic" k2="1" k3="-1" k4="0.5" result="detail"/>
+          <!-- boosted = slope*detail + intercept, with slope/intercept set
+               in JS so boosted == 0.5 (neutral) whenever slope == 0 -
+               still a true no-op at rest. in2/k1/k3 are unused (k1=k3=0)
+               and just need a valid reference. -->
+          <feComposite id="clarity-boost" in="detail" in2="SourceGraphic" operator="arithmetic" k1="0" k2="0" k3="0" k4="0.5" result="boosted"/>
+          <!-- Undo the +0.5 bias while adding the boosted detail back on:
+               final = source + 2*boosted - 1, which reduces to
+               source + 2*slope*(source-blurred) when slope == user amount,
+               and back to plain source when slope == 0. -->
+          <feComposite in="SourceGraphic" in2="boosted" operator="arithmetic" k2="1" k3="2" k4="-1"/>
+        </filter>
+        <!-- Posterize: reduces each color channel to a small set of discrete
+             steps (a "limited palette" / retro look) instead of a smooth
+             0-255 gradient. type="discrete" snaps every input value to the
+             nearest table entry; the table itself (evenly spaced 0..1
+             values) is rebuilt in JS whenever the level count changes, so
+             fewer entries = fewer distinct shades = a blockier, flatter
+             image. At full 32-entry table it's visually identical to the
+             source; near 2-3 entries it looks like an old dithered game. -->
+        <filter id="posterize-filter" color-interpolation-filters="sRGB">
+          <feComponentTransfer id="posterize-transfer">
+            <feFuncR id="posterize-r" type="discrete" tableValues="0 1"/>
+            <feFuncG id="posterize-g" type="discrete" tableValues="0 1"/>
+            <feFuncB id="posterize-b" type="discrete" tableValues="0 1"/>
+          </feComponentTransfer>
+        </filter>
+        <!-- Duotone: flattens the image to luminance (standard Rec.709
+             weights) then remaps that single channel between two chosen
+             colors - a dark tone and a light tone - instead of grayscale's
+             black-to-white. type="table" with exactly two values per
+             channel does that remap: output = table[0] + luminance *
+             (table[1]-table[0]). The two colors are rebuilt in JS from
+             whatever the user picks (or the default teal/navy duotone
+             matching the app's own accent color). -->
+        <filter id="duotone-filter" color-interpolation-filters="sRGB">
+          <feColorMatrix type="matrix"
+            values="0.2126 0.7152 0.0722 0 0
+                    0.2126 0.7152 0.0722 0 0
+                    0.2126 0.7152 0.0722 0 0
+                    0       0      0     1 0"/>
+          <feComponentTransfer id="duotone-transfer">
+            <feFuncR id="duotone-r" type="table" tableValues="0 1"/>
+            <feFuncG id="duotone-g" type="table" tableValues="0 1"/>
+            <feFuncB id="duotone-b" type="table" tableValues="0 1"/>
+          </feComponentTransfer>
+        </filter>
+      </defs>
+    </svg>
+    <div id="viz-wrap">
+      <canvas id="viz"></canvas>
+      <div id="art-ring">
+        <img id="art-img" alt="">
+        <div id="art-fallback">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg>
+        </div>
+      </div>
+      <div class="gesture-layer" data-gesture-surface="audio">
+        <div class="gesture-flash gesture-flash-left"></div>
+        <div class="gesture-flash gesture-flash-center"></div>
+        <div class="gesture-flash gesture-flash-right"></div>
+      </div>
+      <div id="lyrics-overlay" aria-live="off"><div class="ly-cur"></div><div class="ly-next"></div></div>
+      <div class="gesture-toast" id="audio-gesture-toast"></div>
+    </div>
+    <div id="video-wrap">
+      <video id="video-el" playsinline preload="metadata"></video>
+      <canvas id="video-delay-canvas"></canvas>
+      <canvas id="memc-canvas"></canvas>
+      <div class="gesture-layer" data-gesture-surface="video">
+        <div class="gesture-flash gesture-flash-left"></div>
+        <div class="gesture-flash gesture-flash-center"></div>
+        <div class="gesture-flash gesture-flash-right"></div>
+      </div>
+      <div id="fps-counter" aria-hidden="true"></div>
+      <div class="gesture-toast" id="video-gesture-toast"></div>
+      <div id="subtitle-overlay"><span id="subtitle-text"></span></div>
+      <div id="video-tools">
+        <div style="position:relative;">
+          <button class="video-tool-btn" id="subtitle-btn" title="Subtitles" aria-label="Subtitles">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M7 13h3M13 13h4M7 10h4"/></svg>
+          </button>
+          <div id="subtitle-dropdown">
+            <p class="tool-dropdown-label" id="subtitle-status">No subtitles loaded</p>
+            <button class="full-row" id="subtitle-load-btn">Load subtitle file (.vtt/.srt/.ass)…</button>
+            <button class="full-row" id="subtitle-off-btn">Turn off</button>
+            <button class="full-row" id="subtitle-remove-btn">Remove from this video</button>
+            <hr>
+            <p class="tool-dropdown-label">Sync <span id="subtitle-offset-val">0.0s</span></p>
+            <div class="tool-dropdown-row" id="subtitle-offset-row">
+              <button data-d="-0.5" title="Show subtitles 0.5s earlier">−0.5</button>
+              <button data-d="-0.1" title="Show subtitles 0.1s earlier">−0.1</button>
+              <button data-d="0.1" title="Show subtitles 0.1s later">+0.1</button>
+              <button data-d="0.5" title="Show subtitles 0.5s later">+0.5</button>
+              <button data-d="0" title="Reset sync">Reset</button>
+            </div>
+            <p class="tool-dropdown-label">Size</p>
+            <div class="tool-dropdown-row" id="subtitle-size-row">
+              <button data-size="s">S</button>
+              <button data-size="m" class="active">M</button>
+              <button data-size="l">L</button>
+            </div>
+            <p class="tool-dropdown-label">Position <span style="opacity:.6;font-weight:400;">· or drag on the video</span></p>
+            <div class="tool-dropdown-row" id="subtitle-pos-row">
+              <button data-pos="bottom" class="active">Bottom</button>
+              <button data-pos="top">Top</button>
+            </div>
+            <p class="tool-dropdown-label">Color</p>
+            <div class="tool-dropdown-row" id="subtitle-color-row">
+              <button data-color="#ffffff" class="active" style="color:#ffffff;">White</button>
+              <button data-color="#ffe14d" style="color:#ffe14d;">Yellow</button>
+              <button data-color="#6ee7d0" style="color:#6ee7d0;">Aqua</button>
+              <button data-color="#7CFC7C" style="color:#7CFC7C;">Green</button>
+              <button data-color="#7db8ff" style="color:#7db8ff;">Blue</button>
+              <button data-color="#ff8ad8" style="color:#ff8ad8;">Pink</button>
+              <button data-color="#ffa94d" style="color:#ffa94d;">Orange</button>
+              <button data-color="#ff6b6b" style="color:#ff6b6b;">Red</button>
+              <input type="color" id="subtitle-color-custom" value="#ffffff" title="Custom color">
+            </div>
+            <p class="tool-dropdown-label">Font</p>
+            <div class="tool-dropdown-row" id="subtitle-font-row">
+              <button data-font="default" class="active">Sans</button>
+              <button data-font="serif" style="font-family:Georgia,serif;">Serif</button>
+              <button data-font="mono" style="font-family:'Courier New',monospace;">Mono</button>
+              <button data-font="arial" style="font-family:Arial,Helvetica,sans-serif;">Arial</button>
+              <button data-font="condensed" style="font-family:'Arial Narrow',sans-serif-condensed,Arial,sans-serif;">Narrow</button>
+              <button data-font="impact" style="font-family:Impact,'Arial Narrow Bold',sans-serif;">Impact</button>
+              <button data-font="casual" style="font-family:'Comic Sans MS','Chalkboard SE',cursive;">Casual</button>
+            </div>
+            <hr>
+            <p class="tool-dropdown-label">Look</p>
+            <div class="tool-dropdown-row" id="subtitle-preset-row">
+              <button data-preset="box">Box</button>
+              <button data-preset="outline">Outline</button>
+              <button data-preset="cinema">Cinema</button>
+            </div>
+            <p class="tool-dropdown-label">Text size <span id="sub-scale-val"></span></p>
+            <div class="tool-dropdown-row"><input type="range" id="sub-scale" min="50" max="250" step="5" value="100"></div>
+            <p class="tool-dropdown-label">Outline <span id="sub-outline-val"></span></p>
+            <div class="tool-dropdown-row"><input type="range" id="sub-outline" min="0" max="8" step="1" value="0"></div>
+            <p class="tool-dropdown-label">Shadow <span id="sub-shadow-val"></span></p>
+            <div class="tool-dropdown-row"><input type="range" id="sub-shadow" min="0" max="10" step="1" value="0"></div>
+            <p class="tool-dropdown-label">Background <span id="sub-bg-val"></span></p>
+            <div class="tool-dropdown-row"><input type="range" id="sub-bg" min="0" max="100" step="5" value="70"></div>
+            <p class="tool-dropdown-label">Line spacing <span id="sub-lh-val"></span></p>
+            <div class="tool-dropdown-row"><input type="range" id="sub-lh" min="100" max="200" step="10" value="140"></div>
+            <div class="tool-dropdown-row" id="subtitle-toggle-row">
+              <button data-tg="bold">Bold</button>
+              <button data-tg="sdh" title="Hides lines like [music], (sighs) and lines with music notes">Hide [sounds] and music</button>
+            </div>
+            <hr>
+            <button class="full-row" id="sub-tx-btn">Transcript, jump and fix sync…</button>
+            <div id="sub-tr-block">
+              <hr>
+              <p class="tool-dropdown-label">Translate subtitles <span style="opacity:.6;font-weight:400;">· on device</span></p>
+              <div class="tool-dropdown-row">
+                <select id="sub-tr-lang"></select>
+                <button id="sub-tr-go">Translate</button>
+              </div>
+              <p class="tool-dropdown-label">Show</p>
+              <div class="tool-dropdown-row" id="sub-tr-mode-row">
+                <button data-m="orig">Original</button>
+                <button data-m="both">Both</button>
+                <button data-m="tr">Translation</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="position:relative;">
+          <button class="video-tool-btn" id="filter-btn" title="Video filters" aria-label="Video filters">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18"/><path d="M12 7a5 5 0 0 0 0 10"/></svg>
+          </button>
+          <div id="filter-dropdown">
+            <p class="tool-dropdown-label">Filter</p>
+            <div class="tool-dropdown-grid" id="filter-grid">
+              <button data-filter="none" class="active">Normal</button>
+              <button data-filter="vibrant">Vibrant</button>
+              <button data-filter="warm">Warm</button>
+              <button data-filter="cool">Cool</button>
+              <button data-filter="bw">B&amp;W</button>
+              <button data-filter="sepia">Sepia</button>
+              <button data-filter="contrast">Contrast</button>
+              <button data-filter="fade">Fade</button>
+              <button data-filter="noir">Noir</button>
+              <button data-filter="vintage">Vintage</button>
+              <button data-filter="dream">Dream</button>
+              <button data-filter="cinematic">Cinematic</button>
+              <button data-filter="moonlight">Moonlight</button>
+              <button data-filter="sunset">Sunset</button>
+              <button data-filter="vivid_cool">Arctic</button>
+              <button data-filter="crimson">Crimson</button>
+              <button data-filter="muted">Muted</button>
+              <button data-filter="invert">Invert</button>
+              <button data-filter="posterize">Posterize</button>
+              <button data-filter="duotone">Duotone</button>
+            </div>
+            <div id="posterize-hint" class="tool-dropdown-label" style="display:none; margin-top:2px;">Color levels: <span id="posterize-level-count">6</span></div>
+            <div id="duotone-colors-row" style="display:none; gap:10px; align-items:center; margin:6px 0 2px;">
+              <label style="font-size:11px; color:var(--text-dim); display:flex; align-items:center; gap:6px;">
+                Shadows <input type="color" id="duotone-dark-color" value="#0c0d10">
+              </label>
+              <label style="font-size:11px; color:var(--text-dim); display:flex; align-items:center; gap:6px;">
+                Highlights <input type="color" id="duotone-light-color" value="#6ee7d0">
+              </label>
+            </div>
+            <p class="tool-dropdown-label">Intensity</p>
+            <input type="range" id="filter-intensity" min="0" max="100" value="100">
+            <p class="tool-dropdown-label" style="margin-top:14px;">Enhance</p>
+            <div class="enhance-row">
+              <span class="enhance-row-label">Sharpen</span>
+              <input type="range" id="sharpen-intensity" min="0" max="100" value="0">
+            </div>
+            <div class="enhance-row">
+              <span class="enhance-row-label">Local contrast</span>
+              <input type="range" id="clarity-intensity" min="0" max="100" value="0">
+            </div>
+            <div class="enhance-row">
+              <span class="enhance-row-label">Auto levels</span>
+              <label class="settings-switch">
+                <input type="checkbox" id="auto-levels-toggle">
+                <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div style="position:relative;">
+          <button class="video-tool-btn" id="pip-btn" title="Picture-in-picture" aria-label="Picture-in-picture" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="12" width="8" height="6" rx="1" fill="currentColor" stroke="none"/></svg>
+          </button>
+          <div id="pip-dropdown">
+            <p class="tool-dropdown-label" style="padding-top:2px;">Picture-in-picture</p>
+            <p id="pip-dd-hint">Picture-in-picture shows the real video, so the picture can't be held back. Use these two to keep the sound in sync.</p>
+            <div class="enhance-row">
+              <span class="enhance-row-label pip-dd-label">Audio lead<small>Sound plays ahead of the picture</small></span>
+              <label class="settings-switch">
+                <input type="checkbox" id="pip-audio-lead-toggle">
+                <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+              </label>
+            </div>
+            <div class="enhance-row">
+              <span class="enhance-row-label pip-dd-label">Decode compensation<small>+300 ms to cover decoding lag</small></span>
+              <label class="settings-switch">
+                <input type="checkbox" id="pip-decode-comp-toggle">
+                <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+              </label>
+            </div>
+            <p id="pip-dd-status"></p>
+            <button id="pip-dd-start" class="full-row-btn">Start Picture-in-picture</button>
+          </div>
+        </div>
+        <button class="video-tool-btn" id="webaudio-btn" title="Web audio: keep sound playing with the screen off" aria-label="Web audio" aria-pressed="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+        </button>
+        <button class="video-tool-btn" id="rotate-btn" title="Rotate screen" aria-label="Rotate screen">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="16" rx="2" transform="rotate(90 12 10)"/><path d="M4 17a8 8 0 0 0 8 5"/><polyline points="12 19 12 22 9 22"/></svg>
+        </button>
+        <button class="video-tool-btn" id="fullscreen-btn" title="Fullscreen" aria-label="Fullscreen">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+        </button>
+      </div>
+
+    </div>
+    <input type="file" id="subtitle-input" accept=".vtt,.srt,.ass,.ssa,text/vtt">
+    <div id="sub-tx" role="dialog" aria-label="Subtitle transcript">
+      <div class="sx-head"><b>Transcript</b><input type="text" id="sx-q" placeholder="Search lines"><button id="sx-close">Close</button></div>
+      <div class="sx-hint">Tap a line to jump to it. To fix sync: pause where a line starts and tap Mark on it. Mark a second line far later in the video to fix drift too, then Apply.</div>
+      <div id="sx-list"></div>
+      <div class="sx-foot"><span id="sx-info">No marks</span><button id="sx-clear">Clear</button><button id="sx-undo" disabled>Undo sync</button><button id="sx-apply" disabled>Apply</button></div>
+    </div>
+    <input type="file" id="lrc-input" accept=".lrc,.txt,text/plain" style="display:none">
+    <input type="file" id="m3u-input" accept=".m3u,.m3u8,audio/mpegurl,audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain" style="display:none">
+    <div id="extras-panel" role="dialog" aria-label="Bookmarks, chapters and lyrics">
+      <div class="pp-tabs">
+        <button type="button" data-pt="bm" class="active">Bookmarks</button>
+        <button type="button" data-pt="ch">Chapters</button>
+        <button type="button" data-pt="ly">Lyrics</button>
+        <button type="button" id="pp-close" aria-label="Close">✕</button>
+      </div>
+      <div class="pp-pane active" data-pp="bm">
+        <button class="pp-btn pp-wide" id="bm-add" type="button">+ Bookmark at <span id="bm-now">0:00</span></button>
+        <div id="bm-list"></div>
+      </div>
+      <div class="pp-pane" data-pp="ch"><div id="ch-list"></div></div>
+      <div class="pp-pane" data-pp="ly">
+        <div class="pp-row"><button class="pp-btn" id="ly-load" type="button">Load .lrc file…</button><button class="pp-btn" id="ly-clear" type="button">Remove</button><button class="pp-btn" id="ly-look" type="button">Look and effects…</button></div>
+        <div id="ly-list"></div>
+      </div>
+    </div>
+
+    <div id="controls-col">
+      <div id="now-playing">
+        <div id="np-title" class="marquee"><span class="marquee-track">No track selected</span></div>
+        <div id="np-artist">-</div>
+      </div>
+
+      <div id="transport">
+        <button class="ctrl-btn" id="shuffle-btn" title="Shuffle" aria-label="Shuffle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+        </button>
+        <button class="ctrl-btn" id="prev-btn" title="Previous" aria-label="Previous track">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+        </button>
+        <button class="ctrl-btn" id="play-btn" title="Play" aria-label="Play">
+          <svg class="ico-play" id="play-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+          <svg class="ico-pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+        </button>
+        <button class="ctrl-btn" id="next-btn" title="Next" aria-label="Next track">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM6 6l8.5 6L6 18z"/></svg>
+        </button>
+        <button class="ctrl-btn" id="repeat-btn" title="Repeat" aria-label="Repeat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          <span class="repeat-one-dot"></span>
+        </button>
+      </div>
+
+      <div id="extra-transport">
+        <div style="position:relative;" data-item-wrapper="speed">
+          <button class="pill-btn" id="speed-btn" title="Playback speed" aria-label="Playback speed" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg>
+            <span id="speed-label">1x</span>
+          </button>
+          <div id="speed-dropdown">
+            <div class="speed-dropdown-row">
+              <span class="tool-dropdown-label" style="padding:0;">Speed</span>
+              <span id="speed-dropdown-value">1x</span>
+            </div>
+            <input type="range" id="speed-slider" min="0.25" max="4" step="0.05" value="1">
+            <div class="speed-range-labels"><span>0.25x</span><span>4x</span></div>
+            <button class="full-row" id="speed-reset-btn">Reset to 1x</button>
+            <label class="override-toggle" style="margin-top:10px;" title="Like a record: slower is lower, faster is higher">
+              <input type="checkbox" id="speed-pitch-follow">
+              <span>Pitch follows speed</span>
+            </label>
+            <label class="override-toggle" style="margin-top:6px;" title="This song always opens with the speed, pitch and reverb set here; other songs are left alone">
+              <input type="checkbox" id="speed-song-remember">
+              <span>Remember for this song</span>
+            </label>
+            <div class="pp-seg" id="speed-preset-seg" style="margin-top:8px;">
+              <button type="button" data-v="slowed">Slowed + reverb</button><button type="button" data-v="nightcore">Nightcore</button><button type="button" data-v="normal">Normal</button>
+            </div>
+          </div>
+        </div>
+        <button class="pill-btn" id="extras-btn" title="Bookmarks, chapters &amp; lyrics" aria-label="Bookmarks, chapters and lyrics" data-item-wrapper="marks">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+          <span>Marks</span>
+        </button>
+        <button class="pill-btn" id="ab-loop-btn" title="Set loop point A" aria-label="A-B loop" data-item-wrapper="abloop">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          <span id="ab-loop-label">A-B</span>
+        </button>
+        <button class="pill-btn" id="cutter-btn" title="Trim &amp; export clip" aria-label="Trim and export a clip" data-item-wrapper="cutter">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+          <span>Cut</span>
+        </button>
+        <div style="position:relative;" data-item-wrapper="sleep">
+          <button class="pill-btn" id="sleep-btn" title="Sleep timer" aria-label="Sleep timer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>
+            <span id="sleep-label">Sleep</span>
+          </button>
+          <div id="sleep-dropdown">
+            <button class="full-row" data-sleep="off">Off</button>
+            <button class="full-row" data-sleep="15">15 minutes</button>
+            <button class="full-row" data-sleep="30">30 minutes</button>
+            <button class="full-row" data-sleep="45">45 minutes</button>
+            <button class="full-row" data-sleep="60">60 minutes</button>
+            <hr>
+            <button class="full-row" data-sleep="track">End of current track</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="seek-row">
+        <span id="cur-time">0:00</span>
+        <div id="seek-wrap">
+          <input type="range" id="seek" min="0" max="100" value="0" step="0.1">
+          <div class="ab-marker" id="ab-marker-a"></div>
+          <div class="ab-marker" id="ab-marker-b"></div>
+        </div>
+        <span id="dur-time">0:00</span>
+      </div>
+
+      <div id="controls-footer">
+        <div id="hint">
+          <kbd>Space</kbd> play/pause &nbsp; <kbd>&larr;</kbd> <kbd>&rarr;</kbd> skip
+        </div>
+
+        <div id="vol-row">
+          <svg id="vol-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+          <input type="range" id="volume" min="0" max="100" value="80" step="1">
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<audio id="audio" preload="metadata"></audio>
+

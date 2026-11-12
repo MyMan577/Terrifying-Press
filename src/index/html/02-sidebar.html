@@ -1,0 +1,341 @@
+  <div id="sidebar">
+    <div id="sidebar-resize-handle" title="Drag to resize"></div>
+    <div id="sidebar-header">
+      <h1>Press Play Media<span class="ed-slot"></span><span id="title-tail"></span></h1>
+      <button type="button" class="pp-games-btn pp-games-btn-side" data-pp-games aria-label="Games"><span class="pp-gi"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M7.6 6.5h8.8a5.2 5.2 0 0 1 5.1 4.2l.9 4.9a2.7 2.7 0 0 1-4.7 2.3l-2.1-2.4H8.4l-2.1 2.4a2.7 2.7 0 0 1-4.7-2.3l.9-4.9a5.2 5.2 0 0 1 5.1-4.2z"/><path fill="#5a3fc4" d="M6.6 9.3h1.6v1.6h1.6v1.6H8.2v1.6H6.6v-1.6H5v-1.6h1.6z"/><circle cx="16.2" cy="10.2" r="1.15" fill="#5a3fc4"/><circle cx="18" cy="12.3" r="1.15" fill="#5a3fc4"/></svg></span><span>Games</span></button>
+      <div id="ed-tag"></div>
+      <p id="track-count">No tracks loaded</p>
+    </div>
+    <div id="sidebar-tabs">
+      <button class="sidebar-tab active" data-sidebar-tab="playlist" type="button">Playlist</button>
+      <button class="sidebar-tab" data-sidebar-tab="settings" type="button" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+
+    <div id="sidebar-pane-playlist" class="sidebar-pane active">
+      <div id="ed-strip"></div>
+      <div id="action-row">
+        <div id="add-dropdown-wrap">
+          <button id="add-btn">+ Add ▾</button>
+          <div id="add-dropdown">
+            <button type="button" id="add-files-btn">Files…</button>
+            <button type="button" id="add-folder-btn">Folder…</button>
+            <button type="button" id="add-device-btn" style="display:none">Scan phone…</button>
+            <button type="button" id="add-url-btn">Open URL…</button>
+            <button type="button" id="add-m3u-btn">Import M3U…</button>
+          </div>
+        </div>
+        <div id="sort-dropdown-wrap">
+          <button id="sort-btn">Sort ▾</button>
+          <div id="sort-dropdown">
+            <button data-sort="manual">Manual order…</button>
+            <button data-sort="default">Default order</button>
+            <button data-sort="title">Title (A–Z)</button>
+            <button data-sort="artist">Artist (A–Z)</button>
+            <button data-sort="duration">Duration</button>
+          </div>
+        </div>
+        <button id="rename-artists-btn" type="button" title="Batch rename" aria-label="Batch rename">🏷️</button>
+      </div>
+      <div id="search-row">
+        <input type="search" id="track-search" placeholder="Search tracks or artists…" autocomplete="off">
+      </div>
+      <div id="playlist-view-row">
+        <select id="playlist-view-select">
+          <option value="__all__">All tracks</option>
+        </select>
+      </div>
+      <input type="file" id="file-input" accept="audio/*,video/*,.vtt,.srt,.ass,.ssa,.lrc" multiple>
+      <input type="file" id="folder-input" accept="audio/*,video/*" multiple webkitdirectory directory style="display:none">
+      <div id="playlist">
+        <div id="empty-state">
+          Add local audio or video files to build a playlist.<br>MP3, WAV, OGG, M4A, FLAC, MP4, WebM, MOV supported.
+        </div>
+      </div>
+      <div id="select-bar">
+        <div id="select-bar-top">
+          <button class="select-bar-link" data-act="cancel" type="button">Cancel</button>
+          <span id="select-count">0 selected</span>
+          <button class="select-bar-link" data-act="all" id="select-all-btn" type="button">Select all</button>
+        </div>
+        <div id="select-bar-actions">
+          <button class="select-act" data-act="playlist" type="button">🗂️ Playlists</button>
+          <button class="select-act" data-act="move-pl" type="button">📂 Move to…</button>
+          <button class="select-act" data-act="remove-pl" type="button">Remove from playlist</button>
+          <button class="select-act" data-act="top" type="button">⬆ Top</button>
+          <button class="select-act" data-act="up" type="button">↑ Up</button>
+          <button class="select-act" data-act="down" type="button">↓ Down</button>
+          <button class="select-act" data-act="bottom" type="button">⬇ Bottom</button>
+          <button class="select-act" data-act="rename" type="button">✏️ Rename</button>
+          <button class="select-act" data-act="rename-artist" type="button">🏷️ Rename artist</button>
+          <button class="select-act" data-act="convert" type="button">🎧 To MP3</button>
+          <button class="select-act danger" data-act="delete" type="button">🗑 Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="sidebar-pane-settings" class="sidebar-pane">
+      <div class="settings-section" id="ppxp-badge-slot">
+        <div class="settings-section-label">Level</div>
+      </div>
+      <div class="settings-section" id="storage-section">
+        <div class="settings-section-label">Storage</div>
+        <div id="storage-usage-bar"><div id="storage-usage-fill"></div></div>
+        <div id="storage-usage-text">—</div>
+        <div id="storage-backup-row">
+          <button id="storage-export-btn" type="button">Export backup</button>
+          <button id="storage-import-btn" type="button">Restore backup</button>
+        </div>
+        <div id="backup-speed-row">
+          <div id="backup-speed-head"><span>Backup speed</span><span id="backup-speed-value">Max</span></div>
+          <input type="range" id="backup-speed-slider" min="1" max="10" step="1" value="10">
+          <div id="backup-speed-hint">Applies to export and restore. Try a lower setting if backups fail.</div>
+        </div>
+        <input type="file" id="library-import-input" accept="application/zip,.zip">
+      </div>
+      <div class="settings-section" id="decoding-section">
+        <div class="settings-section-label">Video decoding</div>
+        <div class="settings-row" id="native-video-row" style="display:none;margin-bottom:12px;">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Native video player (beta)</div>
+            <div class="settings-row-sub">Plays video with Android's own player for smoother playback and less battery. Filters, zoom, motion smoothing, upscaling and the Bluetooth delay all run natively on the GPU. The app reloads to switch.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="native-video-toggle">
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Frame-drop protection</div>
+            <div class="settings-row-sub" id="perf-mode-sub">Reduces effects to keep video smooth. Auto: only when a video starts skipping frames. Light: always.</div>
+          </div>
+          <select id="perf-mode-select">
+            <option value="off">Off</option>
+            <option value="auto">Auto</option>
+            <option value="light">Light</option>
+          </select>
+        </div>
+        <div class="settings-row" style="margin-top:12px;">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Audio lead (no frame drops)</div>
+            <div class="settings-row-sub">Plays the sound ahead of the video instead of delaying the picture, so video never drops frames. The visualizer is silent on video while this is on.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="audio-lead-toggle">
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="settings-row" style="margin-top:12px;">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Decode compensation (+300 ms)</div>
+            <div class="settings-row-sub">Delays the picture by 300 ms to keep it in sync with the sound.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="decode-comp-toggle" checked>
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="settings-row" style="margin-top:12px;">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Lossless latency (no dropped frames)</div>
+            <div class="settings-row-sub">Fixes videos losing frames while the latency delay is on.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="lossless-latency-toggle">
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="settings-row" id="lossless-quality-row" style="margin-top:10px;padding-left:14px;border-left:2px solid var(--line);display:none;">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Delayed picture sharpness</div>
+            <div class="settings-row-sub">Picture sharpness while the delay is on. Low is lightest but soft; High is sharper and uses more memory.</div>
+          </div>
+          <select id="lossless-quality-select">
+            <option value="640">Low: 640 px (original)</option>
+            <option value="auto">High: Auto (up to 512 MB)</option>
+            <option value="1280">High: 1280 px (HD)</option>
+            <option value="1920">High: 1920 px (Full HD)</option>
+            <option value="3840">High: 3840 px (4K)</option>
+          </select>
+        </div>
+        <div class="settings-row" style="margin-top:12px;">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Lighten UI while video plays</div>
+            <div class="settings-row-sub">Freezes animated backgrounds while a video plays to prevent dropped frames. They return when paused.</div>
+          </div>
+          <select id="video-ui-select">
+            <option value="off">Off</option>
+            <option value="anim">Stop animation &amp; blur</option>
+            <option value="flat">Also flatten gradients</option>
+          </select>
+        </div>
+        <button id="perf-check-btn" type="button">Check decoding support</button>
+        <pre id="perf-check-out"></pre>
+      </div>
+      <div class="settings-section" id="progress-section">
+        <div class="settings-section-label">Progress &amp; settings</div>
+        <div class="settings-row-sub" style="margin:-4px 0 10px;">Settings and game progress, without media files.</div>
+        <div id="progress-backup-row">
+          <button id="progress-export-btn" type="button">Export progress</button>
+          <button id="progress-import-btn" type="button">Restore progress</button>
+        </div>
+        <input type="file" id="progress-import-input" accept="application/json,.json">
+      </div>
+      <div class="settings-section">
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <div class="settings-row-title">🎵 Disc clicker tab</div>
+            <div class="settings-row-sub">Show the little game tab on the left edge.</div>
+          </div>
+          <button id="dc-sidebar-toggle" type="button" class="settings-toggle-btn">Hide</button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Keep earning grooves in background</div>
+            <div class="settings-row-sub">Keep earning while the game tab is closed.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="dc-background-earn-toggle">
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Retro layout</div>
+            <div class="settings-row-sub">The original layout, without the bottom tab bar and mini-player.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="player-layout-toggle">
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
+      </div>
+      <div class="settings-section" id="pp-refined-section">
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Refined look</div>
+            <div class="settings-row-sub">A sharper font, deeper cards and smoother animations. Off is the plain look.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="pp-refined-toggle" checked>
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Simple playlist mode</div>
+            <div class="settings-row-sub">A plain track list, without thumbnails, sizes or multiple playlists.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="detailed-mode-toggle">
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Keep MP3 conversions on reload</div>
+            <div class="settings-row-sub">Keeps videos converted to audio as audio-only.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="keep-mp3-conversions-toggle" checked>
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
+      </div>
+      <div class="settings-section" id="playback-position-section">
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Remember playback position</div>
+            <div class="settings-row-sub">Resumes tracks where they stopped. Off: tracks always start from the beginning.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="remember-position-toggle" checked>
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="settings-row" id="playback-position-interval-row" style="margin-top:12px;">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Save progress every</div>
+            <div class="settings-row-sub">How often the current spot is saved.</div>
+          </div>
+          <div style="display:flex; align-items:center;">
+            <input type="number" id="playback-position-interval-input" class="settings-number-input" min="1" max="60" step="1" value="1">
+            <span class="settings-number-unit">sec</span>
+          </div>
+        </div>
+      </div>
+      <div class="settings-section" id="extras-settings-section">
+        <div class="settings-section-label">Playlists &amp; loudness</div>
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <div class="settings-row-title">ReplayGain</div>
+            <div class="settings-row-sub">Keeps songs at a similar loudness.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="rg-toggle">
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="settings-row-sub" style="margin-top:12px;">Export the current list, or import a playlist.</div>
+        <div class="pp-set-row">
+          <button class="pp-btn" id="m3u-export-btn" type="button">Export M3U</button>
+          <button class="pp-btn" id="m3u-import-btn" type="button">Import M3U</button>
+        </div>
+      </div>
+      <div class="settings-section" id="playlists-manager-section">
+        <div class="settings-section-label">Playlists</div>
+        <div class="settings-row-sub" id="playlists-manager-hint" style="display:none; margin:-6px 0 10px;">Turn off Simple playlist mode above to assign tracks to playlists.</div>
+        <div id="playlists-list"></div>
+        <div id="new-playlist-row">
+          <input type="text" id="new-playlist-name" placeholder="New playlist name" maxlength="40">
+          <button id="new-playlist-btn" type="button">+ Create</button>
+        </div>
+      </div>
+      <div class="settings-section" id="gestures-section">
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Tap &amp; gesture controls</div>
+            <div class="settings-row-sub">Tap, swipe, pinch and other gestures on the video or disc.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="gestures-enabled-toggle" checked>
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
+        <div id="gestures-config" data-gm="std">
+          <div class="memc-mode-row" id="gesture-mode-tabs" role="tablist">
+            <button type="button" class="memc-mode-btn toggled" data-gm-tab="std" role="tab">Standard</button>
+            <button type="button" class="memc-mode-btn" data-gm-tab="pm" role="tab">Media player mode</button>
+          </div>
+          <div id="gesture-std-pane">
+          <div class="settings-section-label" style="margin-top:14px;">Preset</div>
+          <div class="tool-dropdown-row" id="gesture-preset-row">
+            <button data-gesture-preset="standard">Standard</button>
+            <button data-gesture-preset="minimal">Minimal</button>
+            <button data-gesture-preset="oneHanded">One-Handed</button>
+            <button data-gesture-preset="custom">Custom</button>
+          </div>
+          <div class="settings-section-label" style="margin-top:10px;">Assign actions</div>
+          <div id="gesture-map-list"></div>
+          </div>
+          <div id="gesture-pm-pane">
+            <div class="settings-row-sub" style="margin:12px 0 4px;">Used unless Retro layout is on. A single tap shows the controls, so it can't be assigned.</div>
+            <div class="settings-section-label" style="margin-top:10px;">Assign actions</div>
+            <div id="gesture-pm-list"></div>
+            <button type="button" class="full-row" id="gesture-pm-reset" style="margin-top:8px;">Reset to defaults</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+

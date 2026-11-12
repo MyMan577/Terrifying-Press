@@ -37,10 +37,14 @@ jobs:
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v6
 
+      # www/index.html and www/vocal-separator.js are not stored in the repo: they are joined from the parts in src/.
+      - name: Build the app files from their parts
+        run: python3 tools/assemble.py
+
       - name: Check the web app is in www
         run: |
           for f in www/index.html www/native-bridge.js www/vocal-separator.js; do
-            if [ ! -f "$f" ]; then echo "::error::Missing $f. Put it inside the www folder."; exit 1; fi
+            if [ ! -f "$f" ]; then echo "::error::Missing $f. index.html and vocal-separator.js are built from src/ by tools/assemble.py; the rest belongs inside the www folder."; exit 1; fi
           done
 
       # Stops the build in seconds if any of the app's JavaScript has a syntax error, so a broken change is never released.

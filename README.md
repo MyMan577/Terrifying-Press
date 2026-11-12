@@ -158,7 +158,10 @@ Every build is signed with the same key, so a new version installs over the old 
 Press Play is a web app wrapped with Capacitor, with native Android code for playback, on-device AI and downloads.
 
 ```
-www/                  the app (index.html and scripts)
+src/                  the two big app files, cut into parts (index.html and vocal-separator.js)
+tools/assemble.py     joins the parts into www/index.html and www/vocal-separator.js
+www/                  the rest of the app (scripts, games, fonts) and where the built files go
+backup/unsplit/       the full, uncut files as they were when they were split
 android-overrides/    native Android code, manifest additions, shortcuts
 resources/icon.png    app icon source (1024x1024)
 .github/workflows/    builds and publishes the APK
