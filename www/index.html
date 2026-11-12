@@ -162,15 +162,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Press Play Media</title>
-<link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#0c0d10">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Press Play Media">
-<link rel="icon" href="./icon-32.png" sizes="32x32">
-<link rel="icon" href="./icon-192.png" sizes="192x192">
-<link rel="apple-touch-icon" href="./icon-180.png">
 <style>
   :root{
     --bg: #0c0d10;
@@ -4638,7 +4630,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <div class="settings-row" style="margin-top:12px;">
           <div class="settings-row-text">
             <div class="settings-row-title">Lossless latency (no dropped frames)</div>
-            <div class="settings-row-sub">Fixes videos losing frames while the latency delay is on. Needs a Chromium-based browser.</div>
+            <div class="settings-row-sub">Fixes videos losing frames while the latency delay is on.</div>
           </div>
           <label class="settings-switch">
             <input type="checkbox" id="lossless-latency-toggle">
@@ -10409,7 +10401,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     try {
       gl = memcCanvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false });
     } catch (e){ gl = null; }
-    if (!gl) return fail('WebGL2 is not available in this browser.');
+    if (!gl) return fail('WebGL2 is not available on this phone.');
 
     const VS = '#version 300 es\n'
       + 'out vec2 vUv;\n'
@@ -11537,7 +11529,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       if (!out) return;
       out.style.display = 'block';
       if (!navigator.mediaCapabilities || !navigator.mediaCapabilities.decodingInfo){
-        out.textContent = 'This browser can\u2019t report decoding support.'; return;
+        out.textContent = 'This phone can\u2019t report decoding support.'; return;
       }
       let w = videoEl.videoWidth, h = videoEl.videoHeight, assumed = false;
       if (!w || !h){ w = 1920; h = 1080; assumed = true; }
@@ -12240,7 +12232,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     } catch(e){
       rotationLocked = hadLock; orientAuto = hadAuto;
       showToast(e && e.message === 'unsupported'
-        ? 'This browser can\u2019t lock the screen. Turn on auto-rotate and turn your phone.'
+        ? 'This phone can\u2019t lock the screen. Turn on auto-rotate and turn your phone.'
         : 'Couldn\u2019t rotate the screen here.', 'error');
     }
   });
@@ -19118,7 +19110,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   const CUTTER_HINTS = {
     fast: 'Instant and lossless: the original video data is copied without re-encoding, so quality is unchanged and the clip starts and ends exactly at the chosen points.',
     encode: 'Re-encodes the clip, usually much faster than real time, and applies any enabled effects. Quality is very close to the original but not bit-for-bit. Falls back to real-time recording if the browser cannot do it.',
-    video: 'Re-records the selection in real time, so a 30 second clip takes about 30 seconds. Use when Fast copy is not available for the file. Keep this tab open while it runs.'
+    video: 'Re-records the selection in real time, so a 30 second clip takes about 30 seconds. Use when Fast copy is not available for the file. Keep the app open while it runs.'
   };
   function applyCutterFormatHints(){
     cutterMp3QualityRow.classList.toggle('show', cutterFormat === 'mp3');
@@ -19534,7 +19526,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       let d = ln.length ? ln.join(', ') : 'none';
       let act = ln.length > 0 && live.look !== 'none';
       if (act && !videoOut){ act = false; d = 'video export only'; }
-      else if (act && !CUTTER_CTX_FILTER){ act = false; d = 'not supported in this browser'; }
+      else if (act && !CUTTER_CTX_FILTER){ act = false; d = 'not supported on this phone'; }
       items.push({ id: 'look', label: 'Video look', active: act, detail: d });
     }
     return items;
@@ -19614,7 +19606,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (snap && snap.audio && (snap.audio.reverb > 0 || snap.audio.echo > 0) && (cutterFormat === 'wav' || cutterFormat === 'mp3'))
       notes.push('Reverb and echo tails ring out a little past the end of the clip.');
     if (cutterFxOn && track.kind === 'video' && !CUTTER_CTX_FILTER && cutterLookNames().length)
-      notes.push('This browser cannot apply picture effects to exports, so the video look is skipped.');
+      notes.push('This phone cannot apply picture effects to exports, so the video look is skipped.');
     cutterFxNote.textContent = notes.join(' ');
     cutterFxNote.classList.toggle('show', cutterFxOn && notes.length > 0);
   }
@@ -20282,7 +20274,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   async function exportVideoClipFast(track, start, end, onProgress, fx, opts){
     const fail = (m) => { const e = new Error(m); e.fallback = true; return e; };
     const lowLatency = !(opts && opts.noLowLatency);   // decoder low-latency hint (retried without it if frames come out of order)
-    if (!CUTTER_WEBCODECS) throw fail('This browser has no WebCodecs support.');
+    if (!CUTTER_WEBCODECS) throw fail('This phone has no WebCodecs support.');
     const srcFile = await getCutterSource(track);
     if (!srcFile.isMp4) throw fail('Fast re-encode needs an MP4 or MOV source.');
     if (onProgress) onProgress(0, 'Reading video…');
@@ -20319,7 +20311,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       const ds = await VideoDecoder.isConfigSupported(c).catch(() => ({ supported: false }));
       if (ds.supported){ dcfg = c; break; }
     }
-    if (!dcfg) throw fail('This browser cannot decode this video.');
+    if (!dcfg) throw fail('This phone cannot decode this video.');
     const px = eW * eH;
     const lvl = px <= 921600 ? '1f' : px <= 2097152 ? '28' : px <= 8912896 ? '33' : '34';
     // Hardware encoder first (any H.264 profile), then the browser's default (may be a slow software encoder).
@@ -20332,7 +20324,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       }
       if (ecfg) break;
     }
-    if (!ecfg) throw fail('This browser cannot encode H.264 video.');
+    if (!ecfg) throw fail('This phone cannot encode H.264 video.');
 
     let aborted = false, failure = null;
     const closers = [];
@@ -20365,7 +20357,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
           const s = await AudioEncoder.isConfigSupported(cfg).catch(() => ({ supported: false }));
           if (s.supported){ acodec = c; acfg = cfg; break; }
         }
-        if (!acodec) throw fail('This browser has no audio encoder for MP4.');
+        if (!acodec) throw fail('This phone has no audio encoder for MP4.');
         const chunks = [];
         const aenc = new AudioEncoder({ output: (chunk, meta) => { chunks.push({ chunk, meta }); }, error: (e) => { failure = e; } });
         closers.push(() => { if (aenc.state !== 'closed') aenc.close(); });
@@ -20500,7 +20492,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   // MediaStreamDestination (never to the speakers), so the export is silent
   // and doesn't touch the main player or its effects chain.
   async function exportVideoClip(track, start, end, onProgress, fx){
-    if (!CUTTER_VIDEO_REC) throw new Error('This browser cannot record video clips. Try Chrome, Edge, Firefox or Safari 14.1+, or export audio only.');
+    if (!CUTTER_VIDEO_REC) throw new Error('This phone cannot record video clips. Export audio only instead.');
     const v = document.createElement('video');
     v.playsInline = true;
     v.preload = 'auto';
@@ -24539,7 +24531,6 @@ async function ppMp4Chapters(blob){
       ['What does Auto levels do?', 'Lifts dark scenes and stretches contrast, within limits', 'Normalizes audio', 'Crops black bars', 'Sets volume', 'It samples the picture every half second.'],
       ['What does Posterize do?', 'Reduces the number of colors', 'Adds subtitles', 'Blurs the picture', 'Speeds up the video', 'A hint shows the color level count.'],
       ['What is the latency control for?', 'Syncing picture with audio', 'Faster loading', 'Lowering volume', 'Subtitle size', 'It delays the picture to match late audio.'],
-      ['What does Lossless latency need?', 'A Chromium-based browser', 'Safari only', 'A paid plan', 'An internet connection', 'It captures decoded frames off the main thread.'],
       ['What does "Lighten UI while video plays" reduce?', 'Animated gradients and blur that cause dropped frames', 'Video resolution', 'Volume', 'Subtitle size', 'It can freeze animation or flatten gradients.'],
       ['What does Retro layout turn off?', 'A bottom tab bar and a mini-player', 'A bigger visualizer', 'Dual playlists', 'Cloud sync', 'Retro layout restores the original layout.'],
       ['What does "Keep MP3 conversions on reload" do when on?', 'A video converted to audio-only stays audio-only', 'Saves MP3 files to disk', 'Uploads MP3s', 'Converts all videos', 'Off means it reverts to video on next load.'],
@@ -24553,7 +24544,6 @@ async function ppMp4Chapters(blob){
       ['How long can a crossfade be, relative to the track?', 'At most half the track length', 'Always 10 seconds', 'The full track', 'Any length', 'It is capped at half the duration.'],
       ['What happens to repeat-one with the sleep timer on "end of track"?', 'The track will not loop, so it can end and stop', 'It loops forever', 'It switches to shuffle', 'The timer is ignored', 'This lets the timer actually finish.'],
       ['Which file types can be added to the player?', 'Audio, video, and subtitle or lyric files', 'Only MP3', 'Only video', 'Documents', 'The file picker accepts all of those.'],
-      ['Can Press Play Media be added to a home screen like an app?', 'Yes, it ships a web app manifest and icons', 'No, browser only', 'Only on Windows', 'Only with a paid plan', 'It also sets mobile app meta tags.'],
       ['What can be set in the Customize appearance menu?', 'Background color, gradient or image', 'Audio codec', 'Keyboard layout', 'Playlist order', 'Unlockable presets appear there too.'],
       ['What does "Simple playlist mode" turn off?', 'Thumbnails, size, length and multiple playlists', 'A debug view', 'A lyrics view', 'A grid of covers', 'It is a toggle in Settings.'],
       ['What does Audio lead do?', 'Plays sound ahead instead of delaying the picture', 'Boosts volume', 'Adds an intro', 'Mutes video', 'Video is untouched, so no frames drop.'],
@@ -24746,17 +24736,6 @@ async function ppMp4Chapters(blob){
       tab.addEventListener('click', refreshBgPresetLocks);
     });
   })();
-</script>
-<script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(reg => {
-        // look for a newer sw.js now, and again whenever the app comes back to the foreground
-        const chk = () => { try { reg.update(); } catch (e) {} };
-        chk(); document.addEventListener('visibilitychange', () => { if (!document.hidden) chk(); });
-      }).catch(() => { /* offline caching unavailable */ });
-    });
-  }
 </script>
 <script>
 (function(){
