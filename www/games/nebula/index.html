@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Nebula Touch</title>
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#05050a">
+<meta name="theme-color" content="#000000">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -16,7 +16,7 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
   :root {
-    --bg: #05050a;
+    --bg: #000000;
     --panel: rgba(12, 12, 20, 0.72);
     --panel-border: rgba(255, 255, 255, 0.08);
     --ink: #eef0f6;
@@ -744,6 +744,8 @@
       <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
         <button id="bloomBtn" class="fx-toggle active">✦ Bloom</button>
         <button id="sparkleBtn" class="fx-toggle active">✦ Sparkles</button>
+        <button id="hotCoreBtn" class="fx-toggle active">✦ Hot core</button>
+        <button id="sharpBtn" class="fx-toggle active">✦ Sharp</button>
       </div>
     </section>
 
@@ -862,19 +864,20 @@ import * as THREE from 'three';
   // ---------- Palettes ----------
   // (moved up from below — resize() needs these to clear the trail buffers
   // to the right background color, so they must exist before resize() runs)
+  // Every built-in background is true black (#000), so an AMOLED screen's pixels are fully off behind the particles.
   const PALETTES = {
-    neon:      { name: 'Neon',      bg: '#05050a', colors: ['#7df9ff', '#ff5fd8', '#8b5cff', '#5fffb0'] },
-    crystal:   { name: 'Crystal',   bg: '#04060c', colors: ['#bfe9ff', '#8fd3ff', '#ffffff', '#6fb8ff'] },
-    nature:    { name: 'Nature',    bg: '#050a06', colors: ['#8dffb0', '#ffe27a', '#6fff8f', '#c8ff6f'] },
-    ember:     { name: 'Ember',     bg: '#0a0503', colors: ['#ff9d5c', '#ff5c5c', '#ffd15c', '#ff7ab0'] },
-    rainbow:   { name: 'Rainbow',   bg: '#05050a', colors: ['#ff4d4d', '#ff9d3d', '#ffe83d', '#4dff88', '#3dbaff', '#a05cff', '#ff5cd0'] },
-    candy:     { name: 'Candy',     bg: '#0a0512', colors: ['#ff6ec7', '#ffd93d', '#6effe8', '#c76eff', '#6effa0'] },
-    tropical:  { name: 'Tropical',  bg: '#020c0a', colors: ['#00ffc8', '#ff2ea6', '#ffea00', '#00b8ff', '#ff6a00'] },
-    galaxy:    { name: 'Galaxy',    bg: '#06040f', colors: ['#a05cff', '#ff5cd0', '#5cc9ff', '#ffe15c', '#5cffde'] },
-    citrus:    { name: 'Citrus',    bg: '#0a0803', colors: ['#ffde3d', '#ff9d3d', '#d4ff3d', '#ff5c3d', '#3dffb0'] },
-    sunset:    { name: 'Sunset',    bg: '#0a0410', colors: ['#ff5c8a', '#ff9d3d', '#ffe15c', '#c75cff', '#5c8aff'] },
-    aurora:    { name: 'Aurora',    bg: '#03080a', colors: ['#5cffb0', '#5cd8ff', '#a05cff', '#ff5ce0', '#e1ff5c'] },
-    bubblegum: { name: 'Bubblegum', bg: '#08040d', colors: ['#ff8fd6', '#8fd6ff', '#d6ff8f', '#ffe08f', '#c98fff'] }
+    neon:      { name: 'Neon',      bg: '#000000', colors: ['#7df9ff', '#ff5fd8', '#8b5cff', '#5fffb0'] },
+    crystal:   { name: 'Crystal',   bg: '#000000', colors: ['#bfe9ff', '#8fd3ff', '#ffffff', '#6fb8ff'] },
+    nature:    { name: 'Nature',    bg: '#000000', colors: ['#8dffb0', '#ffe27a', '#6fff8f', '#c8ff6f'] },
+    ember:     { name: 'Ember',     bg: '#000000', colors: ['#ff9d5c', '#ff5c5c', '#ffd15c', '#ff7ab0'] },
+    rainbow:   { name: 'Rainbow',   bg: '#000000', colors: ['#ff4d4d', '#ff9d3d', '#ffe83d', '#4dff88', '#3dbaff', '#a05cff', '#ff5cd0'] },
+    candy:     { name: 'Candy',     bg: '#000000', colors: ['#ff6ec7', '#ffd93d', '#6effe8', '#c76eff', '#6effa0'] },
+    tropical:  { name: 'Tropical',  bg: '#000000', colors: ['#00ffc8', '#ff2ea6', '#ffea00', '#00b8ff', '#ff6a00'] },
+    galaxy:    { name: 'Galaxy',    bg: '#000000', colors: ['#a05cff', '#ff5cd0', '#5cc9ff', '#ffe15c', '#5cffde'] },
+    citrus:    { name: 'Citrus',    bg: '#000000', colors: ['#ffde3d', '#ff9d3d', '#d4ff3d', '#ff5c3d', '#3dffb0'] },
+    sunset:    { name: 'Sunset',    bg: '#000000', colors: ['#ff5c8a', '#ff9d3d', '#ffe15c', '#c75cff', '#5c8aff'] },
+    aurora:    { name: 'Aurora',    bg: '#000000', colors: ['#5cffb0', '#5cd8ff', '#a05cff', '#ff5ce0', '#e1ff5c'] },
+    bubblegum: { name: 'Bubblegum', bg: '#000000', colors: ['#ff8fd6', '#8fd6ff', '#d6ff8f', '#ffe08f', '#c98fff'] }
   };
   let paletteKey = 'neon';
   let paletteBgFloat = hexToRgbFloat(PALETTES[paletteKey].bg);
@@ -894,10 +897,10 @@ import * as THREE from 'three';
   }
   const customPalettes = loadCustomPalettes();
   Object.keys(customPalettes).forEach((key) => { PALETTES[key] = customPalettes[key]; });
-  if (PPHub.has('palette')) PALETTES.pressplay = { name: 'Press Play', bg: '#07060d', colors: ['#6ee7d0', '#8b5cff', '#ff5fd8', '#ffffff', '#a68bff'] };   // Press Play exclusive
-  if (PPHub.has('palette2')) PALETTES.pressplaysunset = { name: 'Press Play Sunset', bg: '#12060a', colors: ['#ffb36e', '#ff6a5c', '#ff5fd8', '#8b5cff', '#fff1d6'] };
-  if (PPHub.has('palette3')) PALETTES.pressplayfrost = { name: 'Press Play Frost', bg: '#040b14', colors: ['#a8f0ff', '#6ee7d0', '#6aa8ff', '#e9f6ff', '#8b5cff'] };
-  if (PPHub.has('palette4')) PALETTES.pressplaymono = { name: 'Press Play Mono', bg: '#08080a', colors: ['#ffffff', '#c9ccd4', '#8d919c', '#5c606b', '#3a3d46'] };
+  if (PPHub.has('palette')) PALETTES.pressplay = { name: 'Press Play', bg: '#000000', colors: ['#6ee7d0', '#8b5cff', '#ff5fd8', '#ffffff', '#a68bff'] };   // Press Play exclusive
+  if (PPHub.has('palette2')) PALETTES.pressplaysunset = { name: 'Press Play Sunset', bg: '#000000', colors: ['#ffb36e', '#ff6a5c', '#ff5fd8', '#8b5cff', '#fff1d6'] };
+  if (PPHub.has('palette3')) PALETTES.pressplayfrost = { name: 'Press Play Frost', bg: '#000000', colors: ['#a8f0ff', '#6ee7d0', '#6aa8ff', '#e9f6ff', '#8b5cff'] };
+  if (PPHub.has('palette4')) PALETTES.pressplaymono = { name: 'Press Play Mono', bg: '#000000', colors: ['#ffffff', '#c9ccd4', '#8d919c', '#5c606b', '#3a3d46'] };
 
   function hexToRgbFloat(hex) {
     hex = hex.replace('#', '');
@@ -1070,7 +1073,13 @@ import * as THREE from 'three';
       // same flat rate as everything else — reads as a luminous tail
       float lum = dot(prevColor, vec3(0.299, 0.587, 0.114));
       float localFade = uFadeAlpha * (1.0 - lum * 0.35);
-      vec3 mixed = mix(prevColor, uBg, clamp(localFade, 0.0, 1.0));
+      float f = clamp(localFade, 0.0, 1.0);
+      // The trail buffers are 8-bit: once a pixel's fade step is under half a level it rounds back up and the pixel
+      // never gets there, leaving a faint haze. Step at least ~1.5 levels toward the background so it ends exactly on it.
+      vec3 d = uBg - prevColor;
+      vec3 stepv = d * f;
+      vec3 minStep = sign(d) * min(abs(d), vec3(1.5 / 255.0)) * step(0.0001, f);
+      vec3 mixed = prevColor + mix(minStep, stepv, step(abs(minStep), abs(stepv)));
       gl_FragColor = vec4(mixed, 1.0);
     }
   `;
@@ -3434,7 +3443,7 @@ import * as THREE from 'three';
       mode, paletteKey: paletteKey === '__draft' ? (editBefore || 'neon') : paletteKey,
       density: targetCount, trail: trailAmt, size: Math.round(sizeScale * 100),
       speed: +speedSlider.value, turbulence: +turbulenceSlider.value,
-      vortex: +vortexSlider.value, bloomEnabled, sparkleEnabled
+      vortex: +vortexSlider.value, bloomEnabled, sparkleEnabled, hotCoreEnabled, sharpRender
     }));
   }
 
@@ -3666,6 +3675,24 @@ import * as THREE from 'three';
     saveSettings();
   });
 
+  // Hot core: the small bright centre on each particle (off = only the soft halo).
+  const hotCoreBtn = document.getElementById('hotCoreBtn');
+  hotCoreBtn.addEventListener('click', () => {
+    hotCoreEnabled = !hotCoreEnabled;
+    particleMaterial.uniforms.uCoreMix.value = hotCoreEnabled ? 1 : 0;
+    hotCoreBtn.classList.toggle('active', hotCoreEnabled);
+    saveSettings();
+  });
+
+  // Sharp: full render resolution. Off renders at half resolution and scales up (softer, much lighter on the GPU).
+  const sharpBtn = document.getElementById('sharpBtn');
+  sharpBtn.addEventListener('click', () => {
+    sharpRender = !sharpRender;
+    sharpBtn.classList.toggle('active', sharpRender);
+    resize();
+    saveSettings();
+  });
+
   // Restore last-used settings, if any. Called after every control is
   // wired up so we can just set values + click the right chips/swatches
   // rather than duplicating each handler's logic.
@@ -3685,6 +3712,8 @@ import * as THREE from 'three';
     if (typeof saved.vortex === 'number') { vortexSlider.value = saved.vortex; vortexSlider.dispatchEvent(new Event('input')); }
     if (typeof saved.bloomEnabled === 'boolean' && saved.bloomEnabled !== bloomEnabled) bloomBtn.click();
     if (typeof saved.sparkleEnabled === 'boolean' && saved.sparkleEnabled !== sparkleEnabled) sparkleBtn.click();
+    if (typeof saved.hotCoreEnabled === 'boolean' && saved.hotCoreEnabled !== hotCoreEnabled) hotCoreBtn.click();
+    if (typeof saved.sharpRender === 'boolean' && saved.sharpRender !== sharpRender) sharpBtn.click();
   }
 
   // Press Play is the music player, so the game has no player of its own.
