@@ -1689,7 +1689,12 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
   #abilityBtnGroup { bottom: 96px; }
   #cameraControls { bottom: 96px; }
 }
-  </style>
+  
+/* No text selection or long-press menu anywhere in the game (holding a finger on the HUD or message text used to
+   highlight it). Text fields stay selectable so names and IDs can still be edited and pasted. */
+html, body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+</style>
 </head>
 <body>
 <div id="wrap">
