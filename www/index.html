@@ -24769,7 +24769,7 @@ async function ppMp4Chapters(blob){
 
   const resize = () => requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
 
-  // Swiping the mini-player away hides it for the current track; it comes back when another track loads.
+  // Dismissing the mini-player (Delete key) hides it for the current track; it comes back when another track loads.
   let miniDismissed = null;
   const miniKey = () => (npTitle.textContent || '').trim() + '\u0001' + (npArtist.textContent || '').trim();
   function syncMini(){
@@ -24781,9 +24781,19 @@ async function ppMp4Chapters(blob){
     const playing = playBtn.getAttribute('aria-label') === 'Pause';
     miniPlay.innerHTML = playing ? PAUSE : PLAY;
     miniPlay.setAttribute('aria-label', playing ? 'Pause' : 'Play');
-    const hasArt = artImg.style.display === 'block' && !!artImg.getAttribute('src');
-    miniArt.classList.toggle('has-art', hasArt);
-    if (hasArt && miniArtImg.getAttribute('src') !== artImg.getAttribute('src')) miniArtImg.src = artImg.getAttribute('src');
+    // Thumbnail of the track that's playing: its own art or a captured video frame (as on Home). The big player's
+    // art image only changes for audio tracks, so copying it showed the last audio track's art while a video played.
+    let src = null;
+    try {
+      const A = window.__ppApi, i = A ? A.currentIndex() : -1, t = i >= 0 ? A.tracks()[i] : null;
+      if (t){
+        src = thumbSrc(t);
+        if (!src && t.kind === 'video') requestThumb(t);   // syncMini runs again once it's captured
+        if (!src && t.kind !== 'video' && artImg.style.display === 'block') src = artImg.getAttribute('src');
+      }
+    } catch(e){ /* the thumbnail helpers are set up a little later on first load */ }
+    miniArt.classList.toggle('has-art', !!src);
+    if (src && miniArtImg.getAttribute('src') !== src) miniArtImg.src = src;
   }
   function syncProgress(){
     const max = parseFloat(seek.max) || 100;
@@ -24969,40 +24979,33 @@ async function ppMp4Chapters(blob){
   mini.addEventListener('keydown', e => {
     if ((e.key === 'Enter' || e.key === ' ') && e.target === mini){ e.preventDefault(); openPlayer(); }
   });
-  // Swipe left or right on the mini-player to dismiss it (it follows the finger, then flies off or snaps back).
-  { let sx = 0, sy = 0, st = 0, down = false, locked = false, clickBlock = 0;
-    mini.style.touchAction = 'pan-y';
-    const reset = () => { mini.style.transition = ''; mini.style.transform = ''; mini.style.opacity = ''; };
+  // The mini-player has a bit of give: drag it any way and it follows with growing resistance (a rubber band), then
+  // springs back to its place with a small overshoot when you let go. A drag never counts as a tap.
+  { let sx = 0, sy = 0, down = false, locked = false, clickBlock = 0;
+    mini.style.touchAction = 'none';
+    const band = (d, lim) => Math.sign(d) * lim * (1 - 1 / (Math.abs(d) / lim * 0.6 + 1));   // ~lim px at most
     mini.addEventListener('pointerdown', e => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
-      down = true; locked = false; sx = e.clientX; sy = e.clientY; st = performance.now();
+      down = true; locked = false; sx = e.clientX; sy = e.clientY;
     });
     mini.addEventListener('pointermove', e => {
       if (!down) return;
       const dx = e.clientX - sx, dy = e.clientY - sy;
       if (!locked){
-        if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)){ down = false; return; }
-        if (Math.abs(dx) < 8) return;
+        if (Math.hypot(dx, dy) < 6) return;
         locked = true; try { mini.setPointerCapture(e.pointerId); } catch(err){}
         mini.style.transition = 'none';
       }
-      mini.style.transform = 'translateX(' + dx + 'px)';
-      mini.style.opacity = String(Math.max(0.25, 1 - Math.abs(dx) / (mini.offsetWidth || 300)));
+      const ox = band(dx, 46), oy = band(dy, 30);
+      mini.style.transform = 'translate(' + ox.toFixed(1) + 'px,' + oy.toFixed(1) + 'px) rotate(' + (ox * 0.04).toFixed(2) + 'deg) scale(' + (1 - Math.min(0.03, Math.hypot(ox, oy) / 1500)).toFixed(3) + ')';
     });
-    const end = e => {
+    const end = () => {
       if (!down) return; down = false;
       if (!locked) return;
-      clickBlock = performance.now() + 350;       // the click that follows a swipe must not open the player
-      const dx = e.clientX - sx, dist = Math.abs(dx), v = dist / Math.max(1, performance.now() - st), w = mini.offsetWidth || 300;
-      if (e.type !== 'pointercancel' && (dist > w * 0.35 || (dist > 40 && v > 0.5))){
-        mini.style.transition = 'transform .18s ease-out, opacity .18s ease-out';
-        mini.style.transform = 'translateX(' + (dx < 0 ? -w : w) + 'px)'; mini.style.opacity = '0';
-        setTimeout(() => { miniDismissed = miniKey(); reset(); syncMini(); }, 190);
-      } else {
-        mini.style.transition = 'transform .18s ease-out, opacity .18s ease-out';
-        mini.style.transform = ''; mini.style.opacity = '';
-        setTimeout(reset, 200);
-      }
+      clickBlock = performance.now() + 350;       // the click that follows a drag must not open the player
+      mini.style.transition = 'transform .5s cubic-bezier(.3,1.6,.5,1)';
+      mini.style.transform = '';
+      setTimeout(() => { if (!down) mini.style.transition = ''; }, 520);
     };
     mini.addEventListener('pointerup', end);
     mini.addEventListener('pointercancel', end);
@@ -25100,6 +25103,7 @@ async function ppMp4Chapters(blob){
       const t = thumbQueue.shift(); thumbRunning++;
       makeThumb(t.url).then(d => {
         thumbCache.set(t.dbId, d); thumbPending.delete(t.dbId);
+        try { syncMini(); } catch(e){}
         if (d) homeEl.querySelectorAll('.ph-thumb').forEach(el => {
           if (el.dataset.thumbId !== t.dbId || el.querySelector('img')) return;
           const img = document.createElement('img'); img.alt = ''; img.src = d;
