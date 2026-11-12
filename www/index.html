@@ -11827,7 +11827,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       // Refined look: leave it in place while it fades out (moving it back in the page would cut the fade short)
       if (!document.body.classList.contains('pp-refined')){ ppUnhoist(d); return; }
       d.style.pointerEvents = 'none';
-      setTimeout(() => { if (!d.classList.contains('open')) ppUnhoist(d); }, 260);
+      setTimeout(() => { if (!d.classList.contains('open')) ppUnhoist(d); }, 320);
     })
       .observe(d, { attributes:true, attributeFilter:['class'] });
   });
@@ -27492,13 +27492,13 @@ body.pp-lite .eq-band-pro { display:flex !important; }
 
   /* popovers (speed, EQ, sleep, sort, add...) */
   body.pp-refined :is(#sort-dropdown, #add-dropdown, #track-edit-popover, #track-pl-popover, #select-pl-menu, #viz-sens-dropdown, #subtitle-dropdown, #sleep-dropdown, #filter-dropdown, #pip-dropdown, #speed-dropdown, #latency-dropdown, #memc-dropdown, #upscale-dropdown, #boost-dropdown, #fx-dropdown, #eq-dropdown):not(#menu-panel *){ opacity:0; translate:0 10px; pointer-events:none;
-    transition:opacity .2s var(--r-ease), translate .32s var(--r-spring), display .22s allow-discrete; }
-  body.pp-refined :is(#sort-dropdown, #add-dropdown, #track-edit-popover, #track-pl-popover, #select-pl-menu, #viz-sens-dropdown, #subtitle-dropdown, #sleep-dropdown, #filter-dropdown, #pip-dropdown, #speed-dropdown, #latency-dropdown, #memc-dropdown, #upscale-dropdown, #boost-dropdown, #fx-dropdown, #eq-dropdown).open:not(#menu-panel *){ opacity:1; translate:0 0; pointer-events:auto; }
+    transition:opacity .26s cubic-bezier(.7,0,1,1), translate .32s var(--r-spring), display .28s allow-discrete; }
+  body.pp-refined :is(#sort-dropdown, #add-dropdown, #track-edit-popover, #track-pl-popover, #select-pl-menu, #viz-sens-dropdown, #subtitle-dropdown, #sleep-dropdown, #filter-dropdown, #pip-dropdown, #speed-dropdown, #latency-dropdown, #memc-dropdown, #upscale-dropdown, #boost-dropdown, #fx-dropdown, #eq-dropdown).open:not(#menu-panel *){ opacity:1; translate:0 0; pointer-events:auto; transition:opacity .18s var(--r-ease), translate .32s var(--r-spring), display .28s allow-discrete; }
   @starting-style{ body.pp-refined :is(#sort-dropdown, #add-dropdown, #track-edit-popover, #track-pl-popover, #select-pl-menu, #viz-sens-dropdown, #subtitle-dropdown, #sleep-dropdown, #filter-dropdown, #pip-dropdown, #speed-dropdown, #latency-dropdown, #memc-dropdown, #upscale-dropdown, #boost-dropdown, #fx-dropdown, #eq-dropdown).open:not(#menu-panel *){ opacity:0; translate:0 10px; } }
 
   /* dialogs and the side menu */
-  body.pp-refined :is(#sort-modal-overlay, #rename-modal-overlay, #thumbnail-modal-overlay, #cutter-modal-overlay, #customize-modal-overlay, #ppxp-rank-modal-overlay, #ppxp-expshop-modal-overlay, #ppxp-quiz-modal-overlay, #menu-overlay, #pp-mar-overlay){ opacity:0; pointer-events:none; transition:opacity .24s var(--r-ease), display .3s allow-discrete; }
-  body.pp-refined :is(#sort-modal-overlay, #rename-modal-overlay, #thumbnail-modal-overlay, #cutter-modal-overlay, #customize-modal-overlay, #ppxp-rank-modal-overlay, #ppxp-expshop-modal-overlay, #ppxp-quiz-modal-overlay, #menu-overlay, #pp-mar-overlay).open{ opacity:1; pointer-events:auto; }
+  body.pp-refined :is(#sort-modal-overlay, #rename-modal-overlay, #thumbnail-modal-overlay, #cutter-modal-overlay, #customize-modal-overlay, #ppxp-rank-modal-overlay, #ppxp-expshop-modal-overlay, #ppxp-quiz-modal-overlay, #menu-overlay, #pp-mar-overlay){ opacity:0; pointer-events:none; transition:opacity .28s cubic-bezier(.7,0,1,1), display .3s allow-discrete; }
+  body.pp-refined :is(#sort-modal-overlay, #rename-modal-overlay, #thumbnail-modal-overlay, #cutter-modal-overlay, #customize-modal-overlay, #ppxp-rank-modal-overlay, #ppxp-expshop-modal-overlay, #ppxp-quiz-modal-overlay, #menu-overlay, #pp-mar-overlay).open{ opacity:1; pointer-events:auto; transition:opacity .24s var(--r-ease), display .3s allow-discrete; }
   @starting-style{ body.pp-refined :is(#sort-modal-overlay, #rename-modal-overlay, #thumbnail-modal-overlay, #cutter-modal-overlay, #customize-modal-overlay, #ppxp-rank-modal-overlay, #ppxp-expshop-modal-overlay, #ppxp-quiz-modal-overlay, #menu-overlay, #pp-mar-overlay).open{ opacity:0; } }
   body.pp-refined :is(#sort-modal-overlay, #rename-modal-overlay, #thumbnail-modal-overlay, #cutter-modal-overlay, #customize-modal-overlay, #ppxp-rank-modal-overlay, #ppxp-expshop-modal-overlay, #ppxp-quiz-modal-overlay, #menu-overlay, #pp-mar-overlay) > *{ translate:0 18px; transition:translate .36s var(--r-spring); }
   body.pp-refined :is(#sort-modal-overlay, #rename-modal-overlay, #thumbnail-modal-overlay, #cutter-modal-overlay, #customize-modal-overlay, #ppxp-rank-modal-overlay, #ppxp-expshop-modal-overlay, #ppxp-quiz-modal-overlay, #menu-overlay, #pp-mar-overlay).open > *{ translate:0 0; }
@@ -27508,7 +27508,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   @starting-style{ body.pp-refined #menu-overlay.open > #menu-panel{ translate:100% 0; } }
 
   /* the player page rises to open and sinks to close; its corner buttons pop in */
-  body.pp-refined.player-layout #main{ opacity:0; translate:0 9%; transition:opacity .26s cubic-bezier(.5,0,1,1), translate .28s cubic-bezier(.4,0,1,1), visibility 0s .28s; }
+  body.pp-refined.player-layout #main{ opacity:0; translate:0 9%; transition:opacity .26s cubic-bezier(.5,0,1,1), translate .28s cubic-bezier(.4,0,1,1), visibility 0s .28s; }   /* the script replaces this with a shrink into the playing card or row when there is one */
   body.pp-refined.player-layout[data-pl-player] #main{ opacity:1; translate:none; transition:opacity .3s var(--r-ease), translate .44s var(--r-ease), visibility 0s; }
   @starting-style{
     body.pp-refined.player-layout[data-pl-player] #pl-back, body.pp-refined.player-layout[data-pl-player] #menu-btn, body.pp-refined.player-layout[data-pl-player] #immersive-btn{ opacity:0; scale:.5; }
@@ -27529,7 +27529,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   body.pp-refined #pl-mini-art img{ transition:opacity .3s; }
 
   /* Games: the page and the Points hub close as softly as they open */
-  body.pp-refined :is(#pp-games, #ppx-hub){ transition:opacity .24s var(--r-ease), transform .34s var(--r-ease), display .34s allow-discrete; }
+  body.pp-refined :is(#pp-games, #ppx-hub){ transition:opacity .24s var(--r-ease), transform .34s var(--r-ease), display .44s allow-discrete; }
   body.pp-refined :is(#pp-games, #ppx-hub):not(.shown){ pointer-events:none; }
   body.pp-refined .ppg-art{ transition:transform .3s var(--r-spring); }
   body.pp-refined .ppx-bar i{ transition:width .5s var(--r-ease); }
@@ -27557,9 +27557,9 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   body.pp-refined.player-layout[data-pl-player] #pl-back{ transition:scale .3s var(--r-spring), background .25s, color .25s, opacity .25s, display .25s allow-discrete; }
   body.pp-refined.player-layout.immersive[data-pl-player] #pl-back{ opacity:0; scale:.5; }
   /* bookmarks / chapters / lyrics panel and the transcript sheet */
-  body.pp-refined #extras-panel{ opacity:0; translate:0 18px; scale:.96; pointer-events:none; transition:opacity .22s var(--r-ease), translate .36s var(--r-spring), scale .36s var(--r-spring), display .28s allow-discrete; }
-  body.pp-refined #extras-panel.open{ opacity:1; translate:0 0; scale:1; pointer-events:auto; }
-  @starting-style{ body.pp-refined #extras-panel.open{ opacity:0; translate:0 18px; scale:.96; } }
+  body.pp-refined #extras-panel{ opacity:0; translate:0 18px; pointer-events:none; transition:opacity .22s var(--r-ease), translate .36s var(--r-spring), display .28s allow-discrete; }
+  body.pp-refined #extras-panel.open{ opacity:1; translate:0 0; pointer-events:auto; }
+  @starting-style{ body.pp-refined #extras-panel.open{ opacity:0; translate:0 18px; } }
   body.pp-refined #extras-panel .pp-pane.active{ animation:ppRIn .3s var(--r-ease); }
   body.pp-refined #sub-tx{ translate:0 100%; transition:translate .4s var(--r-ease), display .4s allow-discrete; }
   body.pp-refined #sub-tx.open{ translate:0 0; }
@@ -27717,6 +27717,99 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     window.addEventListener('resize', function(){ seen = null; queue(); });
     queue();
   });
+  // ---- things grow out of where you touched, and shrink back into it ----
+  var EASE = 'cubic-bezier(.3,0,.15,1)', GROW = 'cubic-bezier(.34,1.3,.5,1)';   // EASE starts gently so you can watch it leave the spot you touched
+  var tap = null;   // the last touch: where it landed and what it was on
+  function noteTap(e){
+    if (!e.target || !e.target.closest) return;
+    var c = e.target.closest('.ph-card, .ph-trk'), row = e.target.closest('.track');
+    tap = { x: e.clientX, y: e.clientY, t: performance.now(), mini: !!e.target.closest('#pl-mini'),
+            card: c ? c.getBoundingClientRect() : null, row: row ? row.getBoundingClientRect() : null };
+  }
+  document.addEventListener('pointerdown', noteTap, { capture: true, passive: true });
+  document.addEventListener('click', function(e){ if (e.clientX || e.clientY) noteTap(e); }, true);
+  function fresh(){ return tap && performance.now() - tap.t < 900 ? tap : null; }
+  function motionOk(){ return refined() && !calm.matches; }
+  function onOpen(el, fn){   // fn(true) when .open is added, fn(false) when it goes
+    if (!el) return;
+    var was = el.classList.contains('open');
+    new MutationObserver(function(){ var is = el.classList.contains('open'); if (is !== was){ was = is; if (motionOk() && el.animate) fn(is); } }).observe(el, { attributes: true, attributeFilter: ['class'] });
+  }
+  // popovers and dialogs: scale out of the button that opened them
+  function grower(el, small){
+    var panel = function(){ return el; };
+    return function(open){
+      var t = panel(); if (!t) return;
+      if (open){
+        var r = t.getBoundingClientRect(), f = fresh();
+        t.__ppO = f && r.width ? Math.max(0, Math.min(r.width, f.x - r.left)) + 'px ' + Math.max(0, Math.min(r.height, f.y - r.top)) + 'px' : '50% 50%';
+        t.style.transformOrigin = t.__ppO;
+        t.animate([{ scale: String(small) }, { scale: '1' }], { duration: 420, easing: GROW });
+      } else {
+        t.animate([{ scale: '1', opacity: 1 }, { scale: String(small + .2), opacity: 1, offset: .65 }, { scale: String(small), opacity: 0 }], { duration: 260, easing: 'cubic-bezier(.4,0,.7,.6)', fill: 'forwards' }).onfinish = function(){ this.cancel(); };
+      }
+    };
+  }
+  ['sort-dropdown', 'add-dropdown', 'track-edit-popover', 'track-pl-popover', 'select-pl-menu', 'viz-sens-dropdown', 'subtitle-dropdown', 'sleep-dropdown', 'filter-dropdown', 'pip-dropdown', 'speed-dropdown', 'latency-dropdown', 'memc-dropdown', 'upscale-dropdown', 'boost-dropdown', 'fx-dropdown', 'eq-dropdown', 'extras-panel'].forEach(function(id){ var d = document.getElementById(id); if (d) onOpen(d, function(o){ if (!d.closest('#menu-panel')) grower(d, .4)(o); }); });
+  ['sort-modal-overlay', 'rename-modal-overlay', 'thumbnail-modal-overlay', 'cutter-modal-overlay', 'customize-modal-overlay', 'ppxp-rank-modal-overlay', 'ppxp-expshop-modal-overlay', 'ppxp-quiz-modal-overlay', 'pp-mar-overlay'].forEach(function(id){ var o = document.getElementById(id); if (o && o.firstElementChild) onOpen(o, grower(o.firstElementChild, .6)); });
+  // full pages (Games, Points, a game): a circle opens from the touch and closes back onto it
+  function circler(el, keepOpacity){
+    return function(open){
+      var W = innerWidth, H = innerHeight, f = fresh();
+      if (open) el.__ppO = f ? [f.x, f.y] : [W / 2, H / 2];
+      var o = el.__ppO || [W / 2, H / 2], R = Math.hypot(Math.max(o[0], W - o[0]), Math.max(o[1], H - o[1])) + 4;
+      var at = ' at ' + o[0] + 'px ' + o[1] + 'px)', a = { clipPath: 'circle(0px' + at }, b = { clipPath: 'circle(' + R + 'px' + at };
+      if (keepOpacity){ a.opacity = b.opacity = 1; a.transform = b.transform = 'none'; }
+      if (el.__ppA) el.__ppA.cancel();
+      el.__ppA = open ? el.animate([a, b], { duration: 600, easing: EASE }) : el.animate([b, a], { duration: 420, easing: EASE, fill: 'forwards' });
+      if (!open) el.__ppA.onfinish = function(){ this.cancel(); };
+    };
+  }
+  onOpen(document.getElementById('pp-games'), circler(document.getElementById('pp-games'), true));
+  onOpen(document.getElementById('ppx-hub'), circler(document.getElementById('ppx-hub'), true));
+  (function(){ var g = document.getElementById('pp-game'); if (g){ var c = circler(g, false); onOpen(g, function(o){ if (o) c(true); }); } })();
+  // the player page: from the mini-player it rises (it sits right there). Opened from a card on Home it grows out of that
+  // card; from a row in the Library it opens outwards from that row's line. Closing takes it back into the playing card or row.
+  var mainEl = document.getElementById('main'), cameFrom = null, mAnim = null;
+  function inset(r, round){
+    var W = innerWidth, H = innerHeight;
+    return 'inset(' + Math.max(0, r.top) + 'px ' + Math.max(0, W - r.right) + 'px ' + Math.max(0, H - r.bottom) + 'px ' + Math.max(0, r.left) + 'px round ' + round + 'px)';
+  }
+  function onScreen(r){ return r && r.width > 0 && r.height > 0 && r.bottom > 8 && r.top < innerHeight - 8 && r.right > 8 && r.left < innerWidth - 8; }
+  function target(kind, r){   // the clip the page starts from / ends at
+    if (kind === 'row') return inset({ top: r.top, bottom: r.bottom, left: 0, right: innerWidth }, 0);
+    return inset(r, 14);
+  }
+  function morphPlayer(opening){
+    if (!mainEl || !mainEl.animate || !motionOk()) return;
+    if (mAnim){ mAnim.cancel(); mAnim = null; }
+    var kind = null, r = null, f;
+    if (opening){
+      f = fresh(); cameFrom = null;
+      if (f && !f.mini && onScreen(f.card)){ kind = 'card'; r = f.card; }
+      else if (f && !f.mini && onScreen(f.row)){ kind = 'row'; r = f.row; }
+      cameFrom = kind;
+    } else {
+      if (!cameFrom) return;                      // came up from the mini-player: sinks back down to it
+      var v = body.dataset.plView, el = (v === 'home' || v === 'playlists')
+        ? document.querySelector('#pl-home .ph-card.cur, #pl-home .ph-trk.cur') : document.querySelector('#playlist .track.active');
+      r = el && el.getBoundingClientRect();
+      if (!onScreen(r)) return;                   // the playing song isn't on screen: plain sink
+      kind = el.classList.contains('track') ? 'row' : 'card';
+    }
+    if (!kind) return;
+    var small = target(kind, r), full = 'inset(0px 0px 0px 0px round 0px)', video = body.classList.contains('pl-video');
+    var base = { translate: '0 0', visibility: 'visible' }; if (video) base.background = '#000';
+    function k(o){ for (var n in base) o[n] = base[n]; return o; }
+    mAnim = opening
+      ? mainEl.animate([k({ clipPath: small, opacity: .6 }), k({ clipPath: full, opacity: 1 })], { duration: 540, easing: EASE })
+      : mainEl.animate([k({ clipPath: full, opacity: 1 }), k({ clipPath: small, opacity: 1, offset: .82 }), k({ clipPath: small, opacity: 0 })], { duration: 460, easing: EASE });
+    mAnim.onfinish = mAnim.oncancel = function(){ mAnim = null; };
+  }
+  var hadP2 = body.hasAttribute('data-pl-player');
+  new MutationObserver(function(){
+    var p = body.hasAttribute('data-pl-player'); if (p === hadP2) return; hadP2 = p; morphPlayer(p);
+  }).observe(body, { attributes: true, attributeFilter: ['data-pl-player'] });
   // ---- touch feedback ----
   // CSS :active is gone the instant a quick tap ends, so on a phone most taps showed nothing. Here every tap gets the
   // whole motion: the control squeezes under the finger, springs back when let go (even after the shortest tap), and a
