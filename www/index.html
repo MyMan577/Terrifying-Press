@@ -27395,6 +27395,8 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   body.pp-refined .ph-thumb img{ transition:transform .5s var(--r-ease); }
   body.pp-refined .ph-card.cur .ph-thumb{ box-shadow:0 0 0 2px var(--accent), 0 10px 26px -8px color-mix(in srgb, var(--accent) 55%, transparent); }
   body.pp-refined.ph-selecting .ph-card.sel .ph-thumb{ box-shadow:0 0 0 2px var(--accent); }
+  /* the card rows scroll sideways, which also clips top and bottom: give the ring and its glow room (layout unchanged) */
+  body.pp-refined .ph-row:not(.expanded){ padding-top:4px; margin-top:-4px; padding-bottom:18px; margin-bottom:-12px; }
   body.pp-refined .ph-card:active .ph-thumb img{ transform:scale(1.04); }
   body.pp-refined .ph-chip{ background:rgba(255,255,255,.045); border-color:var(--r-line-strong); font-weight:650; padding:8px 15px; }
   body.pp-refined .ph-chip.on, body.pp-refined .ph-chip.active, body.pp-refined .ph-chip[aria-pressed="true"]{ color:#fff; background:linear-gradient(135deg, color-mix(in srgb, var(--accent) 30%, transparent), color-mix(in srgb, var(--accent) 12%, transparent)); border-color:color-mix(in srgb, var(--accent) 65%, transparent); box-shadow:0 4px 14px -6px color-mix(in srgb, var(--accent) 70%, transparent); }
