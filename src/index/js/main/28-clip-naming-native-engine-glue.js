@@ -363,9 +363,11 @@
         showToast('Media access is off. Allow it in Android Settings under Apps, Press Play, Permissions, or add files with Files or Folder.', 'error');
         return;
       }
+      if (ppAutoScanP) await ppAutoScanP;   // a background look is running: let it finish so its finds do not land in the library
       showToast('Scanning this phone…');
       const r = await PPNative.lib.scanDevice(tracks.map(t => t.nativeUri).filter(Boolean), true);
       const n = (r && r.total) || 0;
+      ppFoundPrune();
       showToast(n ? ('Added ' + n + ' new file' + (n === 1 ? '' : 's')) : 'No new music or videos found');
     } catch(e){ showToast('Could not scan: ' + ((e && e.message) || e), 'error'); }
   }
@@ -376,16 +378,11 @@
       if (l.indexOf(tree) < 0){ l.push(tree); localStorage.setItem(PP_FOLDERS_KEY, JSON.stringify(l)); }
     } catch(e){}
   }
-  async function ppRescanFolders(){
-    let l = []; try { l = JSON.parse(localStorage.getItem(PP_FOLDERS_KEY) || '[]'); } catch(e){}
-    for (const tree of l){
-      try { await PPNative.lib.rescan(tree, tracks.map(t => t.nativeUri).filter(Boolean)); } catch(e){}
-    }
-  }
-  async function ppAddNative(entries){
+  async function ppAddNative(entries, src){
     if (!entries || !entries.length) return;
+    if (src === 'scan' && ppInboxScans > 0){ ppFoundAdd(entries); return; }   // found by a background look: wait in the inbox
     const startIdx = tracks.length;
-    const targetPlaylistId = userPlaylistViewId();
+    const targetPlaylistId = src === 'inbox' ? null : userPlaylistViewId();
     const known = new Set(tracks.map(t => t.nativeUri).filter(Boolean));
     const fresh = [];
     for (const e of entries){
@@ -400,6 +397,7 @@
         title: e.title || (e.name || 'Untitled').replace(/\.[^/.]+$/, ''),
         artist: e.artist || (kind === 'video' ? 'Video' : 'Unknown artist'),
         album: e.album || '', duration: e.durationSec || null,
+        genre: e.genre || '', trackNo: e.track || null, disc: e.disc || null, year: e.year || null, folder: e.folder || '', mdv: 1,
         artUrl: e.artPath ? PPNative.lib.fileSrc(e.artPath) : null, artDbId: null,
         size: e.size >= 0 ? e.size : null, width: e.width || null, height: e.height || null,
         fileName: e.name || null, playlistIds: targetPlaylistId ? [targetPlaylistId] : []
@@ -500,7 +498,8 @@
       bass: bassBoost, reverb: reverbMix, filter: filterAmount, distortion: distortionAmount,
       bitcrush: bitcrushAmount, echo: echoMix, tremolo: tremoloAmount
     }));
-    libP.then(() => { PPNative.boot(); ppRescanFolders(); });
+    PPNative.hooks.mediaChanged = () => ppAutoScanSoon(6000);   // the phone's media library changed (a download, a transfer)
+    libP.then(() => { PPNative.boot(); return ppAutoScan(); }).then(ppBackfillDetails, ppBackfillDetails);
     { const b = document.getElementById('add-device-btn'); if (b && PPNative.enabled) b.style.display = 'block'; }
   }
   loadCustomization();

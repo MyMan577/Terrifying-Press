@@ -6,11 +6,14 @@ import android.content.ContentValues
 import android.content.ContentUris
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.database.ContentObserver
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import androidx.activity.result.ActivityResult
@@ -50,8 +53,27 @@ class LibraryPlugin : Plugin() {
 
     private val pool = Executors.newFixedThreadPool(3)
 
-    override fun load() { instance = this }
-    override fun handleOnDestroy() { pool.shutdownNow(); instance = null }
+    private val detailPool = Executors.newSingleThreadExecutor()
+    private var observer: ContentObserver? = null
+
+    override fun load() {
+        instance = this
+        // Tell the page when the phone's media library changes (a download, a transfer), so it can look for new files.
+        try {
+            val ob = object : ContentObserver(Handler(Looper.getMainLooper())) {
+                override fun onChange(selfChange: Boolean) { mediaChanged() }
+            }
+            context.contentResolver.registerContentObserver(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, true, ob)
+            context.contentResolver.registerContentObserver(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true, ob)
+            observer = ob
+        } catch (_: Exception) {}
+    }
+    private fun mediaChanged() { try { notifyListeners("mediaChanged", JSObject()) } catch (_: Exception) {} }
+    override fun handleOnDestroy() {
+        observer?.let { try { context.contentResolver.unregisterContentObserver(it) } catch (_: Exception) {} }
+        observer = null
+        pool.shutdownNow(); detailPool.shutdownNow(); instance = null
+    }
 
     // ---------- pickers ----------
     @PluginMethod
@@ -259,6 +281,7 @@ class LibraryPlugin : Plugin() {
         o.put("ext", ext(name)); o.put("size", size0); o.put("modified", mod)
         val sc = JSArray(); sidecars.forEach { sc.put(JSObject().put("uri", it.first.toString()).put("name", it.second)) }
         o.put("sidecars", sc)
+        folderOf(uri)?.takeIf { it.isNotBlank() }?.let { o.put("folder", it) }
         val r = MediaMetadataRetriever()
         try {
             r.setDataSource(context, uri)
@@ -266,6 +289,7 @@ class LibraryPlugin : Plugin() {
             md(MediaMetadataRetriever.METADATA_KEY_TITLE)?.takeIf { it.isNotBlank() }?.let { o.put("title", it) }
             (md(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: md(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST))?.takeIf { it.isNotBlank() }?.let { o.put("artist", it) }
             md(MediaMetadataRetriever.METADATA_KEY_ALBUM)?.takeIf { it.isNotBlank() }?.let { o.put("album", it) }
+            extraTags(r, o)
             val dur = md(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
             if (dur > 0) o.put("durationSec", dur / 1000.0)
             var art: Bitmap? = null
@@ -284,6 +308,62 @@ class LibraryPlugin : Plugin() {
             // Unreadable tags are fine: the entry still plays, JS falls back to the file name.
         } finally { try { r.release() } catch (_: Exception) {} }
         return o
+    }
+
+    /** Genre, track and disc number, year: what the album / genre views sort and group by. */
+    private fun extraTags(r: MediaMetadataRetriever, o: JSObject) {
+        fun md(k: Int): String? = try { r.extractMetadata(k) } catch (_: Exception) { null }
+        fun num(k: Int): Int? = md(k)?.substringBefore('/')?.trim()?.toIntOrNull()
+        md(MediaMetadataRetriever.METADATA_KEY_GENRE)?.takeIf { it.isNotBlank() }?.let { o.put("genre", it) }
+        num(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)?.let { o.put("track", it) }
+        num(MediaMetadataRetriever.METADATA_KEY_DISC_NUMBER)?.let { o.put("disc", it) }
+        num(MediaMetadataRetriever.METADATA_KEY_YEAR)?.let { o.put("year", it) }
+    }
+
+    /** The folder a file sits in, as a readable path such as "Music/Album". Null when it cannot be told. */
+    private fun folderOf(uri: Uri): String? = try {
+        if (uri.scheme == "file") {
+            uri.path?.let { File(it).parent }
+        } else if (uri.authority == MediaStore.AUTHORITY) {
+            val modern = Build.VERSION.SDK_INT >= 29
+            val col = if (modern) MediaStore.MediaColumns.RELATIVE_PATH else MediaStore.MediaColumns.DATA
+            var out: String? = null
+            context.contentResolver.query(uri, arrayOf(col), null, null, null)?.use { c ->
+                if (c.moveToFirst()) {
+                    val p = c.getString(0)
+                    if (p != null) out = if (modern) p.trimEnd('/') else File(p).parent
+                }
+            }
+            out
+        } else if (DocumentsContract.isDocumentUri(context, uri)) {
+            DocumentsContract.getDocumentId(uri).substringAfter(':').substringBeforeLast('/', "")
+        } else null
+    } catch (_: Exception) { null }
+
+    /** Folder and extra tags for files already in the library (added before these were read). */
+    @PluginMethod
+    fun mediaDetails(call: PluginCall) {
+        val uris = ArrayList<String>()
+        call.data.optJSONArray("uris")?.let { a -> for (k in 0 until a.length()) uris.add(a.optString(k)) }
+        detailPool.execute {
+            val items = JSArray()
+            for (s in uris) {
+                try {
+                    val uri = Uri.parse(s)
+                    val o = JSObject().put("uri", s)
+                    folderOf(uri)?.takeIf { it.isNotBlank() }?.let { o.put("folder", it) }
+                    val r = MediaMetadataRetriever()
+                    try {
+                        r.setDataSource(context, uri)
+                        r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)?.takeIf { it.isNotBlank() }?.let { o.put("album", it) }
+                        extraTags(r, o)
+                    } catch (_: Exception) {
+                    } finally { try { r.release() } catch (_: Exception) {} }
+                    items.put(o)
+                } catch (_: Exception) {}
+            }
+            call.resolve(JSObject().put("items", items))
+        }
     }
 
     private fun decodeScaled(b: ByteArray, max: Int): Bitmap? {

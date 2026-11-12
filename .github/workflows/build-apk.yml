@@ -61,6 +61,8 @@ jobs:
             cp android-overrides/native-bridge.js www/native-bridge.js
             echo "www/native-bridge.js replaced by android-overrides/native-bridge.js"
           fi
+          # The app reads its own build number from here to tell whether a newer release exists.
+          echo "window.PP_BUILD=${GITHUB_RUN_NUMBER};" > www/pp-build.js
 
       - name: Create the Android project
         run: |
