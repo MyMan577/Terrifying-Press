@@ -3,6 +3,8 @@
  * Every swing is animated as a real swing: she coils back and squashes down, the hammer head lights up while she
  * holds it, then her whole body stretches into the blow. Holding S keeps her coiled: the longer, the harder.
  * Hits are checked against where the hammer head really is in each frame.
+ * She is the heaviest hitter and one of the hardest to launch, and she has SUPER ARMOR from the first frame of a
+ * wind-up to the end of the swing: hits still hurt, but nothing knocks her out of it.
  *
  * THE GIMMICK: STONE PILLARS
  *  - PILLAR (ground ↑ + S): strike the floor and a stone pillar bursts up ahead of you. It launches any foe above
@@ -93,7 +95,7 @@
     for (let j = 0; j < 6; j++) S.fx.push({ k: 'rock', x: P2.x + (Math.random() - 0.5) * 0.8, y: P2.fy - Math.random() * P2.h, vx: (Math.random() - 0.5) * 5, vy: -2 - Math.random() * 4, t: 0, life: 0.6, r: 0.12 + Math.random() * 0.12, rot: Math.random() * 6 });
     FK.noise({ dur: 0.3, cut: 900, cutEnd: 250, q: 1, vol: 0.25 });
   }
-  function wave(S, x, fy, dir, pw) { S.waves.push({ x, fy, dir, t: 0, life: 0.5 + 0.15 * pw, sp: 11, hits: new Set(), dmg: 2 + pw }); }
+  function wave(S, x, fy, dir, pw) { S.waves.push({ x, fy, dir, t: 0, life: 0.5 + 0.15 * pw, sp: 11, hits: new Set(), dmg: 4 + 2 * pw }); }
 
   const SEQ = {
     smash(p, dt, S, q) {
@@ -102,13 +104,13 @@
       const t = q.t - H;
       S.target = FK.keyed([[0, PO.smA], [0.07, PO.smB], [0.14, PO.smC], [0.36, PO.smC], [0.52, PO.idle]], t); S.rate = 60;
       if (t < 0.14) { FK.moveX(p, f * 3 * dt); if (!q.snd) { q.snd = 1; FK.whoosh(false, true); } }
-      if (t > 0.05 && t < 0.2) headHits(S, p, f, { dmg: 4 + 3 * q.pw, kx: 6, ky: -9 - 3 * q.pw, stop: 0.1 + 0.06 * q.pw, shake: 7 + 5 * q.pw, away: true });
+      if (t > 0.05 && t < 0.2) headHits(S, p, f, { dmg: 7 + 5 * q.pw, kx: 9, ky: -12 - 4 * q.pw, stop: 0.12 + 0.06 * q.pw, shake: 8 + 5 * q.pw, away: true });
       if (t >= 0.14 && !q.hit) {
-        q.hit = 1; const h = head(p, PO.smC, f), R = 1.5 + 1.3 * q.pw;
+        q.hit = 1; const h = head(p, PO.smC, f), R = 1.9 + 1.4 * q.pw;
         S.fx.push({ k: 'shock', x: h[0], y: p.y + p.h, R, t: 0, life: 0.45, c: q.pw > 0.3 ? C_HOT : C_FX });
         S.fx.push({ k: 'flash', x: h[0], y: p.y + p.h - 0.2, R: 0.9 + q.pw, c: C_HOT, t: 0, life: 0.18 });
         FK.thud(true); clang(true); FK.shake(6 + 6 * q.pw); FK.hitstop(0.04 + 0.05 * q.pw);
-        for (const e of FK.within(h[0], p.y + p.h - 0.3, R)) { if (q.hits.has(e)) continue; q.hits.add(e); FK.hit(S, e, 2 + 2 * q.pw, { kx: (Math.sign(ex(e) - h[0]) || f) * 5, ky: -9 - 2 * q.pw, stun: 0.5, c: C_FX, big: true }); }
+        for (const e of FK.within(h[0], p.y + p.h - 0.3, R)) { if (q.hits.has(e)) continue; q.hits.add(e); FK.hit(S, e, 4 + 3 * q.pw, { kx: (Math.sign(ex(e) - h[0]) || f) * 7, ky: -11 - 3 * q.pw, stun: 0.6, c: C_FX, big: true }); }
         if (q.pw > 0.3) { wave(S, h[0], p.y + p.h, 1, q.pw); wave(S, h[0], p.y + p.h, -1, q.pw); }
       }
       if (t > 0.52) S.seq = null;
@@ -120,11 +122,11 @@
       S.target = FK.keyed([[0, PO.hrA], [0.08, PO.hrB], [0.16, PO.hrC], [0.34, PO.hrC], [0.48, PO.idle]], t); S.rate = 60;
       if (t < 0.12) { FK.moveX(p, f * 6 * dt); if (!q.snd) { q.snd = 1; FK.whoosh(false, true); } }
       if (t > 0.03 && t < 0.18) {
-        const h = headHits(S, p, f, { dmg: 4 + 2 * q.pw, kx: 13 + 5 * q.pw, ky: -5, stop: 0.11, shake: 8 });
+        const h = headHits(S, p, f, { dmg: 7 + 4 * q.pw, kx: 17 + 6 * q.pw, ky: -6, stop: 0.13, shake: 9 });
         // a pillar in the way is batted into rocks
         for (const P2 of S.pillars.slice()) if (!q.shat && P2.h > 0.8 && Math.abs(P2.x - h[0]) < 1.0 && h[1] > P2.fy - P2.h - 0.3) {
           q.shat = 1; const n = 6 + Math.round(3 * q.pw);
-          for (let i = 0; i < n; i++) S.rocks.push({ x: P2.x, y: P2.fy - (i + 0.5) / n * P2.h, vx: f * (15 + Math.random() * 7), vy: -3 + (i / n) * -5 + Math.random() * 2, t: 0, life: 1.2, r: 0.2 + Math.random() * 0.12, rot: Math.random() * 6, dmg: 2 + q.pw });
+          for (let i = 0; i < n; i++) S.rocks.push({ x: P2.x, y: P2.fy - (i + 0.5) / n * P2.h, vx: f * (15 + Math.random() * 7), vy: -3 + (i / n) * -5 + Math.random() * 2, t: 0, life: 1.2, r: 0.2 + Math.random() * 0.12, rot: Math.random() * 6, dmg: 4 + 2 * q.pw });
           crumble(S, P2); clang(true); FK.hitstop(0.09); FK.shake(8); FK.label(S, p, 'ROCK SHOT!', C_GOLD, true);
         }
       }
@@ -161,7 +163,7 @@
       p.vy = Math.min(p.vy, 1.6);
       const half = Math.cos(an) > 0 ? 1 : -1;
       if (q.half !== half) { q.half = half; q.hits = new Set(); FK.whoosh(false); }
-      if (Math.abs(Math.cos(an)) > 0.4) headHits(S, p, f, { dmg: 2, kx: 6, ky: -5, stop: 0.04, shake: 3, away: true });
+      if (Math.abs(Math.cos(an)) > 0.4) headHits(S, p, f, { dmg: 4, kx: 9, ky: -7, stop: 0.05, shake: 4, away: true });
       if (q.t > D || p.onGround) S.seq = null;
     },
     comet(p, dt, S, q) {
@@ -169,7 +171,7 @@
       if (coil(S, q, PO.cmA, H)) { p.vy = Math.min(p.vy, 0.5); return; }
       const t = q.t - H;
       S.target = t < 0.2 ? PO.cmB : PO.fall; S.rate = 60;
-      if (t < 0.2) { p.vx = f * (13 + 4 * q.pw); p.vy = Math.min(p.vy, 1); headHits(S, p, f, { dmg: 4 + 2 * q.pw, kx: 11 + 3 * q.pw, ky: -6, stop: 0.1 }); if (!q.snd) { q.snd = 1; FK.whoosh(false, true); } }
+      if (t < 0.2) { p.vx = f * (13 + 4 * q.pw); p.vy = Math.min(p.vy, 1); headHits(S, p, f, { dmg: 7 + 3 * q.pw, kx: 15 + 4 * q.pw, ky: -7, stop: 0.12 }); if (!q.snd) { q.snd = 1; FK.whoosh(false, true); } }
       if (t > 0.3) S.seq = null;
     },
     hop(p, dt, S, q) {
@@ -177,7 +179,7 @@
       S.target = FK.keyed([[0, PO.hopA], [0.08, PO.hopA], [0.16, PO.hopB], [0.4, PO.fall]], q.t); S.rate = 55;
       if (q.t < 0.08) { p.vy = Math.min(p.vy, 0.5); return; }
       if (!q.go) { q.go = 1; p.vy = -15.5 - 2.5 * q.pw; FK.whoosh(true, true); clang(false); S.fx.push({ k: 'ring', x: pcx(p), y: p.y + p.h + 0.3, R: 1.2, c: C_FX, t: 0, life: 0.3 }); }
-      if (q.t < 0.3) headHits(S, p, f, { dmg: 3, kx: 2, ky: -11, stop: 0.06 });
+      if (q.t < 0.3) headHits(S, p, f, { dmg: 5, kx: 2, ky: -13, stop: 0.07 });
       if (q.t > 0.4) S.seq = null;
     },
     meteor(p, dt, S, q) {
@@ -185,7 +187,7 @@
       if (coil(S, q, PO.mtA, H)) { p.vy = -1.5; p.vx *= 0.9; return; }
       S.target = PO.mtB; S.rate = 60;
       p.vy = 24 + 5 * q.pw; p.vx = f * 1.2;
-      headHits(S, p, f, { dmg: 3 + q.pw, kx: 2, ky: 13, stop: 0.08 });
+      headHits(S, p, f, { dmg: 6 + 2 * q.pw, kx: 2, ky: 16, stop: 0.1 });
       // landing on a pillar drives it into the ground
       for (const P2 of S.pillars.slice()) if (P2.h > 0.8 && Math.abs(pcx(p) - P2.x) < P2.w / 2 + 0.3 && p.y + p.h > P2.fy - P2.h - 0.2 && p.y + p.h < P2.fy - P2.h + 0.8) {
         wave(S, P2.x, P2.fy, 1, 1); wave(S, P2.x, P2.fy, -1, 1); crumble(S, P2); FK.label(S, p, 'PILE DRIVER!', C_GOLD, true); FK.hitstop(0.1);
@@ -193,7 +195,7 @@
       if (p.onGround && q.t > H + 0.03) {
         const fy = p.y + p.h, R = 1.8 + q.pw;
         S.fx.push({ k: 'shock', x: pcx(p), y: fy, R, t: 0, life: 0.45, c: C_HOT }); FK.thud(true); clang(true); FK.shake(8 + 4 * q.pw);
-        for (const e of FK.within(pcx(p), fy - 0.3, R)) { if (q.hits.has(e)) continue; q.hits.add(e); FK.hit(S, e, 3 + 2 * q.pw, { kx: (Math.sign(ex(e) - pcx(p)) || f) * 6, ky: -10, stun: 0.5, c: C_FX, big: true }); }
+        for (const e of FK.within(pcx(p), fy - 0.3, R)) { if (q.hits.has(e)) continue; q.hits.add(e); FK.hit(S, e, 5 + 3 * q.pw, { kx: (Math.sign(ex(e) - pcx(p)) || f) * 8, ky: -13, stun: 0.6, c: C_FX, big: true }); }
         S.seq = null; S.land = 0.18;
       }
       if (q.t > H + 1.2) S.seq = null;
@@ -209,7 +211,7 @@
       if (rising) P2.h = Math.min(P2.H, P2.h + 22 * dt);
       const top = P2.fy - P2.h;
       for (const e of foes) if (rising && !P2.hits.has(e) && Math.abs(ex(e) - P2.x) < P2.w / 2 + (e.w || 0.9) / 2 && e.y + (e.h || 0.9) > top - 0.2 && e.y < P2.fy) {
-        P2.hits.add(e); FK.hit(S, e, 3, { kx: 0, ky: -15, stun: 0.6, c: C_FX, big: true, stop: 0.08 }); FK.smack(true);
+        P2.hits.add(e); FK.hit(S, e, 5, { kx: 0, ky: -17, stun: 0.6, c: C_FX, big: true, stop: 0.08 }); FK.smack(true);
       }
       if (!P2.thrown || p.vy >= 0) { P2.thrown = 0; if (FK.stand(p, top, P2.x - P2.w / 2, P2.x + P2.w / 2)) { S.onPillar = true; S.airUp = false; } }
       if (P2.t > P2.life) crumble(S, P2);
@@ -245,9 +247,9 @@
   FK.define({
     id: ID, plug: 'maul',
     def: { name: 'Maul', icon: '🔨', tier: 'gold', color: C_FX, color2: C_GOLD,
-      ability: 'Hammer Smith: heavy wind-up swings, Stone Pillars she raises to stand on, bat or drive into the ground',
-      desc: 'A blacksmith with a hammer as big as she is. Every swing coils back first (hold S to stay coiled and hit harder): Hammer Smash, Home Run and Ripple on the ground, Whirl, Comet Swing, Hammer Hop and Meteor Hammer in the air. PILLAR (↑) raises a stone pillar that launches foes and stays as a platform; charged it lifts her instead. Home Run a pillar to shatter it into flying rocks, or Meteor Hammer onto one to drive it in as a shockwave.' },
-    stats: { speed: 0.98, jump: 1.05, maxJumps: 2, maxDashes: 1, hp: 4 },
+      ability: 'Hammer Smith: the hardest hits in the game with super armor on every swing, and Stone Pillars to stand on, bat or drive into the ground',
+      desc: 'A blacksmith with a hammer as big as she is: heavy, hard to launch, and armored through every swing so nothing interrupts her. Every swing coils back first (hold S to stay coiled and hit harder): Hammer Smash, Home Run and Ripple on the ground, Whirl, Comet Swing, Hammer Hop and Meteor Hammer in the air. PILLAR (↑) raises a stone pillar that launches foes and stays as a platform; charged it lifts her instead. Home Run a pillar to shatter it into flying rocks, or Meteor Hammer onto one to drive it in as a shockwave.' },
+    stats: { speed: 0.98, jump: 1.05, maxJumps: 2, maxDashes: 1, hp: 6 },
     moves: MOVES, mfd: MFD,
     fresh: () => ({ seq: null, pose: PO.idle, target: PO.idle, rate: 18, run: 0, heat: 0, pillars: [], waves: [], rocks: [], airUp: false, onPillar: false, land: 0 }),
     busy: S => !!S.seq,
@@ -264,9 +266,8 @@
     },
     onTeleport(p, S) { S.seq = null; S.pillars.length = 0; S.waves.length = 0; },
     step(p, dt, S, k) {
-      if (p.hitstun > 0 && S.seq) S.seq = null;
       S.rate = 18; S.heat = Math.max(0, S.heat - dt * 2.5);
-      if (S.seq) { S.seq.t += dt; const fn = SEQ[S.seq.kind]; if (fn) fn(p, dt, S, S.seq); else S.seq = null; }
+      if (S.seq) { p._armorT = Math.max(p._armorT || 0, 0.18); S.seq.t += dt; const fn = SEQ[S.seq.kind]; if (fn) fn(p, dt, S, S.seq); else S.seq = null; }   // SUPER ARMOR: nothing knocks her out of a swing
       stepWorld(p, dt, S);
       if (!S.seq) {
         if (S.land > 0) { S.land -= dt; S.target = PO.riB; S.rate = 40; }
@@ -356,6 +357,7 @@
         S.trail = S.trail || []; const h = head(p, S.pose, f); S.trail.push(h); if (S.trail.length > 8) S.trail.shift();   // (world tiles: the camera may move under it)
         if (S.trail.length > 2) FK.taper(ctx, S.trail.slice().reverse().map(w => [V.SX(w[0]), V.SY(w[1])]), T * (0.3 + 0.2 * (q.pw || 0)), (q.pw || 0) > 0.3 ? C_HOT : C_FX, 0.8);
       } else S.trail = null;
+      if (p._armorT > 0 && q) { ctx.beginPath(); ctx.ellipse(V.SX(pcx(p)), V.SY(pcy(p)), T * 0.85, T * 1.05, 0, 0, Math.PI * 2); FK.glow(ctx, C_HOT, 0.28 + 0.15 * Math.sin(V.now * 26)); ctx.lineWidth = 3; ctx.stroke(); }
       // coiling: sparks drawn into the hammer head
       if (S.heat > 0.3 && q) {
         const h = head(p, S.pose, f), x = V.SX(h[0]), y = V.SY(h[1]);

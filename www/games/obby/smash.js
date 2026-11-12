@@ -112,8 +112,8 @@
     cb_boiler:      { w: 1.15, d: 1.00, k: 1.05 },                        // steam engine: stored Pressure makes every move stronger
     cb_sleight:     { w: 0.80, d: 0.95, k: 0.95 },                        // stage magician: teleports, decoys and card mines
     cb_fizz:        { w: 0.80, d: 0.90, k: 0.90 },                        // bubble blower: lots of small hits from range; light
-    cb_maul:        { w: 1.20, d: 1.05, k: 1.10 },                        // hammer smith: slow wind-ups that hit hard
-    cb_masque:      { w: 0.95, d: 0.95, k: 1.00 }                         // mask dancer: three forms, heals through SM.__heal
+    cb_maul:        { w: 1.50, d: 1.25, k: 1.30 },                        // hammer smith: the heaviest (hardest to launch), armored swings that hit hardest
+    cb_masque:      { w: 0.95, d: 0.95, k: 1.00 }                         // mask dancer: five forms, heals through SM.__heal
     }
   };
   function ch(id) { return CH[id] || { w: 1, d: 1, k: 1 }; }
