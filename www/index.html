@@ -4714,6 +4714,18 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
           </label>
         </div>
       </div>
+      <div class="settings-section" id="pp-refined-section">
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Refined look</div>
+            <div class="settings-row-sub">A sharper font, deeper cards and smoother animations. Off is the plain look.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="pp-refined-toggle" checked>
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
+      </div>
       <div class="settings-section">
         <div class="settings-row">
           <div class="settings-row-text">
@@ -26707,7 +26719,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     if(id==='playback-position-section'||sec.querySelector('#xf-mode'))return 'play';
     if(id==='extras-settings-section'||id==='playlists-manager-section'||sec.querySelector('#detailed-mode-toggle')||/^Keep MP3 conversions/.test(ft))return 'lib';
     if(id==='storage-section'||id==='progress-section')return 'data';
-    if(/^Retro layout/.test(ft)||id==='ppxp-accent-section'||id==='pp-modes-section')return 'look';
+    if(/^Retro layout/.test(ft)||id==='pp-refined-section'||id==='ppxp-accent-section'||id==='pp-modes-section')return 'look';
     return 'fun';
   }
 
@@ -27347,5 +27359,164 @@ body.pp-lite .eq-band-pro { display:flex !important; }
 <script src="./pp-playground-stars.js?v=20261108a"></script>   <!-- Playground Star Shop: Stars for Points, boosts, shields, the vault -->
 <script src="./vocal-separator.js?v=20261030a" defer></script>
 <script src="./pp-mashup.js?v=20261111c" defer></script>   <!-- mashup mode -->   <!-- bump v= each time vocal-separator.js changes so phones fetch the new copy -->
+
+<!-- ===================== Refined look (Settings > Appearance > Refined look, on by default) =====================
+     Everything below only applies while body has .pp-refined, so switching it off gives back the plain look exactly. -->
+<style id="pp-refined-css">
+  @font-face{ font-family:'Plus Jakarta Sans'; font-style:normal; font-weight:200 800; font-display:swap; src:url('fonts/plus-jakarta-sans-latin.woff2') format('woff2');
+    unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+  @font-face{ font-family:'Plus Jakarta Sans'; font-style:normal; font-weight:200 800; font-display:swap; src:url('fonts/plus-jakarta-sans-latin-ext.woff2') format('woff2');
+    unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF; }
+
+  /* ---- type ---- */
+  html:has(body.pp-refined), body.pp-refined{ font-family:'Plus Jakarta Sans','Inter',-apple-system,'Segoe UI',Roboto,sans-serif; -webkit-font-smoothing:antialiased; }
+  body.pp-refined{ --line:#2b2d35; --r-line:rgba(255,255,255,.09); --r-line-strong:rgba(255,255,255,.14);
+    --r-card:linear-gradient(180deg,#1d1f26 0%,#16171c 100%); --r-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 12px 32px -12px rgba(0,0,0,.65);
+    --r-spring:cubic-bezier(.3,1.45,.45,1); --r-ease:cubic-bezier(.2,.8,.2,1); }
+  body.pp-refined .ph-app-title{ font-size:24px; font-weight:800; letter-spacing:-.025em; }
+  body.pp-refined #sidebar-header h1{ font-size:20px; font-weight:800; letter-spacing:-.02em; padding-right:110px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  body.pp-refined .ph-sec-head h2{ font-size:18px; font-weight:750; letter-spacing:-.015em; }
+  body.pp-refined .ph-count{ font-weight:600; opacity:.8; }
+  body.pp-refined .ph-trk-title, body.pp-refined .track-title{ font-weight:650; letter-spacing:-.005em; }
+  body.pp-refined .settings-row-title{ font-size:13.5px; font-weight:650; letter-spacing:-.005em; }
+  body.pp-refined .settings-row-sub{ line-height:1.5; }
+  body.pp-refined .pp-sg-title{ font-size:12px; font-weight:750; text-transform:uppercase; letter-spacing:.09em; color:var(--text-dim); margin:0 6px 10px; }
+  body.pp-refined .settings-section-label{ font-weight:700; letter-spacing:.1em; }
+  body.pp-refined #np-title{ font-weight:800; letter-spacing:-.02em; }
+  body.pp-refined #pl-tabbar button{ font-weight:650; letter-spacing:.01em; }
+
+  /* ---- surfaces and lines ---- */
+  body.pp-refined .pp-sg-card{ background:var(--r-card); border:1px solid var(--r-line-strong); border-radius:18px; box-shadow:var(--r-shadow); }
+  body.pp-refined .pp-sg-card .settings-section, body.pp-refined .pp-adv-body .settings-section{ border-bottom:1px solid var(--r-line); }
+  body.pp-refined .pp-adv, body.pp-refined .pp-sg-card > .settings-section + .pp-adv{ border-top:1px solid var(--r-line); }
+  body.pp-refined .settings-section{ border-bottom-color:var(--r-line); }
+  body.pp-refined .pp-sg{ margin-top:22px; }
+  body.pp-refined .ph-thumb{ border-radius:14px; border:0; box-shadow:0 0 0 1px rgba(255,255,255,.07) inset, 0 10px 24px -10px rgba(0,0,0,.8); }
+  body.pp-refined .ph-thumb img{ transition:transform .5s var(--r-ease); }
+  body.pp-refined .ph-card.cur .ph-thumb{ box-shadow:0 0 0 2px var(--accent), 0 10px 26px -8px color-mix(in srgb, var(--accent) 55%, transparent); }
+  body.pp-refined.ph-selecting .ph-card.sel .ph-thumb{ box-shadow:0 0 0 2px var(--accent); }
+  body.pp-refined .ph-card:active .ph-thumb img{ transform:scale(1.04); }
+  body.pp-refined .ph-chip{ background:rgba(255,255,255,.045); border-color:var(--r-line-strong); font-weight:650; padding:8px 15px; }
+  body.pp-refined .ph-chip.on, body.pp-refined .ph-chip.active, body.pp-refined .ph-chip[aria-pressed="true"]{ color:#fff; background:linear-gradient(135deg, color-mix(in srgb, var(--accent) 30%, transparent), color-mix(in srgb, var(--accent) 12%, transparent)); border-color:color-mix(in srgb, var(--accent) 65%, transparent); box-shadow:0 4px 14px -6px color-mix(in srgb, var(--accent) 70%, transparent); }
+  body.pp-refined #sidebar-header{ border-bottom:1px solid var(--r-line); }
+  body.pp-refined.player-layout .track{ border-radius:12px; transition:background .2s, scale .25s var(--r-spring); }
+  body.pp-refined.player-layout .track.active{ background:linear-gradient(90deg, color-mix(in srgb, var(--accent) 16%, transparent), color-mix(in srgb, var(--accent) 4%, transparent));
+    box-shadow:inset 3px 0 0 var(--accent); }
+  body.pp-refined .track-thumb, body.pp-refined .track img{ border-radius:9px; }
+  body.pp-refined input[type=text], body.pp-refined input[type=search], body.pp-refined select{ border-radius:11px; }
+
+  /* glass tab bar with a sliding indicator */
+  body.pp-refined.player-layout #pl-tabbar{ background:rgba(17,18,22,.82); -webkit-backdrop-filter:blur(22px) saturate(1.4); backdrop-filter:blur(22px) saturate(1.4);
+    border-top:1px solid var(--r-line-strong); box-shadow:0 -10px 30px -12px rgba(0,0,0,.7); }
+  body.pp-refined #pl-tabbar button{ position:relative; z-index:1; transition:color .25s; }
+  body.pp-refined #pl-tabbar button svg{ transition:translate .35s var(--r-spring), scale .35s var(--r-spring); }
+  body.pp-refined #pl-tabbar button.active svg{ translate:0 -1px; scale:1.08; }
+  #pl-tab-ind{ display:none; }
+  body.pp-refined.player-layout #pl-tab-ind{ display:block; position:absolute; z-index:0; top:7px; left:0; width:56px; height:30px; border-radius:999px; pointer-events:none;
+    background:color-mix(in srgb, var(--accent) 16%, transparent); box-shadow:0 0 18px -4px color-mix(in srgb, var(--accent) 55%, transparent);
+    transition:transform .45s var(--r-spring); }
+
+  /* glass mini-player */
+  body.pp-refined.player-layout.pl-has-track:not([data-pl-player]) #pl-mini{ background:rgba(30,31,38,.78); -webkit-backdrop-filter:blur(22px) saturate(1.5); backdrop-filter:blur(22px) saturate(1.5);
+    border:1px solid var(--r-line-strong); border-radius:16px; box-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 14px 34px -10px rgba(0,0,0,.8); }
+  body.pp-refined #pl-mini-art{ border-radius:10px; border:0; box-shadow:0 0 0 1px rgba(255,255,255,.08) inset, 0 4px 12px rgba(0,0,0,.5); }
+  body.pp-refined #pl-mini-title{ font-weight:700; letter-spacing:-.01em; }
+  body.pp-refined #pl-mini-prog{ height:3px; background:rgba(255,255,255,.08); }
+  body.pp-refined #pl-mini-prog i{ background:linear-gradient(90deg, color-mix(in srgb, var(--accent) 60%, #fff 0%), var(--accent)); box-shadow:0 0 10px var(--accent); border-radius:0 3px 3px 0; }
+
+  /* player controls */
+  body.pp-refined #play-btn{ box-shadow:0 10px 28px -8px rgba(0,0,0,.8), 0 0 0 6px rgba(255,255,255,.05); transition:scale .3s var(--r-spring), box-shadow .3s; }
+  body.pp-refined .pill-btn{ background:rgba(255,255,255,.05); border-color:var(--r-line-strong); font-weight:650; }
+  body.pp-refined .pill-btn.toggled, body.pp-refined .ctrl-btn.toggled{ color:var(--accent); }
+
+  /* switches with a springy knob */
+  body.pp-refined .settings-switch-track{ transition:background .3s; box-shadow:inset 0 1px 2px rgba(0,0,0,.4); }
+  body.pp-refined .settings-switch-thumb{ transition:transform .4s var(--r-spring) !important; box-shadow:0 2px 6px rgba(0,0,0,.5); }
+  body.pp-refined .settings-switch input:checked + .settings-switch-track{ background:linear-gradient(90deg, color-mix(in srgb, var(--accent) 55%, #000 0%), var(--accent-dim)); }
+
+  /* ---- press feedback: everything tappable gives a little ---- */
+  /* :where() keeps these at zero specificity: anything that already has its own transition keeps it */
+  :where(body.pp-refined) :where(button, .ph-card, .ph-chip, .pill-btn, .ctrl-btn, .settings-toggle-btn, .ph-trk){ transition-property:scale, background, color, border-color, box-shadow, opacity; transition-duration:.28s; transition-timing-function:cubic-bezier(.3,1.45,.45,1); }
+  :where(body.pp-refined) :where(button, .ph-chip, .pill-btn, .ctrl-btn, .settings-toggle-btn):active{ scale:.94; transition-duration:.08s; }
+  :where(body.pp-refined) :where(.ph-card, .ph-trk):active{ scale:.97; transition-duration:.08s; }
+  body.pp-refined.player-layout .track:active{ scale:.985; }
+
+  /* ---- motion: screens ease in, items follow one after another ---- */
+  @keyframes ppRIn{ from{ opacity:0; translate:0 10px; } to{ opacity:1; translate:0 0; } }
+  @keyframes ppRUp{ from{ opacity:.4; translate:0 36px; } to{ opacity:1; translate:0 0; } }
+  @keyframes ppRRise{ 0%{ opacity:0; translate:0 24px; scale:.96; } 70%{ opacity:1; translate:0 -3px; scale:1.01; } 100%{ translate:0 0; scale:1; } }
+  body.pp-refined .pp-r-in{ animation:ppRIn .38s var(--r-ease) both; }
+  body.pp-refined .pp-r-stag{ animation:ppRIn .42s var(--r-ease) both; animation-delay:calc(var(--i, 0) * 32ms); }
+  body.pp-refined .pp-r-up{ animation:ppRUp .42s var(--r-ease) both; }
+  body.pp-refined .pp-r-rise{ animation:ppRRise .55s var(--r-ease) both; }
+  @media (prefers-reduced-motion: reduce){
+    body.pp-refined .pp-r-in, body.pp-refined .pp-r-stag, body.pp-refined .pp-r-up, body.pp-refined .pp-r-rise{ animation:none !important; }
+    body.pp-refined *{ transition-duration:.01ms !important; }
+  }
+</style>
+<script id="pp-refined">
+(function(){
+  var KEY = 'ppRefinedLook', body = document.body;
+  function want(){ try { return localStorage.getItem(KEY) !== '0'; } catch(e){ return true; } }
+  var tg = document.getElementById('pp-refined-toggle');
+  // sliding tab indicator
+  var bar = document.getElementById('pl-tabbar'), ind = null;
+  if (bar){ ind = document.createElement('span'); ind.id = 'pl-tab-ind'; ind.setAttribute('aria-hidden', 'true'); bar.appendChild(ind); }
+  function placeInd(){
+    if (!ind || !body.classList.contains('pp-refined')) return;
+    var a = bar.querySelector('button.active'); if (!a) return;
+    var br = bar.getBoundingClientRect(), r = a.getBoundingClientRect(); if (!r.width) return;
+    ind.style.transform = 'translateX(' + Math.round(r.left - br.left + r.width / 2 - 28) + 'px)';
+  }
+  function apply(v){
+    body.classList.toggle('pp-refined', v);
+    if (tg) tg.checked = v;
+    requestAnimationFrame(placeInd);
+  }
+  apply(want());
+  if (tg) tg.addEventListener('change', function(){ try { localStorage.setItem(KEY, tg.checked ? '1' : '0'); } catch(e){} apply(tg.checked); });
+  if (bar){
+    new MutationObserver(function(){ requestAnimationFrame(placeInd); }).observe(bar, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    window.addEventListener('resize', function(){ requestAnimationFrame(placeInd); });
+  }
+  // restart an animation class on an element
+  function play(el, cls){ if (!el) return; el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+  function stagger(root, sel, max){
+    if (!root) return;
+    var items = root.querySelectorAll(sel), n = 0;
+    for (var i = 0; i < items.length && n < max; i++){
+      var it = items[i], r = it.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > innerHeight) continue;          // only what's on screen
+      it.style.setProperty('--i', n++); play(it, 'pp-r-stag');
+    }
+  }
+  function onView(){
+    if (!body.classList.contains('pp-refined') || !body.classList.contains('player-layout')) return;
+    var v = body.dataset.plView;
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){   // after the screen has rendered
+      if (v === 'home' || v === 'playlists'){
+        var h = document.getElementById('pl-home'); play(h, 'pp-r-in');
+        stagger(h, '.ph-sec, .ph-card, .ph-pl, .ph-trk', 14);
+      } else {
+        var s = document.getElementById('sidebar'); play(s, 'pp-r-in');
+        stagger(s, v === 'settings' ? '.pp-sg' : '.track', 12);
+      }
+    }); });
+  }
+  var lastView = body.dataset.plView, hadPlayer = body.hasAttribute('data-pl-player'), hadTrack = body.classList.contains('pl-has-track');
+  new MutationObserver(function(){
+    if (body.dataset.plView !== lastView){ lastView = body.dataset.plView; onView(); }
+    var p = body.hasAttribute('data-pl-player');
+    if (p && !hadPlayer && body.classList.contains('pp-refined')) play(document.getElementById('main'), 'pp-r-up');
+    hadPlayer = p;
+    var t = body.classList.contains('pl-has-track');
+    if (t && !hadTrack && !p && body.classList.contains('pp-refined')) play(document.getElementById('pl-mini'), 'pp-r-rise');
+    hadTrack = t;
+  }).observe(body, { attributes: true, attributeFilter: ['data-pl-view', 'data-pl-player', 'class'] });
+  ['pp-r-in', 'pp-r-up', 'pp-r-rise', 'pp-r-stag'].forEach(function(c){
+    document.addEventListener('animationend', function(e){ if (e.target.classList && e.target.classList.contains(c)) e.target.classList.remove(c); }, true);
+  });
+})();
+</script>
 </body>
 </html>
