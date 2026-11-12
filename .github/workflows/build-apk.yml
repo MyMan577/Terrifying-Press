@@ -80,7 +80,7 @@ jobs:
 
       - name: Add the native ONNX plugin
         run: |
-          for f in OnnxSeparatorPlugin Accel StemNative SpleeterNative KeepAliveService SpleeterSeparatorPlugin BackupPlugin EmbedPlugin MiniTokenizer StoragePlugin TranslatePlugin Throttle WhisperNative ParakeetNative LlmNative FastDownload GameModePlugin; do
+          for f in OnnxSeparatorPlugin Accel StemNative SpleeterNative KeepAliveService SpleeterSeparatorPlugin BackupPlugin EmbedPlugin MiniTokenizer StoragePlugin TranslatePlugin Throttle WhisperNative ParakeetNative LlmNative FastDownload GameModePlugin SpeechPlugin; do
             f="android-overrides/$f.java"
             if [ ! -f "$f" ]; then echo "::error::Missing file in the repo: $f. Add it at that exact path (folder included) and run again."; exit 1; fi
           done
@@ -162,6 +162,11 @@ jobs:
           for c in sm:
               if c.tag in ('uses-permission', 'uses-feature') and (c.tag, c.get(q('name'))) not in have:
                   dm.insert(list(dm).index(dapp), c)
+
+          # <queries> (which other apps this one may look up, e.g. the text-to-speech engine): add what is missing
+          have_q = {sig(c) for c in dm.findall('queries')}
+          for c in sm.findall('queries'):
+              if sig(c) not in have_q: dm.insert(list(dm).index(dapp), c)
 
           # application attributes
           for k, v in sapp.attrib.items():
