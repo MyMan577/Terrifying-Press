@@ -16065,10 +16065,10 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   }
 
   function resizeCanvas(){
-    const rect = canvas.parentElement.getBoundingClientRect();
+    const box = canvas.parentElement;                         // layout size, so a zoom animation on the box can't shrink the canvas
     const dpr = Math.min(3, window.devicePixelRatio || 1);   // real pixels, so the bars are sharp on a phone screen
-    canvas.width = Math.round(rect.width * 1.2 * dpr);       // #viz is 20% larger than its box (inset:-10%)
-    canvas.height = Math.round(rect.height * 1.2 * dpr);
+    canvas.width = Math.round(box.offsetWidth * 1.2 * dpr);  // #viz is 20% larger than its box (inset:-10%)
+    canvas.height = Math.round(box.offsetHeight * 1.2 * dpr);
   }
   window.addEventListener('resize', resizeCanvas);
   window.addEventListener('resize', () => {
@@ -27534,9 +27534,40 @@ body.pp-lite .eq-band-pro { display:flex !important; }
   body.pp-refined .ppg-art{ transition:transform .3s var(--r-spring); }
   body.pp-refined .ppx-bar i{ transition:width .5s var(--r-ease); }
 
+
+  /* ---- the player's own controls: nothing blinks while watching ---- */
+  @keyframes ppRZin{ from{ scale:.8; opacity:.5; } to{ scale:1; opacity:1; } }
+  @keyframes ppRZout{ from{ scale:1.18; opacity:.6; } to{ scale:1; opacity:1; } }
+  body.pp-refined .pp-r-zin{ animation:ppRZin .5s var(--r-ease) both; }
+  body.pp-refined .pp-r-zout{ animation:ppRZout .45s var(--r-ease) both; }
+  /* video page: a tap brings the controls in from the edges they live on, and they leave the same way */
+  body.pp-refined.player-layout.pl-video[data-pl-player] #controls-col{ translate:0 28px; transition:opacity .3s var(--r-ease), translate .44s var(--r-ease); }
+  body.pp-refined.player-layout.pl-video[data-pl-player].pl-ui-show #controls-col{ translate:0 0; }
+  body.pp-refined.player-layout.pl-video[data-pl-player] #menu-btn, body.pp-refined.player-layout.pl-video[data-pl-player] #video-tools,
+  body.pp-refined.player-layout.pl-video[data-pl-player] #pl-back, body.pp-refined.player-layout.pl-video[data-pl-player] #pl-pin-btn{
+    transition:opacity .3s var(--r-ease), translate .44s var(--r-ease), scale .3s var(--r-spring), background .2s, color .2s, border-color .2s; }
+  body.pp-refined.player-layout.pl-video[data-pl-player]:not(.pl-ui-show) :is(#menu-btn, #video-tools){ translate:0 -18px; }
+  body.pp-refined.player-layout.pl-video[data-pl-player]:not(.pl-ui-show) #pl-back,
+  body.pp-refined.player-layout.pl-video[data-pl-player]:not(.pl-ui-show):not(.pl-ctl-hide) #pl-pin-btn{ translate:0 18px; }
+  body.pp-refined #pl-pin-btn:active{ scale:.9; transition-duration:.08s; }
+  /* visualizer page, immersive: the controls sink away below the disc and rise back */
+  body.pp-refined.player-layout[data-pl-player]:not(.pl-video) #controls-col{ transition:opacity .3s var(--r-ease), translate .46s var(--r-ease), display .46s allow-discrete; }
+  body.pp-refined.player-layout.immersive[data-pl-player]:not(.pl-video) #controls-col{ opacity:0; translate:0 46px; pointer-events:none; margin-bottom:calc(-1 * var(--pl-ctl-h, 320px)); }
+  @starting-style{ body.pp-refined.player-layout[data-pl-player]:not(.immersive):not(.pl-video) #controls-col{ opacity:0; translate:0 46px; } }
+  body.pp-refined.player-layout[data-pl-player] #pl-back{ transition:scale .3s var(--r-spring), background .25s, color .25s, opacity .25s, display .25s allow-discrete; }
+  body.pp-refined.player-layout.immersive[data-pl-player] #pl-back{ opacity:0; scale:.5; }
+  /* bookmarks / chapters / lyrics panel and the transcript sheet */
+  body.pp-refined #extras-panel{ opacity:0; translate:0 18px; scale:.96; pointer-events:none; transition:opacity .22s var(--r-ease), translate .36s var(--r-spring), scale .36s var(--r-spring), display .28s allow-discrete; }
+  body.pp-refined #extras-panel.open{ opacity:1; translate:0 0; scale:1; pointer-events:auto; }
+  @starting-style{ body.pp-refined #extras-panel.open{ opacity:0; translate:0 18px; scale:.96; } }
+  body.pp-refined #extras-panel .pp-pane.active{ animation:ppRIn .3s var(--r-ease); }
+  body.pp-refined #sub-tx{ translate:0 100%; transition:translate .4s var(--r-ease), display .4s allow-discrete; }
+  body.pp-refined #sub-tx.open{ translate:0 0; }
+  @starting-style{ body.pp-refined #sub-tx.open{ translate:0 100%; } }
+
   @media (prefers-reduced-motion: reduce){
     body.pp-refined .pp-r-in, body.pp-refined .pp-r-stag, body.pp-refined .pp-r-up, body.pp-refined .pp-r-rise, body.pp-refined .pp-r-fwd, body.pp-refined .pp-r-back,
-    body.pp-refined .pp-r-pop, body.pp-refined .pp-r-swap, body.pp-refined .toggled, body.pp-refined .ppx-tab.on, body.pp-refined .ppx-seg button.on, body.pp-refined #play-btn svg{ animation:none !important; }
+    body.pp-refined .pp-r-pop, body.pp-refined .pp-r-swap, body.pp-refined .pp-r-zin, body.pp-refined .pp-r-zout, body.pp-refined #extras-panel .pp-pane.active, body.pp-refined .toggled, body.pp-refined .ppx-tab.on, body.pp-refined .ppx-seg button.on, body.pp-refined #play-btn svg{ animation:none !important; }
     body.pp-refined *{ transition-duration:.01ms !important; }
   }
 </style>
@@ -27645,7 +27676,42 @@ body.pp-lite .eq-band-pro { display:flex !important; }
       });
     }, true);
   }
-  ['pp-r-in', 'pp-r-up', 'pp-r-rise', 'pp-r-stag', 'pp-r-fwd', 'pp-r-back', 'pp-r-pop', 'pp-r-swap'].forEach(function(c){
+  // ---- the player's own controls ----
+  var calm = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+  // immersive: the disc grows into the room the controls leave, and settles back when they return
+  var wasImm = body.classList.contains('immersive');
+  new MutationObserver(function(){
+    var im = body.classList.contains('immersive'); if (im === wasImm) return; wasImm = im;
+    if (refined() && body.hasAttribute('data-pl-player') && !body.classList.contains('pl-video')) play(document.getElementById('viz-wrap'), im ? 'pp-r-zin' : 'pp-r-zout');
+  }).observe(body, { attributes: true, attributeFilter: ['class'] });
+  // quick-bar pills: when one is added, removed or changes width, the others slide into place and a new one pops in
+  ['extra-transport', 'transport'].forEach(function(id){
+    var bar = document.getElementById(id); if (!bar || !bar.animate) return;
+    var seen = null, queued = false;
+    function snap(){
+      var m = new Map(), b = bar.getBoundingClientRect();   // measured from the bar itself, so the bar moving as a whole doesn't count
+      for (var i = 0; i < bar.children.length; i++){ var c = bar.children[i]; if (!c.offsetWidth) continue; var r = c.getBoundingClientRect(); m.set(c, [r.left - b.left, r.top - b.top]); }
+      return m;
+    }
+    function run(){
+      queued = false;
+      if (!bar.offsetWidth){ seen = null; return; }
+      var now = snap(), was = seen; seen = now;
+      if (!was || !refined() || calm.matches || !body.hasAttribute('data-pl-player')) return;
+      now.forEach(function(p, c){
+        var o = was.get(c);
+        if (!o){ c.animate([{ scale: '.5', opacity: 0 }, { scale: '1', opacity: 1 }], { duration: 340, easing: 'cubic-bezier(.3,1.45,.45,1)' }); return; }
+        var dx = o[0] - p[0], dy = o[1] - p[1];
+        if ((Math.abs(dx) > .5 || Math.abs(dy) > .5) && Math.abs(dx) < 400 && Math.abs(dy) < 200) c.animate([{ translate: dx + 'px ' + dy + 'px' }, { translate: '0 0' }], { duration: 360, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      });
+    }
+    function queue(){ if (!queued){ queued = true; requestAnimationFrame(run); } }
+    new MutationObserver(queue).observe(bar, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'hidden', 'class'] });
+    new MutationObserver(queue).observe(body, { attributes: true, attributeFilter: ['class', 'data-pl-player'] });
+    window.addEventListener('resize', function(){ seen = null; queue(); });
+    queue();
+  });
+  ['pp-r-in', 'pp-r-up', 'pp-r-rise', 'pp-r-stag', 'pp-r-fwd', 'pp-r-back', 'pp-r-pop', 'pp-r-swap', 'pp-r-zin', 'pp-r-zout'].forEach(function(c){
     document.addEventListener('animationend', function(e){ if (e.target.classList && e.target.classList.contains(c)) e.target.classList.remove(c); }, true);
   });
 })();
