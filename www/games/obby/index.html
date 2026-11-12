@@ -267,6 +267,10 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
 #menuToggle:active { background: rgba(80, 100, 160, 0.99) !important; transform: translateY(-50%) !important; }
 #menuToggle.exposed { left: 0px; }
 
+/* Settings > Button Height: lifts (or lowers) the bottom row of touch buttons, with its own amount per orientation.
+   The ability buttons above the row move with it so they never overlap. */
+#mobileControls, #abilityBtnGroup { translate: 0 calc(-1 * var(--mc-lift-p, 0px)); }
+@media (orientation: landscape) { #mobileControls, #abilityBtnGroup { translate: 0 calc(-1 * var(--mc-lift-l, 0px)); } }
 #mobileControls {
   position: absolute; bottom: 12px; left: 0; right: 0;
   display: flex; justify-content: space-between; pointer-events: none;
@@ -2353,6 +2357,26 @@ input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; u
           style="width:100%;accent-color:#7cdbff;cursor:pointer;"
           oninput="window._obbyFlickWait(this.value)">
         <div style="display:flex;justify-content:space-between;" class="small"><span>Off</span><span>More time to flick</span></div>
+      </div>
+
+      <div style="padding:10px 12px;background:rgba(0,0,0,0.2);border-radius:12px;border:1px solid rgba(255,255,255,0.07);margin-top:8px;">
+        <div style="font-size:13px;font-weight:700">↕️ Button Height</div>
+        <div class="small" style="margin-top:2px;margin-bottom:8px">Moves the bottom row of touch buttons up or down a little. Upright and sideways each keep their own setting.</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div style="font-size:12px;font-weight:700">Upright (portrait)</div>
+          <div id="btnLiftPVal" style="font-size:14px;font-weight:900;color:var(--accent);min-width:60px;text-align:right;">0 px</div>
+        </div>
+        <input type="range" id="btnLiftPSlider" min="-30" max="100" value="0" step="2"
+          style="width:100%;accent-color:#7cdbff;cursor:pointer;"
+          oninput="window._obbyBtnLift('p', this.value)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+          <div style="font-size:12px;font-weight:700">Sideways (landscape)</div>
+          <div id="btnLiftLVal" style="font-size:14px;font-weight:900;color:var(--accent);min-width:60px;text-align:right;">0 px</div>
+        </div>
+        <input type="range" id="btnLiftLSlider" min="-30" max="100" value="0" step="2"
+          style="width:100%;accent-color:#7cdbff;cursor:pointer;"
+          oninput="window._obbyBtnLift('l', this.value)">
+        <div style="display:flex;justify-content:space-between;" class="small"><span>Lower</span><span>Higher</span></div>
       </div>
 
       <div style="padding:10px 12px;background:rgba(0,0,0,0.2);border-radius:12px;border:1px solid rgba(255,255,255,0.07);margin-top:8px;">
@@ -28162,9 +28186,13 @@ function resolveCollisions(axis, dt) {
       window._settingSidebarOpacity   = (saved.sidebarOpacity  != null) ? saved.sidebarOpacity  : 100;
       window._settingNoirFilter       = saved.noirFilter       === true;
       window._settingFlickWindow      = (saved.flickWindow     != null) ? saved.flickWindow     : 160;
+      window._settingBtnLiftP         = +saved.btnLiftP || 0;
+      window._settingBtnLiftL         = +saved.btnLiftL || 0;
       window._settingMusicVolume      = (saved.musicVolume     != null) ? saved.musicVolume     : 50;
     } catch(e) {
       window._settingFlickWindow      = 160;
+      window._settingBtnLiftP         = 0;
+      window._settingBtnLiftL         = 0;
       window._settingMusicVolume      = 50;
       window._settingSlideEnabled     = true;
       window._settingTutorialBanners  = true;
@@ -28188,6 +28216,8 @@ function resolveCollisions(axis, dt) {
           sidebarOpacity:   window._settingSidebarOpacity,
           noirFilter:       window._settingNoirFilter,
           flickWindow:      window._settingFlickWindow,
+          btnLiftP:         window._settingBtnLiftP,
+          btnLiftL:         window._settingBtnLiftL,
           musicVolume:      window._settingMusicVolume,
         }));
       } catch(e) {}
@@ -28347,6 +28377,24 @@ function resolveCollisions(axis, dt) {
     if (hint) hint.style.opacity = window._settingSlideEnabled ? '1' : '0.35';
 
     
+    // Button Height: + lifts the bottom row, - lowers it; 'p' = portrait, 'l' = landscape
+    function _applyBtnLift() {
+      var st = document.documentElement.style;
+      st.setProperty('--mc-lift-p', (window._settingBtnLiftP || 0) + 'px');
+      st.setProperty('--mc-lift-l', (window._settingBtnLiftL || 0) + 'px');
+      [['P', window._settingBtnLiftP], ['L', window._settingBtnLiftL]].forEach(function (a) {
+        var v = a[1] || 0, sl = document.getElementById('btnLift' + a[0] + 'Slider'), d = document.getElementById('btnLift' + a[0] + 'Val');
+        if (sl) sl.value = v;
+        if (d) d.textContent = v ? (v > 0 ? '+' : '') + v + ' px' : '0 px';
+      });
+    }
+    window._obbyBtnLift = function (which, val) {
+      val = Math.max(-30, Math.min(100, parseInt(val, 10) || 0));
+      if (which === 'l') window._settingBtnLiftL = val; else window._settingBtnLiftP = val;
+      _applyBtnLift(); saveSettings();
+    };
+    _applyBtnLift();
+
     var mvSlider = document.getElementById('musicVolSlider');
     if (mvSlider) mvSlider.value = window._settingMusicVolume;
     var mvVal = document.getElementById('musicVolVal');
