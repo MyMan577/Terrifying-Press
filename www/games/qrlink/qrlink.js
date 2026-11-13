@@ -18,7 +18,8 @@
     var s = document.currentScript && document.currentScript.src;
     return s ? s.replace(/[^\/]*$/, '') : '';
   })();
-  var ICE = [{ urls:'stun:stun.l.google.com:19302' }];
+  // several public STUN servers: if one is blocked on a network, another still finds the phone's public address
+  var ICE = [{ urls:['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }, { urls:'stun:stun.cloudflare.com:3478' }];
   var GATHER_MS = 2500;      // stop waiting for addresses after this
   var PING_MS = 1000, DEAD_MS = 7000;
   var VER = 'PPL1';
@@ -152,6 +153,7 @@
   '#qrl .cam::after{content:"";position:absolute;inset:14%;border:3px solid rgba(255,255,255,.85);border-radius:14px;box-shadow:0 0 0 999px rgba(0,0,0,.35)}' +
   '#qrl textarea{width:min(80vw,320px);height:70px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:#f1ece2;font:12px monospace;padding:8px;-webkit-user-select:text;user-select:text}' +
   '#qrl .err{color:#ff9b8a;min-height:20px;font-size:13px}' +
+  '#qrl p.detail{font-size:11px;opacity:.7;word-break:break-word;font-family:ui-monospace,monospace}' +
   '#qrl .spin{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,.15);border-top-color:var(--qrl-acc,#e8a33a);animation:qrlspin .8s linear infinite}' +
   '@keyframes qrlspin{to{transform:rotate(360deg)}}';
 
@@ -183,8 +185,12 @@
     gotoffer: "That's a host code. Show this screen to the host instead.",
     gotanswer: "That's a reply code. Scan the host's code.",
     cam: "Can't use the camera. You can paste a code instead.",
-    fail: "Couldn't connect. Make sure both phones are online, then try again."
+    fail: "Couldn't connect. Make sure both phones are online, then try again.",
+    nortc: "This browser has direct phone-to-phone connections (WebRTC) turned off, so it can't link up. Try Chrome, or turn WebRTC back on in the browser's settings.",
+    make: "Couldn't make a link code on this phone. Try again; if it keeps happening, the details below say why."
   };
+  // what failed, in a short line under the message (so a problem on one phone can be told apart from a network one)
+  function why(step, e){ var m = e && (e.name && e.name !== 'Error' ? e.name + ': ' : '') + (e && e.message || String(e || '')); return step + (m ? ' · ' + m : ''); }
 
   function open(opts){
     opts = opts || {};
@@ -212,13 +218,20 @@
     // local address instead of a hidden one, which helps on the same Wi-Fi.
     function warmCamera(){
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return Promise.resolve(false);
-      return navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } })
-        .then(function(s){ s.getTracks().forEach(function(t){ t.stop(); }); return true; })
-        .catch(function(){ return false; });
+      // with a time limit: a permission prompt that never gets answered (or never shows, inside a game frame) must not hang hosting
+      return Promise.race([
+        navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } })
+          .then(function(s){ s.getTracks().forEach(function(t){ t.stop(); }); return true; })
+          .catch(function(){ return false; }),
+        new Promise(function(res){ setTimeout(function(){ res(false); }, 4000); })
+      ]);
     }
 
     function newPeer(){
-      pc = new RTCPeerConnection({ iceServers: ICE });
+      var RTC = window.RTCPeerConnection || window.webkitRTCPeerConnection;
+      if (!RTC){ var e = new Error('no RTCPeerConnection'); e.nortc = true; throw e; }
+      try { pc = new RTC({ iceServers: ICE }); }
+      catch (err){ pc = new RTC({ iceServers: [] }); }   // a browser that rejects one of the STUN entries: still link on the same Wi-Fi
       return pc;
     }
 
@@ -232,12 +245,13 @@
       }
       if (dc.readyState === 'open') ready(); else dc.onopen = ready;
       pc.addEventListener('connectionstatechange', function(){
-        if (!finished && pc.connectionState === 'failed') showError(ERRS.fail);
+        if (!finished && pc.connectionState === 'failed') showError(ERRS.fail, why('linking', { message: 'the phones could not reach each other' }));
       });
     }
 
-    function showError(msg){
+    function showError(msg, detail){
       screen([el('h2',{text:'Not connected'}), el('p',{text:msg}),
+        detail ? el('p',{cls:'detail', text:detail}) : null,
         el('div',{cls:'row'},[ el('button',{text:'Try again', onclick:function(){ resetPeer(); start(); }}), el('button',{cls:'ghost', text:'Close', onclick:cancel}) ])]);
     }
     function resetPeer(){ try { if (pc) pc.close(); } catch(e){} pc = null; dc = null; }
@@ -245,9 +259,13 @@
     // Shows a code as a QR plus copy button; `next` is an optional follow-up button.
     function showCode(title, hint, code, next){
       QRLink.lastCode = code;   // read by automated tests
+      var qr = el('div',{cls:'qr'},[el('div',{cls:'spin'})]);
+      // the QR picture needs a small library; if it can't load, the code still works by Copy code (send it in a chat)
+      loadLib('qrcode.min.js', 'qrcode').then(function(){ qr.innerHTML = ''; qr.appendChild(drawQR(code)); })
+        .catch(function(){ qr.innerHTML = ''; qr.appendChild(el('p',{cls:'detail', text:"Couldn't draw the QR picture. Use Copy code and send it to the other phone."})); });
       screen([
         el('h2',{text:title}), el('p',{text:hint}),
-        el('div',{cls:'qr'},[drawQR(code)]),
+        qr,
         el('div',{cls:'row'},[
           next || null,
           el('button',{cls:'ghost', text:'Copy code', onclick:function(e){ var b=e.currentTarget; copyText(code).then(function(){ b.textContent='Copied'; setTimeout(function(){ b.textContent='Copy code'; },1500); }); }}),
@@ -317,24 +335,24 @@
     // ---- host ----
     function host(){
       busy('Making your code…');
+      var step = 'camera';
       warmCamera().then(function(){
-        newPeer();
+        step = 'connection'; newPeer();
         wire(pc.createDataChannel('game', { ordered:true }), 'host');
-        return pc.createOffer();
-      }).then(function(o){ return pc.setLocalDescription(o); })
-        .then(function(){ return gathered(pc); })
-        .then(function(){ return loadLib('qrcode.min.js', 'qrcode'); })
-        .then(function(){
-          var code = encode(app, 'o', pc.localDescription.sdp);
+        step = 'offer'; return pc.createOffer();
+      }).then(function(o){ step = 'offer'; return pc.setLocalDescription(o); })
+        .then(function(){ step = 'addresses'; return gathered(pc); })
+        .then(function(){ step = 'code'; return encode(app, 'o', pc.localDescription.sdp); })
+        .then(function(code){
           showCode('Your code', 'Have the other player scan this, then scan the code they show you.', code,
             el('button',{text:'Scan their code', onclick:scanAnswer}));
-        }).catch(function(e){ console.error(e); showError(ERRS.fail); });
+        }).catch(function(e){ console.error(e); showError(e && e.nortc ? ERRS.nortc : ERRS.make, why(step, e)); });
     }
     function scanAnswer(){
       scan('Scan their code', 'Point your camera at the code on the other phone.', function(text){
         var desc; try { desc = decode(app, 'a', text); } catch(e){ return e.message; }
         busy('Connecting…');
-        pc.setRemoteDescription(desc).catch(function(e){ console.error(e); showError(ERRS.fail); });
+        pc.setRemoteDescription(desc).catch(function(e){ console.error(e); showError(ERRS.fail, why('their code', e)); });
         timeoutGuard();
         return null;
       });
@@ -345,26 +363,27 @@
       scan('Scan the host’s code', 'Point your camera at the code on the host’s phone.', function(text){
         var desc; try { desc = decode(app, 'o', text); } catch(e){ return e.message; }
         busy('Making your reply…');
+        var step = 'camera';
         warmCamera().then(function(){
-          newPeer();
+          step = 'connection'; newPeer();
           pc.ondatachannel = function(e){ wire(e.channel, 'guest'); };
-          return pc.setRemoteDescription(desc);
-        }).then(function(){ return pc.createAnswer(); })
+          step = 'their code'; return pc.setRemoteDescription(desc);
+        }).then(function(){ step = 'reply'; return pc.createAnswer(); })
           .then(function(a){ return pc.setLocalDescription(a); })
-          .then(function(){ return gathered(pc); })
-          .then(function(){ return loadLib('qrcode.min.js', 'qrcode'); })
+          .then(function(){ step = 'addresses'; return gathered(pc); })
           .then(function(){
             if (finished) return;
+            step = 'code';
             showCode('Show this to the host', 'The game starts once they scan it.', encode(app, 'a', pc.localDescription.sdp), null);
             timeoutGuard(90000);
-          }).catch(function(e){ console.error(e); showError(ERRS.fail); });
+          }).catch(function(e){ console.error(e); showError(e && e.nortc ? ERRS.nortc : ERRS.fail, why(step, e)); });
         return null;
       });
     }
 
     function timeoutGuard(ms){
       var mine = pc;
-      setTimeout(function(){ if (!finished && pc === mine && root.parentNode) showError(ERRS.fail); }, ms || 20000);
+      setTimeout(function(){ if (!finished && pc === mine && root.parentNode) showError(ERRS.fail, why('linking', { message: 'no answer in ' + Math.round((ms || 20000) / 1000) + ' s (' + (pc && pc.iceConnectionState) + ')' })); }, ms || 20000);
     }
 
     function start(){
