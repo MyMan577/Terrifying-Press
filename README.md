@@ -35,6 +35,7 @@ Press Play has a lot of settings, and most of them are things other players leav
 - Bass and reverb controls, and playback speed.
 - Choose how songs join: normal, gapless with no pause between tracks, or crossfade with a length you set.
 - ReplayGain keeps songs at a similar loudness so you are not reaching for the volume between tracks.
+- Hi-res output plays 24-bit and 32-bit files at full depth, and the player shows each track's format, bit depth and sample rate. You can also choose whether the phone tries software or hardware decoders first, for audio and for video.
 
 **Playback**
 - Remembers where you stopped in each track, and lets you choose how often progress is saved. You can also turn it off so tracks always start from the beginning.

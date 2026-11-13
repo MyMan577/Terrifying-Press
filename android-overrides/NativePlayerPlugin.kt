@@ -140,6 +140,58 @@ class NativePlayerPlugin : Plugin() {
         return o
     }
 
+    private fun bitsOf(enc: Int): Int = when (enc) {
+        C.ENCODING_PCM_8BIT -> 8
+        C.ENCODING_PCM_16BIT, C.ENCODING_PCM_16BIT_BIG_ENDIAN -> 16
+        C.ENCODING_PCM_24BIT -> 24
+        C.ENCODING_PCM_32BIT, C.ENCODING_PCM_FLOAT -> 32
+        else -> 0
+    }
+
+    /** What is playing, technically: container/codec, bit depth, sample rate, channels, bitrate, decoder, output depth. */
+    @PluginMethod
+    fun audioInfo(call: PluginCall) = withSvc(call) { s ->
+        val o = JSObject()
+        val f = s.player.audioFormat
+        if (f != null) {
+            o.put("mime", f.sampleMimeType ?: "")
+            o.put("codecs", f.codecs ?: "")
+            if (f.sampleRate > 0) o.put("rate", f.sampleRate)
+            if (f.channelCount > 0) o.put("ch", f.channelCount)
+            val br = if (f.averageBitrate > 0) f.averageBitrate else f.bitrate
+            if (br > 0) o.put("bitrate", br)
+            o.put("bits", bitsOf(f.pcmEncoding))
+        }
+        o.put("decoder", s.audioDecoder)
+        o.put("hiRes", s.hiRes)
+        val enc = s.vizClock?.pcmEncoding ?: -1
+        val decBits = bitsOf(enc)
+        o.put("decodedBits", decBits)
+        // With hi-res on, 24-bit and 32-bit audio leaves as 32-bit float; everything else leaves as 16-bit.
+        o.put("outBits", if (s.hiRes && decBits > 16) 32 else if (decBits > 0) 16 else 0)
+        o.put("outFloat", s.hiRes && decBits > 16)
+        call.resolve(o)
+    }
+
+    @PluginMethod
+    fun getAudioOptions(call: PluginCall) {
+        val p = context.getSharedPreferences("pp_audio", Context.MODE_PRIVATE)
+        call.resolve(JSObject().put("hiRes", p.getBoolean("hiRes", false))
+            .put("adec", p.getString("adec", "auto")).put("vdec", p.getString("vdec", "auto"))
+            .put("activeHiRes", PlaybackService.instance?.hiRes ?: p.getBoolean("hiRes", false)))
+    }
+
+    /** Saved now, used the next time the playback service starts (the audio output is built once). */
+    @PluginMethod
+    fun setAudioOptions(call: PluginCall) {
+        val e = context.getSharedPreferences("pp_audio", Context.MODE_PRIVATE).edit()
+        call.getBoolean("hiRes")?.let { e.putBoolean("hiRes", it) }
+        call.getString("adec")?.let { if (it == "auto" || it == "soft" || it == "hard") e.putString("adec", it) }
+        call.getString("vdec")?.let { if (it == "auto" || it == "soft" || it == "hard") e.putString("vdec", it) }
+        e.apply()
+        call.resolve()
+    }
+
     private val listener = object : Player.Listener {
         override fun onPlaybackStateChanged(state: Int) { notifyListeners("state", snapshot("state")); updateTicker() }
         override fun onIsPlayingChanged(isPlaying: Boolean) {

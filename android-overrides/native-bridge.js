@@ -729,6 +729,8 @@
   N.screenOn = function () {};     // native keeps the screen on while video plays (see NativePlayerPlugin)
   N.enterPip = function () { return Player.enterPip(); };
   N.getTracks = function () { return Player.getTracks(); };
+  N.audioInfo = function () { return Player.audioInfo(); };
+  N.audioOptions = { get: function () { return Player.getAudioOptions(); }, set: function (o) { return Player.setAudioOptions(o); } };
   N.selectTrack = function (o) { return Player.selectTrack(o); };
   N.stop = function () { return Player.stop(); };
 

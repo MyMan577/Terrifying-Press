@@ -293,6 +293,43 @@
           <button id="update-get-btn" type="button" hidden>Download update</button>
         </div>
       </div>
+      <div class="settings-section" id="audio-quality-section">
+        <div class="settings-section-label">Audio quality and decoding</div>
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Hi-res output</div>
+            <div class="settings-row-sub">Plays 24-bit and 32-bit files at full depth instead of 16-bit. For those files the equalizer, effects, volume boost, ReplayGain, speed and the visualizer are switched off. Other files are not affected.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="hires-toggle">
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="settings-row" style="margin-top:12px;">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Audio decoder</div>
+            <div class="settings-row-sub">Which decoder the phone tries first. Change it if a file crackles or will not play.</div>
+          </div>
+          <select id="adec-select">
+            <option value="auto">Auto</option>
+            <option value="soft">Software first</option>
+            <option value="hard">Hardware first</option>
+          </select>
+        </div>
+        <div class="settings-row" style="margin-top:12px;">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Video decoder</div>
+            <div class="settings-row-sub">For the native video player. Software is slower and uses more battery, but can fix a video that stutters or shows a broken picture.</div>
+          </div>
+          <select id="vdec-select">
+            <option value="auto">Auto</option>
+            <option value="soft">Software first</option>
+            <option value="hard">Hardware first</option>
+          </select>
+        </div>
+        <div id="audio-quality-note" hidden>Restart Press Play to apply the change.</div>
+        <div id="audio-quality-now">Play a track to see its format here.</div>
+      </div>
       <div class="settings-section" id="errlog-section">
         <div class="settings-section-label">Error log</div>
         <div class="settings-row">
