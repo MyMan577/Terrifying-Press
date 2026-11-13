@@ -36,15 +36,31 @@
       const f = ppTrackFolder(t);
       return [[f.toLowerCase(), f ? f.split('/').filter(Boolean).pop() : 'Other']];
     }
-    if (t.kind !== 'audio') return [];
-    if (mode === 'albums'){ const a = (t.album || '').trim(); return [[a.toLowerCase(), a || 'Unknown album']]; }
-    if (mode === 'artists'){ const a = (t.artist || '').trim(); return [[a.toLowerCase(), a || 'Unknown artist']]; }
+    const vid = t.kind === 'video';
+    if (mode === 'albums'){
+      const a = (t.album || '').trim();
+      if (a || !vid) return [[a.toLowerCase(), a || 'Unknown album']];
+      // A video with no album tag: the folder it sits in is its album (a season, a trip, a download folder).
+      const f = ppTrackFolder(t), n = f ? f.split('/').filter(Boolean).pop() : '';
+      return n ? [['\u0001f:' + f.toLowerCase(), n]] : [['\u0001v', 'Videos']];
+    }
+    if (mode === 'artists'){
+      const a = (t.artist || '').trim();
+      if (vid && (!a || a === 'Video' || a === 'Unknown artist')) return [['\u0001v', 'Videos']];
+      return [[a.toLowerCase(), a || 'Unknown artist']];
+    }
     const gs = String(t.genre || '').split(';').map(x => x.trim()).filter(Boolean);
-    return gs.length ? gs.map(g => [g.toLowerCase(), g]) : [['', 'Unknown genre']];
+    if (gs.length) return gs.map(g => [g.toLowerCase(), g]);
+    if (!vid) return [['', 'Unknown genre']];
+    // A video with no genre tag: what it looks like (a movie, a camera video, a screen recording...). Only a guess.
+    const k = ppGuessKind({ kind: 'video', folder: ppTrackFolder(t), name: t.fileName || '', durationSec: t.duration || 0 });
+    return [['\u0001k:' + k, { movie: 'Movies and shows', video: 'Videos', clip: 'Short clips', camera: 'Camera videos', screen: 'Screen recordings', social: 'Videos from chat and social apps' }[k] || 'Videos']];
   }
   function ppInGroup(t, mode, key){ return ppGroupsOf(t, mode).some(g => g[0] === key); }
   function ppAlbumOrder(a, b){
-    return ((a.disc || 1) - (b.disc || 1)) || ((a.trackNo || 9999) - (b.trackNo || 9999));
+    const d = ((a.disc || 1) - (b.disc || 1)) || ((a.trackNo || 9999) - (b.trackNo || 9999));
+    if (d || a.trackNo || b.trackNo || a.kind !== 'video' || b.kind !== 'video') return d;
+    return String(a.fileName || a.title || '').localeCompare(String(b.fileName || b.title || ''), undefined, { numeric: true, sensitivity: 'base' });   // episodes in order
   }
   function ppBuildGroups(indices, mode){
     const map = new Map();
@@ -52,10 +68,11 @@
       const t = tracks[i];
       ppGroupsOf(t, mode).forEach(([key, name]) => {
         let g = map.get(key);
-        if (!g){ g = { key, name, count: 0, art: null, artists: new Set(), albums: new Set(), path: '' }; map.set(key, g); }
+        if (!g){ g = { key, name, count: 0, videos: 0, art: null, artists: new Set(), albums: new Set(), path: '' }; map.set(key, g); }
         g.count++;
+        if (t.kind === 'video') g.videos++;
         if (!g.art && t.artUrl) g.art = t.artUrl;
-        if (t.artist) g.artists.add(t.artist);
+        if (t.artist && !(t.kind === 'video' && t.artist === 'Video')) g.artists.add(t.artist);
         if (t.album) g.albums.add(t.album.toLowerCase());
         if (mode === 'folders' && !g.path) g.path = ppTrackFolder(t);
       });
@@ -63,12 +80,14 @@
     const n = (c, w) => c + ' ' + w + (c === 1 ? '' : 's');
     const out = [...map.values()];
     out.forEach(g => {
-      g.sub = mode === 'albums' ? ((g.artists.size === 1 ? [...g.artists][0] : 'Various artists') + ' · ' + n(g.count, 'song'))
-        : mode === 'artists' ? (n(g.count, 'song') + (g.albums.size ? ' · ' + n(g.albums.size, 'album') : ''))
+      const what = n(g.count, g.videos === g.count ? 'video' : g.videos ? 'item' : 'song');
+      g.sub = mode === 'albums' ? ((g.artists.size === 1 ? [...g.artists][0] + ' · ' : g.artists.size ? 'Various artists · ' : '') + what)
+        : mode === 'artists' ? (what + (g.albums.size ? ' · ' + n(g.albums.size, 'album') : ''))
         : mode === 'folders' ? (n(g.count, 'file') + (g.path && g.path !== g.name ? ' · ' + g.path : ''))
-        : n(g.count, 'song');
+        : what;
     });
-    out.sort((a, b) => (!a.key - !b.key) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    const last = k => (!k || k === '\u0001v') ? 1 : 0;   // Unknown and the plain Videos group go to the end
+    out.sort((a, b) => (last(a.key) - last(b.key)) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
     return out;
   }
   function ppSyncBrowseRow(stemsView){
@@ -94,7 +113,7 @@
       const empty = document.createElement('div');
       empty.className = 'playlist-filter-empty';
       empty.textContent = trackSearchQuery ? 'No ' + words + 's match “' + trackSearchInput.value.trim() + '”.'
-        : mode === 'folders' ? 'Nothing here yet.' : 'No songs here yet.';
+        : 'Nothing here yet.';
       playlistEl.appendChild(empty);
       return;
     }
@@ -105,7 +124,7 @@
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'lib-group';
       b.innerHTML = '<span class="lib-group-art' + (mode === 'artists' ? ' round' : '') + '">' +
-        (g.art && mode !== 'folders' && mode !== 'genres' ? '<img src="' + g.art + '" alt="" loading="lazy">' : icon) + '</span>' +
+        (g.art && mode !== 'folders' && mode !== 'genres' ? '<img src="' + g.art + '" alt="" loading="lazy">' : (g.videos === g.count && mode !== 'folders' ? '🎬' : icon)) + '</span>' +
         '<span class="lib-group-text"><span class="lib-group-name" style="display:block">' + escapeHtml(g.name) +
         '</span><span class="lib-group-sub" style="display:block">' + escapeHtml(g.sub) + '</span></span>';
       b.addEventListener('click', () => ppOpenGroup(g.key, g.name));
@@ -140,7 +159,7 @@
     const mins = Math.round(secs / 60);
     head.innerHTML = '<button type="button" class="lib-back" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>' +
       '<div class="lib-group-text"><div class="lib-group-name">' + escapeHtml(b.name) + '</div><div class="lib-group-sub">' +
-      ctx.length + (b.mode === 'folders' ? ' file' : ' song') + (ctx.length === 1 ? '' : 's') +
+      ctx.length + (b.mode === 'folders' ? ' file' : ctx.every(i => tracks[i].kind === 'video') ? ' video' : ctx.some(i => tracks[i].kind === 'video') ? ' item' : ' song') + (ctx.length === 1 ? '' : 's') +
       (mins ? ' · ' + (mins >= 60 ? Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min' : mins + ' min') : '') + '</div></div>' +
       '<button type="button" class="lib-shuffle" aria-label="Shuffle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg></button>' +
       '<button type="button" class="lib-play">Play</button>';
