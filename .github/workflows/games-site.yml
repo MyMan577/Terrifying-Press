@@ -20,6 +20,7 @@ on:
 
 permissions:
   contents: read
+  actions: read      # (to see the uploaded artifact listed before deploying)
   pages: write
   id-token: write
 
@@ -51,5 +52,17 @@ jobs:
       - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
+      # The deploy step looks the artifact up straight after the upload; twice it was not visible yet
+      # ("No artifacts named github-pages were found") and the site did not publish. Wait until it shows up.
+      - name: Wait for the uploaded site to be listed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 12); do
+            n=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" --jq '[.artifacts[] | select(.name == "github-pages")] | length' || echo 0)
+            if [ "$n" -ge 1 ]; then echo "artifact listed"; exit 0; fi
+            echo "not listed yet ($i)"; sleep 5
+          done
+          echo "still not listed; trying the deploy anyway"
       - id: deployment
         uses: actions/deploy-pages@v4
