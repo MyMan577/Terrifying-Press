@@ -213,7 +213,6 @@
       // back arm
       arm(ctx, R, -1, A.aB, A.aBy, true);
       ctx.save(); ctx.rotate(A.roll || 0); ctx.scale(sx, sy);
-      ctx.shadowBlur = 10; ctx.shadowColor = 'rgba(125,255,90,0.35)';
       const g = ctx.createRadialGradient(-R * 0.3, -R * 0.35, R * 0.1, 0, 0, R); g.addColorStop(0, C_ST3); g.addColorStop(0.5, C_ST); g.addColorStop(1, C_ST2);
       ctx.fillStyle = g; ctx.beginPath();   // a slightly lumpy round stone
       for (let i = 0; i <= 18; i++) { const an = i / 18 * Math.PI * 2, rr = R * (1 + 0.04 * Math.sin(an * 3 + 1) + 0.03 * Math.sin(an * 5)); ctx.lineTo(Math.cos(an) * rr, Math.sin(an) * rr * 0.95); }
@@ -230,9 +229,10 @@
       ctx.fillStyle = C_MOSS; ctx.beginPath(); ctx.ellipse(R * 0.32, -R * 1.2, R * 0.1, R * 0.05, 0.5, 0, Math.PI * 2); ctx.fill();
       // runes: a glowing V and a line, pulsing
       const pulse = 0.55 + 0.45 * Math.sin(t * 2.2);
-      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.shadowBlur = 10; ctx.shadowColor = C_RUNE;
-      ctx.strokeStyle = `rgba(125,255,90,${0.4 + 0.5 * pulse})`; ctx.lineWidth = R * 0.07;
-      ctx.beginPath(); ctx.moveTo(-R * 0.15, R * 0.42); ctx.lineTo(0, R * 0.62); ctx.lineTo(R * 0.15, R * 0.42); ctx.moveTo(0, R * 0.62); ctx.lineTo(0, R * 0.78); ctx.stroke();
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const rune = () => { ctx.beginPath(); ctx.moveTo(-R * 0.15, R * 0.42); ctx.lineTo(0, R * 0.62); ctx.lineTo(R * 0.15, R * 0.42); ctx.moveTo(0, R * 0.62); ctx.lineTo(0, R * 0.78); ctx.stroke(); };
+      ctx.strokeStyle = `rgba(125,255,90,${0.15 + 0.2 * pulse})`; ctx.lineWidth = R * 0.2; rune();   // a wide faint stroke under it is the glow (no canvas blur)
+      ctx.strokeStyle = `rgba(125,255,90,${0.4 + 0.5 * pulse})`; ctx.lineWidth = R * 0.07; rune();
       ctx.beginPath(); ctx.arc(-R * 0.62, -R * 0.1, R * 0.08, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
       ctx.restore();   // (the face does not roll with the body unless he is tumbling fast)
@@ -243,7 +243,7 @@
         const blink = Math.sin(t * 0.9) > 0.95 ? 0.15 : 1;
         for (const dx of [-R * 0.2, R * 0.22]) {
           ctx.fillStyle = C_DARK; ctx.beginPath(); ctx.ellipse(ex2 + dx, ey2, R * 0.13, R * 0.12 * blink + 1, 0, 0, Math.PI * 2); ctx.fill();
-          ctx.save(); ctx.shadowBlur = 8; ctx.shadowColor = C_RUNE; ctx.fillStyle = S && S.stone ? '#c9d0d8' : C_RUNE; ctx.beginPath(); ctx.ellipse(ex2 + dx + R * 0.03, ey2, R * 0.08, R * 0.08 * blink + 0.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+          ctx.save(); ctx.fillStyle = 'rgba(125,255,90,0.3)'; ctx.beginPath(); ctx.ellipse(ex2 + dx + R * 0.03, ey2, R * 0.14, R * 0.14 * blink + 0.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = S && S.stone ? '#c9d0d8' : C_RUNE; ctx.beginPath(); ctx.ellipse(ex2 + dx + R * 0.03, ey2, R * 0.08, R * 0.08 * blink + 0.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
         }
         ctx.strokeStyle = C_DARK; ctx.lineWidth = R * 0.06; ctx.beginPath();
         if (S && S.seq) { ctx.moveTo(ex2 - R * 0.1, ey2 + R * 0.33); ctx.lineTo(ex2 + R * 0.2, ey2 + R * 0.3); } else { ctx.moveTo(ex2 - R * 0.12, ey2 + R * 0.3); ctx.quadraticCurveTo(ex2 + R * 0.05, ey2 + R * 0.38, ex2 + R * 0.22, ey2 + R * 0.28); }
