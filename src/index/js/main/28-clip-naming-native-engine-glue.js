@@ -476,12 +476,12 @@
     const ppPushCatalog = () => PPNative.pushCatalog(
       tracks.filter(t => t.nativeUri || t.remoteUrl).map(t => ({
         id: String(t.dbId), uri: t.nativeUri || t.remoteUrl, kind: t.kind, title: t.title || '', artist: t.artist || '',
-        album: t.album || '', durMs: t.duration > 0 ? Math.round(t.duration * 1000) : 0, art: t.nativeArt || '', pl: t.playlistIds || []
+        album: t.album || '', durMs: t.duration > 0 ? Math.round(t.duration * 1000) : 0, art: t.nativeArt || '', pl: t.playlistIds || [], track: t.trackNo || 0
       })),
       playlists.map(p => ({ id: p.id, name: p.name })));
     const ppCatalogCheck = () => {
       const sig = [tracks.length, playlists.length, playlists.map(p => p.name).join('|'),
-        tracks.reduce((a, t) => a + (t.title || '').length + (t.artist || '').length + ((t.nativeUri || t.remoteUrl) ? 1 : 0) + (t.playlistIds || []).length, 0)].join('#');
+        tracks.reduce((a, t) => a + (t.title || '').length + (t.artist || '').length + (t.album || '').length + (t.trackNo || 0) + ((t.nativeUri || t.remoteUrl) ? 1 : 0) + (t.playlistIds || []).length, 0)].join('#');
       if (sig === ppCatSig) return;
       ppCatSig = sig; clearTimeout(ppCatTimer); ppCatTimer = setTimeout(ppPushCatalog, 1500);
     };

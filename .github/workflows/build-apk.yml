@@ -129,12 +129,16 @@ jobs:
           # Capacitor's default MainActivity.java.
           rm -f "$PKG_DIR/MainActivity.java"
           cp android-overrides/*.kt "$PKG_DIR"/
-          test "$(ls "$PKG_DIR"/*.kt | wc -l)" -eq 11 || { echo "::error::Expected 11 Kotlin files"; ls "$PKG_DIR"; exit 1; }
+          test "$(ls "$PKG_DIR"/*.kt | wc -l)" -eq 12 || { echo "::error::Expected 12 Kotlin files"; ls "$PKG_DIR"; exit 1; }
 
           # Resources: shortcuts, Android Auto descriptor, strings
           mkdir -p $APPSRC/res/xml $APPSRC/res/values
           cp android-overrides/res/xml/*.xml $APPSRC/res/xml/
           cp android-overrides/res/values/pp_strings.xml $APPSRC/res/values/
+          # Home screen widget: its layout and icons
+          mkdir -p $APPSRC/res/layout $APPSRC/res/drawable
+          cp android-overrides/res/layout/*.xml $APPSRC/res/layout/
+          cp android-overrides/res/drawable/*.xml $APPSRC/res/drawable/
 
           # Gradle: Kotlin plugin, minSdk 26, Media3 1.4.1, opt in to Media3's @UnstableApi
           sed -i -E 's/minSdkVersion *= *[0-9]+/minSdkVersion = 26/' android/variables.gradle

@@ -141,6 +141,14 @@
             </intent-filter>
         </receiver>
 
+        <!-- Home screen widget: what is playing, with previous / play-pause / next -->
+        <receiver android:name=".NowPlayingWidget" android:exported="true" android:label="@string/widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/pp_widget_info" />
+        </receiver>
+
         <!-- Progress notification + keep-alive for long tasks (vocal split, MP3 conversion) -->
         <service
             android:name=".JobService"

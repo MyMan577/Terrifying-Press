@@ -60,6 +60,9 @@ class PlaybackService : MediaLibraryService() {
     private var uiPlayer: Player? = null
     private var mirrorPlayer: WebMirrorPlayer? = null
 
+    /** Main thread. The player the outside world currently sees: ExoPlayer, or the stand-in for a web video. */
+    fun sessionPlayer(): Player? = session?.player
+
     /** Main thread. Swaps the session's player for a stand-in that mirrors what the web engine is playing (a video),
      *  so the notification and its controls exist for it too. [send] carries notification presses back to the page. */
     fun mirror(send: (String, Long) -> Unit): WebMirrorPlayer {
@@ -67,6 +70,10 @@ class PlaybackService : MediaLibraryService() {
         val m = WebMirrorPlayer(Looper.getMainLooper(), send)
         mirrorPlayer = m
         session?.player = m
+        m.addListener(object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) { NowPlayingWidget.refresh(this@PlaybackService) }
+        })
+        NowPlayingWidget.refresh(this)
         return m
     }
 
@@ -75,6 +82,7 @@ class PlaybackService : MediaLibraryService() {
         if (mirrorPlayer == null) return
         mirrorPlayer = null
         uiPlayer?.let { session?.player = it }
+        NowPlayingWidget.refresh(this)
     }
 
     /** Set while the web UI is alive; notification Next/Previous are forwarded to its playlist logic. */
@@ -115,6 +123,10 @@ class PlaybackService : MediaLibraryService() {
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) { if (!isPlaying) saveResume() }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) { saveResume() }
+            // Keep the home screen widget in step with what is playing.
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { NowPlayingWidget.refresh(this@PlaybackService) }
+            override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) { NowPlayingWidget.refresh(this@PlaybackService) }
+            override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) { NowPlayingWidget.refresh(this@PlaybackService) }
         })
 
         val openApp = PendingIntent.getActivity(
@@ -136,6 +148,7 @@ class PlaybackService : MediaLibraryService() {
         val pending: List<(PlaybackService) -> Unit>
         synchronized(waiters) { pending = waiters.toList(); waiters.clear() }
         pending.forEach { it(this) }
+        NowPlayingWidget.refresh(this)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
@@ -149,6 +162,7 @@ class PlaybackService : MediaLibraryService() {
         clearMirror()   // so the session's player is ExoPlayer again when it is released below
         session?.run { player.release(); release() }
         session = null
+        NowPlayingWidget.refresh(this)   // back to "tap to open"
         super.onDestroy()
     }
 

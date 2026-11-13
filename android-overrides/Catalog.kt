@@ -19,13 +19,14 @@ import java.io.File
 object Catalog {
     class Item(
         val id: String, val uri: String, val kind: String, val title: String, val artist: String,
-        val album: String, val durMs: Long, val art: String, val playlistIds: List<String>
+        val album: String, val durMs: Long, val art: String, val playlistIds: List<String>, val track: Int = 0
     )
     class Playlist(val id: String, val name: String)
 
     const val ROOT = "pp:root"; const val SONGS = "pp:songs"; const val VIDEOS = "pp:videos"
     const val PLAYLISTS = "pp:playlists"; const val ARTISTS = "pp:artists"
-    private const val PL = "pp:pl:"; private const val AR = "pp:artist:"
+    const val ALBUMS = "pp:albums"
+    private const val PL = "pp:pl:"; private const val AR = "pp:artist:"; private const val AL = "pp:album:"
 
     @Volatile private var items: List<Item> = emptyList()
     @Volatile private var playlists: List<Playlist> = emptyList()
@@ -53,7 +54,7 @@ object Catalog {
             val pl = ArrayList<String>(); j.optJSONArray("pl")?.let { a -> for (x in 0 until a.length()) pl.add(a.optString(x)) }
             val uri = j.optString("uri", ""); if (uri.isEmpty()) continue
             list.add(Item(j.optString("id"), uri, j.optString("kind", "audio"), j.optString("title"), j.optString("artist"),
-                j.optString("album"), j.optLong("durMs", 0), j.optString("art"), pl))
+                j.optString("album"), j.optLong("durMs", 0), j.optString("art"), pl, j.optInt("track", 0)))
         }
         val pa = o.optJSONArray("playlists") ?: JSONArray()
         val pls = ArrayList<Playlist>()
@@ -81,6 +82,7 @@ object Catalog {
     fun children(parent: String): List<MediaItem> = when {
         parent == ROOT -> listOf(
             folder(SONGS, "Songs"), folder(PLAYLISTS, "Playlists", MediaMetadata.MEDIA_TYPE_FOLDER_PLAYLISTS),
+            folder(ALBUMS, "Albums", MediaMetadata.MEDIA_TYPE_FOLDER_ALBUMS),
             folder(ARTISTS, "Artists", MediaMetadata.MEDIA_TYPE_FOLDER_ARTISTS), folder(VIDEOS, "Videos")
         )
         parent == SONGS -> items.filter { it.kind == "audio" }.sortedBy { it.title.lowercase() }.map(::playable)
@@ -88,6 +90,10 @@ object Catalog {
         parent == PLAYLISTS -> playlists.map { folder(PL + it.id, it.name, MediaMetadata.MEDIA_TYPE_PLAYLIST) }
         parent == ARTISTS -> items.filter { it.kind == "audio" && it.artist.isNotBlank() }.map { it.artist }.distinct().sorted()
             .map { folder(AR + it, it, MediaMetadata.MEDIA_TYPE_ARTIST) }
+        parent == ALBUMS -> items.filter { it.kind == "audio" && it.album.isNotBlank() }.map { it.album }.distinct().sortedBy { it.lowercase() }
+            .map { folder(AL + it, it, MediaMetadata.MEDIA_TYPE_ALBUM) }
+        parent.startsWith(AL) -> items.filter { it.kind == "audio" && it.album == parent.removePrefix(AL) }
+            .sortedBy { if (it.track > 0) it.track else 9999 }.map(::playable)
         parent.startsWith(PL) -> items.filter { it.playlistIds.contains(parent.removePrefix(PL)) }.map(::playable)
         parent.startsWith(AR) -> items.filter { it.artist == parent.removePrefix(AR) }.map(::playable)
         else -> emptyList()

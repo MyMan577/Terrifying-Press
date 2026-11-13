@@ -142,6 +142,10 @@
     let t = txtTags.get(k); if (t == null) { const c = loadTags()[k]; t = c ? tagWords(c) : ''; txtTags.set(k, t); }
     return t + ' ' + (txtLyr.get(k) || '');
   };
+  // Used by the library's Genres view when a file carries no genre tag: the tagger's best genre, or ''.
+  window.__ppTagGenre = id => {
+    try { const c = loadTags()[String(id)], g = c && (c.gn || [])[0]; return g ? String(g[0]).split('---')[0].trim() : ''; } catch (e) { return ''; }
+  };
 
   // ---------- "More like this" ----------
   const camOk = (a, b) => {
