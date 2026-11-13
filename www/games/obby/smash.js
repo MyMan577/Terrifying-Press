@@ -1469,7 +1469,7 @@
   // own player state, held keys and strike-engine state, presses the same buttons you do, and its attacks
   // are the real ones. Its target is a stand-in for you; whatever the attack does to it becomes your
   // percent and launch. Knockback, ledges, dodges and respawns stay with this file, synced both ways.
-  var REAL_CPU = { brawler: 1, cb_slugger: 1, cb_protagonist: 1, cb_chameleon: 1, cb_pressplay: 1, cb_pp_mixtape: 1, cb_gale: 1, cb_kodiak: 1, cb_valka: 1, cb_boiler: 1, cb_sleight: 1, cb_fizz: 1, cb_maul: 1, cb_masque: 1, archmage: 1, phantomace: 1, formSwitcher: 1, conduit: 1 };
+  var REAL_CPU = { brawler: 1, cb_slugger: 1, cb_protagonist: 1, cb_chameleon: 1, cb_pressplay: 1, cb_pp_mixtape: 1, cb_gale: 1, cb_kodiak: 1, cb_valka: 1, cb_boiler: 1, cb_sleight: 1, cb_fizz: 1, cb_maul: 1, cb_masque: 1, cb_mario_ref: 1, cb_luigi_ref: 1, cb_peach_ref: 1, pl_grand_pebble: 1, archmage: 1, phantomace: 1, formSwitcher: 1, conduit: 1 };
   // what each real-moves fighter's kit is good for (all of it is pressed with the same buttons you use)
   //  sideRec / upRec: its side / up special moves it (usable to get back)   dash: dash-then-S attacks
   //  airThrow: S in the air throws something that travels (range in tiles)   groundOnly: specials only on the ground
@@ -1497,6 +1497,7 @@
     // the fighter-kit fighters (fkit.js): each one's own ai() in its plugin says what to press
     cb_kodiak: { fk: 1, upTapRec: 1 }, cb_valka: { fk: 1, upTapRec: 1 }, cb_boiler: { fk: 1, upTapRec: 1 }, cb_sleight: { fk: 1, upTapRec: 1 },
     cb_fizz: { fk: 1, upTapRec: 1 }, cb_maul: { fk: 1, upTapRec: 1 }, cb_masque: { fk: 1, upTapRec: 1 },
+    cb_mario_ref: { fk: 1, upTapRec: 1 }, cb_luigi_ref: { fk: 1, upTapRec: 1 }, cb_peach_ref: { fk: 1, upTapRec: 1 }, pl_grand_pebble: { fk: 1, upTapRec: 1 },
     // The base fighters: direction + S picks the move (range = how far its side / neutral move reaches), held S = specials
     archmage:     { gen: 8, upRec: 1 },                                   // up ice, down walls, side rocket, neutral fire
     // Phantom Ace: Phantom Flurry / Phantom Blitz / Ascending Star / Star Circle on the ground, Crescent Wheel / Phantom Pierce /
