@@ -20,6 +20,7 @@ on:
 
 permissions:
   contents: read
+  actions: read      # (to see the uploaded artifact listed before deploying)
   pages: write
   id-token: write
 
