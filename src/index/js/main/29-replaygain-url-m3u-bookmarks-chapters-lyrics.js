@@ -342,6 +342,27 @@ async function ppMp4Chapters(blob){
   }
 
   // ----- Lyrics (LRC) -----
+  const ppLrcSec = m => parseInt(m[1], 10) * 60 + parseInt(m[2], 10) + (m[3] ? parseInt(m[3].padEnd(3, '0').slice(0, 3), 10) / 1000 : 0);
+  // Word timings from an "enhanced" LRC line: [00:12.00]<00:12.00>Some <00:12.40>words <00:12.90>here <00:13.50>
+  // Returns { at: start of each word, end: when the last word ends (or null) }, or null if the line has none.
+  function ppLrcWords(body, t0, offset){
+    const wre = /<(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?>/g, marks = []; let clean = '', pos = 0, m;
+    while ((m = wre.exec(body))){ clean += body.slice(pos, m.index); marks.push({ p: clean.length, t: Math.max(0, ppLrcSec(m) - offset) }); pos = wre.lastIndex; }
+    clean += body.slice(pos);
+    const ws = [], re = /\S+/g; while ((m = re.exec(clean))) ws.push({ a: m.index, b: m.index + m[0].length });
+    if (!ws.length || !marks.length) return null;
+    const at = ws.map((w, i) => { const lo = i ? ws[i - 1].b : 0; let t = null; for (const k of marks) if (k.p >= lo && k.p <= w.a) t = k.t; return t; });   // tags inside a word (syllables) are skipped
+    if (at[0] == null) at[0] = Math.max(0, t0 - offset);
+    let end = null; for (const k of marks) if (k.p >= ws[ws.length - 1].b){ end = k.t; break; }
+    for (let i = 1; i < at.length; i++) if (at[i] == null){      // words without a tag of their own: spread them out between their neighbours
+      let j = i; while (j < at.length && at[j] == null) j++;
+      const b = j < at.length ? at[j] : end;
+      for (let k = i; k < j; k++) at[k] = b != null ? at[i - 1] + (b - at[i - 1]) * (k - i + 1) / (j - i + 1) : at[k - 1] + 0.35;
+      i = j;
+    }
+    for (let i = 1; i < at.length; i++) if (at[i] < at[i - 1]) at[i] = at[i - 1];
+    return { at, end: end != null && end > at[at.length - 1] ? end : null };
+  }
   function ppParseLrc(text){
     const lines = [], re = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g;
     let offset = 0;
@@ -349,10 +370,11 @@ async function ppMp4Chapters(blob){
       const om = raw.match(/^\s*\[offset:\s*([-+]?\d+)\s*\]/i);
       if (om){ offset = parseInt(om[1], 10) / 1000; return; }
       const stamps = []; let m, last = 0; re.lastIndex = 0;
-      while ((m = re.exec(raw))){ stamps.push(parseInt(m[1], 10) * 60 + parseInt(m[2], 10) + (m[3] ? parseInt(m[3].padEnd(3, '0').slice(0, 3), 10) / 1000 : 0)); last = re.lastIndex; }
+      while ((m = re.exec(raw))){ stamps.push(ppLrcSec(m)); last = re.lastIndex; }
       if (!stamps.length) return;
-      const line = raw.slice(last).replace(/<\d+:\d+(?:[.:]\d+)?>/g, '').trim();
-      stamps.forEach(s => lines.push({ t: Math.max(0, s - offset), text: line }));
+      const body = raw.slice(last), line = body.replace(/<\d+:\d+(?:[.:]\d+)?>/g, '').trim();
+      const w = stamps.length === 1 && /<\d+:\d+/.test(body) ? ppLrcWords(body, stamps[0], offset) : null;   // word tags are absolute times, so only for a line sung once
+      stamps.forEach(s => lines.push({ t: Math.max(0, s - offset), text: line, w }));
     });
     return lines.sort((a, b) => a.t - b.t);
   }
@@ -377,7 +399,7 @@ async function ppMp4Chapters(blob){
     if (H && H.line){
       const s = i >= 0 ? ppLrc[i].t : -1, e = i >= 0 ? (i + 1 < ppLrc.length ? ppLrc[i + 1].t : s + 5) : -1;
       if (H.pace && ppLrcPaceFor !== ppLrc){ ppLrcPaceFor = ppLrc; ppLrcPace = H.pace(ppLrc.map((l, j) => ({ s: l.t, e: j + 1 < ppLrc.length ? ppLrc[j + 1].t : l.t + 5, text: l.text }))); }
-      H.line(ov.querySelector('.ly-cur'), text, s, e, ppLrcPace); H.line(ov.querySelector('.ly-next'), n, -1, -1);
+      H.line(ov.querySelector('.ly-cur'), text, s, e, ppLrcPace, i >= 0 ? ppLrc[i].w : null); H.line(ov.querySelector('.ly-next'), n, -1, -1);
       return;
     }
     ov.querySelector('.ly-cur').textContent = text;
