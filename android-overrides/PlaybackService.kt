@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.C
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -18,6 +19,8 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.session.LibraryResult
@@ -51,6 +54,12 @@ class PlaybackService : MediaLibraryService() {
     }
 
     lateinit var player: ExoPlayer
+        private set
+    /** Audio quality and decoding choices this player was built with (Settings; read once, when the service starts). */
+    var hiRes = false
+        private set
+    /** Name of the audio decoder in use, for the "now playing" readout. */
+    @Volatile var audioDecoder: String = ""
         private set
     lateinit var fx: FxAudioProcessor
     /** Knows which part of the audio is audible right now (for the visualizer). Null until the player builds its output. */
@@ -94,16 +103,37 @@ class PlaybackService : MediaLibraryService() {
         Catalog.ensureLoaded(this)
         fx = FxAudioProcessor()
 
+        // Settings > Audio quality and decoding. Applied when the service starts, so a change needs an app restart.
+        val opts = getSharedPreferences("pp_audio", MODE_PRIVATE)
+        hiRes = opts.getBoolean("hiRes", false)
+        val audioDec = opts.getString("adec", "auto") ?: "auto"
+        val videoDec = opts.getString("vdec", "auto") ?: "auto"
+        val floatOut = hiRes
+
         val renderers = object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
                 context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean
             ): AudioSink = VizClockSink(DefaultAudioSink.Builder(context)
-                .setEnableFloatOutput(false) // keep 16-bit so the FX chain stays active
+                // Off: everything is played as 16-bit so the FX chain (EQ, effects, boost, visualizer) stays active.
+                // Hi-res on: 24-bit and 32-bit sources go out as 32-bit float, and Media3 skips the FX chain for them.
+                .setEnableFloatOutput(floatOut)
                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                 .setAudioProcessors(arrayOf(fx))
                 .build(), fx).also { vizClock = it }
         }
         renderers.setEnableDecoderFallback(true)
+        // Which decoder is tried first. The others stay in the list, so a file still plays if the first one cannot take it.
+        if (audioDec != "auto" || videoDec != "auto") {
+            renderers.setMediaCodecSelector(MediaCodecSelector { mime, secure, tunneling ->
+                val list = MediaCodecSelector.DEFAULT.getDecoderInfos(mime, secure, tunneling)
+                val pref = if (MimeTypes.isVideo(mime)) videoDec else if (MimeTypes.isAudio(mime)) audioDec else "auto"
+                when (pref) {
+                    "soft" -> list.sortedBy { if (it.softwareOnly) 0 else 1 }
+                    "hard" -> list.sortedBy { if (it.hardwareAccelerated) 0 else 1 }
+                    else -> list
+                }
+            })
+        }
         renderers.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
 
         // MP3/AAC/AMR files without a seek table: fall back to constant-bitrate seeking so they still get
@@ -118,6 +148,11 @@ class PlaybackService : MediaLibraryService() {
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .build()
+        player.addAnalyticsListener(object : AnalyticsListener {
+            override fun onAudioDecoderInitialized(
+                eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long
+            ) { audioDecoder = decoderName }
+        })
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
         player.addListener(object : Player.Listener {

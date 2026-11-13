@@ -25,7 +25,7 @@
     if(id==='ppxp-badge-slot')return null;
     var ft=((sec.querySelector('.settings-row-title')||{}).textContent||'').trim();
     if(id==='decoding-section'||id==='gestures-section'||sec.querySelector('#pp-ass-toggle'))return 'adv';
-    if(id==='playback-position-section'||sec.querySelector('#xf-mode'))return 'play';
+    if(id==='playback-position-section'||id==='audio-quality-section'||sec.querySelector('#xf-mode'))return 'play';
     if(id==='extras-settings-section'||id==='playlists-manager-section'||sec.querySelector('#detailed-mode-toggle')||/^Keep MP3 conversions/.test(ft))return 'lib';
     if(id==='auto-scan-section')return 'lib';
     if(id==='storage-section'||id==='progress-section'||id==='update-section'||id==='errlog-section')return 'data';

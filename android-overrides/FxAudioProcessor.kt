@@ -425,7 +425,13 @@ class VizClockSink(sink: AudioSink, private val fx: FxAudioProcessor) : Forwardi
         super.configure(inputFormat, specifiedBufferSize, outputChannels)
         val f = "${inputFormat.sampleMimeType}/${inputFormat.sampleRate}/${inputFormat.channelCount}/${inputFormat.pcmEncoding}"
         if (f != format) { format = f; restart = true }      // a different format gets a new output, counting from zero
+        pcmEncoding = inputFormat.pcmEncoding; pcmRate = inputFormat.sampleRate
     }
+    /** What the decoder hands to the output right now (C.ENCODING_PCM_*, sample rate), for the "now playing" readout. */
+    @Volatile var pcmEncoding: Int = Format.NO_VALUE
+        private set
+    @Volatile var pcmRate: Int = 0
+        private set
 
     override fun handleBuffer(buffer: ByteBuffer, presentationTimeUs: Long, encodedAccessUnitCount: Int): Boolean {
         if (fresh) {
