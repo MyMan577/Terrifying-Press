@@ -270,7 +270,7 @@
             '#ppv-st #ppv-asub,#ppv-st #lyrics-overlay{position:static;max-width:100%;flex:0 0 auto;transform:scale(var(--st-beat,1));transition:transform .09s linear}' +
             '#ppv-st .st-l{display:inline-block;max-width:100%;min-height:0;overflow-wrap:anywhere;white-space:normal;line-height:1.3;border-radius:6px;padding:.15em .5em;font-weight:var(--st-weight);text-transform:var(--st-caps);text-shadow:var(--st-ts);background:rgba(0,0,0,var(--st-bg));color:var(--st-color);font-size:calc(16px*var(--st-size)*var(--st-k))}' +
             '#ppv-st .ly-next.st-l{display:block;font-size:calc(12.5px*var(--st-size)*var(--st-k));opacity:.6;margin-top:2px;font-weight:400;background:none}#ppv-st.nonext .ly-next,#ppv-st.tight .ly-next{display:none}' +
-            '.st-w{display:inline-block;transition:opacity .18s,transform .18s,text-shadow .18s}.st-hl .st-w{opacity:.42}.st-hl .st-w.on{opacity:1}.st-hl .st-w.now{transform:scale(1.1);text-shadow:0 0 .45em var(--st-color),var(--st-ts)}' +
+            '.st-w{display:inline-block;transition:opacity .18s,transform .18s,text-shadow .18s}.st-hl .st-w{opacity:.42}.st-hl .st-w.on{opacity:1}.st-hl .st-w.now{transform:scale(1.1);position:relative;color:color-mix(in srgb,var(--st-color) 42%,transparent);text-shadow:none}.st-hl .st-w.now::after{content:attr(data-w);position:absolute;left:0;top:0;white-space:nowrap;color:var(--st-color);text-shadow:0 0 .45em var(--st-color),var(--st-ts);clip-path:inset(-1em calc(100% - var(--p,0) * (100% + 1em)) -1em -1em)}' +
             '@keyframes st-hue{to{filter:hue-rotate(360deg)}}@keyframes st-fade{from{opacity:0}}@keyframes st-pop{from{opacity:0;transform:scale(.6)}60%{transform:scale(1.07)}}@keyframes st-slide{from{opacity:0;transform:translateY(.8em)}}@keyframes st-blur{from{opacity:0;filter:blur(8px)}}@keyframes st-word{from{opacity:0;transform:translateY(.5em)}}@keyframes st-wave{0%{opacity:0}35%{opacity:1;transform:translateY(-.4em)}70%{transform:translateY(.08em)}}@keyframes st-flip{from{opacity:0;transform:rotateX(90deg)}}' +
             '#ppv-st.fx-fade .st-in{animation:st-fade .28s ease-out}#ppv-st.fx-pop .st-in{animation:st-pop .32s cubic-bezier(.2,1.3,.4,1)}#ppv-st.fx-slide .st-in{animation:st-slide .28s ease-out}#ppv-st.fx-blur .st-in{animation:st-blur .36s ease-out}#ppv-st.fx-flip .st-in{animation:st-flip .34s ease-out}' +
             '#ppv-st.fx-words .st-in .st-w{animation:st-word .3s ease-out backwards;animation-delay:calc(var(--i)*55ms)}#ppv-st.fx-wave .st-in .st-w{animation:st-wave .45s ease-out backwards;animation-delay:calc(var(--i)*45ms)}' +
@@ -314,7 +314,6 @@
             stDirty = true;
           };
           const stClean = t => !ST.sdh ? t : String(t).split('\n').map(l => l.replace(/\[[^\]]*\]|\([^)]*\)|[♪♫]+/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
-          // Puts a line into an element one word at a time, so words can come in and light up on their own.
           // How fast this song is sung, in seconds per letter, worked out from its own lines. A line's time slot is never shorter than
           // the singing in it, so the tighter slots show the real speed. 0 = too few lines to tell.
           const stUnits = text => String(text || '').split(/\s+/).filter(Boolean).reduce((n, w) => n + w.length + 1.5, 0);
@@ -325,28 +324,52 @@
             rs.sort((a, b) => a - b);
             return Math.max(0.025, Math.min(0.12, rs[Math.floor(rs.length * 0.4)] * 1.1));
           }
-          const stFill = (el, text, s, e, pace) => {
+          // Puts a line into an element one word at a time, so words can come in and light up on their own.
+          // wt = real word timings from the lyrics file ({ at: [start of each word], end }), when it has them.
+          const stFill = (el, text, s, e, pace, wt) => {
             el.__stRaw = text || ''; text = stClean(text || '');
             if (el.__stT === text && el.__stS === s) return;
-            el.__stT = text; el.__stS = s; el.__stE = e; el.__stP = pace; el.textContent = ''; el.classList.add('st-l');
+            el.__stT = text; el.__stS = s; el.__stE = e; el.__stP = pace; el.__stWt = wt || null; el.textContent = ''; el.classList.add('st-l');
             const ws = []; let i = 0;
             text.split('\n').forEach((line, li) => {
               if (li) el.appendChild(document.createElement('br'));
-              line.split(/\s+/).filter(Boolean).forEach((w, wi) => { if (wi) el.appendChild(document.createTextNode(' ')); const x = document.createElement('span'); x.className = 'st-w'; x.style.setProperty('--i', i++); x.textContent = w; el.appendChild(x); ws.push(x); });
+              line.split(/\s+/).filter(Boolean).forEach((w, wi) => { if (wi) el.appendChild(document.createTextNode(' ')); const x = document.createElement('span'); x.className = 'st-w'; x.style.setProperty('--i', i++); x.textContent = w; x.dataset.w = w; el.appendChild(x); ws.push(x); });
             });
-            // No word timings exist, so each word gets a share of the line by its length, at the song's own pace. Long gaps after a line are not sung.
             let tot = 0; const len = ws.map(x => { const n = x.textContent.length + 1.5; tot += n; return n; });
-            const dur = Math.max(0.3, Math.min(e > s ? e - s : 3, pace > 0 ? 0.15 + tot * pace : 0.5 + ws.length * 0.42 + tot * 0.03)); let acc = 0;
-            el.__stW = ws; el.__stAt = len.map(n => { const a = s + dur * acc / tot; acc += n; return a; });
+            el.__stW = ws;
+            if (wt && wt.at && wt.at.length === ws.length && ws.length) {   // the file says when each word starts
+              const L = wt.at[ws.length - 1];
+              el.__stAt = wt.at.slice(); el.__stWE = wt.end > L ? wt.end : Math.min(e > L ? e : L + 1, L + 0.25 + len[ws.length - 1] * (pace || 0.07));
+            } else {
+              // No word timings, so each word gets a share of the line by its length, at the song's own pace. Long gaps after a line are not sung.
+              const dur = Math.max(0.3, Math.min(e > s ? e - s : 3, pace > 0 ? 0.15 + tot * pace : 0.5 + ws.length * 0.42 + tot * 0.03)); let acc = 0;
+              el.__stAt = len.map(n => { const a = s + dur * acc / tot; acc += n; return a; }); el.__stWE = s + dur;
+            }
             el.classList.remove('st-in'); void el.offsetWidth; if (text) el.classList.add('st-in');
             stDirty = true;
           };
           const stMark = (el, now) => {
             const ws = el && el.__stW, at = el && el.__stAt; if (!ws) return;
-            el.classList.toggle('st-hl', !!ST.hl && el.__stS >= 0); if (!ST.hl) return;
+            const hl = !!ST.hl && el.__stS >= 0; el.classList.toggle('st-hl', hl); if (!hl) return;
             now += 0.09;                                             // a word takes a moment to light up, so start it slightly early
-
-            for (let i = 0; i < ws.length; i++) { const a = now >= at[i]; ws[i].classList.toggle('on', a); ws[i].classList.toggle('now', a && now < (i + 1 < ws.length ? at[i + 1] : el.__stE)); }
+            for (let i = 0; i < ws.length; i++) {
+              const w = ws[i], nx = i + 1 < ws.length ? at[i + 1] : el.__stE, a = now >= at[i], c = a && now < nx, st = c ? 2 : a ? 1 : 0;
+              if (w.__s !== st) { w.__s = st; w.classList.toggle('on', a); w.classList.toggle('now', c); }
+              if (c) {                                               // the word being sung fills in from left to right
+                const we = Math.min(nx, i + 1 < ws.length ? nx : el.__stWE), v = (we > at[i] ? Math.min(1, (now - at[i]) / (we - at[i])) : 1).toFixed(3);
+                if (w.__p !== v) { w.__p = v; w.style.setProperty('--p', v); }
+              }
+            }
+          };
+          // While a song plays with the highlight on, the words are redrawn every frame so the fill moves smoothly.
+          let stRaf = 0;
+          const stFrame = () => {
+            stRaf = 0; if (!ST.hl || aud.paused) return;
+            const now = aud.currentTime - stSync, lc = lyEl && lyEl.classList.contains('show') ? lyEl.querySelector('.ly-cur') : null;
+            if (!shown && !lc) return;
+            if (shown) stMark(sp, now - off);
+            if (lc) stMark(lc, now);
+            stRaf = requestAnimationFrame(stFrame);
           };
           // The lyric lines in the main page are drawn through here too, so both kinds of text look and behave the same.
           window.__ppSongText = { line: stFill, pace: stPace };
@@ -386,6 +409,7 @@
             if (lyOn) stMark(lyEl.querySelector('.ly-cur'), now);
             if (ST.beat) { let lv = -1; try { lv = aud.paused ? 0 : window.__ppBassLevel(); } catch (e) {} wrap.style.setProperty('--st-beat', (1 + Math.min(0.14, Math.max(0, lv - 0.02) * 0.7)).toFixed(3)); }
             if (txt || lyOn) stLayout();
+            if (ST.hl && !aud.paused && !stRaf && (txt || lyOn)) stRaf = requestAnimationFrame(stFrame);
           };
           setInterval(tick, 60);
           window.addEventListener('resize', () => { stKey = ''; });
@@ -411,7 +435,7 @@
           };
           function stSyncUi() { const v = ui.querySelector('#st-sync-v'); if (v) v.textContent = (stSync > 0 ? '+' : '') + stSync.toFixed(1) + 's' + (stSync > 0 ? ' later' : stSync < 0 ? ' earlier' : ''); }
           // Any change replays the line, so the effect that was just picked is seen straight away.
-          const stChanged = () => { ls('ppvSongText', JSON.stringify(ST)); stApply(); stPaint(); shown = null; sp.__stT = null; const lc = lyEl && lyEl.querySelector('.ly-cur'); if (lc && lc.__stT) { const tx = lc.__stRaw != null ? lc.__stRaw : lc.__stT; lc.__stT = null; stFill(lc, tx, lc.__stS, lc.__stE, lc.__stP); } tick(); };
+          const stChanged = () => { ls('ppvSongText', JSON.stringify(ST)); stApply(); stPaint(); shown = null; sp.__stT = null; const lc = lyEl && lyEl.querySelector('.ly-cur'); if (lc && lc.__stT) { const tx = lc.__stRaw != null ? lc.__stRaw : lc.__stT; lc.__stT = null; stFill(lc, tx, lc.__stS, lc.__stE, lc.__stP, lc.__stWt); } tick(); };
           ui.addEventListener('click', e => {
             const b = e.target.closest('button'); if (!b) return;
             const r = b.parentElement;
