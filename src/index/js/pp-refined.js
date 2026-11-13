@@ -200,9 +200,16 @@
     if (kind === 'row') return inset({ top: r.top, bottom: r.bottom, left: 0, right: innerWidth }, 0);
     return inset(r, 14);
   }
+  // With the native video player the picture is drawn by Android under a see-through page, so this clip can't shape it,
+  // and while the clip grows the page under the player (the Library) shows through and covers the video. Videos there
+  // rise like they do from the mini-player instead.
+  function nativeVideoShown(){
+    try { return body.classList.contains('pl-video') && !!(window.PPNative && PPNative.enabled && PPNative.nativeVideoSetting && PPNative.nativeVideoSetting()); } catch(e){ return false; }
+  }
   function morphPlayer(opening){
     if (!mainEl || !mainEl.animate || !motionOk()) return;
     if (mAnim){ mAnim.cancel(); mAnim = null; }
+    if (nativeVideoShown()){ cameFrom = null; return; }
     var kind = null, r = null, f;
     if (opening){
       f = fresh(); cameFrom = null;
