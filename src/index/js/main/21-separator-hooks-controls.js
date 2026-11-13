@@ -374,11 +374,17 @@
   // song ends. With the screen off Android pauses the page, and a finished player also lets go of its
   // foreground service, so the restart never arrived and the song just stopped. Same idea as bgEl.loop for videos.
   // A single song on repeat-all is the same case. Sleep timer 'track' mode needs the real 'ended' event.
+  // With the native video player on, a video is in the same spot: in the background the page sleeps and the restart
+  // never came, so a video on repeat just paused at its end. ExoPlayer loops it instead. (The web <video> keeps the
+  // old path: in the background bgEl takes over and loops itself, and audio lead needs the real 'ended'.)
   function syncAudioLoop(){
     const t = currentIndex !== -1 ? tracks[currentIndex] : null;
-    const want = !!t && t.kind !== 'video' && sleepTimer.mode !== 'track' &&
-      (repeatMode === 2 || (repeatMode === 1 && tracks.length === 1));
+    const rep = !!t && sleepTimer.mode !== 'track' && (repeatMode === 2 || (repeatMode === 1 && tracks.length === 1));
+    const want = rep && t.kind !== 'video';
     if (audioEl.loop !== want) audioEl.loop = want;
+    let nv = false; try { nv = !!(window.PPNative && PPNative.enabled && PPNative.nativeVideoSetting && PPNative.nativeVideoSetting()); } catch(e){}
+    const wantV = rep && t.kind === 'video' && nv;
+    if (videoEl.loop !== wantV) videoEl.loop = wantV;
   }
   function onEnded(e){
     if (e.target !== media()) return;
