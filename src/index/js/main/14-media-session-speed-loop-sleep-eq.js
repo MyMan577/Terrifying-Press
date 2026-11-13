@@ -98,6 +98,7 @@
   speedResetBtn.addEventListener('click', () => {
     playbackSpeed = 1;
     applySpeed();
+    setPitchSemis(0, true);
     saveSettings();
     refreshSpeedPresetUI();
   });
@@ -117,6 +118,26 @@
     try { localStorage.setItem('ppPitchFollow', pitchFollowsSpeed ? '1' : '0'); } catch(e){}
     applyPitchMode();
   }
+  // Pitch slider: shifts the pitch by semitones without changing the speed (on top of "Pitch follows speed").
+  // The native player does the shifting; the app's audio element passes it on through ppPitch.
+  let pitchSemis = 0;
+  try { pitchSemis = parseFloat(localStorage.getItem('ppPitchSemis')) || 0; } catch(e){}
+  const pitchSlider = document.getElementById('pitch-slider'), pitchValue = document.getElementById('pitch-dropdown-value');
+  function applyPitchShift(){
+    pitchSemis = Math.max(-12, Math.min(12, Math.round(pitchSemis * 2) / 2));
+    const f = Math.pow(2, pitchSemis / 12);
+    [audioEl, videoEl, bgPlainEl, bgFxEl].forEach(el => { try { if (el && el.ppPitch !== f) el.ppPitch = f; } catch(e){} });
+    pitchSlider.value = pitchSemis;
+    pitchValue.textContent = pitchSemis ? (pitchSemis > 0 ? '+' : '-') + Math.abs(pitchSemis) + ' st' : '0';
+    pitchSlider.style.setProperty('--pitch-pct', ((pitchSemis + 12) / 24 * 100) + '%');
+  }
+  function setPitchSemis(v, save){
+    pitchSemis = +v || 0; applyPitchShift();
+    if (save){ try { localStorage.setItem('ppPitchSemis', String(pitchSemis)); } catch(e){} }
+  }
+  pitchSlider.addEventListener('input', () => setPitchSemis(pitchSlider.value, false));
+  pitchSlider.addEventListener('change', () => { setPitchSemis(pitchSlider.value, true); refreshSpeedPresetUI(); });
+  pitchSlider.addEventListener('dblclick', () => { setPitchSemis(0, true); refreshSpeedPresetUI(); });
   // One-tap sounds. Each sets speed, pitch mode and reverb together. The reverb you had before a preset is kept
   // and put back by the next preset that does not use reverb.
   const SPEED_PRESETS = {
@@ -127,7 +148,7 @@
   function activeSpeedPreset(){
     for (const k in SPEED_PRESETS){
       const p = SPEED_PRESETS[k];
-      if (Math.abs(playbackSpeed - p.speed) < 0.005 && pitchFollowsSpeed === p.follow && (p.reverb == null || Math.abs(reverbMix - p.reverb) < 0.03)) return k;
+      if (Math.abs(playbackSpeed - p.speed) < 0.005 && pitchFollowsSpeed === p.follow && !pitchSemis && (p.reverb == null || Math.abs(reverbMix - p.reverb) < 0.03)) return k;
     }
     return '';
   }
@@ -149,6 +170,7 @@
     refreshFxUI();
     applyFxAll();
     setPitchFollows(p.follow);
+    setPitchSemis(0, true);
     playbackSpeed = p.speed;
     applySpeed();
     saveSettings();
@@ -167,12 +189,13 @@
     songSoundBase = b;
     try { if (b) localStorage.setItem('ppSongSoundBase', JSON.stringify(b)); else localStorage.removeItem('ppSongSoundBase'); } catch(e){}
   }
-  function songSoundNow(){ return { s: playbackSpeed, f: pitchFollowsSpeed, r: Math.round(reverbMix * 100) / 100 }; }
+  function songSoundNow(){ return { s: playbackSpeed, f: pitchFollowsSpeed, r: Math.round(reverbMix * 100) / 100, p: pitchSemis }; }
   function songSoundApply(o){
     if (!o) return;
     if (typeof o.s === 'number' && o.s >= SPEED_MIN && o.s <= SPEED_MAX) playbackSpeed = o.s;
     if (typeof o.r === 'number' && o.r >= 0 && o.r <= 1 && Math.abs(o.r - reverbMix) > 0.001){ reverbMix = o.r; try { refreshFxUI(); applyFxAll(); } catch(e){} }
     if (!!o.f !== pitchFollowsSpeed) setPitchFollows(!!o.f);
+    const p = typeof o.p === 'number' ? o.p : 0; if (p !== pitchSemis) setPitchSemis(p, true);
   }
   function songSoundCapture(t){ if (t && songSound[t.dbId]){ songSound[t.dbId] = songSoundNow(); songSoundSave(); } }
   // Called by loadTrack just before the speed is applied.
@@ -211,11 +234,13 @@
   const songSoundTouched = () => { if (currentIndex !== -1) songSoundCapture(tracks[currentIndex]); };
   speedSlider.addEventListener('change', songSoundTouched);
   speedResetBtn.addEventListener('click', songSoundTouched);
+  pitchSlider.addEventListener('change', songSoundTouched);
   speedPresetSeg.addEventListener('click', () => setTimeout(songSoundTouched, 0));
   speedPitchToggle.addEventListener('change', () => { setPitchFollows(speedPitchToggle.checked); refreshSpeedPresetUI(); songSoundTouched(); });
   speedPresetSeg.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) applySpeedPreset(b.dataset.v); });
   speedSlider.addEventListener('change', refreshSpeedPresetUI);
   applyPitchMode();
+  applyPitchShift();
   setTimeout(refreshSpeedPresetUI, 1500);   // after saved settings (speed, reverb) have been restored
 
   // ---------- A/B loop ----------

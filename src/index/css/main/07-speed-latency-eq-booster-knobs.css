@@ -20,13 +20,20 @@
     font-size:11px; color:var(--text-dim);
     margin-bottom:8px;
   }
-  #speed-dropdown-value{
+  #speed-dropdown-value, #pitch-dropdown-value{
     color:var(--accent); font-weight:600; font-variant-numeric: tabular-nums;
   }
   #speed-slider{
     width:100%;
     background: linear-gradient(to right, var(--accent) var(--speed-pct,20%), var(--line) var(--speed-pct,20%));
   }
+  #pitch-slider{
+    width:100%;
+    background: linear-gradient(to right, var(--line) min(50%, var(--pitch-pct,50%)), var(--accent) min(50%, var(--pitch-pct,50%)), var(--accent) max(50%, var(--pitch-pct,50%)), var(--line) max(50%, var(--pitch-pct,50%)));
+  }
+  /* The one-tap sounds wrap onto a second row instead of running out of the narrow menu. */
+  #speed-preset-seg{ flex-wrap:wrap; }
+  #speed-preset-seg button{ flex:1 1 auto; }
   .speed-range-labels{
     display:flex; justify-content:space-between;
     font-size:10px; color:var(--text-dim);

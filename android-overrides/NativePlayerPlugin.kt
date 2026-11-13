@@ -367,7 +367,9 @@ class NativePlayerPlugin : Plugin() {
     @PluginMethod fun setRate(call: PluginCall) {
         val rate = (call.getFloat("rate") ?: 1f).coerceIn(0.25f, 4f)
         val keepPitch = call.getBoolean("preservePitch", true) ?: true
-        withSvc(call) { it.player.playbackParameters = PlaybackParameters(rate, if (keepPitch) 1f else rate); call.resolve() }
+        val shift = (call.getFloat("pitch") ?: 1f).coerceIn(0.25f, 4f)        // the pitch slider, on top of the speed
+        val pitch = ((if (keepPitch) 1f else rate) * shift).coerceIn(0.1f, 8f)
+        withSvc(call) { it.player.playbackParameters = PlaybackParameters(rate, pitch); call.resolve() }
     }
     @PluginMethod fun setVolume(call: PluginCall) {
         val v = (call.getFloat("volume") ?: 1f).coerceIn(0f, 1f)
