@@ -284,11 +284,12 @@
           panel.innerHTML = '<div class="ppv-row"><b style="flex:1;align-self:center">Captions &amp; lyrics</b><button class="ppv-sec" id="ppv-apx" style="width:auto;padding:4px 12px" data-keep="1">Close</button></div><div class="ppv-note" id="ppv-ast">No subtitles</div><button id="ppv-aton" class="ppv-sec">Turn on</button><button id="ppv-ald" class="ppv-sec">Load subtitle file (.srt/.vtt/.lrc)</button><button id="ppv-arm" class="ppv-sec">Remove from this track</button><input type="file" id="ppv-af" accept=".srt,.vtt,.lrc,.txt" style="display:none"><div id="ppv-stui"></div><hr style="border:0;border-top:1px solid var(--line,#444);margin:10px 0">';
           viz.append(btn, box); document.body.appendChild(panel);
           audPanel = panel;
-          let cues = [], off = 0, lastId = null, shown = '';
+          let cues = [], off = 0, lastId = null, shown = '', cuePace = 0;
           const isOn = () => ls('ppvAudSub') === '1';
           const loadCues = () => {
             cues = []; off = 0; const t = cur(); lastId = t ? t.dbId : null; if (!t || t.kind === 'video') return;
             try { const o = JSON.parse(localStorage.getItem('playerSubtitles') || '{}')[t.dbId]; const c = o && (Array.isArray(o) ? o.map(x => [x.start, x.end, x.text]) : o.c); if (c) { cues = c.map(x => ({ s: +x[0], e: +x[1], text: String(x[2]) })).sort((a, b) => a.s - b.s); off = (!Array.isArray(o) && isFinite(+o.o)) ? +o.o : 0; } } catch (e) {}
+            cuePace = stPace(cues);
           };
           const status = () => { $('#ppv-ast').textContent = cues.length ? cues.length + ' lines' + (cues.length ? '' : '') : 'No subtitles for this track yet. Generate them with Whisper below, or load a file.'; $('#ppv-aton').textContent = isOn() ? 'Turn off' : 'Turn on'; $('#ppv-aton').disabled = !cues.length; $('#ppv-arm').disabled = !cues.length; btn.classList.toggle('on', isOn() && cues.length > 0); };
           const ST_DEF = { size: 100, pos: 'below', color: '#ffffff', font: 'default', look: 'outline', bg: 0, bold: 1, caps: 0, fx: 'fade', hl: 0, beat: 0, next: 1, sdh: 0 };
@@ -314,18 +315,28 @@
           };
           const stClean = t => !ST.sdh ? t : String(t).split('\n').map(l => l.replace(/\[[^\]]*\]|\([^)]*\)|[♪♫]+/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
           // Puts a line into an element one word at a time, so words can come in and light up on their own.
-          const stFill = (el, text, s, e) => {
+          // How fast this song is sung, in seconds per letter, worked out from its own lines. A line's time slot is never shorter than
+          // the singing in it, so the tighter slots show the real speed. 0 = too few lines to tell.
+          const stUnits = text => String(text || '').split(/\s+/).filter(Boolean).reduce((n, w) => n + w.length + 1.5, 0);
+          function stPace(lines) {
+            const rs = [];
+            for (const l of lines || []) { const d = l.e - l.s, t = stClean(l.text); if (d > 0.4 && d < 15 && t.split(/\s+/).filter(Boolean).length >= 3) rs.push(d / stUnits(t)); }
+            if (rs.length < 4) return 0;
+            rs.sort((a, b) => a - b);
+            return Math.max(0.025, Math.min(0.12, rs[Math.floor(rs.length * 0.4)] * 1.1));
+          }
+          const stFill = (el, text, s, e, pace) => {
             el.__stRaw = text || ''; text = stClean(text || '');
             if (el.__stT === text && el.__stS === s) return;
-            el.__stT = text; el.__stS = s; el.__stE = e; el.textContent = ''; el.classList.add('st-l');
+            el.__stT = text; el.__stS = s; el.__stE = e; el.__stP = pace; el.textContent = ''; el.classList.add('st-l');
             const ws = []; let i = 0;
             text.split('\n').forEach((line, li) => {
               if (li) el.appendChild(document.createElement('br'));
               line.split(/\s+/).filter(Boolean).forEach((w, wi) => { if (wi) el.appendChild(document.createTextNode(' ')); const x = document.createElement('span'); x.className = 'st-w'; x.style.setProperty('--i', i++); x.textContent = w; el.appendChild(x); ws.push(x); });
             });
-            // No word timings exist, so each word gets a share of the line by its length. Long gaps after a line are not sung.
+            // No word timings exist, so each word gets a share of the line by its length, at the song's own pace. Long gaps after a line are not sung.
             let tot = 0; const len = ws.map(x => { const n = x.textContent.length + 1.5; tot += n; return n; });
-            const dur = Math.max(0.3, Math.min(e > s ? e - s : 3, 0.5 + ws.length * 0.42 + tot * 0.03)); let acc = 0;
+            const dur = Math.max(0.3, Math.min(e > s ? e - s : 3, pace > 0 ? 0.15 + tot * pace : 0.5 + ws.length * 0.42 + tot * 0.03)); let acc = 0;
             el.__stW = ws; el.__stAt = len.map(n => { const a = s + dur * acc / tot; acc += n; return a; });
             el.classList.remove('st-in'); void el.offsetWidth; if (text) el.classList.add('st-in');
             stDirty = true;
@@ -333,10 +344,12 @@
           const stMark = (el, now) => {
             const ws = el && el.__stW, at = el && el.__stAt; if (!ws) return;
             el.classList.toggle('st-hl', !!ST.hl && el.__stS >= 0); if (!ST.hl) return;
+            now += 0.09;                                             // a word takes a moment to light up, so start it slightly early
+
             for (let i = 0; i < ws.length; i++) { const a = now >= at[i]; ws[i].classList.toggle('on', a); ws[i].classList.toggle('now', a && now < (i + 1 < ws.length ? at[i + 1] : el.__stE)); }
           };
           // The lyric lines in the main page are drawn through here too, so both kinds of text look and behave the same.
-          window.__ppSongText = { line: stFill };
+          window.__ppSongText = { line: stFill, pace: stPace };
           // Where the box goes: always inside the screen, never over the song title. Text that is still too tall gets smaller.
           const stLayout = () => {
             const r = viz.getBoundingClientRect(); if (r.width < 20) return;
@@ -367,7 +380,7 @@
             if (isOn() && cues.length) for (const c of cues) { if (c.s > n) break; if (n < c.e) { txt += (txt ? '\n' : '') + c.text; if (s0 < 0) s0 = c.s; e0 = Math.max(e0, c.e); } }
             const lyOn = !!(lyEl && lyEl.classList.contains('show'));
             if (!txt && preview && !lyOn) { txt = 'This is how the words will look'; s0 = n - (n % 4); e0 = s0 + 4; }
-            if (txt !== shown) { shown = txt; stFill(sp, txt, s0, e0); }
+            if (txt !== shown) { shown = txt; stFill(sp, txt, s0, e0, cuePace); }
             box.style.display = txt && sp.__stT ? 'block' : 'none';
             stMark(sp, n);
             if (lyOn) stMark(lyEl.querySelector('.ly-cur'), now);
@@ -398,7 +411,7 @@
           };
           function stSyncUi() { const v = ui.querySelector('#st-sync-v'); if (v) v.textContent = (stSync > 0 ? '+' : '') + stSync.toFixed(1) + 's' + (stSync > 0 ? ' later' : stSync < 0 ? ' earlier' : ''); }
           // Any change replays the line, so the effect that was just picked is seen straight away.
-          const stChanged = () => { ls('ppvSongText', JSON.stringify(ST)); stApply(); stPaint(); shown = null; sp.__stT = null; const lc = lyEl && lyEl.querySelector('.ly-cur'); if (lc && lc.__stT) { const tx = lc.__stRaw != null ? lc.__stRaw : lc.__stT; lc.__stT = null; stFill(lc, tx, lc.__stS, lc.__stE); } tick(); };
+          const stChanged = () => { ls('ppvSongText', JSON.stringify(ST)); stApply(); stPaint(); shown = null; sp.__stT = null; const lc = lyEl && lyEl.querySelector('.ly-cur'); if (lc && lc.__stT) { const tx = lc.__stRaw != null ? lc.__stRaw : lc.__stT; lc.__stT = null; stFill(lc, tx, lc.__stS, lc.__stE, lc.__stP); } tick(); };
           ui.addEventListener('click', e => {
             const b = e.target.closest('button'); if (!b) return;
             const r = b.parentElement;

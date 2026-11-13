@@ -368,6 +368,7 @@ async function ppMp4Chapters(blob){
     if (ppLrc.length) ppLrcKick(); else ppLrcDraw(-1);
     if (ppPanel.classList.contains('open')) ppRenderLyricsPane();
   }
+  let ppLrcPace = 0, ppLrcPaceFor = null;   // how fast this song is sung, for the sing-along highlight
   function ppLrcDraw(i){
     const ov = ppEl('lyrics-overlay');
     const text = i >= 0 ? ppLrc[i].text : '';
@@ -375,7 +376,8 @@ async function ppMp4Chapters(blob){
     const H = window.__ppSongText;       // vocal-separator.js draws the words (fitted to the screen, with the chosen look and effects)
     if (H && H.line){
       const s = i >= 0 ? ppLrc[i].t : -1, e = i >= 0 ? (i + 1 < ppLrc.length ? ppLrc[i + 1].t : s + 5) : -1;
-      H.line(ov.querySelector('.ly-cur'), text, s, e); H.line(ov.querySelector('.ly-next'), n, -1, -1);
+      if (H.pace && ppLrcPaceFor !== ppLrc){ ppLrcPaceFor = ppLrc; ppLrcPace = H.pace(ppLrc.map((l, j) => ({ s: l.t, e: j + 1 < ppLrc.length ? ppLrc[j + 1].t : l.t + 5, text: l.text }))); }
+      H.line(ov.querySelector('.ly-cur'), text, s, e, ppLrcPace); H.line(ov.querySelector('.ly-next'), n, -1, -1);
       return;
     }
     ov.querySelector('.ly-cur').textContent = text;
