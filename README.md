@@ -112,7 +112,7 @@ Bloopy is entirely optional. If you do not want it, turn off the mascot and the 
 ## Also built in
 
 - Scan phone: one tap in the Add menu finds all the music and videos on your phone and adds them to your library, with titles, artists, albums and cover art. It skips ringtones, alarms, notification sounds and voice recordings, and running it again only adds what is new. If you said no to media access earlier, tapping it asks again. You can still add files or whole folders by hand if you prefer to choose exactly what goes in.
-- Browse the library by album, artist, genre or folder, as well as the plain song list.
+- Browse the library by album, artist, genre or folder, as well as the plain list. Videos are included: one with no tags is filed under its folder as its album, and under what it looks like (a movie, a camera video, a screen recording) as its genre.
 - New on this phone: the app notices new music and videos on your phone and keeps them apart from your library, sorted into bundles by what each one looks like (an album, loose songs, podcasts, camera videos, screen recordings, voice messages and so on). You add or dismiss each bundle. Nothing joins your library by itself, and this can be switched off.
 - Plays audio and video, from local files and from web stream links.
 - Opens files from file managers, browsers and chat apps through "Open with".
