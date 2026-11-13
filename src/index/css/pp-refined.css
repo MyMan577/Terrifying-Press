@@ -46,8 +46,9 @@
   body.pp-refined.player-layout #pl-tabbar{ background:rgba(17,18,22,.82); -webkit-backdrop-filter:blur(22px) saturate(1.4); backdrop-filter:blur(22px) saturate(1.4);
     border-top:1px solid var(--r-line-strong); box-shadow:0 -10px 30px -12px rgba(0,0,0,.7); }
   body.pp-refined #pl-tabbar button{ position:relative; z-index:1; transition:color .25s; }
-  body.pp-refined #pl-tabbar button svg{ transition:translate .35s var(--r-spring), scale .35s var(--r-spring); }
-  body.pp-refined #pl-tabbar button.active svg{ translate:0 -1px; scale:1.08; }
+  /* transform, not translate/scale: on an SVG element only transform runs on the GPU */
+  body.pp-refined #pl-tabbar button svg{ transition:transform .35s var(--r-spring); }
+  body.pp-refined #pl-tabbar button.active svg{ transform:translateY(-1px) scale(1.08); }
   #pl-tab-ind{ display:none; }
   body.pp-refined.player-layout #pl-tab-ind{ display:block; position:absolute; z-index:0; top:7px; left:0; width:56px; height:30px; border-radius:999px; pointer-events:none;
     background:color-mix(in srgb, var(--accent) 16%, transparent); box-shadow:0 0 18px -4px color-mix(in srgb, var(--accent) 55%, transparent);
@@ -74,39 +75,24 @@
   /* ---- press feedback: everything tappable gives a little ---- */
   /* :where() keeps these at zero specificity: anything that already has its own transition keeps it */
   :where(body.pp-refined) :where(button, .ph-card, .ph-chip, .pill-btn, .ctrl-btn, .settings-toggle-btn, .ph-trk){ transition-property:scale, background, color, border-color, box-shadow, opacity; transition-duration:.28s; transition-timing-function:cubic-bezier(.3,1.45,.45,1); }
-  :where(body.pp-refined) :where(button, .ph-chip, .pill-btn, .ctrl-btn, .settings-toggle-btn):active{ scale:.94; transition-duration:.08s; }
-  :where(body.pp-refined) :where(.ph-card, .ph-trk):active{ scale:.97; transition-duration:.08s; }
-  body.pp-refined.player-layout .track:active{ scale:.985; }
+  /* the squeeze itself comes from the script (touch feedback in pp-refined.js), which covers every button, card and row.
+     A CSS :active scale as well ran a second scale animation on the same element, and the two together made the
+     GPU hand both to the page thread. */
 
-  /* ---- motion: screens ease in, items follow one after another ---- */
+  /* ---- motion: screens ease in, items follow one after another (run from the script, see pp-refined.js) ---- */
   @keyframes ppRIn{ from{ opacity:0; translate:0 10px; } to{ opacity:1; translate:0 0; } }
-  @keyframes ppRUp{ from{ opacity:.4; translate:0 36px; } to{ opacity:1; translate:0 0; } }
-  @keyframes ppRRise{ 0%{ opacity:0; translate:0 24px; scale:.96; } 70%{ opacity:1; translate:0 -3px; scale:1.01; } 100%{ translate:0 0; scale:1; } }
-  body.pp-refined .pp-r-in{ animation:ppRIn .38s var(--r-ease) both; }
-  body.pp-refined .pp-r-stag{ animation:ppRIn .42s var(--r-ease) both; animation-delay:calc(var(--i, 0) * 32ms); }
-  body.pp-refined .pp-r-up{ animation:ppRUp .42s var(--r-ease) both; }
-  body.pp-refined .pp-r-rise{ animation:ppRRise .55s var(--r-ease) both; }
 
   /* ================= motion, part two: nothing snaps =================
      Menus, popovers and pages ease in AND out. Closing works through "display ... allow-discrete": the element stays
      drawn until its fade has finished. Popovers only move up and down (never scale), so code that measures them still gets true sizes. */
-  @keyframes ppRFwd{ from{ opacity:0; translate:30px 0; } to{ opacity:1; translate:0 0; } }
-  @keyframes ppRBack{ from{ opacity:0; translate:-30px 0; } to{ opacity:1; translate:0 0; } }
-  @keyframes ppRPop{ 0%{ scale:.55; opacity:.2; rotate:-25deg; } 60%{ scale:1.14; opacity:1; rotate:0deg; } 100%{ scale:1; } }
+  /* the play / pause icons are SVG elements: their pop uses transform, the only transform property the GPU runs on SVG */
+  @keyframes ppRPop{ 0%{ transform:rotate(-25deg) scale(.55); opacity:.2; } 60%{ transform:rotate(0deg) scale(1.14); opacity:1; } 100%{ transform:none; } }
   @keyframes ppRTog{ 0%{ scale:.9; } 55%{ scale:1.07; } 100%{ scale:1; } }
-  @keyframes ppRSwap{ from{ opacity:0; translate:0 7px; } to{ opacity:1; translate:0 0; } }
-  body.pp-refined .pp-r-fwd{ animation:ppRFwd .34s var(--r-ease) both; }
-  body.pp-refined .pp-r-back{ animation:ppRBack .34s var(--r-ease) both; }
-  body.pp-refined .pp-r-pop{ animation:ppRPop .38s var(--r-ease) both; }
-  body.pp-refined .pp-r-swap{ animation:ppRSwap .32s var(--r-ease) both; }
 
   /* buttons that bring their own transition (so the zero-specificity rule above never reached them) */
   body.pp-refined :is(.pill-btn, .ctrl-btn, .ph-back, .ph-link, .ppg-back, .ppg-exit, .ppx-tab, .ppx-tile, .ppx-btn, .ppx-seg button, .settings-toggle-btn),
   body.pp-refined #pl-back, body.pp-refined #menu-btn, body.pp-refined #immersive-btn, body.pp-refined #menu-close-btn, body.pp-refined #pl-mini button{
     transition:scale .3s var(--r-spring), background .25s, color .25s, border-color .25s, box-shadow .25s, opacity .25s; }
-  body.pp-refined :is(.pill-btn, .ctrl-btn, .ph-back, .ph-link, .ppg-back, .ppg-exit, .ppx-tab, .ppx-tile, .ppx-btn, .ppx-seg button, .settings-toggle-btn):active,
-  body.pp-refined #pl-back:active, body.pp-refined #menu-btn:active, body.pp-refined #immersive-btn:active, body.pp-refined #menu-close-btn:active, body.pp-refined #pl-mini button:active{
-    scale:.9; transition-duration:.08s; }
   body.pp-refined .pill-btn.toggled, body.pp-refined .ctrl-btn.toggled, body.pp-refined .ppx-tab.on, body.pp-refined .ppx-seg button.on{ animation:ppRTog .36s var(--r-ease); }
   body.pp-refined .pill-btn.toggled{ box-shadow:0 4px 14px -7px color-mix(in srgb, var(--accent) 80%, transparent); }
   body.pp-refined .pill-btn.open{ border-color:color-mix(in srgb, var(--accent) 60%, transparent); color:var(--text); }
@@ -150,8 +136,7 @@
     transition:opacity .25s var(--r-ease), translate .42s var(--r-spring), scale .3s var(--r-spring), display .3s allow-discrete; }
   body.pp-refined.player-layout.pl-has-track:not([data-pl-player]) #pl-mini{ opacity:1; translate:0 0; pointer-events:auto; }
   @starting-style{ body.pp-refined.player-layout.pl-has-track:not([data-pl-player]) #pl-mini{ opacity:0; translate:0 20px; } }
-  body.pp-refined.player-layout #pl-mini:active:not(:has(button:active)){ scale:.975; transition-duration:.25s, .42s, .08s, .3s; }
-  body.pp-refined #pl-mini-prog i{ transition:width .5s linear; }
+  body.pp-refined #pl-mini-prog i{ transition:transform .5s linear; }
   body.pp-refined #pl-mini-art img{ transition:opacity .3s; }
 
   /* Games: the page and the Points hub close as softly as they open */
@@ -162,10 +147,6 @@
 
 
   /* ---- the player's own controls: nothing blinks while watching ---- */
-  @keyframes ppRZin{ from{ scale:.8; opacity:.5; } to{ scale:1; opacity:1; } }
-  @keyframes ppRZout{ from{ scale:1.18; opacity:.6; } to{ scale:1; opacity:1; } }
-  body.pp-refined .pp-r-zin{ animation:ppRZin .5s var(--r-ease) both; }
-  body.pp-refined .pp-r-zout{ animation:ppRZout .45s var(--r-ease) both; }
   /* video page: a tap brings the controls in from the edges they live on, and they leave the same way */
   body.pp-refined.player-layout.pl-video[data-pl-player] #controls-col{ translate:0 28px; transition:opacity .3s var(--r-ease), translate .44s var(--r-ease); }
   body.pp-refined.player-layout.pl-video[data-pl-player].pl-ui-show #controls-col{ translate:0 0; }
@@ -175,7 +156,6 @@
   body.pp-refined.player-layout.pl-video[data-pl-player]:not(.pl-ui-show) :is(#menu-btn, #video-tools){ translate:0 -18px; }
   body.pp-refined.player-layout.pl-video[data-pl-player]:not(.pl-ui-show) #pl-back,
   body.pp-refined.player-layout.pl-video[data-pl-player]:not(.pl-ui-show):not(.pl-ctl-hide) #pl-pin-btn{ translate:0 18px; }
-  body.pp-refined #pl-pin-btn:active{ scale:.9; transition-duration:.08s; }
   /* visualizer page, immersive: the controls sink away below the disc and rise back */
   body.pp-refined.player-layout[data-pl-player]:not(.pl-video) #controls-col{ transition:opacity .3s var(--r-ease), translate .46s var(--r-ease), display .46s allow-discrete; }
   body.pp-refined.player-layout.immersive[data-pl-player]:not(.pl-video) #controls-col{ opacity:0; translate:0 46px; pointer-events:none; margin-bottom:calc(-1 * var(--pl-ctl-h, 320px)); }
@@ -198,7 +178,6 @@
     background:radial-gradient(circle, color-mix(in srgb, var(--accent) 22%, rgba(255,255,255,.2)) 0%, color-mix(in srgb, var(--accent) 12%, rgba(255,255,255,.1)) 55%, transparent 72%); }
 
   @media (prefers-reduced-motion: reduce){
-    body.pp-refined .pp-r-in, body.pp-refined .pp-r-stag, body.pp-refined .pp-r-up, body.pp-refined .pp-r-rise, body.pp-refined .pp-r-fwd, body.pp-refined .pp-r-back,
-    body.pp-refined .pp-r-pop, body.pp-refined .pp-r-swap, body.pp-refined .pp-r-zin, body.pp-refined .pp-r-zout, body.pp-refined #extras-panel .pp-pane.active, body.pp-refined .toggled, body.pp-refined .ppx-tab.on, body.pp-refined .ppx-seg button.on, body.pp-refined #play-btn svg{ animation:none !important; }
+    body.pp-refined #extras-panel .pp-pane.active, body.pp-refined .toggled, body.pp-refined .ppx-tab.on, body.pp-refined .ppx-seg button.on, body.pp-refined #play-btn svg{ animation:none !important; }
     body.pp-refined *{ transition-duration:.01ms !important; }
   }

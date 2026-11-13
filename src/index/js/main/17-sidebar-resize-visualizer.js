@@ -195,7 +195,11 @@
 
   // Not drawn while the canvas is off screen (sidebar full screen, app in the background): offsetParent is
   // null whenever an ancestor is display:none.
+  // The player-style layout keeps the closed player page drawn but invisible (visibility:hidden), so offsetParent
+  // alone said "visible" and the ring was drawn every frame behind Home and the Library, slowing their animations.
   function vizIsVisible(){
+    const b = document.body;
+    if (b.classList.contains('player-layout') && !b.hasAttribute('data-pl-player')) return false;
     return !document.hidden && vizWrap.offsetParent !== null && vizWrap.style.display !== 'none';
   }
   let vizLast = 0, vizIdle = false, vizEverLive = false;
@@ -206,7 +210,7 @@
     // Haptics follow the kick anywhere in the app, so the analysis keeps running (without drawing) while the
     // ring is off screen, as long as the app itself is on screen.
     const hapticOnly = !vizShown && hapticBass > 0 && vizLive && !document.hidden;
-    if ((!vizShown && !hapticOnly) || (vizIdle && !vizLive)){ vizLast = 0; setTimeout(() => requestAnimationFrame(drawViz), 250); return; }
+    if ((!vizShown && !hapticOnly) || (vizIdle && !vizLive)){ vizLast = 0; setTimeout(() => requestAnimationFrame(drawViz), document.hidden ? 250 : 100); return; }
     requestAnimationFrame(drawViz);
     if (ts - vizLast < (hapticOnly ? 30 : 15)) return;   // 60 fps: smooth falls and peaks without paying for 120
     const dt = vizLast ? Math.min(0.1, (ts - vizLast) / 1000) : 0.016;
