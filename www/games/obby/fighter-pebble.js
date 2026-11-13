@@ -192,12 +192,12 @@
       if (S.squash > 0) S.squash = Math.max(0, S.squash - dt * 5);
       const r = 1 - Math.exp(-dt * S.rate);
       for (const key in BASE) S.anim[key] += (S.goal[key] - S.anim[key]) * (key === 'roll' ? 1 : r);
-      S.pose = { roll: S.anim.roll, sx: S.anim.sx, sy: S.anim.sy };   // (for online play)
+      S.pose = Object.assign({}, S.anim);   // all of it, so the other phone in online play draws him moving too
     },
 
     // ---------------- drawing: a round mossy stone with runes, stubby arms and little feet
     drawBody(ctx, px, py, pw, ph, t, S, p) {
-      const A = S && S.anim ? S.anim : BASE, sq = S ? S.squash || 0 : 0;
+      const A = S && S.anim ? S.anim : S && S.pose ? Object.assign({}, BASE, S.pose) : BASE, sq = S ? S.squash || 0 : 0;   // (S.pose alone: the other phone's copy)
       const cx = px + pw / 2, fy = py + ph, R = Math.min(pw, ph) * 0.5 * (A.grow || 1);
       const sx = A.sx * (1 + sq * 0.22), sy = A.sy * (1 - sq * 0.2);
       const walk = S ? S.walk || 0 : 0, grounded = p ? p.onGround : true;
