@@ -450,6 +450,19 @@
       else if (c === 'seek'){ if (ev && ev.posMs != null && currentIndex !== -1){ try { media().currentTime = ev.posMs / 1000; } catch(e){} } }
       if (c === 'play' || c === 'pause' || c === 'seek') setTimeout(() => { try { ppMirrorSync(); } catch(e){} }, 700);   // confirm the real state back
     };
+    // Play or pause pressed outside the page while the native engine plays (notification, widget, headset, car).
+    // Without this the app still believed it was playing after a notification pause: coming back to it started the
+    // sound again, and the play button and the real state could end up disagreeing.
+    PPNative.hooks.outsidePlayState = (playing) => {
+      if (currentIndex === -1 || Date.now() - lastTrackLoadTs < 5000) return;   // a track is still loading: its reports are not a choice
+      if (!playing){
+        cancelResumeOnReturn();   // paused on purpose: returning to the app must not restart it
+        if (isPlaying){
+          isPlaying = false; updatePlayIcon(); updateMediaSession();
+          try { if (rememberPlaybackPosition) savePlaybackPosition(tracks[currentIndex].dbId, media().currentTime); } catch(e){}
+        }
+      } else if (!isPlaying){ isPlaying = true; updatePlayIcon(); updateMediaSession(); }
+    };
     PPNative.hooks.entries = (list, src) => ppAddNative(list, src);
     PPNative.hooks.syncTo = (uri) => {
       const i = tracks.findIndex(t => PPNative.sameUri(t.nativeUri || t.remoteUrl, uri));
