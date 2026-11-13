@@ -2,6 +2,87 @@
 <html lang="en">
 <head>
 
+<script id="pp-errlog">
+/* Error log: problems the app runs into are noted on this phone only (the last 60), so they can be copied into a bug
+   report from Settings. Nothing is sent anywhere. Loaded first so it also catches errors while the app starts. */
+(function(){
+  var KEY = 'ppErrorLog', MAX = 60, buf = null, timer = 0;
+  function load(){ if (!buf){ try { buf = JSON.parse(localStorage.getItem(KEY)) || []; } catch(e){ buf = []; } } return buf; }
+  function save(){ clearTimeout(timer); timer = setTimeout(function(){ try { localStorage.setItem(KEY, JSON.stringify(load())); } catch(e){} sync(); }, 800); }
+  function add(kind, msg, where){
+    try {
+      var l = load(), last = l[l.length - 1];
+      msg = String(msg == null ? '' : msg).slice(0, 700);
+      if (!msg) return;
+      if (last && last.k === kind && last.m === msg){ last.n = (last.n || 1) + 1; last.t = Date.now(); }
+      else { l.push({ t: Date.now(), k: kind, m: msg, w: where || '' }); if (l.length > MAX) l.splice(0, l.length - MAX); }
+      save();
+    } catch(e){}
+  }
+  function stack(e, n){ return e && e.stack ? '\n' + String(e.stack).split('\n').slice(0, n).join('\n') : ''; }
+  window.addEventListener('error', function(e){
+    if (!e) return;
+    if (e.message) add('error', e.message + stack(e.error, 4), String(e.filename || '').split('/').pop() + ':' + (e.lineno || 0) + ':' + (e.colno || 0));
+    else if (e.target && e.target.tagName === 'SCRIPT') add('load', 'A script did not load: ' + (e.target.src || ''));
+  }, true);
+  window.addEventListener('unhandledrejection', function(e){
+    var r = e && e.reason;
+    add('promise', ((r && r.message) || String(r)) + stack(r, 4));
+  });
+  var ce = console.error;
+  console.error = function(){
+    try {
+      add('console', [].map.call(arguments, function(a){
+        if (a && a.stack) return String(a.stack).split('\n').slice(0, 3).join('\n');
+        if (a && typeof a === 'object'){ try { return JSON.stringify(a); } catch(e){ return String(a); } }
+        return String(a);
+      }).join(' '));
+    } catch(e){}
+    return ce.apply(console, arguments);
+  };
+  function text(){
+    var l = load(), out = ['Press Play ' + (+window.PP_BUILD ? '1.0.' + window.PP_BUILD : 'local build'), navigator.userAgent, 'Copied ' + new Date().toISOString(), ''];
+    if (!l.length) out.push('No errors noted.');
+    l.forEach(function(x){
+      out.push('[' + new Date(x.t).toISOString() + '] ' + x.k + (x.n > 1 ? ' (x' + x.n + ')' : '') + (x.w ? ' at ' + x.w : ''));
+      out.push(x.m); out.push('');
+    });
+    return out.join('\n');
+  }
+  function sync(){
+    var el = document.getElementById('errlog-status'); if (!el) return;
+    var n = load().length;
+    el.textContent = n ? n + ' problem' + (n === 1 ? '' : 's') + ' noted. The newest was ' + new Date(load()[n - 1].t).toLocaleString() + '.' : 'No problems noted.';
+  }
+  function flash(btn, msg){ var o = btn.textContent; btn.textContent = msg; setTimeout(function(){ btn.textContent = o; }, 1800); }
+  function copy(btn){
+    var t = text();
+    var fallback = function(){
+      try {
+        var ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); var ok = document.execCommand('copy'); ta.remove();
+        flash(btn, ok ? 'Copied' : 'Could not copy');
+      } catch(e){ flash(btn, 'Could not copy'); }
+    };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function(){ flash(btn, 'Copied'); }, fallback);
+      else fallback();
+    } catch(e){ fallback(); }
+  }
+  window.ppErrorLog = { add: add, text: text, clear: function(){ buf = []; try { localStorage.removeItem(KEY); } catch(e){} sync(); } };
+  document.addEventListener('DOMContentLoaded', function(){
+    var c = document.getElementById('errlog-copy-btn'), s = document.getElementById('errlog-share-btn'), x = document.getElementById('errlog-clear-btn');
+    if (c) c.addEventListener('click', function(){ copy(c); });
+    if (x) x.addEventListener('click', function(){ window.ppErrorLog.clear(); });
+    var Sh = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Share;
+    if (s && Sh && Sh.share){
+      s.hidden = false;
+      s.addEventListener('click', function(){ Sh.share({ title: 'Press Play error log', text: text() }).catch(function(){}); });
+    }
+    sync();
+  });
+})();
+</script>
 <script>
 /* One shared 1 s heartbeat for the small periodic checks, so they wake the CPU together instead of six separate times a second. */
 window.ppEvery = (function(){
@@ -3997,13 +4078,14 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
   .found-more{ padding:6px 0 4px 0; font-size:11.5px; color:var(--text-dim); }
 
   /* ---------- App updates ---------- */
-  #update-status{ font-size:11.5px; color:var(--text-dim); margin-top:10px; }
-  #update-btn-row{ display:flex; gap:8px; margin-top:10px; }
-  #update-btn-row button{
+  #update-status, #errlog-status{ font-size:11.5px; color:var(--text-dim); margin-top:10px; }
+  #update-btn-row, #errlog-btn-row{ display:flex; gap:8px; margin-top:10px; }
+  #update-btn-row button, #errlog-btn-row button{
     flex:1; padding:7px 10px; background:transparent; border:1px solid var(--line);
     color:var(--text); border-radius:7px; font-size:11.5px; font-family:inherit; cursor:pointer;
   }
-  #update-btn-row button[hidden]{ display:none; }
+  #update-btn-row button[hidden], #errlog-btn-row button[hidden]{ display:none; }
+  .found-bundle.gone .found-add{ background:transparent; border-color:#a34b4b; color:#ff9c9c; }
   #update-get-btn, #update-banner-get{ background:var(--accent) !important; border-color:var(--accent) !important; color:#08110f !important; font-weight:600; }
   #update-banner{
     position:fixed; left:50%; transform:translateX(-50%); top:calc(env(safe-area-inset-top, 0px) + 10px); z-index:9998;
@@ -4890,6 +4972,21 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <div id="update-btn-row">
           <button id="update-check-btn" type="button">Check now</button>
           <button id="update-get-btn" type="button" hidden>Download update</button>
+        </div>
+      </div>
+      <div class="settings-section" id="errlog-section">
+        <div class="settings-section-label">Error log</div>
+        <div class="settings-row">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Problems the app ran into</div>
+            <div class="settings-row-sub">Kept on this phone only. Copy it into a bug report so the problem can be found.</div>
+          </div>
+        </div>
+        <div id="errlog-status">No problems noted.</div>
+        <div id="errlog-btn-row">
+          <button id="errlog-copy-btn" type="button">Copy error log</button>
+          <button id="errlog-share-btn" type="button" hidden>Share</button>
+          <button id="errlog-clear-btn" type="button">Clear</button>
         </div>
       </div>
       <div class="settings-section" id="playback-position-section">
@@ -21426,12 +21523,12 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const ppPushCatalog = () => PPNative.pushCatalog(
       tracks.filter(t => t.nativeUri || t.remoteUrl).map(t => ({
         id: String(t.dbId), uri: t.nativeUri || t.remoteUrl, kind: t.kind, title: t.title || '', artist: t.artist || '',
-        album: t.album || '', durMs: t.duration > 0 ? Math.round(t.duration * 1000) : 0, art: t.nativeArt || '', pl: t.playlistIds || []
+        album: t.album || '', durMs: t.duration > 0 ? Math.round(t.duration * 1000) : 0, art: t.nativeArt || '', pl: t.playlistIds || [], track: t.trackNo || 0
       })),
       playlists.map(p => ({ id: p.id, name: p.name })));
     const ppCatalogCheck = () => {
       const sig = [tracks.length, playlists.length, playlists.map(p => p.name).join('|'),
-        tracks.reduce((a, t) => a + (t.title || '').length + (t.artist || '').length + ((t.nativeUri || t.remoteUrl) ? 1 : 0) + (t.playlistIds || []).length, 0)].join('#');
+        tracks.reduce((a, t) => a + (t.title || '').length + (t.artist || '').length + (t.album || '').length + (t.trackNo || 0) + ((t.nativeUri || t.remoteUrl) ? 1 : 0) + (t.playlistIds || []).length, 0)].join('#');
       if (sig === ppCatSig) return;
       ppCatSig = sig; clearTimeout(ppCatTimer); ppCatTimer = setTimeout(ppPushCatalog, 1500);
     };
@@ -21563,7 +21660,11 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     }
     const gs = String(t.genre || '').split(';').map(x => x.trim()).filter(Boolean);
     if (gs.length) return gs.map(g => [g.toLowerCase(), g]);
-    if (!vid) return [['', 'Unknown genre']];
+    if (!vid){
+      // No genre in the file: use what the tagger heard, when it has listened to this song.
+      const ai = window.__ppTagGenre ? window.__ppTagGenre(t.dbId) : '';
+      return ai ? [[ai.toLowerCase(), ai]] : [['', 'Unknown genre']];
+    }
     // A video with no genre tag: what it looks like (a movie, a camera video, a screen recording...). Only a guess.
     const k = ppGuessKind({ kind: 'video', folder: ppTrackFolder(t), name: t.fileName || '', durationSec: t.duration || 0 });
     return [['\u0001k:' + k, { movie: 'Movies and shows', video: 'Videos', clip: 'Short clips', camera: 'Camera videos', screen: 'Screen recordings', social: 'Videos from chat and social apps' }[k] || 'Videos']];
@@ -21798,10 +21899,49 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     out.sort((a, b) => (ORDER.indexOf(a.type) - ORDER.indexOf(b.type)) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
     return out;
   }
+  // Library files that are no longer on the phone. Like finds, they are only offered: the owner removes or keeps them.
+  var ppMissing = [], ppMissingAt = 0;
+  function ppKeptMissing(){ try { return JSON.parse(localStorage.getItem('ppKeepMissing')) || []; } catch(e){ return []; } }
+  async function ppCheckMissing(){
+    if (!(window.PPNative && PPNative.enabled && PPNative.lib && PPNative.lib.missing)) return;
+    if (Date.now() - ppMissingAt < 30 * 60 * 1000) return;
+    ppMissingAt = Date.now();
+    try {
+      const a = await PPNative.lib.mediaAccess();
+      if (!(a && a.audio)) return;                       // without access every file looks missing
+      const kept = new Set(ppKeptMissing());
+      const uris = tracks.filter(t => t.nativeUri && !t.nativeLocal && !kept.has(t.nativeUri)).map(t => t.nativeUri);
+      if (!uris.length){ ppMissing = []; ppFoundSync(); return; }
+      const r = await PPNative.lib.missing(uris);
+      const gone = (r && r.missing) || [];
+      // A big share gone at once is storage that is not connected (an SD card, a revoked permission), not deleted files.
+      ppMissing = (gone.length > 20 && gone.length > uris.length * 0.3) ? [] : gone;
+      ppFoundSync();
+    } catch(e){}
+  }
+  function ppMissingTracks(){ const s = new Set(ppMissing); return tracks.filter(t => t.nativeUri && s.has(t.nativeUri)); }
+  function ppMissingResolve(list, remove){
+    const uris = new Set(list.map(t => t.nativeUri));
+    if (remove){
+      for (let i = tracks.length - 1; i >= 0; i--) if (uris.has(tracks[i].nativeUri)) removeTrack(i, true);
+      saveLibraryMeta(); renderPlaylist(); renderPlaylistsManager();
+      showToast('Removed ' + uris.size + ' from your library');
+    } else {
+      try { localStorage.setItem('ppKeepMissing', JSON.stringify(ppKeptMissing().concat([...uris]).slice(-4000))); } catch(e){}
+    }
+    ppMissing = ppMissing.filter(u => !uris.has(u));
+    ppFoundSync();
+    if (!ppFoundList().length && !ppMissing.length) ppFoundClose();
+  }
   function ppFoundSync(){
-    const n = ppFoundList().length, row = document.getElementById('found-row'), cnt = document.getElementById('found-row-count');
+    const gone = ppMissingTracks().length;
+    const n = ppFoundList().length + gone, row = document.getElementById('found-row'), cnt = document.getElementById('found-row-count');
     if (row) row.hidden = n === 0;
     if (cnt) cnt.textContent = n;
+    const lbl = document.getElementById('found-row-text'), ttl = document.getElementById('found-title');
+    const name = (gone && gone === n) ? 'No longer on this phone' : 'New on this phone';
+    if (lbl) lbl.textContent = name;
+    if (ttl) ttl.textContent = name;
     const ov = document.getElementById('found-overlay');
     if (ov && ov.classList.contains('open')) ppFoundRender();
   }
@@ -21811,7 +21951,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     ppFound = ppFoundList().filter(e => !set.has(e.uri));
     if (add) ppAddNative(items, 'inbox'); else ppIgnoreUris([...set]);
     ppFoundSave();
-    if (!ppFoundList().length) ppFoundClose();
+    if (!ppFoundList().length && !ppMissingTracks().length) ppFoundClose();
   }
   function ppFoundRender(){
     const body = document.getElementById('found-body');
@@ -21819,7 +21959,34 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const keep = body.scrollTop;
     body.innerHTML = '';
     const bundles = ppFoundBundles();
-    if (!bundles.length){ body.innerHTML = '<div class="found-empty">Nothing new right now.</div>'; return; }
+    const gone = ppMissingTracks();
+    if (gone.length){
+      const el = document.createElement('div');
+      el.className = 'found-bundle gone' + (ppFoundOpen === '\u0001gone' ? ' open' : '');
+      el.innerHTML = '<div class="found-bundle-head" role="button" tabindex="0"><span class="found-caret">▶</span><span class="lib-group-art">🗑</span>' +
+        '<div class="lib-group-text"><div class="lib-group-name">No longer on this phone</div><div class="lib-group-sub">' + gone.length + ' file' + (gone.length === 1 ? ' was' : 's were') +
+        ' deleted or moved. Remove from your library?</div></div>' +
+        '<button type="button" class="found-add">Remove</button><button type="button" class="found-skip" aria-label="Keep these in the library">✕</button></div><div class="found-items"></div>';
+      el.querySelector('.found-bundle-head').addEventListener('click', (ev) => {
+        if (ev.target.closest('button')) return;
+        ppFoundOpen = ppFoundOpen === '\u0001gone' ? null : '\u0001gone'; ppFoundRender();
+      });
+      el.querySelector('.found-add').addEventListener('click', () => ppMissingResolve(gone, true));
+      el.querySelector('.found-skip').addEventListener('click', () => ppMissingResolve(gone, false));
+      if (ppFoundOpen === '\u0001gone'){
+        const box = el.querySelector('.found-items');
+        gone.slice(0, 200).forEach(t => {
+          const r = document.createElement('div');
+          r.className = 'found-item';
+          r.innerHTML = '<div class="lib-group-text"><div class="lib-group-name">' + escapeHtml(t.title || '') + '</div><div class="lib-group-sub">' + escapeHtml([t.artist, ppTrackFolder(t)].filter(Boolean).join(' · ')) + '</div></div>' +
+            '<button type="button" class="found-item-skip" aria-label="Keep in the library">✕</button>';
+          r.querySelector('.found-item-skip').addEventListener('click', () => ppMissingResolve([t], false));
+          box.appendChild(r);
+        });
+      }
+      body.appendChild(el);
+    }
+    if (!bundles.length && !gone.length){ body.innerHTML = '<div class="found-empty">Nothing new right now.</div>'; return; }
     bundles.forEach(b => {
       const el = document.createElement('div');
       el.className = 'found-bundle' + (ppFoundOpen === b.id ? ' open' : '');
@@ -21907,6 +22074,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       finally { ppInboxScans--; ppAutoScanAt = Date.now(); ppAutoScanP = null; }
       const n = ppFoundList().length - before;
       if (n > 0) showToast(n + ' new file' + (n === 1 ? '' : 's') + ' on this phone. See New on this phone in the Library.');
+      ppCheckMissing();
     })();
     return ppAutoScanP;
   }
@@ -27392,7 +27560,7 @@ body.pp-lite .eq-band-pro { display:flex !important; }
     if(id==='playback-position-section'||sec.querySelector('#xf-mode'))return 'play';
     if(id==='extras-settings-section'||id==='playlists-manager-section'||sec.querySelector('#detailed-mode-toggle')||/^Keep MP3 conversions/.test(ft))return 'lib';
     if(id==='auto-scan-section')return 'lib';
-    if(id==='storage-section'||id==='progress-section'||id==='update-section')return 'data';
+    if(id==='storage-section'||id==='progress-section'||id==='update-section'||id==='errlog-section')return 'data';
     if(/^Retro layout/.test(ft)||id==='pp-refined-section'||id==='ppxp-accent-section'||id==='pp-modes-section')return 'look';
     return 'fun';
   }

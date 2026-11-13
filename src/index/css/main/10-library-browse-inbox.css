@@ -87,13 +87,14 @@
   .found-more{ padding:6px 0 4px 0; font-size:11.5px; color:var(--text-dim); }
 
   /* ---------- App updates ---------- */
-  #update-status{ font-size:11.5px; color:var(--text-dim); margin-top:10px; }
-  #update-btn-row{ display:flex; gap:8px; margin-top:10px; }
-  #update-btn-row button{
+  #update-status, #errlog-status{ font-size:11.5px; color:var(--text-dim); margin-top:10px; }
+  #update-btn-row, #errlog-btn-row{ display:flex; gap:8px; margin-top:10px; }
+  #update-btn-row button, #errlog-btn-row button{
     flex:1; padding:7px 10px; background:transparent; border:1px solid var(--line);
     color:var(--text); border-radius:7px; font-size:11.5px; font-family:inherit; cursor:pointer;
   }
-  #update-btn-row button[hidden]{ display:none; }
+  #update-btn-row button[hidden], #errlog-btn-row button[hidden]{ display:none; }
+  .found-bundle.gone .found-add{ background:transparent; border-color:#a34b4b; color:#ff9c9c; }
   #update-get-btn, #update-banner-get{ background:var(--accent) !important; border-color:var(--accent) !important; color:#08110f !important; font-weight:600; }
   #update-banner{
     position:fixed; left:50%; transform:translateX(-50%); top:calc(env(safe-area-inset-top, 0px) + 10px); z-index:9998;

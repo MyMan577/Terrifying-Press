@@ -51,7 +51,11 @@
     }
     const gs = String(t.genre || '').split(';').map(x => x.trim()).filter(Boolean);
     if (gs.length) return gs.map(g => [g.toLowerCase(), g]);
-    if (!vid) return [['', 'Unknown genre']];
+    if (!vid){
+      // No genre in the file: use what the tagger heard, when it has listened to this song.
+      const ai = window.__ppTagGenre ? window.__ppTagGenre(t.dbId) : '';
+      return ai ? [[ai.toLowerCase(), ai]] : [['', 'Unknown genre']];
+    }
     // A video with no genre tag: what it looks like (a movie, a camera video, a screen recording...). Only a guess.
     const k = ppGuessKind({ kind: 'video', folder: ppTrackFolder(t), name: t.fileName || '', durationSec: t.duration || 0 });
     return [['\u0001k:' + k, { movie: 'Movies and shows', video: 'Videos', clip: 'Short clips', camera: 'Camera videos', screen: 'Screen recordings', social: 'Videos from chat and social apps' }[k] || 'Videos']];
@@ -286,10 +290,49 @@
     out.sort((a, b) => (ORDER.indexOf(a.type) - ORDER.indexOf(b.type)) || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
     return out;
   }
+  // Library files that are no longer on the phone. Like finds, they are only offered: the owner removes or keeps them.
+  var ppMissing = [], ppMissingAt = 0;
+  function ppKeptMissing(){ try { return JSON.parse(localStorage.getItem('ppKeepMissing')) || []; } catch(e){ return []; } }
+  async function ppCheckMissing(){
+    if (!(window.PPNative && PPNative.enabled && PPNative.lib && PPNative.lib.missing)) return;
+    if (Date.now() - ppMissingAt < 30 * 60 * 1000) return;
+    ppMissingAt = Date.now();
+    try {
+      const a = await PPNative.lib.mediaAccess();
+      if (!(a && a.audio)) return;                       // without access every file looks missing
+      const kept = new Set(ppKeptMissing());
+      const uris = tracks.filter(t => t.nativeUri && !t.nativeLocal && !kept.has(t.nativeUri)).map(t => t.nativeUri);
+      if (!uris.length){ ppMissing = []; ppFoundSync(); return; }
+      const r = await PPNative.lib.missing(uris);
+      const gone = (r && r.missing) || [];
+      // A big share gone at once is storage that is not connected (an SD card, a revoked permission), not deleted files.
+      ppMissing = (gone.length > 20 && gone.length > uris.length * 0.3) ? [] : gone;
+      ppFoundSync();
+    } catch(e){}
+  }
+  function ppMissingTracks(){ const s = new Set(ppMissing); return tracks.filter(t => t.nativeUri && s.has(t.nativeUri)); }
+  function ppMissingResolve(list, remove){
+    const uris = new Set(list.map(t => t.nativeUri));
+    if (remove){
+      for (let i = tracks.length - 1; i >= 0; i--) if (uris.has(tracks[i].nativeUri)) removeTrack(i, true);
+      saveLibraryMeta(); renderPlaylist(); renderPlaylistsManager();
+      showToast('Removed ' + uris.size + ' from your library');
+    } else {
+      try { localStorage.setItem('ppKeepMissing', JSON.stringify(ppKeptMissing().concat([...uris]).slice(-4000))); } catch(e){}
+    }
+    ppMissing = ppMissing.filter(u => !uris.has(u));
+    ppFoundSync();
+    if (!ppFoundList().length && !ppMissing.length) ppFoundClose();
+  }
   function ppFoundSync(){
-    const n = ppFoundList().length, row = document.getElementById('found-row'), cnt = document.getElementById('found-row-count');
+    const gone = ppMissingTracks().length;
+    const n = ppFoundList().length + gone, row = document.getElementById('found-row'), cnt = document.getElementById('found-row-count');
     if (row) row.hidden = n === 0;
     if (cnt) cnt.textContent = n;
+    const lbl = document.getElementById('found-row-text'), ttl = document.getElementById('found-title');
+    const name = (gone && gone === n) ? 'No longer on this phone' : 'New on this phone';
+    if (lbl) lbl.textContent = name;
+    if (ttl) ttl.textContent = name;
     const ov = document.getElementById('found-overlay');
     if (ov && ov.classList.contains('open')) ppFoundRender();
   }
@@ -299,7 +342,7 @@
     ppFound = ppFoundList().filter(e => !set.has(e.uri));
     if (add) ppAddNative(items, 'inbox'); else ppIgnoreUris([...set]);
     ppFoundSave();
-    if (!ppFoundList().length) ppFoundClose();
+    if (!ppFoundList().length && !ppMissingTracks().length) ppFoundClose();
   }
   function ppFoundRender(){
     const body = document.getElementById('found-body');
@@ -307,7 +350,34 @@
     const keep = body.scrollTop;
     body.innerHTML = '';
     const bundles = ppFoundBundles();
-    if (!bundles.length){ body.innerHTML = '<div class="found-empty">Nothing new right now.</div>'; return; }
+    const gone = ppMissingTracks();
+    if (gone.length){
+      const el = document.createElement('div');
+      el.className = 'found-bundle gone' + (ppFoundOpen === '\u0001gone' ? ' open' : '');
+      el.innerHTML = '<div class="found-bundle-head" role="button" tabindex="0"><span class="found-caret">▶</span><span class="lib-group-art">🗑</span>' +
+        '<div class="lib-group-text"><div class="lib-group-name">No longer on this phone</div><div class="lib-group-sub">' + gone.length + ' file' + (gone.length === 1 ? ' was' : 's were') +
+        ' deleted or moved. Remove from your library?</div></div>' +
+        '<button type="button" class="found-add">Remove</button><button type="button" class="found-skip" aria-label="Keep these in the library">✕</button></div><div class="found-items"></div>';
+      el.querySelector('.found-bundle-head').addEventListener('click', (ev) => {
+        if (ev.target.closest('button')) return;
+        ppFoundOpen = ppFoundOpen === '\u0001gone' ? null : '\u0001gone'; ppFoundRender();
+      });
+      el.querySelector('.found-add').addEventListener('click', () => ppMissingResolve(gone, true));
+      el.querySelector('.found-skip').addEventListener('click', () => ppMissingResolve(gone, false));
+      if (ppFoundOpen === '\u0001gone'){
+        const box = el.querySelector('.found-items');
+        gone.slice(0, 200).forEach(t => {
+          const r = document.createElement('div');
+          r.className = 'found-item';
+          r.innerHTML = '<div class="lib-group-text"><div class="lib-group-name">' + escapeHtml(t.title || '') + '</div><div class="lib-group-sub">' + escapeHtml([t.artist, ppTrackFolder(t)].filter(Boolean).join(' · ')) + '</div></div>' +
+            '<button type="button" class="found-item-skip" aria-label="Keep in the library">✕</button>';
+          r.querySelector('.found-item-skip').addEventListener('click', () => ppMissingResolve([t], false));
+          box.appendChild(r);
+        });
+      }
+      body.appendChild(el);
+    }
+    if (!bundles.length && !gone.length){ body.innerHTML = '<div class="found-empty">Nothing new right now.</div>'; return; }
     bundles.forEach(b => {
       const el = document.createElement('div');
       el.className = 'found-bundle' + (ppFoundOpen === b.id ? ' open' : '');
@@ -395,6 +465,7 @@
       finally { ppInboxScans--; ppAutoScanAt = Date.now(); ppAutoScanP = null; }
       const n = ppFoundList().length - before;
       if (n > 0) showToast(n + ' new file' + (n === 1 ? '' : 's') + ' on this phone. See New on this phone in the Library.');
+      ppCheckMissing();
     })();
     return ppAutoScanP;
   }

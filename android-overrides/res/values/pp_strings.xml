@@ -4,4 +4,9 @@
     <string name="sc_resume_long">Resume playing</string>
     <string name="sc_library">Library</string>
     <string name="sc_library_long">Open library</string>
+    <string name="widget_name">Press Play</string>
+    <string name="widget_desc">What is playing, with previous, play and next.</string>
+    <string name="widget_prev">Previous</string>
+    <string name="widget_play">Play or pause</string>
+    <string name="widget_next">Next</string>
 </resources>

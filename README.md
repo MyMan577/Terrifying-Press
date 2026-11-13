@@ -113,11 +113,13 @@ Bloopy is entirely optional. If you do not want it, turn off the mascot and the 
 
 - Scan phone: one tap in the Add menu finds all the music and videos on your phone and adds them to your library, with titles, artists, albums and cover art. It skips ringtones, alarms, notification sounds and voice recordings, and running it again only adds what is new. If you said no to media access earlier, tapping it asks again. You can still add files or whole folders by hand if you prefer to choose exactly what goes in.
 - Browse the library by album, artist, genre or folder, as well as the plain list. Videos are included: one with no tags is filed under its folder as its album, and under what it looks like (a movie, a camera video, a screen recording) as its genre.
-- New on this phone: the app notices new music and videos on your phone and keeps them apart from your library, sorted into bundles by what each one looks like (an album, loose songs, podcasts, camera videos, screen recordings, voice messages and so on). You add or dismiss each bundle. Nothing joins your library by itself, and this can be switched off.
+- New on this phone: the app notices new music and videos on your phone and keeps them apart from your library, sorted into bundles by what each one looks like (an album, loose songs, podcasts, camera videos, screen recordings, voice messages and so on). You add or dismiss each bundle. Nothing joins your library by itself, and this can be switched off. Files you have deleted from the phone are offered for removal in the same place.
 - Plays audio and video, from local files and from web stream links.
 - Opens files from file managers, browsers and chat apps through "Open with".
 - Registers itself as a music player, so headset, car and assistant requests to open your music app can launch it.
 - Media notification and lock screen controls, with playback that keeps going in the background.
+- A home screen widget showing what is playing, with previous, play and next.
+- An error log kept on your phone only, which you can copy into a bug report from Settings.
 - Picture in picture for video.
 - An optional progression system with levels, a minigame, a quiz and unlockable perks such as extra accent colors and animated gradients. It is completely optional and can be hidden with one switch.
 

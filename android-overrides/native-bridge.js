@@ -739,6 +739,7 @@
     mediaAccess: function () { return Lib.mediaAccess(); },
     requestMediaAccess: function () { return Lib.requestMediaAccess(); },
     scanDevice: function (known, video) { return Lib.scanDevice({ known: known || [], video: video !== false }); },
+    missing: function (uris) { return Lib.missing({ uris: uris || [] }); },
     mediaDetails: function (uris) { return Lib.mediaDetails({ uris: uris || [] }); },
     readText: function (uri) { return Lib.readText({ uri: uri }); },
     getPendingOpen: function () { return Lib.getPendingOpen(); },

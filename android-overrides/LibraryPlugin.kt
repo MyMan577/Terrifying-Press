@@ -366,6 +366,35 @@ class LibraryPlugin : Plugin() {
         }
     }
 
+    /** Which of these library files are no longer on the phone. A file that cannot be checked counts as still there. */
+    @PluginMethod
+    fun missing(call: PluginCall) {
+        val uris = ArrayList<String>()
+        call.data.optJSONArray("uris")?.let { a -> for (k in 0 until a.length()) uris.add(a.optString(k)) }
+        detailPool.execute {
+            val gone = JSArray()
+            for (s in uris) {
+                try {
+                    val uri = Uri.parse(s)
+                    if (uri.scheme == "file") {
+                        val p = uri.path
+                        if (p != null && !File(p).exists()) gone.put(s)
+                    } else if (uri.scheme == "content") {
+                        val c = context.contentResolver.query(uri, null, null, null, null)
+                        if (c != null) {
+                            val n = c.count
+                            c.close()
+                            if (n == 0) gone.put(s)
+                        }
+                    }
+                } catch (_: java.io.FileNotFoundException) {
+                    gone.put(s)
+                } catch (_: Exception) {}
+            }
+            call.resolve(JSObject().put("missing", gone))
+        }
+    }
+
     private fun decodeScaled(b: ByteArray, max: Int): Bitmap? {
         val bo = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(b, 0, b.size, bo)
