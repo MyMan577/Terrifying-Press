@@ -40,7 +40,11 @@
     { id: 'cb_sleight',     n: 'Sleight',      e: '🎩', cap: 1 },
     { id: 'cb_fizz',        n: 'Fizz',         e: '🫧', cap: 1 },
     { id: 'cb_maul',        n: 'Maul',         e: '🔨', cap: 1 },
-    { id: 'cb_masque',      n: 'Masque',       e: '🎭', cap: 1 }
+    { id: 'cb_masque',      n: 'Masque',       e: '🎭', cap: 1 },
+    { id: 'cb_mario_ref',   n: 'M-Man',        e: '🔧', cap: 1 },
+    { id: 'cb_luigi_ref',   n: 'L-Brother',    e: '🪠', cap: 1 },
+    { id: 'cb_peach_ref',   n: 'K-Princess',   e: '🪁', cap: 1 },
+    { id: 'pl_grand_pebble', n: 'Grand Pebble', e: '🪨', cap: 1 }
   ];
   function owned(id) { try { return JSON.parse(localStorage.getItem('obby_cbox_owned') || '[]').indexOf(id) >= 0; } catch (e) { return false; } }
   function roster() { return FIGHTERS.filter(function (f) { return !f.cap || owned(f.id); }); }
@@ -113,7 +117,11 @@
     cb_sleight:     { w: 0.80, d: 0.95, k: 0.95 },                        // stage magician: teleports, decoys and card mines
     cb_fizz:        { w: 0.80, d: 0.90, k: 0.90 },                        // bubble blower: lots of small hits from range; light
     cb_maul:        { w: 1.50, d: 1.25, k: 1.30 },                        // hammer smith: the heaviest (hardest to launch), armored swings that hit hardest
-    cb_masque:      { w: 0.95, d: 0.95, k: 1.00 }                         // mask dancer: five forms, heals through SM.__heal
+    cb_masque:      { w: 0.95, d: 0.95, k: 1.00 },                        // mask dancer: five forms, heals through SM.__heal
+    cb_mario_ref:   { w: 1.10, d: 1.00, k: 1.00 },                        // M-Man: sturdy stomper; power-up forms come from tasks (fighter-mman.js)
+    cb_luigi_ref:   { w: 0.88, d: 0.95, k: 1.00 },                        // L-Brother: light, floaty, a grapple; power-up forms too (fighter-lbro.js)
+    cb_peach_ref:   { w: 0.90, d: 0.95, k: 1.00 },                        // K-Princess: floats, kites that loop back, a counter
+    pl_grand_pebble: { w: 1.40, d: 1.10, k: 1.10 }                        // Grand Pebble: a heavy stone, armour and quakes
     }
   };
   function ch(id) { return CH[id] || { w: 1, d: 1, k: 1 }; }
