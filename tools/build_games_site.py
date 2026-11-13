@@ -79,6 +79,44 @@ def main():
         shutil.copy2(os.path.join(WWW, n), out)
     open(os.path.join(out, '.nojekyll'), 'w').close()   # serve the files as they are
 
+    # Cache-busting for the games: GitHub Pages lets browsers keep files for 10 minutes (phones often longer),
+    # so a game's page and scripts kept loading old copies after a publish. In the site copy only, every local
+    # script and stylesheet a game page loads gets ?v=<content hash>, and the Games screen opens each game page
+    # with ?v=<hash of the whole game folder>. A changed file gets a new URL; an unchanged one stays cached.
+    def fhash(path):
+        return hashlib.sha1(open(path, 'rb').read()).hexdigest()[:10]
+    game_ver = {}
+    gdir = os.path.join(out, 'games')
+    for gid in sorted(os.listdir(gdir)):
+        page_path = os.path.join(gdir, gid, 'index.html')
+        if not os.path.isfile(page_path):
+            continue
+        html = open(page_path, encoding='utf-8').read()
+        def stamp(m):
+            attr, url = m.group(1), m.group(2)
+            if re.match(r'(?:[a-z]+:|//|#)', url) or '?' in url:
+                return m.group(0)
+            f = os.path.normpath(os.path.join(gdir, gid, url))
+            if not os.path.isfile(f):
+                return m.group(0)
+            return '%s="%s?v=%s"' % (attr, url, fhash(f))
+        html = re.sub(r'(<script[^>]*\bsrc)="([^"]+)"', stamp, html)
+        html = re.sub(r'(<link[^>]*\bhref)="([^"]+\.css)"', stamp, html)
+        open(page_path, 'w', encoding='utf-8').write(html)
+        h = hashlib.sha1()
+        for root, _dirs, fnames in sorted(os.walk(os.path.join(gdir, gid))):
+            for fn in sorted(fnames):
+                h.update(fn.encode()); h.update(open(os.path.join(root, fn), 'rb').read())
+        game_ver[gid] = h.hexdigest()[:10]
+    def stamp_src(m):
+        gid = m.group(1)
+        return "src:'games/%s/index.html?v=%s'" % (gid, game_ver[gid]) if gid in game_ver else m.group(0)
+    page = open(os.path.join(out, 'index.html'), encoding='utf-8').read()
+    page, n = re.subn(r"src:'games/([a-z]+)/index\.html'", stamp_src, page)
+    if n == 0:
+        die("found no src:'games/<id>/index.html' in the Games screen script to version")
+    open(os.path.join(out, 'index.html'), 'w', encoding='utf-8').write(page)
+
     # every game the Games screen lists must be there
     for gid in re.findall(r"\{ id:'([a-z]+)'", games_js):
         if not os.path.isfile(os.path.join(out, 'games', gid, 'index.html')):
