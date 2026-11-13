@@ -22,16 +22,46 @@
     new MutationObserver(function(){ requestAnimationFrame(placeInd); }).observe(bar, { subtree: true, attributes: true, attributeFilter: ['class'] });
     window.addEventListener('resize', function(){ requestAnimationFrame(placeInd); });
   }
-  // restart an animation class on an element
-  function play(el, cls){ if (!el) return; el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+  var calm = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+  // The little entrance motions, run with the Web Animations API. Restarting a CSS class needed a forced re-layout
+  // for every element (a long stall before a list could start moving); these start without one, and only touch
+  // opacity and movement, so the phone's GPU runs them even while the page script is busy.
+  var OUT = 'cubic-bezier(.2,.8,.2,1)';
+  var FX = {
+    'pp-r-in':   [[{ opacity: 0, translate: '0 10px' }, { opacity: 1, translate: '0 0' }], 380],
+    'pp-r-stag': [[{ opacity: 0, translate: '0 10px' }, { opacity: 1, translate: '0 0' }], 420],
+    'pp-r-rise': [[{ opacity: 0, translate: '0 24px', scale: '.96' }, { opacity: 1, translate: '0 -3px', scale: '1.01', offset: .7 }, { opacity: 1, translate: '0 0', scale: '1' }], 550],
+    'pp-r-fwd':  [[{ opacity: 0, translate: '30px 0' }, { opacity: 1, translate: '0 0' }], 340],
+    'pp-r-back': [[{ opacity: 0, translate: '-30px 0' }, { opacity: 1, translate: '0 0' }], 340],
+    'pp-r-pop':  [[{ scale: '.55', opacity: .2, rotate: '-25deg' }, { scale: '1.14', opacity: 1, rotate: '0deg', offset: .6 }, { scale: '1', opacity: 1, rotate: '0deg' }], 380],
+    'pp-r-swap': [[{ opacity: 0, translate: '0 7px' }, { opacity: 1, translate: '0 0' }], 320],
+    'pp-r-zin':  [[{ scale: '.8', opacity: .5 }, { scale: '1', opacity: 1 }], 500],
+    'pp-r-zout': [[{ scale: '1.18', opacity: .6 }, { scale: '1', opacity: 1 }], 450]
+  };
+  // Another animation already moving the element (the tab slide moves the whole page) would make the GPU give up on
+  // both and hand them to the busy page thread, so in that case the element is left alone.
+  function busy(el){
+    if (!el.getAnimations) return false;
+    var a = el.getAnimations();
+    for (var i = 0; i < a.length; i++) if (a[i] !== el.__ppFx && a[i].playState === 'running') return true;
+    return false;
+  }
+  function play(el, cls, delay){
+    var fx = FX[cls]; if (!el || !el.animate || !fx || calm.matches) return;
+    if (el.__ppFx){ el.__ppFx.cancel(); el.__ppFx = null; }
+    if (busy(el)) return;
+    var a = el.__ppFx = el.animate(fx[0], { duration: fx[1], delay: delay || 0, easing: OUT, fill: 'backwards' });
+    a.onfinish = function(){ if (el.__ppFx === a) el.__ppFx = null; };
+  }
   function stagger(root, sel, max){
-    if (!root) return;
-    var items = root.querySelectorAll(sel), n = 0;
-    for (var i = 0; i < items.length && n < max; i++){
-      var it = items[i], r = it.getBoundingClientRect();
-      if (r.bottom < 0 || r.top > innerHeight) continue;          // only what's on screen
-      it.style.setProperty('--i', n++); play(it, 'pp-r-stag');
+    if (!root || calm.matches) return;
+    // measure everything first, then start everything: no layout work between one item and the next
+    var items = root.querySelectorAll(sel), pick = [];
+    for (var i = 0; i < items.length && pick.length < max; i++){
+      var r = items[i].getBoundingClientRect();
+      if (r.height && r.bottom > 0 && r.top < innerHeight) pick.push(items[i]);   // only what's on screen
     }
+    for (var j = 0; j < pick.length; j++) play(pick[j], 'pp-r-stag', j * 32);
   }
   function onView(){
     if (!body.classList.contains('pp-refined') || !body.classList.contains('player-layout')) return;
@@ -103,7 +133,6 @@
     }, true);
   }
   // ---- the player's own controls ----
-  var calm = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
   // immersive: the disc grows into the room the controls leave, and settles back when they return
   var wasImm = body.classList.contains('immersive');
   new MutationObserver(function(){
@@ -132,13 +161,20 @@
       });
     }
     function queue(){ if (!queued){ queued = true; requestAnimationFrame(run); } }
-    new MutationObserver(queue).observe(bar, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'hidden', 'class'] });
+    // changes inside an open menu (a slider's value while it is dragged) can't move the pills: measuring the bar on
+    // every one of them cost a layout each frame
+    new MutationObserver(function(list){
+      for (var i = 0; i < list.length; i++){
+        var t = list[i].target, el = t.nodeType === 1 ? t : t.parentElement;
+        if (!el || !el.closest || !el.closest('[id$="-dropdown"]')) return queue();
+      }
+    }).observe(bar, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'hidden', 'class'] });
     new MutationObserver(queue).observe(body, { attributes: true, attributeFilter: ['class', 'data-pl-player'] });
     window.addEventListener('resize', function(){ seen = null; queue(); });
     queue();
   });
   // ---- things grow out of where you touched, and shrink back into it ----
-  var EASE = 'cubic-bezier(.3,0,.15,1)', GROW = 'cubic-bezier(.34,1.3,.5,1)';   // EASE starts gently so you can watch it leave the spot you touched
+  var GROW = 'cubic-bezier(.34,1.3,.5,1)';
   var tap = null;   // the last touch: where it landed and what it was on
   function noteTap(e){
     if (!e.target || !e.target.closest) return;
@@ -172,33 +208,36 @@
   }
   ['sort-dropdown', 'add-dropdown', 'track-edit-popover', 'track-pl-popover', 'select-pl-menu', 'viz-sens-dropdown', 'subtitle-dropdown', 'sleep-dropdown', 'filter-dropdown', 'pip-dropdown', 'speed-dropdown', 'latency-dropdown', 'memc-dropdown', 'upscale-dropdown', 'boost-dropdown', 'fx-dropdown', 'eq-dropdown', 'extras-panel'].forEach(function(id){ var d = document.getElementById(id); if (d) onOpen(d, function(o){ if (!d.closest('#menu-panel')) grower(d, .4)(o); }); });
   ['sort-modal-overlay', 'rename-modal-overlay', 'thumbnail-modal-overlay', 'cutter-modal-overlay', 'customize-modal-overlay', 'ppxp-rank-modal-overlay', 'ppxp-expshop-modal-overlay', 'ppxp-quiz-modal-overlay', 'pp-mar-overlay'].forEach(function(id){ var o = document.getElementById(id); if (o && o.firstElementChild) onOpen(o, grower(o.firstElementChild, .6)); });
-  // full pages (Games, Points, a game): a circle opens from the touch and closes back onto it
-  function circler(el, keepOpacity){
+  // full pages (Games, Points, a game): the page grows out of the spot touched and shrinks back into it.
+  // Only scale and opacity, which the GPU runs by itself. (This used to be a circular clip-path, which this WebView
+  // redraws on the page thread every frame, right when that thread is busy building the page: it stuttered.)
+  function circler(el){
     return function(open){
-      var W = innerWidth, H = innerHeight, f = fresh();
-      if (open) el.__ppO = f ? [f.x, f.y] : [W / 2, H / 2];
-      var o = el.__ppO || [W / 2, H / 2], R = Math.hypot(Math.max(o[0], W - o[0]), Math.max(o[1], H - o[1])) + 4;
-      var at = ' at ' + o[0] + 'px ' + o[1] + 'px)', a = { clipPath: 'circle(0px' + at }, b = { clipPath: 'circle(' + R + 'px' + at };
-      if (keepOpacity){ a.opacity = b.opacity = 1; a.transform = b.transform = 'none'; }
+      var f = fresh(), r = el.getBoundingClientRect();
+      if (open) el.__ppO = f ? [f.x - r.left, f.y - r.top] : null;
+      var o = el.__ppO;
+      el.style.transformOrigin = o ? o[0] + 'px ' + o[1] + 'px' : '50% 50%';
       if (el.__ppA) el.__ppA.cancel();
-      el.__ppA = open ? el.animate([a, b], { duration: 600, easing: EASE }) : el.animate([b, a], { duration: 420, easing: EASE, fill: 'forwards' });
+      var small = { opacity: 0, transform: 'scale(.55)' }, full = { opacity: 1, transform: 'none' };
+      el.__ppA = open
+        ? el.animate([small, { opacity: 1, offset: .45 }, full], { duration: 460, easing: OUT })
+        : el.animate([full, { opacity: 1, offset: .3 }, small], { duration: 320, easing: 'cubic-bezier(.4,0,.8,.4)', fill: 'forwards' });
       if (!open) el.__ppA.onfinish = function(){ this.cancel(); };
     };
   }
-  onOpen(document.getElementById('pp-games'), circler(document.getElementById('pp-games'), true));
-  onOpen(document.getElementById('ppx-hub'), circler(document.getElementById('ppx-hub'), true));
-  (function(){ var g = document.getElementById('pp-game'); if (g){ var c = circler(g, false); onOpen(g, function(o){ if (o) c(true); }); } })();
+  onOpen(document.getElementById('pp-games'), circler(document.getElementById('pp-games')));
+  onOpen(document.getElementById('ppx-hub'), circler(document.getElementById('ppx-hub')));
+  (function(){ var g = document.getElementById('pp-game'); if (g){ var c = circler(g); onOpen(g, function(o){ if (o) c(true); }); } })();
   // the player page: from the mini-player it rises (it sits right there). Opened from a card on Home it grows out of that
   // card; from a row in the Library it opens outwards from that row's line. Closing takes it back into the playing card or row.
+  // Only opacity and scale are animated, so the GPU runs it by itself even while the page thread is busy opening the
+  // song. (It used to be a clip-path, which this WebView redraws on the page thread every frame: it stuttered.)
   var mainEl = document.getElementById('main'), cameFrom = null, mAnim = null;
-  function inset(r, round){
-    var W = innerWidth, H = innerHeight;
-    return 'inset(' + Math.max(0, r.top) + 'px ' + Math.max(0, W - r.right) + 'px ' + Math.max(0, H - r.bottom) + 'px ' + Math.max(0, r.left) + 'px round ' + round + 'px)';
-  }
   function onScreen(r){ return r && r.width > 0 && r.height > 0 && r.bottom > 8 && r.top < innerHeight - 8 && r.right > 8 && r.left < innerWidth - 8; }
-  function target(kind, r){   // the clip the page starts from / ends at
-    if (kind === 'row') return inset({ top: r.top, bottom: r.bottom, left: 0, right: innerWidth }, 0);
-    return inset(r, 14);
+  function target(kind, r){   // where the page grows from / shrinks into: [origin x, origin y, starting scale]
+    var W = innerWidth, H = innerHeight, cy = (r.top + r.bottom) / 2;
+    if (kind === 'row') return [W / 2, cy, .9];   // a row is the full width already: the page opens outwards from its line
+    return [(r.left + r.right) / 2, cy, Math.max(.3, Math.min(.8, Math.max(r.width / W, r.height / H)))];
   }
   // With the native video player the picture is drawn by Android under a see-through page, so this clip can't shape it,
   // and while the clip grows the page under the player (the Library) shows through and covers the video. Videos there
@@ -208,7 +247,7 @@
   }
   function morphPlayer(opening){
     if (!mainEl || !mainEl.animate || !motionOk()) return;
-    if (mAnim){ mAnim.cancel(); mAnim = null; }
+    if (mAnim){ var old = mAnim; mAnim = null; old.cancel(); mainEl.style.transformOrigin = mainEl.style.visibility = mainEl.style.backgroundColor = ''; }
     if (nativeVideoShown()){ cameFrom = null; return; }
     var kind = null, r = null, f;
     if (opening){
@@ -225,13 +264,19 @@
       kind = el.classList.contains('track') ? 'row' : 'card';
     }
     if (!kind) return;
-    var small = target(kind, r), full = 'inset(0px 0px 0px 0px round 0px)', video = body.classList.contains('pl-video');
-    var base = { translate: '0 0', visibility: 'visible' }; if (video) base.background = '#000';
-    function k(o){ for (var n in base) o[n] = base[n]; return o; }
-    mAnim = opening
-      ? mainEl.animate([k({ clipPath: small, opacity: .6 }), k({ clipPath: full, opacity: 1 })], { duration: 540, easing: EASE })
-      : mainEl.animate([k({ clipPath: full, opacity: 1 }), k({ clipPath: small, opacity: 1, offset: .82 }), k({ clipPath: small, opacity: 0 })], { duration: 460, easing: EASE });
-    mAnim.onfinish = mAnim.oncancel = function(){ mAnim = null; };
+    var t = target(kind, r), small = { opacity: 0, transform: 'scale(' + t[2] + ')', translate: '0px 0px' }, full = { opacity: 1, transform: 'none', translate: '0px 0px' };
+    // kept visible (and black behind a video) by inline style for the run, not by keyframes: a keyframe property the
+    // GPU can't animate would send the whole animation back to the page thread
+    var st = mainEl.style;
+    st.transformOrigin = t[0] + 'px ' + t[1] + 'px'; st.visibility = 'visible';
+    if (body.classList.contains('pl-video')) st.backgroundColor = '#000';
+    var a = mAnim = opening
+      ? mainEl.animate([small, { opacity: 1, offset: .4 }, full], { duration: 480, easing: OUT })
+      : mainEl.animate([full, { opacity: 1, offset: .35 }, small], { duration: 360, easing: 'cubic-bezier(.4,0,.8,.4)' });
+    a.onfinish = a.oncancel = function(){
+      if (mAnim !== a) return;
+      mAnim = null; st.transformOrigin = ''; st.visibility = ''; st.backgroundColor = '';
+    };
   }
   var hadP2 = body.hasAttribute('data-pl-player');
   new MutationObserver(function(){
@@ -293,7 +338,4 @@
   document.addEventListener('pointermove', function(e){
     if (press && e.pointerId === press.id && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 14 && press.big){ var p = press; press = null; pressUp(p, true); }
   }, { capture: true, passive: true });
-  ['pp-r-in', 'pp-r-up', 'pp-r-rise', 'pp-r-stag', 'pp-r-fwd', 'pp-r-back', 'pp-r-pop', 'pp-r-swap', 'pp-r-zin', 'pp-r-zout'].forEach(function(c){
-    document.addEventListener('animationend', function(e){ if (e.target.classList && e.target.classList.contains(c)) e.target.classList.remove(c); }, true);
-  });
 })();

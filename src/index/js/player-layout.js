@@ -57,7 +57,8 @@
   }
   function syncProgress(){
     const max = parseFloat(seek.max) || 100;
-    miniFill.style.width = Math.max(0, Math.min(100, (parseFloat(seek.value) || 0) / max * 100)) + '%';
+    // scaleX instead of width: the bar's glide then runs on the GPU, not as a layout of the page every frame
+    miniFill.style.transform = 'scaleX(' + Math.max(0, Math.min(1, (parseFloat(seek.value) || 0) / max)).toFixed(4) + ')';
   }
 
   // ----- Browse screens (Library / Settings) -----
