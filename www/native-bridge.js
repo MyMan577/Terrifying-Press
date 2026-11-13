@@ -86,7 +86,7 @@
       kind: kind, raw: raw, proxy: null, active: false, track: null, uri: null,
       pwr: false, playing: false, state: 'idle', ready: false, ended: false, seeking: false,
       base: 0, baseAt: 0, durMs: NaN, rate: 1, vol: 1, muted: false, loop: false, vw: 0, vh: 0,
-      preservePitch: true, loadId: 0, loading: Promise.resolve(), err: null, localAt: 0,
+      preservePitch: true, pitch: 1, loadId: 0, loading: Promise.resolve(), err: null, localAt: 0,
       advancedUri: null, adopting: false, seekTimer: 0
     };
     S.after = function (fn) { var id = S.loadId; S.loading = S.loading.then(function () { if (id === S.loadId && S.active) return fn(); }); return S.loading; };
@@ -108,7 +108,7 @@
       S.seekTimer = setTimeout(function () { if (S.seeking) { S.seeking = false; emit(S, 'seeked'); emit(S, 'timeupdate'); } }, 8000);
       S.after(function () { return Player.seek({ ms: Math.round(sec * 1000) }); }).then(function () { confirmSeek(S); });
     };
-    S.applyRate = function () { S.after(function () { return Player.setRate({ rate: S.rate, preservePitch: S.preservePitch }); }); };
+    S.applyRate = function () { S.after(function () { return Player.setRate({ rate: S.rate, preservePitch: S.preservePitch, pitch: S.pitch }); }); };
     S.applyVol = function () { S.after(function () { return Player.setVolume({ volume: S.muted ? 0 : S.vol }); }); };
 
     var proxy = new Proxy(raw, {
@@ -125,6 +125,7 @@
             case 'readyState': return S.ready ? 4 : (S.state === 'buffering' ? 2 : 0);
             case 'networkState': return 1;
             case 'playbackRate': case 'defaultPlaybackRate': return S.rate;
+            case 'ppPitch': return S.pitch;
             case 'volume': return S.vol;
             case 'muted': return S.muted;
             case 'loop': return S.loop;
@@ -154,6 +155,7 @@
           case 'loop': S.loop = !!value; if (S.active) S.after(function () { return Player.setLoop({ loop: S.loop }); }); break;
           case 'preservesPitch': case 'mozPreservesPitch': case 'webkitPreservesPitch':
             S.preservePitch = !!value; if (S.active) S.applyRate(); break;
+          case 'ppPitch': S.pitch = Math.max(0.25, Math.min(4, +value || 1)); if (S.active) S.applyRate(); break;   // pitch shift on its own (1 = none), on top of the speed
           case 'currentTime': if (S.active) { S.seek(+value); return true; } break;
           case 'src': if (S.active) return true; break;     // native owns the source; ignore stray writes
         }
@@ -319,7 +321,7 @@
         Player.loadMedia(Object.assign(metaFor(t, uri), { autoplay: false })),
         Player.setLoop({ loop: S.loop }).catch(function () {}),
         Player.setVolume({ volume: S.muted ? 0 : S.vol }).catch(function () {}),
-        Player.setRate({ rate: S.rate, preservePitch: S.preservePitch }).catch(function () {})
+        Player.setRate({ rate: S.rate, preservePitch: S.preservePitch, pitch: S.pitch }).catch(function () {})
       ]);
       pushFx(true);
       syncViz();
