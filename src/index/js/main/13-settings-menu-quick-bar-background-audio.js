@@ -735,6 +735,19 @@
     else if (stuckTicks === 10){ stuckRecover(3, t); stuckTicks = 0; }
   }, 1000);
 
+  // The other direction: sound is running but the app thinks it is paused (the play button shows Play, and leaving
+  // the app does not hand the sound to the background because that only happens "while playing"). Whatever caused
+  // it, once the clock has really moved for two seconds while visible, take the real state as the truth.
+  let driftTicks = 0, driftT = -1;
+  ppEvery(() => {
+    const m = (!document.hidden && !isPlaying && currentIndex !== -1 && !cutterPreviewing && Date.now() - lastTrackLoadTs > 5000) ? media() : null;
+    if (!m || m.paused || m.ended || m.seeking){ driftTicks = 0; driftT = -1; return; }
+    const t = m.currentTime;
+    driftTicks = (driftT >= 0 && t > driftT + 0.2) ? driftTicks + 1 : 0;
+    driftT = t;
+    if (driftTicks >= 2){ driftTicks = 0; driftT = -1; isPlaying = true; updatePlayIcon(); updateMediaSession(); }
+  }, 1000);
+
   // Pauses the browser/OS does on its own: while visible, sync the UI; while
   // hidden, count them for the flap guard.
   [audioEl, videoEl, bgPlainEl, bgFxEl].forEach(el => {

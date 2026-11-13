@@ -411,8 +411,10 @@
     }
     if (s.playing && !wasPlaying) emit(S, 'playing');
     if (!recentLocal) {
-      if (!S.pwr && wasPwr && !S.ended) emit(S, 'pause');     // paused from the notification / headset / audio focus loss
-      if (S.pwr && !wasPwr) emit(S, 'play');                  // started from outside the page
+      // Paused or started from outside the page (notification, widget, headset, car, another app taking over the sound).
+      // The page is told directly as well: its own 'pause' handling deliberately ignores pauses while the app is hidden.
+      if (!S.pwr && wasPwr && !S.ended) { emit(S, 'pause'); if (N.hooks.outsidePlayState) N.hooks.outsidePlayState(false); }
+      if (S.pwr && !wasPwr) { emit(S, 'play'); if (N.hooks.outsidePlayState) N.hooks.outsidePlayState(true); }
     }
     if (s.why === 'seeked' && S.seeking && seekLanded(S, s.posMs)) { S.seeking = false; clearTimeout(S.seekTimer); S.base = s.posMs; S.baseAt = now(); emit(S, 'seeked'); emit(S, 'timeupdate'); }
     if (s.why === 'rate') emit(S, 'ratechange');

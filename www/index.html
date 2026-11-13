@@ -14596,6 +14596,19 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     else if (stuckTicks === 10){ stuckRecover(3, t); stuckTicks = 0; }
   }, 1000);
 
+  // The other direction: sound is running but the app thinks it is paused (the play button shows Play, and leaving
+  // the app does not hand the sound to the background because that only happens "while playing"). Whatever caused
+  // it, once the clock has really moved for two seconds while visible, take the real state as the truth.
+  let driftTicks = 0, driftT = -1;
+  ppEvery(() => {
+    const m = (!document.hidden && !isPlaying && currentIndex !== -1 && !cutterPreviewing && Date.now() - lastTrackLoadTs > 5000) ? media() : null;
+    if (!m || m.paused || m.ended || m.seeking){ driftTicks = 0; driftT = -1; return; }
+    const t = m.currentTime;
+    driftTicks = (driftT >= 0 && t > driftT + 0.2) ? driftTicks + 1 : 0;
+    driftT = t;
+    if (driftTicks >= 2){ driftTicks = 0; driftT = -1; isPlaying = true; updatePlayIcon(); updateMediaSession(); }
+  }, 1000);
+
   // Pauses the browser/OS does on its own: while visible, sync the UI; while
   // hidden, count them for the flap guard.
   [audioEl, videoEl, bgPlainEl, bgFxEl].forEach(el => {
@@ -21496,6 +21509,19 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       else if (c === 'pause'){ if (isPlaying) togglePlay(); }
       else if (c === 'seek'){ if (ev && ev.posMs != null && currentIndex !== -1){ try { media().currentTime = ev.posMs / 1000; } catch(e){} } }
       if (c === 'play' || c === 'pause' || c === 'seek') setTimeout(() => { try { ppMirrorSync(); } catch(e){} }, 700);   // confirm the real state back
+    };
+    // Play or pause pressed outside the page while the native engine plays (notification, widget, headset, car).
+    // Without this the app still believed it was playing after a notification pause: coming back to it started the
+    // sound again, and the play button and the real state could end up disagreeing.
+    PPNative.hooks.outsidePlayState = (playing) => {
+      if (currentIndex === -1 || Date.now() - lastTrackLoadTs < 5000) return;   // a track is still loading: its reports are not a choice
+      if (!playing){
+        cancelResumeOnReturn();   // paused on purpose: returning to the app must not restart it
+        if (isPlaying){
+          isPlaying = false; updatePlayIcon(); updateMediaSession();
+          try { if (rememberPlaybackPosition) savePlaybackPosition(tracks[currentIndex].dbId, media().currentTime); } catch(e){}
+        }
+      } else if (!isPlaying){ isPlaying = true; updatePlayIcon(); updateMediaSession(); }
     };
     PPNative.hooks.entries = (list, src) => ppAddNative(list, src);
     PPNative.hooks.syncTo = (uri) => {
