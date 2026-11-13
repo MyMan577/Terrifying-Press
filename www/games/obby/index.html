@@ -1405,6 +1405,10 @@ canvas { display:block; width:100%; height:100%; cursor: grab; touch-action: non
   background: linear-gradient(135deg, rgba(124,219,255,0.25), rgba(156,255,154,0.22));
   border: 2px solid var(--accent);
 }
+.spawn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+.spawn-grid button { padding: 10px 4px; font-size: 13px; font-weight: 700; border-left: 6px solid var(--sp, #9cff9a); }
+.spawn-grid button.active { background: linear-gradient(135deg, rgba(255,209,102,0.35), rgba(255,107,107,0.35)); animation: pulse 1.5s infinite; }
+#spawnResetBtn { width: 100%; padding: 8px; font-size: 12px; margin-bottom: 8px; }
 #setSpawnBtn.active {
   background: linear-gradient(135deg, rgba(255,209,102,0.35), rgba(255,107,107,0.35));
   border-color: var(--warn);
@@ -2119,6 +2123,16 @@ input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; u
 
     
     <div class="section" data-tab="build" id="placePlayerSection">
+      <div class="label">Spawn Points</div>
+      <div class="spawn-grid" id="spawnGrid">
+        <button type="button" data-spawn="p1" style="--sp:#9cff9a">🚩 Start</button>
+        <button type="button" data-spawn="p2" style="--sp:#7cdbff">🤝 Player 2</button>
+        <button type="button" data-spawn="s1" style="--sp:#ff6b6b">🥊 Smash P1</button>
+        <button type="button" data-spawn="s2" style="--sp:#ffd166">🥊 Smash P2</button>
+      </div>
+      <button type="button" id="spawnResetBtn">↺ Remove Player 2 and Smash spots</button>
+      <div class="hint">Pick one, then tap the map: tap a block to stand on it, or empty space to start in the air. Player 2 is your friend in Play together. Smash spots are used when you fight on My Course. Spots you don't set are picked for you.</div>
+      <div class="spacer"></div>
       <div class="label">Place Player</div>
       <button id="setSpawnBtn">🎯 Set Test Spawn</button>
       <div class="spacer"></div>
@@ -4155,6 +4169,7 @@ let jumpJustPressed = false;
   }
 
   let placingSpawn = false;
+  let placingPoint = null;   // which saved spawn point the next tap sets: 'p1', 'p2', 's1' or 's2'
   let originalSpawn = null;
   let linkSourcePlate = null; 
   
@@ -4186,7 +4201,7 @@ let jumpJustPressed = false;
     delete(k)    { const r = super.delete(k);    _typeIndexDirty = true; invalidateStaticTileCache(); return r; }
     clear()      { const r = super.clear();       _typeIndexDirty = true; invalidateStaticTileCache(); return r; }
   }
-  const world = { tiles: new TileMap(), goal: { x: 280, y: 50, w: 1, h: 1 }, spawn: { x: 2.5, y: 50 }, checkpoint: null };
+  const world = { tiles: new TileMap(), goal: { x: 280, y: 50, w: 1, h: 1 }, spawn: { x: 2.5, y: 50 }, checkpoint: null, xs: {} };   // xs: extra spawn points { p2, s1, s2 }, each { x, y } or unset
 
   
   
@@ -5016,7 +5031,7 @@ let srEchoFrames = [];
     resetPlayer: () => resetPlayer(),
     setMessage: t => setMessage(t),
     // Building together: put the other phone's block changes in (set: [[key, tile]], del: [keys]).
-    applyEdits(set, del, goal, spawn) {
+    applyEdits(set, del, goal, spawn, xs) {
       for (const k of del || []) { world.tiles.delete(k); const i = movers.findIndex(m => m.id === k); if (i >= 0) movers.splice(i, 1); }
       for (const [k, t] of set || []) {
         const tile = Object.assign({}, t, { id: k });
@@ -5026,7 +5041,8 @@ let srEchoFrames = [];
         else if (i >= 0) movers.splice(i, 1);
       }
       if (goal) world.goal = { ...goal };
-      if (spawn) world.spawn = { ...spawn };
+      if (spawn) { world.spawn = { ...spawn }; if (mode === 'build') resetPlayer(); }
+      if (xs) world.xs = JSON.parse(JSON.stringify(xs));
       _rebuildTileTypeIndex();
     },
     // a name tag at a spot in the world (tiles), e.g. where a friend just built
@@ -9471,13 +9487,19 @@ function activateDash() {
     world.tiles.clear(); movers.length = 0; enemies.length = 0; enemyProjectiles.length = 0;
     window._levelIsImported = false; 
     
-    world.goal = { x: 280, y: 50, w: 1, h: 1 }; world.spawn = { x: 2.5, y: 50 }; world.checkpoint = null;
+    world.goal = { x: 280, y: 50, w: 1, h: 1 }; world.spawn = { x: 2.5, y: 50 }; world.checkpoint = null; world.xs = {};
     claimedCheckpoints.clear(); collectedTiles.clear();
     resetPlayer(); won = false; winTimer = 0; particles.length = 0; screenShake = 0;
     setMessage('Build mode: Place blocks AND a Goal flag to finish your course!');
   }
 
 
+// Where this phone's player starts. In Play together the friend starts at the Player 2 spot, if the course has one.
+function startSpawn() {
+  const p2 = world.xs && world.xs.p2;
+  if (p2 && !originalSpawn && window.__obbyNet && window.__obbyNet.role === 'guest') return p2;
+  return world.spawn;
+}
 function resetPlayer() {
   
   if (recordGhosts && currentRunFrames.length > 10) {
@@ -9507,7 +9529,8 @@ function resetPlayer() {
   }
 
   
-  player.x = world.spawn.x - player.w / 2; player.y = world.spawn.y - player.h;
+  const _sp = startSpawn();
+  player.x = _sp.x - player.w / 2; player.y = _sp.y - player.h;
   player.vx = 0; player.vy = 0; player.onGround = false; player.respawnTimer = 0; player.respawnTarget = null;
   if (mode === 'play') { cam.x = player.x * TILE - viewW * 0.5; cam.y = player.y * TILE - viewH * 0.45; }
   
@@ -9839,6 +9862,8 @@ function resetPlayer() {
     }
     updateUndoRedoButtons();
     setSpawnBtn.classList.toggle('active', placingSpawn);
+    if (mode !== 'build') placingPoint = null;
+    refreshSpawnBtns();
     
     
     if (selectedCharacter === 'cosplayer' && mode === 'play') {
@@ -10251,7 +10276,56 @@ function resetPlayer() {
     setTimeout(refreshAbilityBtns, 900);
   })();
 
+  // ---- saved spawn points: Start, Player 2 (Play together), Smash P1 / P2 (Smash on My Course)
+  const SPAWN_PTS = { p1: { n: 'Start', c: '#9cff9a' }, p2: { n: 'Player 2', c: '#7cdbff' }, s1: { n: 'Smash P1', c: '#ff6b6b' }, s2: { n: 'Smash P2', c: '#ffd166' } };
+  const spawnBtns = Array.from(document.querySelectorAll('#spawnGrid button'));
+  function refreshSpawnBtns() { for (const b of document.querySelectorAll('#spawnGrid button')) b.classList.toggle('active', placingPoint === b.dataset.spawn); }
+  for (const b of spawnBtns) b.addEventListener('click', () => {
+    if (mode !== 'build') return;
+    if (placingSpawn) { placingSpawn = false; setSpawnBtn.classList.remove('active'); }
+    const k = b.dataset.spawn;
+    placingPoint = placingPoint === k ? null : k;
+    refreshSpawnBtns();
+    setMessage(placingPoint ? `📍 Tap the map to set the ${SPAWN_PTS[k].n} spot` : 'Spawn placement cancelled');
+  });
+  document.getElementById('spawnResetBtn').addEventListener('click', () => {
+    placingPoint = null; refreshSpawnBtns();
+    world.xs = {};
+    if (window._srNotifyEdit) window._srNotifyEdit('place');
+    setMessage('Player 2 and Smash spots removed. They are picked for you again.');
+  });
+  function placeSpawnPoint(gx, gy) {
+    const k = placingPoint, pt = { x: gx + 0.5, y: world.tiles.has(keyFor(gx, gy)) ? gy : gy + 1 };   // on top of a block, or inside an empty square
+    placingPoint = null; refreshSpawnBtns();
+    if (k === 'p1') { world.spawn = pt; resetPlayer(); }
+    else { if (!world.xs) world.xs = {}; world.xs[k] = pt; }
+    if (window._srNotifyEdit) window._srNotifyEdit('place');
+    setMessage(`📍 ${SPAWN_PTS[k].n} spot set`);
+  }
+  // build mode: a flag and a player-sized outline at each saved spot
+  function drawSpawnMarks() {
+    if (mode !== 'build') return;
+    const xs = world.xs || {}, pts = { p1: world.spawn, p2: xs.p2, s1: xs.s1, s2: xs.s2 };
+    ctx.save(); ctx.font = 'bold 11px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const k in pts) {
+      const p = pts[k]; if (!p) continue;
+      const d = SPAWN_PTS[k], cx = p.x * TILE - cam.x, fy = p.y * TILE - cam.y;
+      if (cx < -80 || cx > viewW + 80 || fy < -40 || fy > viewH + 120) continue;
+      const pw = player.w * TILE, ph = player.h * TILE;
+      ctx.lineWidth = 2; ctx.strokeStyle = d.c; ctx.setLineDash([4, 3]);
+      if (k !== 'p1' || placingPoint) ctx.strokeRect(cx - pw / 2, fy - ph, pw, ph);
+      ctx.setLineDash([]);
+      const tw = ctx.measureText(d.n).width + 12, ty = fy - ph - 16;
+      ctx.fillStyle = 'rgba(10,14,30,.85)'; ctx.beginPath(); ctx.roundRect(cx - tw / 2, ty - 9, tw, 18, 9); ctx.fill();
+      ctx.strokeStyle = d.c; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, ty + 9); ctx.lineTo(cx, fy - ph); ctx.stroke();
+      ctx.fillStyle = d.c; ctx.fillText(d.n, cx, ty + 0.5);
+    }
+    ctx.restore();
+  }
+
   setSpawnBtn.addEventListener('click', () => {
+    placingPoint = null; refreshSpawnBtns();
     if (placingSpawn) { placingSpawn = false; setSpawnBtn.classList.remove('active'); setMessage('Spawn placement cancelled'); }
     else { originalSpawn = {...world.spawn}; placingSpawn = true; setSpawnBtn.classList.add('active'); setMessage('🎯 Tap anywhere to set test spawn!'); }
   });
@@ -12677,6 +12751,7 @@ function resetPlayer() {
     const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
     const w = screenToWorld(sx, sy), gx = Math.floor(w.x), gy = Math.floor(w.y);
 
+    if (placingPoint && mode === 'build') { placeSpawnPoint(gx, gy); return; }
     if (placingSpawn && mode === 'build') { world.spawn = { x: gx + 0.5, y: gy }; placingSpawn = false; setSpawnBtn.classList.remove('active'); setMessage(`🎯 Test spawn set at ${gx},${gy}! Starting test...`); setMode('play'); resetPlayer(); return; }
 
     
@@ -24879,7 +24954,7 @@ function resolveCollisions(axis, dt) {
       ctx.restore();
     }
 
-    drawParticles(); drawConduitEffects(); if (window.__obbyNet) window.__obbyNet.frame(); drawPlayer();
+    drawParticles(); drawConduitEffects(); if (window.__obbyNet) window.__obbyNet.frame(); drawPlayer(); drawSpawnMarks();
     if (window.__smash && window.__smash.active) window.__smash.draw();
     if (window._drawSelectionOverlay) window._drawSelectionOverlay();
     
@@ -26380,6 +26455,7 @@ function resolveCollisions(axis, dt) {
         })),
         goal: { ...world.goal },
         spawn: { ...world.spawn },
+        ...(world.xs && (world.xs.p2 || world.xs.s1 || world.xs.s2) && { extraSpawns: JSON.parse(JSON.stringify(world.xs)) }),
         checkpoint: world.checkpoint ? { ...world.checkpoint } : null
       },
       movers: movers.map(m => ({
@@ -26430,6 +26506,7 @@ function resolveCollisions(axis, dt) {
       
       if (data.world.goal) world.goal = { ...data.world.goal };
       if (data.world.spawn) world.spawn = { ...data.world.spawn };
+      world.xs = data.world.extraSpawns ? JSON.parse(JSON.stringify(data.world.extraSpawns)) : {};
       
       world.checkpoint = null;
       claimedCheckpoints.clear(); collectedTiles.clear();

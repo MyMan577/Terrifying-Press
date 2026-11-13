@@ -166,7 +166,7 @@
         rowT(o, 180, 187, 48); rowT(o, 181, 186, 49); rowT(o, 213, 220, 48); rowT(o, 214, 219, 49);
         rowT(o, 197, 203, 45, 'cloud');
         return { spawn: [{ x: 183, y: 48 }, { x: 217, y: 48 }], respawn: { x: 200, y: 38 } }; } },
-    course: { n: 'My Course', e: '🧱', d: 'Fight on your own build, around the spawn', build: null }
+    course: { n: 'My Course', e: '🧱', d: 'Fight on your own build, around its Smash spots or the start', build: null }
   };
   var STAGE_ORDER = ['battlefield', 'pit', 'tower', 'isles', 'course'];
 
@@ -273,7 +273,11 @@
 
   // ---------------------------------------------------------------- stage setup
   function analyze(def, cfg) {
-    var w = W(), minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9, sp = w.spawn, range = cfg.stage === 'course' ? 55 : 1e9;
+    var w = W(), minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9, sp = w.spawn;
+    // My Course: the Smash spots set in the builder, if any. The arena is the part of the course around them.
+    var xs = (!def && w.xs) || {}, u1 = xs.s1 || null, u2 = xs.s2 || null;
+    if (u1 || u2) sp = u1 && u2 ? { x: (u1.x + u2.x) / 2, y: Math.min(u1.y, u2.y) } : (u1 || u2);
+    var range = cfg.stage === 'course' ? 55 : 1e9;
     w.tiles.forEach(function (t) {
       if (!(FULL[t.type] || t.type === 'half' || t.type === 'cloud')) return;
       if (Math.abs(t.x - sp.x) > range) return;
@@ -302,9 +306,12 @@
     st.plats = segs;
     if (def && def.spawn) { st.spawns = def.spawn; st.respawn = def.respawn; }
     else {
-      var gy = groundBelow(sp.x, sp.y - 2, 40); var fxp = sp.x + 7; var gy2 = groundBelow(fxp, sp.y - 4, 40);
-      if (gy2 === null) { fxp = sp.x + 3; gy2 = gy; }
-      st.spawns = [{ x: sp.x, y: (gy === null ? sp.y : gy) }, { x: fxp, y: (gy2 === null ? sp.y : gy2) }];
+      var b1 = u1 || (u2 ? w.spawn : sp);
+      var gy = groundBelow(b1.x, b1.y - 2, 40); var fxp = b1.x + 7; var gy2 = groundBelow(fxp, b1.y - 4, 40);
+      if (gy2 === null) { fxp = b1.x + 3; gy2 = gy; }
+      st.spawns = [{ x: b1.x, y: (gy === null ? b1.y : gy) }, { x: fxp, y: (gy2 === null ? b1.y : gy2) }];
+      if (u1) st.spawns[0] = { x: u1.x, y: u1.y };   // set spots are used exactly as placed
+      if (u2) st.spawns[1] = { x: u2.x, y: u2.y };
       st.respawn = { x: (minX + maxX) / 2, y: minY - 4 };
     }
     return st;

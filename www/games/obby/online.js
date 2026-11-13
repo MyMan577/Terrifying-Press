@@ -24,7 +24,7 @@
   var remoteWon = false;
   var kind = 'play';           // 'play' or 'build' (chosen by the host)
   var shared = null;           // key -> tile as both phones last agreed (JSON)
-  var sharedGoal = '', sharedSpawn = '';
+  var sharedGoal = '', sharedSpawn = '', sharedXs = '';
   var pendingEd = [];          // edits that arrived while this phone was playing
   var lastSync = 0, SYNC_MS = 250;
   var friendMark = null;       // where the friend last built
@@ -244,7 +244,7 @@
   function baseline(){
     var w = W(); if (!w) return;
     shared = new Map(); w.tiles.forEach(function(t, k){ shared.set(k, JSON.stringify(t)); });
-    sharedGoal = JSON.stringify(w.goal || null); sharedSpawn = JSON.stringify(w.spawn || null);
+    sharedGoal = JSON.stringify(w.goal || null); sharedSpawn = JSON.stringify(w.spawn || null); sharedXs = JSON.stringify(w.xs || {});
   }
   // send what this phone changed since the last agreed state
   function syncOut(){
@@ -255,19 +255,20 @@
     for (var i = 0; i < del.length; i++) shared.delete(del[i]);
     var gj = JSON.stringify(w.goal || null), sj = JSON.stringify(w.spawn || null);
     var goal = gj !== sharedGoal ? w.goal : null, spawn = sj !== sharedSpawn ? w.spawn : null;
-    sharedGoal = gj; sharedSpawn = sj;
-    if (!set.length && !del.length && !goal && !spawn) return;
-    for (var a = 0; a < set.length; a += 400) conn.send({ t: 'ed', set: set.slice(a, a + 400), del: a ? [] : del, goal: a ? null : goal, spawn: a ? null : spawn });
-    if (!set.length) conn.send({ t: 'ed', set: [], del: del, goal: goal, spawn: spawn });
+    var xj = JSON.stringify(w.xs || {}), xs = xj !== sharedXs ? (w.xs || {}) : null;   // Player 2 and Smash spots
+    sharedGoal = gj; sharedSpawn = sj; sharedXs = xj;
+    if (!set.length && !del.length && !goal && !spawn && !xs) return;
+    for (var a = 0; a < set.length; a += 400) conn.send({ t: 'ed', set: set.slice(a, a + 400), del: a ? [] : del, goal: a ? null : goal, spawn: a ? null : spawn, xs: a ? null : xs });
+    if (!set.length) conn.send({ t: 'ed', set: [], del: del, goal: goal, spawn: spawn, xs: xs });
   }
   // put the other phone's changes in, and note them as agreed so they aren't sent back
   function applyEd(m){
     var g = G(), w = W(); if (!g || !w || !g.applyEdits) return;
-    g.applyEdits(m.set, m.del, m.goal, m.spawn);
+    g.applyEdits(m.set, m.del, m.goal, m.spawn, m.xs);
     if (!shared) baseline();
     (m.set || []).forEach(function(p){ var t = w.tiles.get(p[0]); if (t) shared.set(p[0], JSON.stringify(t)); });
     (m.del || []).forEach(function(k){ shared.delete(k); });
-    if (m.goal) sharedGoal = JSON.stringify(w.goal); if (m.spawn) sharedSpawn = JSON.stringify(w.spawn);
+    if (m.goal) sharedGoal = JSON.stringify(w.goal); if (m.spawn) sharedSpawn = JSON.stringify(w.spawn); if (m.xs) sharedXs = JSON.stringify(w.xs || {});
     var first = (m.set && m.set[0] && m.set[0][1]) || null, k0 = !first && m.del && m.del[0];
     if (first) friendMark = { x: first.x, y: first.y, at: performance.now() };
     else if (k0) { var xy = String(k0).split(','); friendMark = { x: +xy[0], y: +xy[1], at: performance.now() }; }
