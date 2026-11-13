@@ -17,6 +17,7 @@
   videoEl.addEventListener('timeupdate', ppTick);
   window.__ppLyrics = {
     has: (dbId) => !!ppJson(PP_LRC_KEY)[dbId],
+    get: (dbId) => ppJson(PP_LRC_KEY)[dbId] || '',
     set: (dbId, lrc) => { ppStoreLyrics(dbId, lrc); const t = tracks[currentIndex]; if (t && t.dbId === dbId) ppLoadLyricsFor(t); }
   };
 

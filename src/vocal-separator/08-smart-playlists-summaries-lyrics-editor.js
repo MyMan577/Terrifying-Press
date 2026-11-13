@@ -188,6 +188,31 @@
       } catch (e) { console.error(e); h.status('Error: ' + errText(e)); }
       busy(false);
     };
+    // ----- Time the words: adds word timings to the lyrics the song already has, never changes their text -----
+    $('#ppv-wtime').onclick = async () => {
+      busy(true); wout.textContent = ''; wsrt.style.display = 'none';
+      try {
+        const t = cur(); if (!t) throw new Error('Play or select a track first.');
+        const lyr = window.__ppLyrics, raw = t.kind !== 'video' && lyr && lyr.get ? lyr.get(t.dbId) : '';
+        if (!raw || !/\[\d{1,3}:\d{1,2}/.test(raw)) throw new Error('This song has no synced lyrics yet. Find or load lyrics first (or use Transcribe). This button only times the words of lyrics the song already has.');
+        let sync = 0; try { sync = +JSON.parse(ls('ppvSongSync') || '{}')[t.dbId] || 0; } catch (e) {}
+        const plan = wtLines(raw, sync); if (!plan.lines.length) throw new Error('No lyric lines with words to time.');
+        if (ls('ppvWClean') === null) wclean.checked = true;          // untouched: listen to the vocals only
+        { const m = WH[wsize.value] && WH[wsize.value][2]; if (m && m.big && ls('ppvWBig_' + wsize.value) !== '1') { if (!confirm('This model is a ~' + m.big + ' MB download and needs plenty of free memory. Continue?')) { busy(false); return; } ls('ppvWBig_' + wsize.value, '1'); } }
+        const wst = s => { h.status(s); const m = /(\d+)%/.exec(s); if (m) document.querySelectorAll('.ppv-bar-wh i').forEach(e => e.style.width = m[1] + '%'); };
+        const heard = await transcribeWords(t, { size: wsize.value, lang: wlang.disabled ? '' : wlang.value, clean: wclean.checked, model: h.sel.value, strength: +h.sl.value, lv: h.LV() }, wst);
+        if (!heard.length) throw new Error('No singing was heard in this song.');
+        if (lyr.get(t.dbId) !== raw) throw new Error('The lyrics were changed while listening. Try again.');
+        const res = wtApply(raw, plan, heard, sync);
+        if (!res.timed) throw new Error('The words heard did not match these lyrics well enough, so nothing was changed. Check that the lyrics belong to this song and are roughly in time.');
+        lyr.set(t.dbId, res.text);
+        if (!ST_hlOn()) wout.textContent = 'Turn on "Sing-along highlight" in the CC menu (Look and effects) to see it.\n';
+        wout.textContent = res.timed + ' of ' + plan.lines.length + ' lines now follow each word. The words themselves were not changed.' + (res.timed < plan.lines.length ? ' Lines it could not hear clearly keep the estimated timing.' : '') + (wout.textContent ? '\n' + wout.textContent : '');
+        h.status('Done.');
+      } catch (e) { console.error(e); h.status('Error: ' + errText(e)); }
+      busy(false);
+    };
+    const ST_hlOn = () => { try { return !!JSON.parse(ls('ppvSongText') || '{}').hl; } catch (e) { return false; } };
     wsrt.onclick = () => {
       if (!lastSrt) return;
       const blob = new Blob([lastSrt.text], { type: 'text/plain' }), name = lastSrt.name.replace(/[\\/:*?"<>|]+/g, '_') + '.srt';

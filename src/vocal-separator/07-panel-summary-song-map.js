@@ -406,7 +406,9 @@
       '<label class="ppv-c"><input type="checkbox" id="ppv-wclean"> Remove the music first (uses Spleeter, or previously split vocals; on by default for songs)</label>' +
       '<label class="ppv-c" id="ppv-wgpu-l"><input type="checkbox" id="ppv-wgpu"> Use the GPU (experimental, much faster on supported devices)</label>' +
       '<div class="ppv-note">Songs get synced lyrics (Lyrics tab), videos get subtitles. Both can be exported as .srt or .lrc from the editor below. The music-removal step always uses Spleeter. If the song was already split, its saved vocals are reused and nothing is split again.</div>' +
-      '<button id="ppv-wgo">Transcribe current track</button><button id="ppv-wsrt" class="ppv-sec" style="display:none">Download .srt</button><button id="ppv-wfree" class="ppv-sec">Free up Whisper download</button>' +
+      '<button id="ppv-wgo">Transcribe current track</button><button id="ppv-wtime" class="ppv-sec">Time the words for sing-along</button>' +
+      '<div class="ppv-note">Time the words keeps the lyrics this song already has, word for word. It only listens for when each word is sung, so the sing-along highlight can follow it exactly. Parakeet (if picked above) is the most precise; otherwise Whisper is used. Editing the lines in the lyrics editor afterwards drops the word timings again.</div>' +
+      '<button id="ppv-wsrt" class="ppv-sec" style="display:none">Download .srt</button><button id="ppv-wfree" class="ppv-sec">Free up Whisper download</button>' +
       '<div id="ppv-wout" class="ppv-out"></div>' +
       '<label class="ppv-c" style="display:block;margin-top:10px">Summary length: <select id="ppv-sumlen" data-sync="ppvSumLen" style="width:100%;display:block">' + Object.keys(SUM_LENS).map(k => '<option value="' + k + '">' + SUM_LENS[k].label + '</option>').join('') + '</select></label>' +
       '<label class="ppv-c" style="display:block;margin-top:10px">Summary style: <select id="ppv-sumstyle" data-sync="ppvSumStyle" style="width:100%;display:block">' + menuOpts(SUM_STYLES) + '</select></label>' +

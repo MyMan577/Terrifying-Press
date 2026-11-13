@@ -32,7 +32,8 @@
     }
     flush(); return cues;
   }
-  async function parakeetNative(x, regs, o, status) {
+  async function parakeetNative(x, regs, o, status) { return pkCues(await parakeetWords(x, regs, o, status)); }
+  async function parakeetWords(x, regs, o, status) {   // every heard word with its start and end: [{ s, e, text }]
     status('Preparing Parakeet…');
     const vo = await pkVocab();
     await pkFiles(status);
@@ -61,7 +62,7 @@
     }
     words.sort((a, b) => a.s - b.s);
     for (let i = 0; i + 1 < words.length; i++) if (words[i].e > words[i + 1].s) words[i].e = Math.max(words[i].s + 0.04, words[i + 1].s);
-    return pkCues(words);
+    return words;
   }
 
   // ---------- Repeat tracker: finds lines that were sung more than once, votes on the wording, aligns known lyrics ----------
@@ -73,6 +74,65 @@
     return p[m];
   };
   const rpSim = (a, b) => { a = rpNorm(a); b = rpNorm(b); const L = Math.max(a.length, b.length); return L ? 1 - rpLev(a, b) / L : 1; };
+  // ---------- Word timings for lyrics a song already has (the "Time the words" button). The text is never changed. ----------
+  const WT_RE = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g, WT_TAG = /<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>/g;
+  const wtSec = m => +m[1] * 60 + +m[2] + (m[3] ? +m[3].padEnd(3, '0').slice(0, 3) / 1000 : 0);
+  const wtNorm = w => String(w).toLowerCase().replace(/[’‘`']/g, '').replace(/[^a-z0-9À-￿]+/g, '');
+  // The lines that can be timed: one time stamp and some words. s/next are song times (the file's offset and the per-song timing applied).
+  function wtLines(raw, sync) {
+    const rows = String(raw).split(/\r?\n/), lines = [], starts = []; let off = 0;
+    rows.forEach((r, ri) => {
+      const om = r.match(/^\s*\[offset:\s*([-+]?\d+)\s*\]/i); if (om) { off = parseInt(om[1], 10) / 1000; return; }
+      const st = []; let m, last = 0; WT_RE.lastIndex = 0;
+      while ((m = WT_RE.exec(r))) { st.push(wtSec(m) - off + sync); last = WT_RE.lastIndex; }
+      if (!st.length) return; st.forEach(x => starts.push(x));
+      const words = r.slice(last).replace(WT_TAG, '').match(/\S+/g) || [];
+      if (st.length === 1 && words.length) lines.push({ ri, s: st[0], words, off, head: r.slice(0, last) });
+    });
+    starts.sort((a, b) => a - b);
+    lines.forEach(l => { const n = starts.find(x => x > l.s + 1e-3); l.next = n != null ? n : l.s + 8; });
+    return { rows, lines };
+  }
+  // Lines the lyric words up with the heard words, in order (like a diff). A heard word only counts for a lyric word if it is
+  // the same word (or nearly) and was sung near that line's time. Words in between are spread out; a line where too few
+  // words were heard is left alone. Returns the lyrics with a <mm:ss.xx> tag before each word.
+  function wtApply(raw, plan, heard, sync) {
+    const L = [], H = heard.map(w => ({ s: w.s, e: w.e, n: wtNorm(w.text) })).filter(w => w.n && isFinite(w.s));
+    plan.lines.forEach((l, li) => l.words.forEach((w, k) => L.push({ li, k, n: wtNorm(w) })));
+    const n = L.length, m = H.length, W = 4, C = m + 1;
+    if (!n || !m || n * m > 6e6) return { text: raw, timed: 0 };
+    const sim = (i, j) => {
+      const a = L[i].n, b = H[j].n, l = plan.lines[L[i].li];
+      if (!a || H[j].s < l.s - W || H[j].s > l.next + W) return 0;
+      if (a === b) return 1;
+      const mx = Math.max(a.length, b.length); if (mx < 3) return 0;
+      const r = 1 - rpLev(a, b) / mx; return r >= 0.6 ? r * 0.8 : 0;
+    };
+    const S = new Float32Array((n + 1) * C), D = new Uint8Array((n + 1) * C);
+    for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
+      let best = S[(i - 1) * C + j], d = 1; const lf = S[i * C + j - 1]; if (lf > best) { best = lf; d = 2; }
+      const q = sim(i - 1, j - 1); if (q > 0 && S[(i - 1) * C + j - 1] + q > best) { best = S[(i - 1) * C + j - 1] + q; d = 3; }
+      S[i * C + j] = best; D[i * C + j] = d;
+    }
+    const T = plan.lines.map(l => l.words.map(() => null)), E = plan.lines.map(l => l.words.map(() => null));
+    for (let i = n, j = m; i > 0 && j > 0;) { const d = D[i * C + j]; if (d === 3) { const x = L[i - 1]; T[x.li][x.k] = H[j - 1].s; E[x.li][x.k] = H[j - 1].e; i--; j--; } else if (d === 1) i--; else j--; }
+    const rows = plan.rows.slice(), fmt = v => { v = Math.max(0, v); const mm = Math.floor(v / 60); return '<' + pad2(mm) + ':' + (v - mm * 60).toFixed(2).padStart(5, '0') + '>'; };
+    let timed = 0;
+    plan.lines.forEach((l, li) => {
+      const t = T[li], K = t.length, idx = []; t.forEach((v, k) => { if (v != null) idx.push(k); });
+      if (idx.length < Math.max(1, Math.ceil(K * 0.4))) return;
+      const f = idx[0], z = idx[idx.length - 1];
+      for (let k = 0; k < f; k++) { const lo = Math.min(l.s, t[f] - 0.25 * f); t[k] = lo + (t[f] - lo) * k / f; }
+      for (let a = 0; a + 1 < idx.length; a++) { const p = idx[a], q = idx[a + 1]; for (let k = p + 1; k < q; k++) t[k] = t[p] + (t[q] - t[p]) * (k - p) / (q - p); }
+      const ez = E[li][z] != null ? E[li][z] : t[z] + 0.3;
+      if (z < K - 1) { const hi = Math.max(t[z], Math.min(l.next - 0.05, ez + 0.35 * (K - 1 - z))); for (let k = z + 1; k < K; k++) t[k] = t[z] + (hi - t[z]) * (k - z) / (K - z); }
+      for (let k = 1; k < K; k++) if (t[k] < t[k - 1]) t[k] = t[k - 1];
+      const end = z === K - 1 ? Math.min(ez, l.next) : null, lrc = v => v - sync + l.off;   // back into the file's own time
+      rows[l.ri] = l.head + l.words.map((w, k) => fmt(lrc(t[k])) + w).join(' ') + (end != null && end > t[K - 1] ? ' ' + fmt(lrc(end)) : '');
+      timed++;
+    });
+    return { text: rows.join('\n'), timed };
+  }
   // small speech features (12 MFCC-like numbers every 40 ms) so two sung lines can be compared by sound, not only by the words Whisper guessed
   let rpFB = null;
   const rpInit = () => {
@@ -223,9 +283,8 @@
       return cues.map(c => ({ start: c.start, end: c.end, text: c.text }));
     } finally { if (NATIVE) NP.keepAlive({ on: false }).catch(() => {}); wl && wl.release().catch(() => {}); heavyJob = false; }
   }
-  async function transcribeRun(t, o, status) {
-    let pipe = null;
-    if (o.task === 'translate' && whEn(o.size)) { o = Object.assign({}, o, { size: 'base' }); status('Translating needs the multilingual Base model…'); }
+  // The song as 16 kHz mono for speech models. With o.clean the music is removed first (or previously split vocals are reused).
+  async function whAudio(t, o, status) {
     let x; window.__ppvSaved = false;
     if (o.clean) {                                                    // pull the vocals out first: far fewer made-up lines on songs
       const A0 = window.__ppApi, vs = findVocalsStem(A0 && A0.tracks(), t);
@@ -258,6 +317,58 @@
       eb = null;
       }
     } else { status('Decoding audio…'); x = await decodeMono(t.url, 16000); }
+    return x;
+  }
+  // Word timings for the sing-along highlight: listens to the song and returns every heard word with its time, [{ s, e, text }].
+  // Parakeet gives word times by itself. Whisper needs a model exported with its attention weights; if the chosen one was not, a
+  // Whisper Base built for word timings is used instead. Native Whisper only times whole lines, so the web version is used here.
+  async function transcribeWords(t, o, status) {
+    if (heavyJob) throw new Error('Another split or transcription is still running. Wait for it to finish.');
+    heavyJob = true; let wl = null;
+    if (NATIVE) NP.keepAlive({ on: true }).catch(() => {});
+    try {
+      if (o.lv && o.lv.wake && navigator.wakeLock) { try { wl = await navigator.wakeLock.request('screen'); } catch (e) {} }
+      const x = await whAudio(t, o, status), regs = speechRegions(x, 16000);
+      if (whPk(o.size) && NATIVE) {
+        try { return await parakeetWords(x, regs, o, status); }
+        catch (e) { console.warn('Parakeet failed', e); status('Parakeet failed: ' + errText(e) + ' Using Whisper instead…'); }
+        finally { NP.parakeetUnload().catch(() => {}); }
+      }
+      const ids = [whPk(o.size) || !WH[o.size] ? WH.base_en[0] : WH[o.size][0], 'onnx-community/whisper-base_timestamped'];
+      let err = null;
+      for (const id of ids) {
+        try { return await whWordsWith(id, x, regs, o, status); }
+        catch (e) { console.warn('Word timings failed with ' + id, e); err = e; if (id !== ids[ids.length - 1]) status('This model cannot time single words. Trying Whisper Base for word timings…'); }
+      }
+      throw err;
+    } finally { if (NATIVE) NP.keepAlive({ on: false }).catch(() => {}); wl && wl.release().catch(() => {}); heavyJob = false; }
+  }
+  async function whWordsWith(id, x, regs, o, status) {
+    const pipe = await getAsr(id, status), SL = 26, OV = 2, words = [], pieces = [];
+    const en = Object.values(WH).some(v => v[0] === id && v[2] && v[2].en);
+    for (const [ra, rb] of regs) for (let q = ra; q < rb - 0.01; q += SL) pieces.push({ own0: q, own1: Math.min(rb, q + SL), ra, rb });
+    const total = pieces.reduce((n, p) => n + p.own1 - p.own0, 0) || 1; let doneS = 0;
+    for (const p of pieces) {
+      const t0 = performance.now();
+      status('Listening for each word… ' + Math.round(doneS / total * 100) + '%'); await tick();
+      const s0 = Math.max(p.ra, p.own0 - OV), s1 = Math.min(p.rb, p.own1 + OV), last = p.own1 >= p.rb - 1e-6;
+      const kw = { return_timestamps: 'word', chunk_length_s: 30, stride_length_s: 5 };
+      if (!en) { kw.task = 'transcribe'; if (o.lang) kw.language = o.lang; }
+      const out = await pipe(x.subarray(Math.floor(s0 * 16000), Math.min(x.length, Math.ceil(s1 * 16000))), kw);
+      for (const c of (out && out.chunks) || []) {                    // a word belongs to the piece it starts in, so none is counted twice
+        const ts = c.timestamp || [], a = s0 + (+ts[0] || 0), txt = String(c.text || '').trim();
+        if (!txt || !isFinite(a) || a < p.own0 - 1e-3 || (!last && a >= p.own1)) continue;
+        words.push({ s: a, e: ts[1] != null && isFinite(+ts[1]) ? s0 + +ts[1] : a + 0.3, text: txt });
+      }
+      doneS += p.own1 - p.own0;
+      await ease(performance.now() - t0, 0, 'whn', s1 - s0);
+    }
+    return words.sort((a, b) => a.s - b.s);
+  }
+  async function transcribeRun(t, o, status) {
+    let pipe = null;
+    if (o.task === 'translate' && whEn(o.size)) { o = Object.assign({}, o, { size: 'base' }); status('Translating needs the multilingual Base model…'); }
+    const x = await whAudio(t, o, status);
     const dur = x.length / 16000, acc = Math.max(0, Math.min(2, Math.round(+o.acc || 0)));
     // Only the parts with speech or singing go to Whisper. Each part is cut into 90 s pieces that overlap by 4 s, and a line belongs to the
     // piece it starts in, so nothing is cut at a seam. Between pieces it can rest if the phone is hot.
