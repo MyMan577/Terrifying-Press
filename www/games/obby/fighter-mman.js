@@ -272,7 +272,7 @@
       if (S && S.rot) { ctx.translate(cx, fy - ph * 0.45); ctx.rotate(S.rot); ctx.translate(-cx, -(fy - ph * 0.45)); }
       const K = FK.skel(P, q, cx, fy, s);
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      if (F) { ctx.shadowBlur = 14; ctx.shadowColor = F.glow; }
+      if (F) { const ag = ctx.createRadialGradient(cx, fy - ph * 0.45, ph * 0.1, cx, fy - ph * 0.45, ph * 0.62); ag.addColorStop(0, F.glow + '55'); ag.addColorStop(1, F.glow + '00'); ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(cx, fy - ph * 0.45, ph * 0.62, 0, Math.PI * 2); ctx.fill(); }   // the form's glow: one soft circle (a canvas blur on every limb was far too slow on phones)
       if (S && S.pu && S.pu.flash > 0 && Math.sin(t * 50) > 0) ctx.globalAlpha = 0.6;
       // back leg + boot (spring boots in Bounce form)
       FK.limb(ctx, K.lB, 5.4 * s, C_BIB2, 5.4 * s);
@@ -402,7 +402,7 @@
   // the giant wrench, drawn along -y from the grip
   function wrench(ctx, s, hot, t) {
     const L = 9 * s, steel = hot ? '#ff9a4a' : C_STEEL, steel2 = hot ? '#c2361c' : C_STEEL2;
-    if (hot) { ctx.shadowBlur = 12; ctx.shadowColor = '#ffb347'; }
+    if (hot) { ctx.fillStyle = 'rgba(255,179,71,0.35)'; ctx.beginPath(); ctx.arc(0, -L - 1.6 * s, 4.6 * s, 0, Math.PI * 2); ctx.fill(); }
     ctx.fillStyle = steel2; ctx.beginPath(); ctx.roundRect(-1.1 * s, -L, 2.2 * s, L + 2 * s, 1 * s); ctx.fill();
     ctx.fillStyle = steel; ctx.fillRect(-0.5 * s, -L, 0.9 * s, L);
     ctx.fillStyle = steel; ctx.beginPath(); ctx.arc(0, -L - 1.6 * s, 3 * s, 0, Math.PI * 2); ctx.fill();

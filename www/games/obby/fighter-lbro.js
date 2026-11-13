@@ -272,7 +272,7 @@
       if (S && S.rot2) { ctx.translate(cx, fy - ph * 0.2); ctx.rotate(-S.rot2 * 0.08); ctx.translate(-cx, -(fy - ph * 0.2)); }
       const K = FK.skel(P, q, cx, fy, s);
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      if (F) { ctx.shadowBlur = 14; ctx.shadowColor = F.glow; }
+      if (F) { const ag = ctx.createRadialGradient(cx, fy - ph * 0.45, ph * 0.1, cx, fy - ph * 0.45, ph * 0.62); ag.addColorStop(0, F.glow + '55'); ag.addColorStop(1, F.glow + '00'); ctx.fillStyle = ag; ctx.beginPath(); ctx.arc(cx, fy - ph * 0.45, ph * 0.62, 0, Math.PI * 2); ctx.fill(); }   // the form's glow: one soft circle (a canvas blur on every limb was far too slow on phones)
       if (S && S.pu && S.pu.flash > 0 && Math.sin(t * 50) > 0) ctx.globalAlpha = 0.6;
       // the scarf trails behind (wings in Gale form, a rotor in the copter)
       scarf(ctx, K, s, t, S, fm);
