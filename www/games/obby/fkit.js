@@ -268,6 +268,128 @@
   // the floor under a point (first blocked tile going down, at most n tiles), or null
   FK.floorAt = function (x, y, n) { for (let i = 0; i <= (n || 6) * 4; i++) { const yy = y + i * 0.25; if (FK.blocked(x - 0.05, yy, 0.1, 0.1)) return Math.floor(yy); } return null; };
 
+  // ---------------------------------------------------------------- power-up forms (M-Man, L-Brother)
+  // Tasks fill up as you play. A finished task puts a TOOL CRATE in the air above you: jump up into it (bump it with your
+  // head) and the power-up pops out of the top, then slides along the floor. Catch it to take that form.
+  // A form lasts FORM_T seconds, and two hits taken knock you back to normal. Works the same in the main game and Smash.
+  //  spec.tasks: [{ id, kind: 'hits' | 'air' | 'dist' | any counter name you feed with PU.add, need, form, label }]
+  //  spec.forms: { formId: { name, icon, c } }       spec.drawItem(ctx, x, y, r, formId, t)
+  FK.powerups = function (spec) {
+    const FORM_T = spec.time || 24, ITEM_LIFE = 14;
+    const PU = {
+      init: () => ({ n: {}, items: [], crates: [], form: null, formT: 0, armor: 0, lastX: null, lastHp: null, wasStun: false, flash: 0, cue: 0 }),
+      add(S, kind, v) { const u = S.pu; if (!u) return; u.n[kind] = (u.n[kind] || 0) + (v == null ? 1 : v); },
+      form: S => (S.pu && S.pu.form) || null,
+      set(S, p, f) {
+        const u = S.pu; u.form = f; u.formT = f ? FORM_T : 0; u.armor = f ? 2 : 0; u.flash = 0.6;
+        if (f) {
+          const F = spec.forms[f];
+          FK.label(S, p, F.name + '!', F.c, true); FK.msg(F.icon + ' ' + F.name + ' FORM!');
+          for (let i = 0; i < 4; i++) FK.tone(523 * Math.pow(1.19, i), { dur: 0.16, vol: 0.12, delay: i * 0.06, type: 'square' });
+          S.fx.push({ k: 'ring', x: FK.pcx(p), y: FK.pcy(p), R: 2.2, c: F.c, t: 0, life: 0.5 });
+          if (spec.onForm) spec.onForm(p, S, f);
+        } else {
+          FK.label(S, p, 'POWER LOST', '#cfd6e6', false); FK.tone(440, { dur: 0.35, vol: 0.12, slide: 140, type: 'square' });
+          if (spec.onForm) spec.onForm(p, S, null);
+        }
+      },
+      tick(p, dt, S) {
+        const u = S.pu; if (!u) return;
+        // automatic tasks: time in the air, distance travelled
+        if (!p.onGround) u.n.air = (u.n.air || 0) + dt;
+        if (u.lastX != null) { const d = Math.abs(p.x - u.lastX); if (d < 2) u.n.dist = (u.n.dist || 0) + d; }
+        u.lastX = p.x;
+        // a finished task drops its power-up (one of each kind on the field at a time)
+        for (const tk of spec.tasks) {
+          if ((u.n[tk.kind] || 0) < tk.need) continue;
+          u.n[tk.kind] = 0;
+          if (u.items.some(it => it.form === tk.form) || u.crates.some(c => c.form === tk.form) || u.form === tk.form) continue;
+          // the crate: about two tiles over his head (lower under a low ceiling); with no room at all, the power-up comes straight out
+          const f = FK.face(p); let cx = FK.pcx(p) + f * 0.6, cy = null;
+          for (const up of [2.6, 2.1, 1.7]) { const y = p.y - up; if (!FK.blocked(cx - 0.5, y - 0.5, 1, 1) && !FK.blocked(cx - 0.4, y + 0.5, 0.8, up - 0.5)) { cy = y; break; } }
+          if (cy != null) u.crates.push({ form: tk.form, x: cx, y: cy, t: 0, bump: 0 });
+          else u.items.push({ form: tk.form, x: FK.pcx(p), y: p.y - 0.6, vx: f * 3.4, vy: -6, t: 0, ph: Math.random() * 6 });
+          FK.label(S, p, tk.label + ' ✓', spec.forms[tk.form].c, true);
+          FK.tone(880, { dur: 0.12, vol: 0.1, type: 'square' }); FK.tone(1320, { dur: 0.18, vol: 0.1, delay: 0.08, type: 'square' });
+        }
+        // crates wait for a head bump from below; then the power-up rises out of the top and slides off
+        const cx = FK.pcx(p), cy = FK.pcy(p);
+        for (let i = u.crates.length - 1; i >= 0; i--) {
+          const c = u.crates[i]; c.t += dt; if (c.bump > 0) c.bump -= dt;
+          if (c.t > 30) { u.crates.splice(i, 1); continue; }
+          const head = p.y, under = Math.abs(cx - c.x) < 0.5 + p.w / 2 && head < c.y + 0.6 && head > c.y - 0.2;
+          if (under && (p.vy || 0) < 0 && !c.open) {
+            c.open = true; c.bump = 0.25; p.vy = Math.max(p.vy, 2); p.y = Math.max(p.y, c.y + 0.5);
+            FK.tone(196, { dur: 0.1, vol: 0.2, type: 'square' }); FK.tone(392, { dur: 0.25, vol: 0.12, delay: 0.08, type: 'square', slide: 784 });
+            u.items.push({ form: c.form, x: c.x, y: c.y - 0.5, vx: 0, vy: 0, rise: 0.45, dir: FK.face(p), t: 0, ph: 0 });
+          }
+          if (c.open && c.bump <= 0) { S.fx.push({ k: 'ring', x: c.x, y: c.y, R: 0.9, c: spec.forms[c.form].c, t: 0, life: 0.3 }); u.crates.splice(i, 1); }
+        }
+        // items: rise out of the crate, then slide along the floor (turning at walls), and are picked up by touch
+        for (let i = u.items.length - 1; i >= 0; i--) {
+          const it = u.items[i]; it.t += dt;
+          if (it.t > ITEM_LIFE) { u.items.splice(i, 1); continue; }
+          if (it.rise > 0) { it.rise -= dt; it.y -= dt * 1.6; if (it.rise <= 0) { it.vx = (it.dir || 1) * 3.4; it.vy = 0; } }
+          else if (it.vx != null) {
+            it.vy = Math.min(14, (it.vy || 0) + 30 * dt);
+            const nx = it.x + it.vx * dt; if (FK.blocked(nx - 0.35, it.y - 0.3, 0.7, 0.6)) it.vx = -it.vx; else it.x = nx;
+            const ny = it.y + it.vy * dt; if (FK.blocked(it.x - 0.3, ny - 0.3, 0.6, 0.65)) it.vy = 0; else it.y = ny;
+            if (it.y > p.y + 40) { u.items.splice(i, 1); continue; }
+          }
+          if (it.t > 0.25 && Math.abs(cx - it.x) < 0.95 && Math.abs(cy - it.y) < 1.1) { u.items.splice(i, 1); PU.set(S, p, it.form); }
+        }
+        // hits taken: hearts lost in the main game, hitstun in Smash. Two hits end the form.
+        const hurt = (u.lastHp != null && p.hp < u.lastHp) || (p.hitstun > 0 && !u.wasStun);
+        u.lastHp = p.hp; u.wasStun = p.hitstun > 0;
+        if (hurt && u.form) { u.armor--; u.flash = 0.4; if (u.armor <= 0) PU.set(S, p, null); }
+        if (u.form) { u.formT -= dt; if (u.formT <= 0) PU.set(S, p, null); }
+        if (u.flash > 0) u.flash -= dt;
+      },
+      // the items in the world, and a small tracker over the head: a ring per task, filling up
+      draw(ctx, V, S) {
+        const u = S.pu; if (!u) return;
+        const T = V.T, p = V.p;
+        for (const c of u.crates) {   // a wooden tool crate with a glowing bolt badge in the form's colour, bumping up when hit
+          const F = spec.forms[c.form], x = V.SX(c.x), y = V.SY(c.y) - (c.bump > 0 ? Math.sin((0.25 - c.bump) / 0.25 * Math.PI) * T * 0.3 : 0) - Math.sin(V.now * 2) * 2, h = T * 0.5;
+          const pop = Math.min(1, c.t / 0.25);
+          ctx.save(); ctx.translate(x, y); ctx.scale(pop, pop);
+          ctx.beginPath(); ctx.arc(0, 0, h * 1.5, 0, Math.PI * 2); FK.glow(ctx, F.c, 0.12 + 0.06 * Math.sin(V.now * 5)); ctx.fill();
+          FK.solid(ctx, '#b07a3c', 1); ctx.beginPath(); ctx.roundRect(-h, -h, h * 2, h * 2, h * 0.18); ctx.fill();
+          FK.solid(ctx, '#7a4f22', 1); ctx.lineWidth = h * 0.16; ctx.strokeRect(-h * 0.92, -h * 0.92, h * 1.84, h * 1.84);
+          ctx.beginPath(); ctx.moveTo(-h * 0.85, -h * 0.85); ctx.lineTo(h * 0.85, h * 0.85); ctx.moveTo(h * 0.85, -h * 0.85); ctx.lineTo(-h * 0.85, h * 0.85); ctx.lineWidth = h * 0.12; ctx.stroke();
+          FK.solid(ctx, '#d9d2c4', 1); for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { ctx.beginPath(); ctx.arc(a * h * 0.78, b * h * 0.78, h * 0.08, 0, Math.PI * 2); ctx.fill(); }
+          ctx.beginPath(); ctx.arc(0, 0, h * 0.42, 0, Math.PI * 2); FK.solid(ctx, '#2b2b33', 1); ctx.fill();
+          ctx.font = (h * 0.55 | 0) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; FK.solid(ctx, '#fff', 1); ctx.fillText(F.icon, 0, h * 0.04);
+          ctx.restore();
+        }
+        for (const it of u.items) {
+          const blink = it.t > ITEM_LIFE - 3 && Math.sin(V.now * 26) < 0;
+          if (blink) continue;
+          const x = V.SX(it.x), y = V.SY(it.y), r = T * 0.42 * Math.min(1, 0.4 + it.t / 0.4), F = spec.forms[it.form];
+          ctx.beginPath(); ctx.arc(x, y, r * 1.5, 0, Math.PI * 2); FK.glow(ctx, F.c, 0.18 + 0.08 * Math.sin(V.now * 6)); ctx.fill();
+          for (let k = 0; k < 6; k++) { const an = V.now * 1.6 + k * Math.PI / 3; FK.star(ctx, x + Math.cos(an) * r * 1.45, y + Math.sin(an) * r * 1.45, r * 0.18, an, F.c, 0.8); }
+          FK.solid(ctx, '#fff', 1); ctx.save(); spec.drawItem(ctx, x, y, r, it.form, V.now); ctx.restore();
+        }
+        if (!p) return;
+        const hx = V.SX(FK.pcx(p)), hy = V.SY(p.y) - T * 0.55, n = spec.tasks.length;
+        if (u.form) {
+          const F = spec.forms[u.form], k = Math.max(0, u.formT / FORM_T);
+          ctx.beginPath(); ctx.arc(hx, hy, T * 0.2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); FK.glow(ctx, F.c, 0.9); ctx.lineWidth = 3; ctx.stroke();
+          FK.solid(ctx, '#fff', 0.95); ctx.font = (T * 0.22 | 0) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(F.icon, hx, hy + 1);
+          for (let a = 0; a < u.armor; a++) { ctx.beginPath(); ctx.arc(hx - T * 0.12 + a * T * 0.24, hy + T * 0.3, T * 0.05, 0, Math.PI * 2); FK.solid(ctx, F.c, 0.9); ctx.fill(); }
+          return;
+        }
+        for (let i = 0; i < n; i++) {
+          const tk = spec.tasks[i], k = Math.min(1, (u.n[tk.kind] || 0) / tk.need), x = hx + (i - (n - 1) / 2) * T * 0.34, F = spec.forms[tk.form];
+          if (k <= 0.02) continue;
+          ctx.beginPath(); ctx.arc(x, hy, T * 0.11, 0, Math.PI * 2); FK.solid(ctx, 'rgba(10,10,20,0.55)', 1); ctx.fill();
+          ctx.beginPath(); ctx.arc(x, hy, T * 0.11, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); FK.glow(ctx, F.c, 0.9); ctx.lineWidth = 2.5; ctx.stroke();
+        }
+      },
+    };
+    return PU;
+  };
+
   // ---------------------------------------------------------------- parry outside Smash
   const bolts = [];
   window.PPParry = {
@@ -338,7 +460,7 @@
     const ID = C.id;
     const fresh = () => Object.assign({ active: false, atkCD: 0, fx: [], lastPX: null, lastPY: null, prevJump: false }, C.fresh());
     let S = fresh();
-    try {
+    if (!C.locked) try {   // (a locked fighter is owned only once something unlocks it)
       const owned = JSON.parse(localStorage.getItem('obby_cbox_owned') || '[]');
       if (!owned.includes(ID)) { owned.push(ID); localStorage.setItem('obby_cbox_owned', JSON.stringify(owned)); }
     } catch (e) {}
