@@ -555,16 +555,17 @@
   };
 
   // ---------- video surface placement ----------
-  var rectRaf = 0, lastRect = '', rectTimer = 0, holeNodes = [], hiddenNodes = [], lastBackdrop = '', lastShow = false;
+  var rectRaf = 0, lastRect = '', rectTimer = 0, holeNodes = [], hiddenNodes = [], lastBackdrop = '', lastShow = false, hideAgain = 0;
   // The page must be see-through above the video box: clear the backgrounds of everything that contains it,
   // and give the window itself the page colour so the rest of the screen looks unchanged.
   // Anything painted UNDER the video box (e.g. the home screen behind the full-screen player) would show through the
   // cleared backgrounds and cover the native picture, so it is hidden while the native video is on screen.
+  // Returns false when the video box was not among the layers yet (the player still opening): try again later.
   function hideBeneath(el) {
     hiddenNodes.forEach(function (n) { n.classList.remove('pp-hole-hide'); }); hiddenNodes = [];
-    if (!el) return;
-    var wrap = el.parentElement || el, r = wrap.getBoundingClientRect();
-    if (r.width < 4 || r.height < 4) return;
+    if (!el) return true;
+    var wrap = el.parentElement || el, r = wrap.getBoundingClientRect(), seen = false;
+    if (r.width < 4 || r.height < 4) return false;
     var chain = new Set(); for (var n = el; n; n = n.parentElement) chain.add(n);
     var probe = document.createElement('style');                        // hit-test layers that ignore taps too
     probe.textContent = '*{pointer-events:auto !important}'; document.head.appendChild(probe);
@@ -574,7 +575,7 @@
         var list = document.elementsFromPoint(r.left + r.width * q[0], r.top + r.height * q[1]), below = false;
         for (var i = 0; i < list.length; i++) {
           var e = list[i];
-          if (e === wrap || e === el) { below = true; continue; }
+          if (e === wrap || e === el) { below = true; seen = true; continue; }
           if (!below || chain.has(e)) continue;
           var top = e; while (top.parentElement && !chain.has(top.parentElement)) top = top.parentElement;   // the whole branch
           if (!chain.has(top)) found.add(top);
@@ -582,6 +583,7 @@
       });
     } finally { probe.remove(); }
     found.forEach(function (n) { n.classList.add('pp-hole-hide'); hiddenNodes.push(n); });
+    return seen;
   }
   function markHole(el) {
     if (!el) { holeNodes.forEach(function (n) { n.classList.remove('pp-hole-anc'); }); holeNodes = []; hideBeneath(null); return; }
@@ -624,13 +626,18 @@
     // The page is only made see-through while the video box is actually on screen. With the player closed (a video
     // still loaded), the home screen, the custom background and everything else look exactly as normal.
     markHole(show && r.visible ? S.raw : null);
-    var j = JSON.stringify(r);
-    if (j !== lastRect) {
+    var j = JSON.stringify(r), moved = j !== lastRect;
+    // The layout moved (player opened, rotated...): look again. Tapping a video opens the player with an animation, and the
+    // first look can come before the video box is on top of the page; then the page under it was never hidden and only the
+    // player's buttons showed over it. So it keeps looking (every poll, a few seconds at most) until it finds the box.
+    if (show && r.visible && (moved || hideAgain > 0)) hideAgain = hideBeneath(S.raw) ? 0 : (moved ? 15 : hideAgain - 1);
+    else if (!(show && r.visible)) hideAgain = 0;
+    if (moved) {
       lastRect = j;
-      if (show && r.visible) hideBeneath(S.raw);                       // the layout moved (player opened, rotated...): look again
       call(function () { return Player.setVideoRect(r); });
     }
     if (show && !rectTimer) rectTimer = setInterval(scheduleRect, 300);
+    if (hideAgain > 0) setTimeout(scheduleRect, 120);
     if (!show && rectTimer) { clearInterval(rectTimer); rectTimer = 0; }
   }
   function scheduleRect() { if (!rectRaf) rectRaf = requestAnimationFrame(sendRect); }
