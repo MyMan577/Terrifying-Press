@@ -131,6 +131,9 @@
     </svg>
     <div id="viz-wrap">
       <canvas id="viz"></canvas>
+      <button type="button" id="to-video-btn" title="Back to video" aria-label="Back to video" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="14" height="14" rx="2"/><path d="M16 10l6-3v10l-6-3z"/></svg>
+      </button>
       <div id="art-ring">
         <img id="art-img" alt="">
         <div id="art-fallback">
@@ -332,8 +335,8 @@
             <button id="pip-dd-start" class="full-row-btn">Start Picture-in-picture</button>
           </div>
         </div>
-        <button class="video-tool-btn" id="webaudio-btn" title="Web audio: keep sound playing with the screen off" aria-label="Web audio" aria-pressed="false">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+        <button class="video-tool-btn" id="to-audio-btn" title="Switch to audio (keeps your place; switch back from the player)" aria-label="Switch to audio">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
         </button>
         <button class="video-tool-btn" id="rotate-btn" title="Rotate screen" aria-label="Rotate screen">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="16" rx="2" transform="rotate(90 12 10)"/><path d="M4 17a8 8 0 0 0 8 5"/><polyline points="12 19 12 22 9 22"/></svg>

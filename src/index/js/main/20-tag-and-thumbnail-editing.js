@@ -242,6 +242,7 @@
 
   function showAudioView(){
     vizWrap.style.display = 'flex';
+    try { refreshToVideoBtn(); } catch(e){}
     videoWrap.style.display = 'none';
     refreshVideoDelayState();
     // If the window (or sidebar) was resized while a video was showing,

@@ -9,6 +9,8 @@
  * Split songs use their stems ("<title> (Vocals)" etc., t.stem with t.stemOf = the song). Only one side is needed:
  * the other is the song minus it. Stems can be MP3, which adds a short delay, so every stem is lined up with the
  * song before it is used. A song that was never split can still orbit as a whole, or be split from here first.
+ * Stems themselves (e.g. just the vocals) and videos can be picked too: a stem orbits as a whole, and a video comes
+ * back as a video (the picture copied as it is, the new sound under it), or as audio if the phone cannot do that.
  */
 (function () {
   'use strict';
@@ -28,7 +30,7 @@
     if (!t) return [];
     var id = String(t.dbId);
     return tracks().filter(function (x) {
-      return x && x.stem && x !== t && x.kind !== 'video' && x.url &&
+      return x && x.stem && x !== t && x.url &&
         (x.stemOf != null ? String(x.stemOf) === id : (x.stemSrc && x.stemSrc === t.title));
     });
   }
@@ -42,6 +44,7 @@
   function clean(t) { return String(t.title || 'Song').replace(/[\\/:*?"<>|]/g, ' ').trim().slice(0, 70); }
 
   // ---------- decoding and lining up ----------
+  var MAX_BYTES = 900 * 1024 * 1024;     // a whole file is read into memory to get its sound
   function decode(url) {
     return fetch(url).then(function (r) { if (!r.ok && r.status !== 0) throw new Error('could not read the file (' + r.status + ')'); return r.arrayBuffer(); })
       .then(function (buf) { var OC = window.OfflineAudioContext || window.webkitOfflineAudioContext; return new OC(2, 1, SR).decodeAudioData(buf); });
@@ -73,7 +76,8 @@
   }
   // -> Promise<{ song: [L,R], voc: [L,R]|null, music: [L,R]|null }> all on the song's timeline
   function load(t, needStems, say) {
-    say('Reading the song…');
+    if (t.size > MAX_BYTES) return Promise.reject(new Error('This file is too big to work on here (' + Math.round(t.size / 1048576) + ' MB).'));
+    say(t.kind === 'video' ? 'Reading the video\u2019s sound\u2026' : 'Reading the song\u2026');
     return decode(t.url).then(function (sb) {
       var song = chans(sb), n = song[0].length, p = parts(t);
       if (!needStems) return { song: song, voc: null, music: null };
@@ -208,9 +212,10 @@
         .then(function (lr) { return finish(lr); });
     });
   }
-  function label() {
+  function label(t) {
     if (st.mode === 'ears') return 'Split ears';
-    var w = st.what === 'song' ? '' : st.what === 'both' ? ' both ways' : ' vocals';
+    var whole = st.what === 'song' || !parts(t).split;          // nothing to move on its own: the whole thing moved
+    var w = whole ? '' : st.what === 'both' ? ' both ways' : ' vocals';
     return (st.mode === 'beat' ? '360 beat ' + st.bars + ' bars' : '360 ' + st.secs + 's') + w;
   }
 
@@ -298,11 +303,20 @@
   function isOpen() { var d = $('pps'); return !!(d && d.classList.contains('open')); }
   function say(m) { var s = $('pps-status'); if (s) s.textContent = m; }
   function fill() {
-    var sel = $('pps-song'), a = API(), list = tracks().filter(function (t) { return t.kind === 'audio' && !t.stem && t.url; });
+    var sel = $('pps-song'), a = API(), ok = function (t) { return t && t.url && (t.kind === 'audio' || t.kind === 'video'); };
+    var all = tracks().filter(ok);
     var cur = a && a.currentIndex() >= 0 ? tracks()[a.currentIndex()] : null;
-    var keep = sel.value || (cur && !cur.stem ? String(cur.dbId) : '');
-    if (cur && cur.stem && cur.stemOf != null) keep = String(cur.stemOf);
-    sel.innerHTML = list.map(function (t) { return '<option value="' + String(t.dbId).replace(/"/g, '') + '">' + String(t.title || 'Untitled').replace(/</g, '&lt;') + (parts(t).split ? '  • split' : '') + '</option>'; }).join('');
+    var keep = sel.value || (ok(cur) ? String(cur.dbId) : '');
+    var opt = function (t) {
+      var tag = t.stem ? '  \u2022 stem' : t.kind === 'video' ? '  \u2022 video' : '';
+      if (parts(t).split) tag += '  \u2022 split';
+      return '<option value="' + String(t.dbId).replace(/"/g, '') + '">' + String(t.title || 'Untitled').replace(/</g, '&lt;') + tag + '</option>';
+    };
+    var group = function (label, list) { return list.length ? '<optgroup label="' + label + '">' + list.map(opt).join('') + '</optgroup>' : ''; };
+    sel.innerHTML = group('Songs', all.filter(function (t) { return !t.stem && t.kind === 'audio'; })) +
+      group('Videos', all.filter(function (t) { return !t.stem && t.kind === 'video'; })) +
+      group('Stems', all.filter(function (t) { return t.stem; }));
+    var list = all;
     if (keep && byId(keep)) sel.value = keep;
     return list.length > 0;
   }
@@ -321,9 +335,10 @@
     $('pps-splitrow').style.display = t && !p.split ? '' : 'none';
     var info = $('pps-split');
     if (!t) info.textContent = 'No songs yet.';
+    else if (t.stem && !p.split) info.innerHTML = 'A stem on its own: <b>360 orbit</b> and <b>Beat-locked 360</b> move all of it. Split ears needs the full song (pick the song it came from).';
     else if (p.split) info.innerHTML = '<b>Split</b>: ' + (p.voc ? 'vocals' : 'vocals (worked out from the song)') + ' and ' + (p.music.length ? p.music.map(part).join(' + ') : 'the music (worked out from the song)') + '.';
-    else info.innerHTML = 'Not split. <b>360 orbit</b> and <b>Beat-locked 360</b> work on the whole song right away. Split it for <b>Split ears</b> and to move the vocals on their own.';
-    if (st.mode !== 'ears' && !p.split && st.what !== 'song') info.innerHTML += ' For now the whole song moves.';
+    else info.innerHTML = (t.kind === 'video' ? 'A video: it is saved as a video with the new sound. ' : '') + 'Not split. <b>360 orbit</b> and <b>Beat-locked 360</b> work on the whole song right away. Split it for <b>Split ears</b> and to move the vocals on their own.';
+    if (st.mode !== 'ears' && !p.split && st.what !== 'song' && !t.stem) info.innerHTML += ' For now the whole song moves.';
     if (st.mode === 'beat' && t) {
       $('pps-tempo').textContent = 'Finding the tempo…';
       beatFor(t).then(function (b) { if (byId($('pps-song').value) === t) $('pps-tempo').textContent = b && b.bpm ? 'Tempo ' + b.bpm + ' BPM: one turn every ' + Math.round(60 / b.bpm * 4 * st.bars * 10) / 10 + ' s.' : 'No steady beat found.'; })
@@ -359,11 +374,19 @@
     stopPv();
     run(function () {
       return make(t, say, null).then(function (lr) {
-        say('Saving…');
-        var name = clean(t) + ' (' + label() + ').wav';
-        a.addLibraryFiles([new File([wavBlob(lr[0], lr[1])], name, { type: 'audio/wav' })]);
-        say('Saved to your library: ' + name.replace(/\.wav$/, ''));
-        toast('Saved: ' + name.replace(/\.wav$/, ''));
+        say('Saving\u2026');
+        var base = clean(t) + ' (' + label(t) + ')', wav = wavBlob(lr[0], lr[1]);
+        var done = function (file, note) {
+          a.addLibraryFiles([file]);
+          say('Saved to your library: ' + base + (note || ''));
+          toast('Saved: ' + base);
+        };
+        var V = window.PPVocals;
+        if (t.kind !== 'video' || !V || !V.muxVideo) return done(new File([wav], base + '.wav', { type: 'audio/wav' }), t.kind === 'video' ? ' (as audio: the video tools are not loaded)' : '');
+        // a video: copy its picture as it is and put the new sound under it
+        return V.muxVideo(t.url, wav, function (f) { say('Putting the video back together ' + Math.round(f * 100) + '%'); })
+          .then(function (vb) { done(new File([vb], base + '.' + (/webm/.test(vb.type) ? 'webm' : 'mp4'), { type: vb.type || 'video/mp4' })); },
+                function () { done(new File([wav], base + '.wav', { type: 'audio/wav' }), ' (as audio: this video could not be rebuilt)'); });
       });
     });
   }

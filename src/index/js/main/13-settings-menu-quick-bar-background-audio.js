@@ -172,33 +172,39 @@
   });
   pipDropdown.addEventListener('click', (e) => e.stopPropagation());
   document.addEventListener('click', () => { pipDropdown.classList.remove('open'); pipBtn.setAttribute('aria-expanded', 'false'); });
-  // Web audio button: manually hand the sound to the <audio> element, the same thing that happens
-  // automatically when you leave the tab. Needed for turning the screen off with the app still open,
-  // which browsers don't always report as "hidden" in time.
-  const webAudioBtn = document.getElementById('webaudio-btn');
-  function refreshWebAudioBtn(){
-    webAudioBtn.classList.toggle('toggled', bgAudioManual);
-    webAudioBtn.setAttribute('aria-pressed', bgAudioManual ? 'true' : 'false');
+  // Quick switch between a video and its audio (the button next to PiP, and "Back to video" on the player).
+  // Uses the same conversion as the track menu, and keeps your place and whether it was playing.
+  // (This button used to force the background-audio handoff by hand; that still happens by itself when the
+  // app leaves the screen.)
+  async function quickSwitchKind(toAudio){
+    const i = currentIndex, t = tracks[i];
+    if (!t || (toAudio ? t.kind !== 'video' : !t.convertedFromVideo)) return;
+    let pos = 0; try { pos = media().currentTime || 0; } catch(e){}
+    if (document.pictureInPictureElement === videoEl){ try { await document.exitPictureInPicture(); } catch(e){} }
+    try { savePlaybackPosition(t.dbId, pos > 1 ? pos : null); } catch(e){}
+    const target = toAudio ? audioEl : videoEl, from = toAudio ? videoEl : audioEl;
+    // Converting can take a few seconds (the file is saved first) and the old element keeps playing meanwhile, so
+    // the place to go back to is where it was when the new one started loading, not where it was at the tap.
+    let at = pos, atT = performance.now();
+    target.addEventListener('loadstart', function f(){ target.removeEventListener('loadstart', f); try { at = from.currentTime || pos; } catch(e){} atT = performance.now(); });
+    // Put it back there once the other element has the file. Checked again a few times, because a fresh element
+    // (or the native player) can report "loaded" before it accepts a seek, or start over from 0 after one.
+    const want = () => at + (isPlaying ? (performance.now() - atT) / 1000 : 0);
+    const seek = () => { try { if (currentIndex === i && (target.currentTime || 0) < want() - 1.5) target.currentTime = want(); } catch(e){} };
+    if (pos >= 1){
+      ['loadedmetadata', 'canplay', 'playing'].forEach(ev => target.addEventListener(ev, function once(){ target.removeEventListener(ev, once); seek(); }));
+    }
+    if (toAudio) await convertToMp3(i); else await revertToVideo(i);
+    if (currentIndex !== i || pos < 1) return;
+    [300, 900, 1800].forEach(ms => setTimeout(seek, ms));
   }
-  webAudioBtn.addEventListener('click', async () => {
-    if (bgAudioManual){
-      bgAudioManual = false;
-      refreshWebAudioBtn();
-      if (bgAudioActive && !document.hidden) exitBackgroundAudioMode();
-      return;
-    }
-    bgAudioManual = true;
-    refreshWebAudioBtn();
-    if (currentIndex === -1 || !tracks[currentIndex] || tracks[currentIndex].kind !== 'video') return;   // applies to the next video
-    if (document.pictureInPictureElement === videoEl){
-      try { await document.exitPictureInPicture(); } catch(e){}
-    }
-    if (!isPlaying) armBackgroundAudio();
-    if (isPlaying && !bgAudioActive){
-      audioLeadHandoffAt = performance.now();   // keep the lead's audio running through the swap
-      await enterBackgroundAudioMode();
-    }
-  });
+  const toAudioBtn = document.getElementById('to-audio-btn'), toVideoBtn = document.getElementById('to-video-btn');
+  toAudioBtn.addEventListener('click', (e) => { e.stopPropagation(); quickSwitchKind(true); });
+  toVideoBtn.addEventListener('click', (e) => { e.stopPropagation(); quickSwitchKind(false); });
+  function refreshToVideoBtn(){
+    const t = currentIndex !== -1 ? tracks[currentIndex] : null;
+    toVideoBtn.style.display = t && t.convertedFromVideo ? '' : 'none';
+  }
   videoEl.addEventListener('enterpictureinpicture', () => { pipBtn.classList.add('toggled'); refreshVideoDelayState(); });
   videoEl.addEventListener('leavepictureinpicture', () => { pipBtn.classList.remove('toggled'); autoPip = false; refreshVideoDelayState(); });
 
