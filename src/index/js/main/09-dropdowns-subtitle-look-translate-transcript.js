@@ -75,6 +75,13 @@
   function ppRefreshPopups(e){
     if (e && e.target && e.target.closest && e.target.closest('[id$="-dropdown"]') && ppHoisted.has(e.target.closest('[id$="-dropdown"]'))) return;
     Array.from(ppHoisted.keys()).forEach(d => {
+      // Typing in one of its boxes (sleep minutes, A-B repeat...): moving it out of the page and back would drop the
+      // focus and close the keyboard, which opening the keyboard itself triggers (it resizes the page). Leave it where
+      // it is and only slide it up so the box stays above the keyboard. A fullscreen change still moves it (new host).
+      const ae = document.activeElement;
+      if (ae && ae !== d && d.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && !(e && e.type === 'fullscreenchange')){
+        ppKeepFocusVisible(d, ae); return;
+      }
       const st = d.scrollTop;
       ppUnhoist(d);
       clampDropdownToViewport(d);
@@ -94,7 +101,17 @@
     })
       .observe(d, { attributes:true, attributeFilter:['class'] });
   });
+  function ppKeepFocusVisible(d, el){
+    const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const r = el.getBoundingClientRect(), dr = d.getBoundingClientRect();
+    const over = r.bottom - (vh - 10);
+    if (over > 0) d.style.top = Math.max(8, dr.top - over) + 'px';
+  }
   window.addEventListener('resize', ppRefreshPopups);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', () => {
+    const ae = document.activeElement;
+    ppHoisted.forEach((ph, d) => { if (ae && d.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) ppKeepFocusVisible(d, ae); });
+  });
   window.addEventListener('orientationchange', () => setTimeout(ppRefreshPopups, 80));
   document.addEventListener('fullscreenchange', ppRefreshPopups);
   document.addEventListener('scroll', ppRefreshPopups, true);
