@@ -488,25 +488,43 @@
           <div class="menu-item-head">
             <div class="menu-item-title">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-              <span>Upscaling</span>
+              <span>Picture enhance</span>
             </div>
             <label class="qb-toggle"><input type="checkbox" class="qb-checkbox" data-qb="upscale"> Quick bar</label>
           </div>
           <div class="menu-item-slot" data-slot="upscale">
             <div style="position:relative;" data-item-wrapper="upscale">
-              <button class="pill-btn" id="upscale-btn" title="Upscaling" aria-label="Upscaling" aria-expanded="false">
+              <button class="pill-btn" id="upscale-btn" title="Picture enhance" aria-label="Picture enhance" aria-expanded="false">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
                 <span id="upscale-pill-label">Off</span>
               </button>
               <div id="upscale-dropdown">
-                <div class="latency-dropdown-row" style="margin:9px 0 4px 0;"><span class="tool-dropdown-label" style="padding:0;" title="Sharper enlargement (bicubic) on screens with more pixels than the smoothing quality provides. Never goes above the screen's real resolution.">Upscale up to</span></div>
+                <div class="latency-dropdown-row" style="margin:9px 0 4px 0;"><span class="tool-dropdown-label" style="padding:0;" title="Edge-aware enlargement: lines stay clean instead of jagged or soft. Never goes above the screen's real resolution.">Upscale up to</span></div>
                 <div class="memc-mode-row">
                   <button type="button" class="memc-mode-btn" data-memc-up="0">Off</button>
                   <button type="button" class="memc-mode-btn" data-memc-up="1">1080p</button>
                   <button type="button" class="memc-mode-btn" data-memc-up="2">1440p</button>
                   <button type="button" class="memc-mode-btn" data-memc-up="3">4K</button>
                 </div>
-                <p class="menu-section-hint" style="margin:6px 0 0 0;">Sharper picture on high-resolution screens. Works together with Motion smoothing.</p>
+                <div class="latency-dropdown-row" style="margin:9px 0 4px 0;"><span class="tool-dropdown-label" style="padding:0;" title="Sharpens at the screen's resolution, more on soft detail and less on noise, without bright halos.">Sharpness</span><span id="enh-sharp-val" class="memc-val">Off</span></div>
+                <input type="range" id="enh-sharp" class="memc-range" min="0" max="100" step="5" value="0">
+                <label class="override-toggle" style="margin-top:8px;" title="Softens the 8x8 blocks and the shimmer around edges that low-bitrate video has.">
+                  <input type="checkbox" id="enh-deblock-toggle">
+                  <span>Clean up compression</span>
+                </label>
+                <label class="override-toggle" style="margin-top:8px;" title="Smooths the stripes in skies, gradients and dark scenes, with a fine grain so they don't come back.">
+                  <input type="checkbox" id="enh-deband-toggle">
+                  <span>Smooth banding</span>
+                </label>
+                <label class="override-toggle" style="margin-top:8px;" title="Darker, crisper line art for animation. Not for live action.">
+                  <input type="checkbox" id="enh-anime-toggle">
+                  <span>Anime / cartoon lines</span>
+                </label>
+                <label class="override-toggle" style="margin-top:8px;" title="Left half: the picture without enhancement. Right half: with it.">
+                  <input type="checkbox" id="enh-compare-toggle">
+                  <span>Compare (before | after)</span>
+                </label>
+                <p class="menu-section-hint" style="margin:6px 0 0 0;">Runs on the GPU after motion smoothing. Turn on Compare to see what each setting does.</p>
               </div>
             </div>
           </div>

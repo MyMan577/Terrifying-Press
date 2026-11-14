@@ -74,9 +74,17 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
      * Motion smoothing settings, as the page's menu sets them. [mode]: "off", "blend" (Simple), "motion" (Advanced),
      * "ultra". [delayMs]: Bluetooth picture delay. [maxIn]: smooth videos up to this many fps. [outFps]: output cap.
      * [strength]: Advanced/Ultra fallback strength 0..1. [quality]: 0 Low .. 3 4K. [upscale]: 0 off, 1 1080p, 2 1440p, 3 4K.
+     * Picture enhance: [sharp] adaptive sharpening 0..1, [deband], [deblock] (compression clean-up), [anime] line art,
+     * [compare] before/after split. Any of these (or upscaling) runs the engine even with smoothing and delay off.
      */
     data class MemcConfig(val mode: String = "off", val delayMs: Float = 0f, val maxIn: Int = 50, val outFps: Int = 120,
-                          val strength: Float = 0.5f, val quality: Int = 1, val upscale: Int = 0)
+                          val strength: Float = 0.5f, val quality: Int = 1, val upscale: Int = 0,
+                          val sharp: Float = 0f, val deband: Boolean = false, val deblock: Boolean = false,
+                          val anime: Boolean = false, val compare: Boolean = false) {
+        fun enhOn() = upscale > 0 || sharp > 0f || deband || deblock || anime
+        /** Same settings apart from picture enhance: no need to rebuild the frame ring. */
+        fun sameBut(o: MemcConfig) = copy(sharp = o.sharp, deband = o.deband, deblock = o.deblock, anime = o.anime, compare = o.compare) == o
+    }
 
     private val main = Handler(Looper.getMainLooper())
     private val thread = HandlerThread("pp-video-gl").apply { start() }
@@ -158,8 +166,9 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
 
     fun setMemc(c: MemcConfig) {
         if (c == cfg) return
+        val enhOnly = c.sameBut(cfg) && c.enhOn() == cfg.enhOn()
         cfg = c
-        gl.post { E.configChanged(); kickLoop(); requestRenderGl() }
+        gl.post { if (enhOnly) E.enhanceChanged() else E.configChanged(); kickLoop(); requestRenderGl() }
         applyFrameRate()
     }
 
@@ -560,6 +569,11 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
         private val dupBuf: ByteBuffer = ByteBuffer.allocateDirect(8 * 8 * 4).order(ByteOrder.nativeOrder())
         private var dupMs = 0.0; private var dupN = 0; private var dupOff = false
         private var out: Tex? = null
+        private var enhMid: Tex? = null; private var enhPre: Tex? = null; private var enhUp: Tex? = null
+        private var enhSeed = 0
+        private var enhStale = false                  // enhance settings changed: the last picture must be drawn again, not re-shown
+        private var srcW = 0                          // the video's own width (the codec's 8x8 grid for clean-up)
+        private var fullOom = false                   // full-size frames ran out of GPU memory once: use the tier size
         private var lastT: Double? = null
         private var period = 1.0 / 30; private var periodN = 0
         private val dts = ArrayList<Double>()
@@ -576,7 +590,7 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
         private var lastStatus = ""; private var lastStatusAt = 0L
         var extraSec = 0.0; private set
 
-        fun wanted(): Boolean { val c = cfg; return !failed && (smoothing(c) || c.delayMs > 0f) }
+        fun wanted(): Boolean { val c = cfg; return !failed && (smoothing(c) || c.delayMs > 0f || c.enhOn()) }
         fun ready() = ring.isNotEmpty() && outValid
         private fun smoothing(c: MemcConfig = cfg) = c.mode != "off" && !bypass
         private fun motion(c: MemcConfig = cfg) = (c.mode == "motion" || c.mode == "ultra") && !bypass
@@ -607,7 +621,10 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
                     "mc" to Prog(FS_MC, listOf("uF0", "uF1", "uMv", "uA", "uInvAna", "uFall", "uUp")),
                     "ref" to Prog(FS_REF, listOf("uCur", "uPrev", "uRaw", "uPrior", "uHasPrior", "uSize", "uGrid")),
                     "mc2" to Prog(FS_MC2, listOf("uF0", "uF1", "uMvF", "uMvB", "uA", "uInvAna", "uFall", "uUp")),
-                    "cap" to Prog(FS_CAP_OES, listOf("uTex", "uTexM", "uOff"), EXT_OES3))
+                    "cap" to Prog(FS_CAP_OES, listOf("uTex", "uTexM", "uOff"), EXT_OES3),
+                    "enhPre" to Prog(FS_ENH_PRE, listOf("uTex", "uSize", "uDeblock", "uDeband", "uAnime", "uBlock", "uRad", "uSeed")),
+                    "enhUp" to Prog(FS_ENH_UP, listOf("uTex", "uSrc")),
+                    "enhFin" to Prog(FS_ENH_FIN, listOf("uTex", "uBefore", "uCon", "uSplit")))
                 dupTex = makeTex(8, 8, GLES20.GL_NEAREST, GLES30.GL_RGBA8)
             } catch (e: Throwable) { fail(e); return false }
             return true
@@ -617,6 +634,8 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
             ring.forEach { s -> del(s.img); s.mv?.let { del(it) }; s.mvB?.let { del(it) } }
             luma.forEach { del(it) }
             mvRaw?.let { del(it) }; mvRef?.let { del(it) }; out?.let { del(it) }
+            enhMid?.let { del(it) }; enhPre?.let { del(it) }; enhUp?.let { del(it) }
+            enhMid = null; enhPre = null; enhUp = null
             ring = ArrayList(); luma = ArrayList(); mvRaw = null; mvRef = null; out = null
             resKey = ""; write = 0; prevSeq = 0; prevLumaValid = false; lumaIdx = 0
             prevSlot = null; uniqSlot = null; lastKey = ""; outValid = false
@@ -635,7 +654,9 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
             period = 1.0 / 30; periodN = 0; dts.clear(); udts.clear(); dupMs = 0.0; dupN = 0; dupOff = false; leads.clear()
             status(force = true)
         }
-        fun boxChanged() { out?.let { del(it) }; out = null; lastKey = "" }
+        fun boxChanged() { out?.let { del(it) }; out = null; enhUp?.let { del(it) }; enhUp = null; lastKey = "" }
+        /** Only picture-enhance settings changed: keep the ring, redraw with the new passes. */
+        fun enhanceChanged() { lastKey = ""; enhStale = true }
 
         // ---- resources ----
         private fun makeTex(w: Int, h: Int, filter: Int, fmt: Int): Tex {
@@ -674,11 +695,15 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
             val need = ceil((min(max(c.delayMs.toDouble(), 0.0), 2000.0) / 1000.0 + (if (sm) 0.4 else 0.3)) * fps).toInt() + 4
             val wantN = max(12, ((need + 7) / 8) * 8)
             val q = quality(); val tier = TIERS[q]
-            val key = (if (mot) (if (c.mode == "ultra") "u" else "m") else "b") + q + ":" + vw + "x" + vh
+            val key = (if (mot) (if (c.mode == "ultra") "u" else "m") else if (sm) "b" else "d") + q + ":" + vw + "x" + vh
+            srcW = vw
             if (key == resKey && wantN <= ring.size) return
             free()
-            val budget = (if (sm) tier.mb else max(tier.mb, 160)).toDouble() * 1048576.0
-            var scale = min(1.0, (if (mot) tier.motionW else tier.simpleW).toDouble() / vw)
+            // Not smoothing (picture delay / enhance only): keep the video's own size, up to the box's pixels, as the page does.
+            val full = !sm && !fullOom
+            val budget = (if (full) 400 else if (sm) tier.mb else max(tier.mb, 160)).toDouble() * 1048576.0
+            var scale = if (full) min(1.0, max(max(outW, outH), 1280).toDouble() / max(vw, vh))
+                        else min(1.0, (if (mot) tier.motionW else tier.simpleW).toDouble() / vw)
             scale = min(scale, sqrt(budget / (wantN.toDouble() * 4 * vw * vh)))
             ringW = max(64, ((vw * scale / 2).roundToInt()) * 2)
             ringH = max(36, ((vh * scale / 2).roundToInt()) * 2)
@@ -692,7 +717,8 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
                 if (c.mode == "ultra") { fw = gw * 2; fh = gh * 2; mvRef = makeTex(fw, fh, GLES20.GL_NEAREST, vecFmt()) }
             }
             for (i in 0 until wantN) ring.add(makeSlot(mot))
-            if (GLES20.glGetError() == GLES20.GL_OUT_OF_MEMORY && q > 0) {   // drop one tier and rebuild on the next frame
+            if (full && GLES20.glGetError() == GLES20.GL_OUT_OF_MEMORY) { free(); fullOom = true; return }   // tier size next time
+            if (!full && GLES20.glGetError() == GLES20.GL_OUT_OF_MEMORY && q > 0) {   // drop one tier and rebuild on the next frame
                 free(); qualityDrop++; status(force = true); return
             }
             resKey = key
@@ -939,7 +965,7 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
         /** Re-show the last engine picture (view or filter change while paused). */
         fun redrawLast(): Boolean {
             val o = out ?: return false
-            if (!outValid) return false
+            if (!outValid || enhStale) return false
             drawEngineOut(o.tex, o.w, o.h)
             return true
         }
@@ -947,8 +973,11 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
         private fun draw(o: Tex, f0: Slot, f1: Slot?, a: Float) {
             val P = progs!!
             val c = cfg
-            target(o)
-            val up = if (o.w > ringW) 1f else 0f
+            enhStale = false
+            // Picture enhance: the frame goes to a texture at the ring size first, then enhPasses draws it into [o].
+            val mid = if (c.enhOn()) enhTex(enhMid, ringW, ringH).also { enhMid = it } else null
+            target(mid ?: o)
+            val up = if (mid == null && o.w > ringW) 1f else 0f
             if (f1 != null && a > 0f && motion(c) && anaW > 0 && f1.hasMv && f1.prevSeq == f0.seq && (c.mode != "ultra" || f1.mvB != null)) {
                 val ultra = c.mode == "ultra"
                 val M = P.getValue(if (ultra) "mc2" else "mc"); M.use()
@@ -967,6 +996,45 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
                 B.f("uA", if (f1 != null && a > 0f) a else 0f)
                 B.f("uUp", up)
             }
+            tri()
+            if (mid != null) enhPasses(mid, o)
+        }
+
+        private fun enhTex(t: Tex?, w: Int, h: Int): Tex {
+            if (t != null && t.w == w && t.h == h) return t
+            t?.let { del(it) }
+            return makeTex(w, h, GLES20.GL_LINEAR, GLES30.GL_RGBA8)
+        }
+
+        /** The page's memcEnhPasses: [clean-up / deband / anime] -> [edge-aware upscale] -> adaptive sharpening (+ split). */
+        private fun enhPasses(mid: Tex, o: Tex) {
+            val P = progs!!
+            val c = cfg
+            var src = mid
+            if (c.deblock || c.deband || c.anime) {
+                val pre = enhTex(enhPre, mid.w, mid.h).also { enhPre = it }
+                target(pre)
+                val R = P.getValue("enhPre"); R.use()
+                bind(0, mid.tex); R.i("uTex", 0); R.f2("uSize", mid.w.toFloat(), mid.h.toFloat())
+                R.f("uDeblock", if (c.deblock) 1f else 0f); R.f("uDeband", if (c.deband) 1f else 0f); R.f("uAnime", if (c.anime) 1f else 0f)
+                R.f("uBlock", 8f * mid.w / max(1, if (srcW > 0) srcW else mid.w))
+                R.f("uRad", max(2f, 8f * mid.h / 1080f))
+                enhSeed = (enhSeed + 1) % 997; R.f("uSeed", enhSeed * 1.37f)
+                tri()
+                src = pre
+            }
+            if (o.w != src.w || o.h != src.h) {
+                val upT = enhTex(enhUp, o.w, o.h).also { enhUp = it }
+                target(upT)
+                val U = P.getValue("enhUp"); U.use()
+                bind(0, src.tex); U.i("uTex", 0); U.f2("uSrc", src.w.toFloat(), src.h.toFloat())
+                tri()
+                src = upT
+            }
+            target(o)
+            val F = P.getValue("enhFin"); F.use()
+            bind(0, src.tex); bind(1, mid.tex); F.i("uTex", 0); F.i("uBefore", 1)
+            F.f("uCon", c.sharp.coerceIn(0f, 1f)); F.f("uSplit", if (c.compare) 0.5f else -1f)
             tri()
         }
 
@@ -1026,6 +1094,142 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
         /** The shared filter shader, reading the decoder's external (OES) texture. */
         private val FRAGMENT_OES: String = "#extension GL_OES_EGL_image_external : require\n" +
             FILTER_FRAGMENT.replace("uniform sampler2D uTexSampler;", "uniform samplerExternalOES uTexSampler;")
+
+        // ---- picture enhance (GLSL ES 3.00): the page's shaders (index.html, "Picture enhance"), unchanged ----
+        private const val FS_ENH_PRE = "uniform sampler2D uTex; uniform vec2 uSize; uniform float uDeblock; uniform float uDeband; uniform float uAnime; uniform float uBlock; uniform float uRad; uniform float uSeed;\n" +
+            "float lum(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }\n" +
+            "vec3 tx(vec2 p){ return texture(uTex, p / uSize).rgb; }\n" +
+            "float hash(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }\n" +
+            "vec3 deblockAxis(vec3 c, vec2 p, float fq, vec2 ax){\n" +
+            "  float dl = fq, dr = uBlock - fq;\n" +
+            "  float k = floor(min(dl, dr));\n" +
+            "  if (k > 1.0) return c;\n" +
+            "  vec2 s = dl < dr ? -ax : ax;\n" +
+            "  vec3 A = tx(p + s * k), B = tx(p + s * (k + 1.0));\n" +
+            "  vec3 A2 = tx(p + s * (k - 1.0)), B2 = tx(p + s * (k + 2.0));\n" +
+            "  float step0 = abs(lum(B) - lum(A));\n" +
+            "  if (step0 > 0.09 || abs(lum(A2) - lum(A)) > 0.03 || abs(lum(B2) - lum(B)) > 0.03) return c;\n" +
+            "  return c + (B - A) * (k < 0.5 ? 0.375 : 0.125);\n" +
+            "}\n" +
+            "void main(){\n" +
+            "  vec2 p = vUv * uSize;\n" +
+            "  vec3 c = tx(p);\n" +
+            "  if (uDeblock > 0.5){\n" +
+            "    if (uBlock >= 4.0){\n" +
+            "      vec2 fq = mod(p, uBlock);\n" +
+            "      c = deblockAxis(c, p, fq.x, vec2(1.0, 0.0));\n" +
+            "      c = deblockAxis(c, p, fq.y, vec2(0.0, 1.0));\n" +
+            "    }\n" +
+            "    vec3 acc = vec3(0.0); float ws = 0.0; float l0 = lum(c);\n" +
+            "    for (int j = -1; j <= 1; j++){ for (int i = -1; i <= 1; i++){\n" +
+            "      vec3 s = (i == 0 && j == 0) ? c : tx(p + vec2(float(i), float(j)));\n" +
+            "      float d = lum(s) - l0;\n" +
+            "      float w = exp(-d * d * 900.0) * ((i == 0 || j == 0) ? 1.0 : 0.6);\n" +
+            "      acc += s * w; ws += w;\n" +
+            "    } }\n" +
+            "    c = mix(c, acc / ws, 0.5);\n" +
+            "  }\n" +
+            "  if (uDeband > 0.5){\n" +
+            "    vec3 a = c;\n" +
+            "    for (int it = 1; it <= 2; it++){\n" +
+            "      float fi = float(it);\n" +
+            "      float r = uRad * fi * (0.5 + hash(p + fi * 17.0));\n" +
+            "      float an = hash(p * 1.7 + fi * 31.0) * 6.2831853;\n" +
+            "      vec2 o = vec2(cos(an), sin(an)) * r;\n" +
+            "      vec3 s1 = tx(p + o), s2 = tx(p - o), s3 = tx(p + vec2(-o.y, o.x)), s4 = tx(p + vec2(o.y, -o.x));\n" +
+            "      vec3 av = (s1 + s2 + s3 + s4) * 0.25;\n" +
+            "      vec3 df = max(max(abs(s1 - a), abs(s2 - a)), max(abs(s3 - a), abs(s4 - a)));\n" +
+            "      a = mix(av, a, step(vec3(0.011 / fi), df));\n" +
+            "    }\n" +
+            "    c = a + (hash(p + uSeed) - hash(p.yx + uSeed + 7.0)) * (1.0 / 255.0);\n" +
+            "  }\n" +
+            "  if (uAnime > 0.5){\n" +
+            "    float t00 = lum(tx(p + vec2(-1.0, -1.0))), t10 = lum(tx(p + vec2(0.0, -1.0))), t20 = lum(tx(p + vec2(1.0, -1.0)));\n" +
+            "    float t01 = lum(tx(p + vec2(-1.0, 0.0))), t11 = lum(tx(p)), t21 = lum(tx(p + vec2(1.0, 0.0)));\n" +
+            "    float t02 = lum(tx(p + vec2(-1.0, 1.0))), t12 = lum(tx(p + vec2(0.0, 1.0))), t22 = lum(tx(p + vec2(1.0, 1.0)));\n" +
+            "    vec2 g = vec2(t20 + 2.0 * t21 + t22 - t00 - 2.0 * t01 - t02, t02 + 2.0 * t12 + t22 - t00 - 2.0 * t10 - t20);\n" +
+            "    float m = length(g);\n" +
+            "    float e = smoothstep(0.1, 0.45, m);\n" +
+            "    float mean = (t00 + t10 + t20 + t01 + t11 + t21 + t02 + t12 + t22) * (1.0 / 9.0);\n" +
+            "    c -= vec3(max(0.0, mean - t11) * 1.2 * e);\n" +
+            "  }\n" +
+            "  oc = vec4(clamp(c, 0.0, 1.0), 1.0);\n" +
+            "}\n"
+
+        private const val FS_ENH_UP = "uniform sampler2D uTex; uniform vec2 uSrc;\n" +
+            "void main(){\n" +
+            "  vec2 pos = vUv * uSrc - 0.5;\n" +
+            "  vec2 fp = floor(pos); vec2 f = pos - fp;\n" +
+            "  ivec2 ip = ivec2(fp); ivec2 mx = ivec2(uSrc) - 1;\n" +
+            "  vec3 c[16]; float l[16];\n" +
+            "  for (int j = 0; j < 4; j++){ for (int i = 0; i < 4; i++){\n" +
+            "    vec3 s = texelFetch(uTex, clamp(ip + ivec2(i - 1, j - 1), ivec2(0), mx), 0).rgb;\n" +
+            "    c[j * 4 + i] = s; l[j * 4 + i] = dot(s, vec3(0.299, 0.587, 0.114));\n" +
+            "  } }\n" +
+            "  float sxx = 0.0, syy = 0.0, sxy = 0.0;\n" +
+            "  for (int j = 1; j <= 2; j++){ for (int i = 1; i <= 2; i++){\n" +
+            "    float w = (i == 1 ? 1.0 - f.x : f.x) * (j == 1 ? 1.0 - f.y : f.y);\n" +
+            "    float gx = l[j * 4 + i + 1] - l[j * 4 + i - 1];\n" +
+            "    float gy = l[(j + 1) * 4 + i] - l[(j - 1) * 4 + i];\n" +
+            "    sxx += w * gx * gx; syy += w * gy * gy; sxy += w * gx * gy;\n" +
+            "  } }\n" +
+            "  float tr = sxx + syy;\n" +
+            "  float dd = sqrt((sxx - syy) * (sxx - syy) + 4.0 * sxy * sxy);\n" +
+            "  float l1 = 0.5 * (tr + dd), l2 = 0.5 * (tr - dd);\n" +
+            "  vec2 v = vec2(l1 - syy, sxy);\n" +
+            "  float vl = length(v);\n" +
+            "  vec2 dir = vl > 1e-8 ? v / vl : vec2(1.0, 0.0);\n" +
+            "  float len = tr > 1e-7 ? (l1 - l2) / (l1 + l2) : 0.0;\n" +
+            "  len *= smoothstep(0.0002, 0.003, tr);\n" +
+            "  float stretch = 1.0 / max(abs(dir.x), abs(dir.y));\n" +
+            "  vec2 len2 = vec2(1.0 + (stretch - 1.0) * len, 1.0 - 0.5 * len);\n" +
+            "  float lob = 0.5 + ((0.25 - 0.04) - 0.5) * len;\n" +
+            "  float clp = 1.0 / lob;\n" +
+            "  vec3 acc = vec3(0.0); float ws = 0.0;\n" +
+            "  for (int j = 0; j < 4; j++){ for (int i = 0; i < 4; i++){\n" +
+            "    vec2 d = vec2(float(i - 1), float(j - 1)) - f;\n" +
+            "    vec2 r = vec2(dot(d, dir), dot(d, vec2(-dir.y, dir.x))) * len2;\n" +
+            "    float x2 = min(dot(r, r), clp);\n" +
+            "    float wB = 0.4 * x2 - 1.0; float wA = lob * x2 - 1.0;\n" +
+            "    float w = (1.5625 * wB * wB - 0.5625) * (wA * wA);\n" +
+            "    acc += c[j * 4 + i] * w; ws += w;\n" +
+            "  } }\n" +
+            "  vec3 o = acc / ws;\n" +
+            "  vec3 mn = min(min(c[5], c[6]), min(c[9], c[10]));\n" +
+            "  vec3 mxv = max(max(c[5], c[6]), max(c[9], c[10]));\n" +
+            "  oc = vec4(clamp(o, mn, mxv), 1.0);\n" +
+            "}\n"
+
+        private const val FS_ENH_FIN = "uniform sampler2D uTex; uniform sampler2D uBefore; uniform float uCon; uniform float uSplit;\n" +
+            "void main(){\n" +
+            "  ivec2 q = ivec2(gl_FragCoord.xy); ivec2 mx = textureSize(uTex, 0) - 1;\n" +
+            "  vec3 e = texelFetch(uTex, clamp(q, ivec2(0), mx), 0).rgb;\n" +
+            "  vec3 o = e;\n" +
+            "  if (uCon > 0.0){\n" +
+            "    vec3 b = texelFetch(uTex, clamp(q + ivec2(0, -1), ivec2(0), mx), 0).rgb;\n" +
+            "    vec3 d = texelFetch(uTex, clamp(q + ivec2(-1, 0), ivec2(0), mx), 0).rgb;\n" +
+            "    vec3 f = texelFetch(uTex, clamp(q + ivec2(1, 0), ivec2(0), mx), 0).rgb;\n" +
+            "    vec3 h = texelFetch(uTex, clamp(q + ivec2(0, 1), ivec2(0), mx), 0).rgb;\n" +
+            "    vec3 mn4 = min(min(b, d), min(f, h)); vec3 mx4 = max(max(b, d), max(f, h));\n" +
+            "    vec3 hitMin = min(mn4, e) / (4.0 * mx4 + 1e-4);\n" +
+            "    vec3 hitMax = (1.0 - max(mx4, e)) / (4.0 * min(mn4, e) - 4.0 - 1e-4);\n" +
+            "    vec3 lr = max(-hitMin, hitMax);\n" +
+            "    float lobe = max(-0.1875, min(max(lr.r, max(lr.g, lr.b)), 0.0)) * uCon;\n" +
+            "    vec3 W = vec3(0.299, 0.587, 0.114);\n" +
+            "    float bL = dot(b, W), dL = dot(d, W), eL = dot(e, W), fL = dot(f, W), hL = dot(h, W);\n" +
+            "    float nz = 0.25 * (bL + dL + fL + hL) - eL;\n" +
+            "    float rng = max(max(max(bL, dL), max(eL, fL)), hL) - min(min(min(bL, dL), min(eL, fL)), hL);\n" +
+            "    nz = clamp(abs(nz) / max(rng, 1e-4), 0.0, 1.0);\n" +
+            "    lobe *= 1.0 - 0.5 * nz;\n" +
+            "    o = (lobe * (b + d + f + h) + e) / (4.0 * lobe + 1.0);\n" +
+            "  }\n" +
+            "  if (uSplit >= 0.0){\n" +
+            "    vec2 uv = (vec2(q) + 0.5) / vec2(mx + 1);\n" +
+            "    if (uv.x < uSplit) o = texture(uBefore, uv).rgb;\n" +
+            "    if (abs(gl_FragCoord.x - uSplit * float(mx.x + 1)) < 1.5) o = vec3(1.0);\n" +
+            "  }\n" +
+            "  oc = vec4(clamp(o, 0.0, 1.0), 1.0);\n" +
+            "}\n"
 
         // ---- motion smoothing (GLSL ES 3.00): the page's shaders, unchanged ----
         private const val MVS = "#version 300 es\n" +
