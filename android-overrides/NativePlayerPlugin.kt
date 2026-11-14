@@ -524,9 +524,11 @@ class NativePlayerPlugin : Plugin() {
             deband = call.getBoolean("deband") ?: false,
             deblock = call.getBoolean("deblock") ?: false,
             anime = call.getBoolean("anime") ?: false,
-            compare = call.getBoolean("compare") ?: false)
+            compare = call.getBoolean("compare") ?: false,
+            ai = call.getString("ai") ?: "off")
         main.post {
             MainActivity.playerView?.let { pv ->
+                srModels[c.ai]?.let { pv.setSrModel(c.ai, it) }   // a new player view gets the model it needs
                 pv.onStatus = { m ->
                     val o = JSObject()
                     for ((k, v) in m) o.put(k, v)
@@ -536,6 +538,36 @@ class NativePlayerPlugin : Plugin() {
             }
             call.resolve()
         }
+    }
+
+    /** An AI upscaler as the page builds it (shader sources per pass); kept so a new player view can be given it too. */
+    @PluginMethod
+    fun setSrModel(call: PluginCall) {
+        val id = call.getString("id") ?: run { call.reject("no id"); return }
+        val o = call.getObject("spec") ?: run { call.reject("no spec"); return }
+        val spec = try { parseSrSpec(o) } catch (e: Exception) { call.reject("bad model: ${e.message}"); return }
+        main.post {
+            srModels[id] = spec
+            MainActivity.playerView?.setSrModel(id, spec)
+            call.resolve()
+        }
+    }
+    private val srModels = HashMap<String, NativeVideoView.SrSpec>()
+    private fun parseSrSpec(o: org.json.JSONObject): NativeVideoView.SrSpec {
+        val chans = HashMap<String, Int>()
+        val co = o.getJSONObject("chans")
+        for (k in co.keys()) chans[k] = co.getInt(k)
+        val pa = o.getJSONArray("passes")
+        val passes = ArrayList<NativeVideoView.SrPassSpec>()
+        for (i in 0 until pa.length()) {
+            val p = pa.getJSONObject(i)
+            val oa = p.getJSONArray("outs")
+            val sa = p.getJSONArray("slots")
+            passes.add(NativeVideoView.SrPassSpec(p.getString("src"), p.getString("out"),
+                IntArray(oa.length()) { oa.getInt(it) },
+                List(sa.length()) { val s = sa.getJSONObject(it); Pair(s.getString("t"), s.getInt("part")) }))
+        }
+        return NativeVideoView.SrSpec(o.getString("name"), o.getString("kind"), o.getString("final"), chans, passes, o.getString("fin"))
     }
 
     /** 32x18 luma grid of the current native frame, for the page's auto-levels (it can't read native frames). */

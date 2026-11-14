@@ -80,10 +80,24 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
     data class MemcConfig(val mode: String = "off", val delayMs: Float = 0f, val maxIn: Int = 50, val outFps: Int = 120,
                           val strength: Float = 0.5f, val quality: Int = 1, val upscale: Int = 0,
                           val sharp: Float = 0f, val deband: Boolean = false, val deblock: Boolean = false,
-                          val anime: Boolean = false, val compare: Boolean = false) {
-        fun enhOn() = upscale > 0 || sharp > 0f || deband || deblock || anime
+                          val anime: Boolean = false, val compare: Boolean = false, val ai: String = "off") {
+        fun enhOn() = upscale > 0 || sharp > 0f || deband || deblock || anime || ai != "off"
         /** Same settings apart from picture enhance: no need to rebuild the frame ring. */
-        fun sameBut(o: MemcConfig) = copy(sharp = o.sharp, deband = o.deband, deblock = o.deblock, anime = o.anime, compare = o.compare) == o
+        fun sameBut(o: MemcConfig) = copy(sharp = o.sharp, deband = o.deband, deblock = o.deblock, anime = o.anime, compare = o.compare, ai = o.ai) == o
+    }
+
+    /**
+     * An AI upscaler (2x) exactly as the page builds it (index.html, srSpec): one fragment shader per pass, each writing
+     * the output textures [outs] of map [out] from the textures in [slots] (map name, texture index; "x" = the picture).
+     * The final pass [fin] turns map [final] into the 2x picture ([kind] "rgb": depth-to-space; "luma": a detail value
+     * added to the enlarged picture). Built for frames stored bottom row first, as this engine stores them.
+     */
+    class SrPassSpec(val src: String, val out: String, val outs: IntArray, val slots: List<Pair<String, Int>>)
+    class SrSpec(val name: String, val kind: String, val final: String, val chans: Map<String, Int>, val passes: List<SrPassSpec>, val fin: String)
+
+    /** Hands over an AI upscaler; it is built on the GL thread the first time it is used. */
+    fun setSrModel(id: String, spec: SrSpec) {
+        gl.post { E.setSr(id, spec); requestRenderGl() }
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -574,6 +588,11 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
         private var enhStale = false                  // enhance settings changed: the last picture must be drawn again, not re-shown
         private var srcW = 0                          // the video's own width (the codec's 8x8 grid for clean-up)
         private var fullOom = false                   // full-size frames ran out of GPU memory once: use the tier size
+        private val SR_MAX_PX = 1280 * 736            // AI upscalers only run on pictures up to ~720p (bigger would not keep up)
+        private val srSpecs = HashMap<String, SrSpec>()
+        private val srNets = HashMap<String, SrNet>()
+        private val srBroken = HashSet<String>()
+        private var srInfo = ""                       // what the AI upscaler did last, for the page's menu
         private var lastT: Double? = null
         private var period = 1.0 / 30; private var periodN = 0
         private val dts = ArrayList<Double>()
@@ -622,7 +641,7 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
                     "ref" to Prog(FS_REF, listOf("uCur", "uPrev", "uRaw", "uPrior", "uHasPrior", "uSize", "uGrid")),
                     "mc2" to Prog(FS_MC2, listOf("uF0", "uF1", "uMvF", "uMvB", "uA", "uInvAna", "uFall", "uUp")),
                     "cap" to Prog(FS_CAP_OES, listOf("uTex", "uTexM", "uOff"), EXT_OES3),
-                    "enhPre" to Prog(FS_ENH_PRE, listOf("uTex", "uSize", "uDeblock", "uDeband", "uAnime", "uBlock", "uRad", "uSeed")),
+                    "enhPre" to Prog(FS_ENH_PRE, listOf("uTex", "uSize", "uDeblock", "uDeband", "uAnime", "uBlock", "uRad", "uSeed", "uFlipY")),
                     "enhUp" to Prog(FS_ENH_UP, listOf("uTex", "uSrc")),
                     "enhFin" to Prog(FS_ENH_FIN, listOf("uTex", "uBefore", "uCon", "uSplit")))
                 dupTex = makeTex(8, 8, GLES20.GL_NEAREST, GLES30.GL_RGBA8)
@@ -635,6 +654,7 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
             luma.forEach { del(it) }
             mvRaw?.let { del(it) }; mvRef?.let { del(it) }; out?.let { del(it) }
             enhMid?.let { del(it) }; enhPre?.let { del(it) }; enhUp?.let { del(it) }
+            srNets.values.forEach { it.free(false) }
             enhMid = null; enhPre = null; enhUp = null
             ring = ArrayList(); luma = ArrayList(); mvRaw = null; mvRef = null; out = null
             resKey = ""; write = 0; prevSeq = 0; prevLumaValid = false; lumaIdx = 0
@@ -657,6 +677,13 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
         fun boxChanged() { out?.let { del(it) }; out = null; enhUp?.let { del(it) }; enhUp = null; lastKey = "" }
         /** Only picture-enhance settings changed: keep the ring, redraw with the new passes. */
         fun enhanceChanged() { lastKey = ""; enhStale = true }
+        fun setSr(id: String, spec: SrSpec) {
+            if (srSpecs[id] === spec) return
+            srSpecs[id] = spec
+            srNets.remove(id)?.let { try { it.free(true) } catch (e: Throwable) {} }
+            srBroken.remove(id)
+            lastKey = ""; enhStale = true
+        }
 
         // ---- resources ----
         private fun makeTex(w: Int, h: Int, filter: Int, fmt: Int): Tex {
@@ -727,7 +754,7 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
         /** Output texture: the processing size, or larger (up to the upscale cap and the box) when upscaling. */
         private fun ensureOut(): Tex? {
             if (ringW == 0) return null
-            val capH = UP_CAPS[cfg.upscale.coerceIn(0, 3)]
+            val capH = UP_CAPS[cfg.upscale.coerceIn(0, 3)].let { if (it == 0 && cfg.ai != "off") 2160 else it }   // an AI upscaler enlarges up to the box
             var s = 1.0
             if (capH > 0 && outW > 0 && outH > 0) {
                 val fit = min(outW.toDouble() / ringW, outH.toDouble() / ringH)
@@ -1019,10 +1046,32 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
                 R.f("uDeblock", if (c.deblock) 1f else 0f); R.f("uDeband", if (c.deband) 1f else 0f); R.f("uAnime", if (c.anime) 1f else 0f)
                 R.f("uBlock", 8f * mid.w / max(1, if (srcW > 0) srcW else mid.w))
                 R.f("uRad", max(2f, 8f * mid.h / 1080f))
-                enhSeed = (enhSeed + 1) % 997; R.f("uSeed", enhSeed * 1.37f)
+                enhSeed = (enhSeed + 1) % 997; R.f("uSeed", enhSeed * 1.37f); R.f("uFlipY", 1f)
                 tri()
                 src = pre
             }
+            // AI upscaler: 2x when the picture has to be enlarged and is small enough to keep up; the edge-aware pass
+            // below then fits its result to the output size.
+            if (c.ai != "off") {
+                val spec = srSpecs[c.ai]
+                srInfo = when {
+                    !floatOk -> "Not available on this phone (no half-float rendering)."
+                    c.ai in srBroken -> "Could not start this model on this phone."
+                    spec == null -> "Loading\u2026"
+                    o.w <= src.w * 1.15f && o.h <= src.h * 1.15f -> "Not needed: the picture is already as sharp as the screen."
+                    src.w * src.h > SR_MAX_PX -> "Skipped: over 720p is too big to run live (standard upscaler used)."
+                    else -> try {
+                        val sp: SrSpec = spec!!
+                        val r = srNets.getOrPut(c.ai) { SrNet(sp) }.run(src)
+                        val info = sp.name + ": " + src.w + "\u00d7" + src.h + " \u2192 " + r.w + "\u00d7" + r.h
+                        src = r; info
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "AI upscaler failed", e)
+                        srBroken.add(c.ai); srNets.remove(c.ai)?.let { try { it.free(true) } catch (x: Throwable) {} }
+                        "Could not start this model on this phone."
+                    }
+                }
+            } else srInfo = ""
             if (o.w != src.w || o.h != src.h) {
                 val upT = enhTex(enhUp, o.w, o.h).also { enhUp = it }
                 target(upT)
@@ -1038,6 +1087,103 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
             tri()
         }
 
+        /** One AI upscaler on this GL context: its programs, its feature textures (half floats) and the 2x picture. */
+        private inner class SrNet(val spec: SrSpec) {
+            private val progs = ArrayList<Int>()
+            private val uSize = ArrayList<Int>()
+            private val locs = ArrayList<IntArray>()
+            private val fbos = IntArray(spec.passes.size)
+            private var fin = 0
+            private val finLoc = HashMap<String, Int>()
+            private val tex = HashMap<String, IntArray>()
+            private var w = 0; private var h = 0
+            private var hr: Tex? = null
+
+            init {
+                val maxDb = IntArray(1); GLES20.glGetIntegerv(GLES30.GL_MAX_DRAW_BUFFERS, maxDb, 0)
+                for (P in spec.passes) {
+                    if (P.outs.size > maxDb[0]) throw RuntimeException("needs ${P.outs.size} render targets, this GPU has ${maxDb[0]}")
+                    val p = link(MVS, P.src)
+                    progs.add(p)
+                    uSize.add(GLES20.glGetUniformLocation(p, "uSize"))
+                    locs.add(IntArray(P.slots.size) { GLES20.glGetUniformLocation(p, "s$it") })
+                }
+                fin = link(MVS, spec.fin)
+                for (n in listOf("s0", "s1", "s2", "sx", "uHr")) finLoc[n] = GLES20.glGetUniformLocation(fin, n)
+            }
+
+            fun free(all: Boolean) {
+                for (t in tex.values) GLES20.glDeleteTextures(t.size, t, 0)
+                tex.clear()
+                if (fbos.any { it != 0 }) GLES20.glDeleteFramebuffers(fbos.size, fbos, 0)
+                fbos.fill(0)
+                hr?.let { del(it) }; hr = null; w = 0; h = 0
+                if (all) {
+                    for (p in progs) GLES20.glDeleteProgram(p)
+                    progs.clear()
+                    if (fin != 0) GLES20.glDeleteProgram(fin)
+                    fin = 0
+                }
+            }
+
+            private fun alloc(W: Int, H: Int) {
+                if (W == w && H == h && hr != null) return
+                free(false); w = W; h = H
+                for ((name, c) in spec.chans) {
+                    if (name == "x") continue
+                    val t = IntArray(c / 4)
+                    GLES20.glGenTextures(t.size, t, 0)
+                    for (id in t) {
+                        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, id)
+                        GLES30.glTexStorage2D(GLES20.GL_TEXTURE_2D, 1, GLES30.GL_RGBA16F, W, H)
+                        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST)
+                        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST)
+                        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
+                        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
+                    }
+                    tex[name] = t
+                }
+                GLES20.glGenFramebuffers(fbos.size, fbos, 0)
+                spec.passes.forEachIndexed { i, P ->
+                    GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbos[i])
+                    val targets = tex.getValue(P.out)
+                    P.outs.forEachIndexed { k, j ->
+                        GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES30.GL_COLOR_ATTACHMENT0 + k, GLES20.GL_TEXTURE_2D, targets[j], 0)
+                    }
+                    GLES30.glDrawBuffers(P.outs.size, IntArray(P.outs.size) { GLES30.GL_COLOR_ATTACHMENT0 + it }, 0)
+                }
+                hr = makeTex(W * 2, H * 2, GLES20.GL_LINEAR, GLES30.GL_RGBA8)
+            }
+
+            fun run(src: Tex): Tex {
+                alloc(src.w, src.h)
+                GLES20.glViewport(0, 0, src.w, src.h)
+                spec.passes.forEachIndexed { i, P ->
+                    GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, fbos[i])
+                    GLES20.glUseProgram(progs[i])
+                    GLES30.glUniform2i(uSize[i], src.w, src.h)
+                    P.slots.forEachIndexed { k, slot ->
+                        bind(k, if (slot.first == "x") src.tex else tex.getValue(slot.first)[slot.second])
+                        GLES20.glUniform1i(locs[i][k], k)
+                    }
+                    tri()
+                }
+                val o = hr!!
+                target(o)
+                GLES20.glUseProgram(fin)
+                val f = tex.getValue(spec.final)
+                if (spec.kind == "rgb") {
+                    for (k in 0..2) { bind(k, f[k]); GLES20.glUniform1i(finLoc.getValue("s$k"), k) }
+                } else {
+                    bind(0, f[0]); GLES20.glUniform1i(finLoc.getValue("s0"), 0)
+                    bind(1, src.tex); GLES20.glUniform1i(finLoc.getValue("sx"), 1)
+                    GLES20.glUniform2f(finLoc.getValue("uHr"), o.w.toFloat(), o.h.toFloat())
+                }
+                tri()
+                return o
+            }
+        }
+
         // ---- status for the page's menu ----
         fun status(force: Boolean = false) {
             val now = SystemClock.elapsedRealtime()
@@ -1047,7 +1193,7 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
             val m = mapOf<String, Any>(
                 "mode" to c.mode, "failed" to failed, "why" to failWhy, "bypass" to bypass,
                 "smoothing" to (smoothing(c) && !failed), "inFps" to (inFps * 10).roundToInt() / 10.0, "outFps" to c.outFps,
-                "extraMs" to (extraSec * 1000).roundToInt(), "qualityDrop" to qualityDrop, "ring" to "${ringW}x${ringH}")
+                "extraMs" to (extraSec * 1000).roundToInt(), "qualityDrop" to qualityDrop, "ring" to "${ringW}x${ringH}", "ai" to srInfo)
             val k = m.toString()
             if (!force && k == lastStatus) return
             lastStatus = k; lastStatusAt = now
@@ -1096,7 +1242,7 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
             FILTER_FRAGMENT.replace("uniform sampler2D uTexSampler;", "uniform samplerExternalOES uTexSampler;")
 
         // ---- picture enhance (GLSL ES 3.00): the page's shaders (index.html, "Picture enhance"), unchanged ----
-        private const val FS_ENH_PRE = "uniform sampler2D uTex; uniform vec2 uSize; uniform float uDeblock; uniform float uDeband; uniform float uAnime; uniform float uBlock; uniform float uRad; uniform float uSeed;\n" +
+        private const val FS_ENH_PRE = "uniform sampler2D uTex; uniform vec2 uSize; uniform float uDeblock; uniform float uDeband; uniform float uAnime; uniform float uBlock; uniform float uRad; uniform float uSeed; uniform float uFlipY;\n" +
             "float lum(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }\n" +
             "vec3 tx(vec2 p){ return texture(uTex, p / uSize).rgb; }\n" +
             "float hash(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }\n" +
@@ -1116,9 +1262,9 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
             "  vec3 c = tx(p);\n" +
             "  if (uDeblock > 0.5){\n" +
             "    if (uBlock >= 4.0){\n" +
-            "      vec2 fq = mod(p, uBlock);\n" +
-            "      c = deblockAxis(c, p, fq.x, vec2(1.0, 0.0));\n" +
-            "      c = deblockAxis(c, p, fq.y, vec2(0.0, 1.0));\n" +
+            "      float ty = uFlipY > 0.5 ? uSize.y - p.y : p.y;\n" +
+            "      c = deblockAxis(c, p, mod(p.x, uBlock), vec2(1.0, 0.0));\n" +
+            "      c = deblockAxis(c, p, mod(ty, uBlock), vec2(0.0, uFlipY > 0.5 ? -1.0 : 1.0));\n" +
             "    }\n" +
             "    vec3 acc = vec3(0.0); float ws = 0.0; float l0 = lum(c);\n" +
             "    for (int j = -1; j <= 1; j++){ for (int i = -1; i <= 1; i++){\n" +

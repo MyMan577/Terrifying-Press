@@ -195,7 +195,7 @@
     // PRE, at the processing size: compression clean-up (8x8 block edges + an edge-keeping smooth for ringing),
     // banding smoothing (averages flat areas, then a 1-step grain so the bands stay gone) and anime lines
     // (darker line art).
-    const FS_ENH_PRE = 'uniform sampler2D uTex; uniform vec2 uSize; uniform float uDeblock; uniform float uDeband; uniform float uAnime; uniform float uBlock; uniform float uRad; uniform float uSeed;\n'
+    const FS_ENH_PRE = 'uniform sampler2D uTex; uniform vec2 uSize; uniform float uDeblock; uniform float uDeband; uniform float uAnime; uniform float uBlock; uniform float uRad; uniform float uSeed; uniform float uFlipY;\n'
       + 'float lum(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }\n'
       + 'vec3 tx(vec2 p){ return texture(uTex, p / uSize).rgb; }\n'
       + 'float hash(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }\n'
@@ -215,9 +215,9 @@
       + '  vec3 c = tx(p);\n'
       + '  if (uDeblock > 0.5){\n'
       + '    if (uBlock >= 4.0){\n'
-      + '      vec2 fq = mod(p, uBlock);\n'
-      + '      c = deblockAxis(c, p, fq.x, vec2(1.0, 0.0));\n'
-      + '      c = deblockAxis(c, p, fq.y, vec2(0.0, 1.0));\n'
+      + '      float ty = uFlipY > 0.5 ? uSize.y - p.y : p.y;\n'
+      + '      c = deblockAxis(c, p, mod(p.x, uBlock), vec2(1.0, 0.0));\n'
+      + '      c = deblockAxis(c, p, mod(ty, uBlock), vec2(0.0, uFlipY > 0.5 ? -1.0 : 1.0));\n'
       + '    }\n'
       + '    vec3 acc = vec3(0.0); float ws = 0.0; float l0 = lum(c);\n'
       + '    for (int j = -1; j <= 1; j++){ for (int i = -1; i <= 1; i++){\n'
@@ -486,7 +486,7 @@
         mc:    mk(FS_MC,    ['uF0', 'uF1', 'uMv', 'uA', 'uInvAna', 'uFall', 'uUp']),
         ref:   mk(FS_REF,   ['uCur', 'uPrev', 'uRaw', 'uPrior', 'uHasPrior', 'uSize', 'uGrid']),
         mc2:   mk(FS_MC2,   ['uF0', 'uF1', 'uMvF', 'uMvB', 'uA', 'uInvAna', 'uFall', 'uUp']),
-        enhPre: mk(FS_ENH_PRE, ['uTex', 'uSize', 'uDeblock', 'uDeband', 'uAnime', 'uBlock', 'uRad', 'uSeed']),
+        enhPre: mk(FS_ENH_PRE, ['uTex', 'uSize', 'uDeblock', 'uDeband', 'uAnime', 'uBlock', 'uRad', 'uSeed', 'uFlipY']),
         enhUp:  mk(FS_ENH_UP,  ['uTex', 'uSrc']),
         enhFin: mk(FS_ENH_FIN, ['uTex', 'uBefore', 'uCon', 'uSplit'])
       };
@@ -504,7 +504,7 @@
 
     memcCanvas.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
-      memcGL = null; memcRing = []; memcResKey = ''; srNets = {};
+      memcGL = null; memcRing = []; memcResKey = ''; srLiveCtx = null;
       memcFailed = true; memcFailWhy = 'The graphics context was lost.';
       memcStop();
       document.body.classList.remove('memc-active');
@@ -573,7 +573,7 @@
       if (memcMvRaw){ gl.deleteFramebuffer(memcMvRaw.fbo); gl.deleteTexture(memcMvRaw.tex); }
       if (memcMvRef){ gl.deleteFramebuffer(memcMvRef.fbo); gl.deleteTexture(memcMvRef.tex); }
       for (const k in memcEnh){ const t = memcEnh[k]; if (t){ gl.deleteFramebuffer(t.fbo); gl.deleteTexture(t.tex); } }
-      srFreeAll();
+      srFreeAll(srLiveCtx);
     }
     memcEnh = { mid: null, pre: null, up: null, ai: null };
     memcRing = []; memcLuma = []; memcMvRaw = null; memcMvRef = null; memcAna = null;
@@ -955,12 +955,14 @@
     if (mid) memcEnhPasses(mid);
   }
 
-  // ---------- AI upscalers (Picture enhance) ----------
-  // Small neural upscalers (2x) from www/pp-sr-models.js (built by tools/build_sr_models.py), run as shader passes on
-  // the same GPU engine: QuickSRNet small/medium, XLSR, SESR-M5 (trained on photos) and Anime4K S/M (anime). Each
-  // layer becomes one pass writing up to 8 textures at once (multiple render targets), so every input pixel is read
-  // once per tap for all of its outputs. Features are half floats. Only used when the picture must be enlarged and is
-  // at most ~720p (bigger frames would not keep up), otherwise the standard upscaler carries on.
+  // ---------- AI upscalers (Picture enhance and the enhanced copy) ----------
+  // Small neural upscalers (2x) from www/pp-sr-models.js (built by tools/build_sr_models.py), run as shader passes:
+  // QuickSRNet small/medium, XLSR, SESR-M5 (trained on photos) and Anime4K S/M (anime). Each layer becomes one pass
+  // writing up to 8 textures at once (multiple render targets), so every input pixel is read once per tap for all of
+  // its outputs. Features are half floats. A context C = {gl, floatOk, flipY, nets} lets the same code run on the
+  // player's engine and on the enhanced-copy job's own canvas. flipY: the frames are stored bottom row first (as the
+  // live engine and the native player do); the models were trained top row first, so their taps and the sub-pixel
+  // order are mirrored to match. The same model description drives NativeVideoView.kt (srSpec below).
   const SR_MAX_PX = 1280 * 736;
   function srEnsureLoaded(){
     if (window.PP_SR_MODELS) return Promise.resolve(true);
@@ -985,17 +987,81 @@
     return f;
   }
   const srNum = (v) => { let s = String(+v.toPrecision(6)); if (!/[.e]/.test(s)) s += '.0'; return s; };
-  // One program per (layer, group of up to G output textures).
-  function srBuild(id){
-    if (srNets[id]) return srNets[id];
-    const gl = memcGL, M = window.PP_SR_MODELS && window.PP_SR_MODELS[id];
-    if (!gl || !M || !memcFloatOk) return null;
-    const G = Math.max(1, Math.min(8, gl.getParameter(gl.MAX_DRAW_BUFFERS) || 4));
+  // The shader sources for a model: [{src, out, outs (output texture indices), slots: [{t, part}]}], plus the final
+  // pass and the maps' channel counts. G = most textures one pass may write.
+  function srSpec(id, G, flipY){
+    const M = window.PP_SR_MODELS && window.PP_SR_MODELS[id];
+    if (!M) return null;
     const chans = { x: 4 };
     M.layers.forEach(L => { chans[L.out] = L.o; });
+    const fy = flipY ? -1 : 1;
+    const head = '#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n';
     const fetchFn = M.pad === 'clamp'
       ? 'vec4 F(sampler2D t, ivec2 p){ return texelFetch(t, clamp(p, ivec2(0), uSize - 1), 0); }\n'
       : 'vec4 F(sampler2D t, ivec2 p){ return (p.x < 0 || p.y < 0 || p.x >= uSize.x || p.y >= uSize.y) ? vec4(0.0) : texelFetch(t, p, 0); }\n';
+    const passes = [];
+    M.layers.forEach(L => {
+      const w = srHalf(L.w), b = srHalf(L.b), k = L.k, r = k >> 1, ctot = L.ins.reduce((n, i) => n + i.c, 0);
+      const nOut = L.o / 4;
+      for (let g0 = 0; g0 < nOut; g0 += G){
+        const g1 = Math.min(nOut, g0 + G), outs = [], slots = [];
+        const slotOf = (t, part) => { const key = t + ':' + part; let i = slots.findIndex(s => s.key === key); if (i < 0){ slots.push({ key, t, part }); i = slots.length - 1; } return i; };
+        for (let j = g0; j < g1; j++) outs.push(j);
+        const body = [];
+        outs.forEach(j => body.push('  vec4 a' + j + ' = vec4(' + [0, 1, 2, 3].map(o => srNum(b[4 * j + o])).join(', ') + ');'));
+        let cOff = 0;
+        L.ins.forEach(inp => {
+          for (let part = 0; part < inp.c / 4; part++){
+            const si = slotOf(inp.t, part);
+            for (let ky = 0; ky < k; ky++) for (let kx = 0; kx < k; kx++){
+              const terms = [];
+              outs.forEach(j => {
+                const m = []; let any = false;
+                for (let i = 0; i < 4; i++) for (let o = 0; o < 4; o++){
+                  const v = w[(((4 * j + o) * ctot + cOff + 4 * part + i) * k + ky) * k + kx];
+                  if (v !== 0) any = true;
+                  m.push(srNum(v));
+                }
+                if (any) terms.push('  a' + j + ' += mat4(' + m.join(', ') + ') * v;');
+              });
+              if (!terms.length) continue;
+              const raw = 'F(s' + si + ', p + ivec2(' + (kx - r) + ', ' + fy * (ky - r) + '))';
+              body.push('  v = ' + (inp.f === 1 ? 'max(' + raw + ', 0.0)' : inp.f === 2 ? 'max(-' + raw + ', 0.0)' : raw) + ';');
+              terms.forEach(t => body.push(t));
+            }
+          }
+          cOff += inp.c;
+        });
+        outs.forEach(j => {
+          if (L.act === 'relu') body.push('  a' + j + ' = max(a' + j + ', 0.0);');
+          else if (L.act === 'clip') body.push('  a' + j + ' = clamp(a' + j + ', 0.0, 1.0);');
+          if (L.add){ const si = slotOf(L.add, j); body.push('  a' + j + ' += texelFetch(s' + si + ', p, 0);'); }
+          body.push('  o' + (j - g0) + ' = a' + j + ';');
+        });
+        const src = head + 'uniform ivec2 uSize;\n'
+          + slots.map((s, i) => 'uniform sampler2D s' + i + ';').join('\n') + '\n'
+          + outs.map((j, i) => 'layout(location = ' + i + ') out vec4 o' + i + ';').join('\n') + '\n'
+          + fetchFn + 'void main(){\n  ivec2 p = ivec2(gl_FragCoord.xy);\n  vec4 v;\n' + body.join('\n') + '\n}\n';
+        passes.push({ src, out: L.out, outs, slots: slots.map(s => ({ t: s.t, part: s.part })) });
+      }
+    });
+    // depth-to-space: sub-pixel (row, column) of 2x2; with flipY the row counted from the bottom is the other one
+    const sub = 'int s = (' + (flipY ? '1 - (q.y & 1)' : '(q.y & 1)') + ') * 2 + (q.x & 1);';
+    const fin = head + (M.kind === 'rgb'
+      ? 'uniform sampler2D s0, s1, s2;\nout vec4 oc;\nvoid main(){ ivec2 q = ivec2(gl_FragCoord.xy), p = q / 2; ' + sub + '\n'
+        + '  oc = vec4(clamp(vec3(texelFetch(s0, p, 0)[s], texelFetch(s1, p, 0)[s], texelFetch(s2, p, 0)[s]), 0.0, 1.0), 1.0); }\n'
+      : 'uniform sampler2D s0, sx;\nuniform vec2 uHr;\nout vec4 oc;\nvoid main(){ ivec2 q = ivec2(gl_FragCoord.xy), p = q / 2; ' + sub + '\n'
+        + '  vec3 base = texture(sx, (vec2(q) + 0.5) / uHr).rgb;\n  oc = vec4(clamp(base + texelFetch(s0, p, 0)[s], 0.0, 1.0), 1.0); }\n');
+    return { name: M.name || id, kind: M.kind, final: M.final, chans, passes, fin };
+  }
+  window.__ppSrSpec = (id, G, flipY) => srSpec(id, G, flipY);   // for the native player (NativeVideoView.kt)
+  function srBind(C, unit, tex){ C.gl.activeTexture(C.gl.TEXTURE0 + unit); C.gl.bindTexture(C.gl.TEXTURE_2D, tex); }
+  function srBuild(C, id){
+    if (C.nets[id]) return C.nets[id];
+    const gl = C.gl;
+    if (!gl || !C.floatOk || !window.PP_SR_MODELS || !window.PP_SR_MODELS[id]) return null;
+    const G = Math.max(1, Math.min(8, gl.getParameter(gl.MAX_DRAW_BUFFERS) || 4));
+    const spec = srSpec(id, G, C.flipY);
     const compile = (src) => {
       const sh = (type, s) => { const o = gl.createShader(type); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o) || 'sr compile'); return o; };
       const p = gl.createProgram();
@@ -1005,146 +1071,112 @@
       if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) || 'sr link');
       return p;
     };
-    const passes = [];
-    M.layers.forEach(L => {
-      const w = srHalf(L.w), b = srHalf(L.b), k = L.k, r = k >> 1, ctot = L.ins.reduce((n, i) => n + i.c, 0);
-      const nOut = L.o / 4;
-      // distinct input textures (map, part) -> sampler slot
-      const slots = [], slotOf = (t, part) => { const key = t + ':' + part; let i = slots.findIndex(s => s.key === key); if (i < 0){ slots.push({ key, t, part }); i = slots.length - 1; } return i; };
-      for (let g0 = 0; g0 < nOut; g0 += G){
-        const g1 = Math.min(nOut, g0 + G), outs = [];
-        for (let j = g0; j < g1; j++) outs.push(j);
-        const used = new Set(), body = [];
-        outs.forEach(j => body.push('  vec4 a' + j + ' = vec4(' + [0, 1, 2, 3].map(o => srNum(b[4 * j + o])).join(', ') + ');'));
-        let cOff = 0;
-        L.ins.forEach(inp => {
-          for (let part = 0; part < inp.c / 4; part++){
-            const si = slotOf(inp.t, part); used.add(si);
-            for (let ky = 0; ky < k; ky++) for (let kx = 0; kx < k; kx++){
-              const terms = [];
-              outs.forEach(j => {
-                const m = [];
-                let any = false;
-                for (let i = 0; i < 4; i++) for (let o = 0; o < 4; o++){
-                  const v = w[(((4 * j + o) * ctot + cOff + 4 * part + i) * k + ky) * k + kx];
-                  if (v !== 0) any = true;
-                  m.push(srNum(v));
-                }
-                if (any) terms.push('  a' + j + ' += mat4(' + m.join(', ') + ') * v;');
-              });
-              if (!terms.length) continue;
-              const raw = 'F(s' + si + ', p + ivec2(' + (kx - r) + ', ' + (ky - r) + '))';
-              body.push('  v = ' + (inp.f === 1 ? 'max(' + raw + ', 0.0)' : inp.f === 2 ? 'max(-' + raw + ', 0.0)' : raw) + ';');
-              terms.forEach(t => body.push(t));
-            }
-          }
-          cOff += inp.c;
-        });
-        const addSlots = [];
-        outs.forEach(j => {
-          if (L.act === 'relu') body.push('  a' + j + ' = max(a' + j + ', 0.0);');
-          else if (L.act === 'clip') body.push('  a' + j + ' = clamp(a' + j + ', 0.0, 1.0);');
-          if (L.add){ const si = slotOf(L.add, j); used.add(si); body.push('  a' + j + ' += texelFetch(s' + si + ', p, 0);'); }
-          body.push('  o' + (j - g0) + ' = a' + j + ';');
-        });
-        const src = '#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\nuniform ivec2 uSize;\n'
-          + slots.map((s, i) => 'uniform sampler2D s' + i + ';').join('\n') + '\n'
-          + outs.map((j, i) => 'layout(location = ' + i + ') out vec4 o' + i + ';').join('\n') + '\n'
-          + fetchFn + 'void main(){\n  ivec2 p = ivec2(gl_FragCoord.xy);\n  vec4 v;\n' + body.join('\n') + '\n}\n';
-        const prog = compile(src);
-        passes.push({ prog, out: L.out, outs, slots: slots.slice(), uSize: gl.getUniformLocation(prog, 'uSize'),
-          locs: slots.map((s, i) => gl.getUniformLocation(prog, 's' + i)) });
-      }
+    const passes = spec.passes.map(P => {
+      const prog = compile(P.src);
+      return { prog, out: P.out, outs: P.outs, slots: P.slots, uSize: gl.getUniformLocation(prog, 'uSize'), locs: P.slots.map((s, i) => gl.getUniformLocation(prog, 's' + i)) };
     });
-    const fin = M.kind === 'rgb'
-      ? 'uniform sampler2D s0, s1, s2;\nout vec4 oc;\nvoid main(){ ivec2 q = ivec2(gl_FragCoord.xy), p = q / 2; int s = (q.y & 1) * 2 + (q.x & 1);\n'
-        + '  oc = vec4(clamp(vec3(texelFetch(s0, p, 0)[s], texelFetch(s1, p, 0)[s], texelFetch(s2, p, 0)[s]), 0.0, 1.0), 1.0); }\n'
-      : 'uniform sampler2D s0, sx;\nuniform vec2 uHr;\nout vec4 oc;\nvoid main(){ ivec2 q = ivec2(gl_FragCoord.xy), p = q / 2; int s = (q.y & 1) * 2 + (q.x & 1);\n'
-        + '  vec3 base = texture(sx, (vec2(q) + 0.5) / uHr).rgb;\n  oc = vec4(clamp(base + texelFetch(s0, p, 0)[s], 0.0, 1.0), 1.0); }\n';
-    const finProg = compile('#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n' + fin);
-    const net = { M, chans, passes, fin: finProg, finLoc: ['s0', 's1', 's2', 'sx', 'uHr'].reduce((o, n) => (o[n] = gl.getUniformLocation(finProg, n), o), {}), tex: {}, w: 0, h: 0 };
-    srNets[id] = net;
+    const finProg = compile(spec.fin);
+    const net = { spec, passes, fin: finProg, finLoc: ['s0', 's1', 's2', 'sx', 'uHr'].reduce((o, n) => (o[n] = gl.getUniformLocation(finProg, n), o), {}), tex: {}, w: 0, h: 0, hr: null };
+    C.nets[id] = net;
     return net;
   }
-  function srFreeNet(net){
-    const gl = memcGL; if (!gl || !net) return;
+  function srFreeNet(C, net){
+    const gl = C.gl; if (!gl || !net) return;
     Object.values(net.tex).forEach(t => { t.texs.forEach(x => gl.deleteTexture(x)); t.fbos.forEach(f => gl.deleteFramebuffer(f)); });
-    net.tex = {}; net.w = net.h = 0;
+    if (net.hr){ gl.deleteTexture(net.hr.tex); gl.deleteFramebuffer(net.hr.fbo); }
+    net.tex = {}; net.hr = null; net.w = net.h = 0;
   }
-  function srFreeAll(){ Object.values(srNets).forEach(srFreeNet); }
+  function srFreeAll(C){ if (C) Object.values(C.nets).forEach(n => srFreeNet(C, n)); }
   // Feature textures for this frame size: one set per map, plus one framebuffer per pass (its output group).
-  function srAlloc(net, w, h){
+  function srAlloc(C, net, w, h){
     if (net.w === w && net.h === h) return;
-    srFreeNet(net);
-    const gl = memcGL;
+    srFreeNet(C, net);
+    const gl = C.gl;
     net.w = w; net.h = h;
-    Object.keys(net.chans).forEach(name => {
+    const mk = (fmt, filter, W, H) => {
+      const t = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texStorage2D(gl.TEXTURE_2D, 1, fmt, W, H);
+      [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER].forEach(p => gl.texParameteri(gl.TEXTURE_2D, p, filter));
+      [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T].forEach(p => gl.texParameteri(gl.TEXTURE_2D, p, gl.CLAMP_TO_EDGE));
+      return t;
+    };
+    Object.keys(net.spec.chans).forEach(name => {
       if (name === 'x') return;
       const texs = [];
-      for (let i = 0; i < net.chans[name] / 4; i++){
-        const t = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, t);
-        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA16F, w, h);
-        [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER].forEach(p => gl.texParameteri(gl.TEXTURE_2D, p, gl.NEAREST));
-        [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T].forEach(p => gl.texParameteri(gl.TEXTURE_2D, p, gl.CLAMP_TO_EDGE));
-        texs.push(t);
-      }
+      for (let i = 0; i < net.spec.chans[name] / 4; i++) texs.push(mk(gl.RGBA16F, gl.NEAREST, w, h));
       net.tex[name] = { texs, fbos: [] };
     });
     net.passes.forEach(P => {
       const f = gl.createFramebuffer();
       gl.bindFramebuffer(gl.FRAMEBUFFER, f);
       P.outs.forEach((j, i) => gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, net.tex[P.out].texs[j], 0));
+      gl.drawBuffers(P.outs.map((j, i) => gl.COLOR_ATTACHMENT0 + i));
       P.fbo = f; net.tex[P.out].fbos.push(f);
     });
+    const hrTex = mk(gl.RGBA8, gl.LINEAR, w * 2, h * 2), hrFbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, hrFbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, hrTex, 0);
+    net.hr = { tex: hrTex, fbo: hrFbo, w: w * 2, h: h * 2 };
   }
-  // Self-test (developer use): runs one model on raw RGBA pixels and returns the 2x RGBA pixels, to compare against
-  // the reference implementation in tools/. Not used by the app itself.
-  window.__ppSrSelfTest = async function(id, rgba, w, h){
-    if (!memcInitGL()) return null;
-    if (!(await srEnsureLoaded())) return null;
-    const gl = memcGL, t = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, t);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(rgba));
-    [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER].forEach(p => gl.texParameteri(gl.TEXTURE_2D, p, gl.LINEAR));
-    [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T].forEach(p => gl.texParameteri(gl.TEXTURE_2D, p, gl.CLAMP_TO_EDGE));
-    const t0 = performance.now(), hr = srRun(id, { tex: t, w, h });
-    if (!hr) return { error: srStatus };
-    const out = new Uint8Array(hr.w * hr.h * 4);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, hr.fbo);
-    gl.readPixels(0, 0, hr.w, hr.h, gl.RGBA, gl.UNSIGNED_BYTE, out);
-    gl.deleteTexture(t);
-    return { w: hr.w, h: hr.h, ms: performance.now() - t0, data: Array.from(out) };
-  };
-  // src: {tex, w, h} (RGBA8, linear) -> the 2x picture, or null (not ready / not worth it / failed).
-  function srRun(id, src){
-    const gl = memcGL;
+  // src: {tex, w, h} (RGBA8, linear) -> {tex, fbo, w, h}: the 2x picture, or null (not ready / failed).
+  function srRun(C, id, src){
+    const gl = C.gl;
     let net = null;
-    try { net = srBuild(id); } catch (e){ console.warn('[ai upscale]', e); srStatus = 'Could not start this model on this phone.'; srNets[id] = null; srBroken[id] = true; return null; }
+    try { net = srBuild(C, id); } catch (e){ console.warn('[ai upscale]', e); C.status = 'Could not start this model on this phone.'; C.broken = C.broken || {}; C.broken[id] = true; return null; }
     if (!net) return null;
-    srAlloc(net, src.w, src.h);
+    srAlloc(C, net, src.w, src.h);
     const texOf = (t, part) => t === 'x' ? src.tex : net.tex[t].texs[part];
     gl.viewport(0, 0, src.w, src.h);
     net.passes.forEach(P => {
       gl.bindFramebuffer(gl.FRAMEBUFFER, P.fbo);
-      gl.drawBuffers(P.outs.map((j, i) => gl.COLOR_ATTACHMENT0 + i));
       gl.useProgram(P.prog);
       gl.uniform2i(P.uSize, src.w, src.h);
-      P.slots.forEach((s, i) => { memcBind(i, texOf(s.t, s.part)); gl.uniform1i(P.locs[i], i); });
+      P.slots.forEach((s, i) => { srBind(C, i, texOf(s.t, s.part)); gl.uniform1i(P.locs[i], i); });
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     });
-    const hr = memcEnhTex('ai', src.w * 2, src.h * 2);
+    const hr = net.hr;
     gl.bindFramebuffer(gl.FRAMEBUFFER, hr.fbo);
-    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
     gl.viewport(0, 0, hr.w, hr.h);
     gl.useProgram(net.fin);
-    const fin = net.tex[net.M.final].texs, L = net.finLoc;
-    if (net.M.kind === 'rgb'){ [0, 1, 2].forEach(i => { memcBind(i, fin[i]); gl.uniform1i(L['s' + i], i); }); }
-    else { memcBind(0, fin[0]); gl.uniform1i(L.s0, 0); memcBind(1, src.tex); gl.uniform1i(L.sx, 1); gl.uniform2f(L.uHr, hr.w, hr.h); }
+    const fin = net.tex[net.spec.final].texs, L = net.finLoc;
+    if (net.spec.kind === 'rgb'){ [0, 1, 2].forEach(i => { srBind(C, i, fin[i]); gl.uniform1i(L['s' + i], i); }); }
+    else { srBind(C, 0, fin[0]); gl.uniform1i(L.s0, 0); srBind(C, 1, src.tex); gl.uniform1i(L.sx, 1); gl.uniform2f(L.uHr, hr.w, hr.h); }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    srStatus = (net.M.name || id) + ': ' + src.w + '×' + src.h + ' → ' + hr.w + '×' + hr.h;
+    C.status = net.spec.name + ': ' + src.w + '×' + src.h + ' → ' + hr.w + '×' + hr.h;
     return hr;
   }
+  // The player's own context (its frames are stored bottom row first).
+  function srLive(){
+    if (!memcGL) return null;
+    if (!srLiveCtx || srLiveCtx.gl !== memcGL) srLiveCtx = { gl: memcGL, floatOk: memcFloatOk, flipY: true, nets: {}, status: '', broken: {} };
+    return srLiveCtx;
+  }
+  // Self-test (developer use): runs one model on raw RGBA pixels (top row first) on a context of its own and returns
+  // the 2x RGBA pixels (top row first), to compare against the reference implementation in tools/. flipY tests the
+  // bottom-row-first path the player uses.
+  window.__ppSrSelfTest = async function(id, rgba, w, h, flipY){
+    if (!(await srEnsureLoaded())) return null;
+    const cv = document.createElement('canvas'), gl = cv.getContext('webgl2');
+    if (!gl) return { error: 'no WebGL2' };
+    const C = { gl, floatOk: !!(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float')), flipY: !!flipY, nets: {}, status: '' };
+    const data = new Uint8Array(rgba);
+    let up = data;
+    if (flipY){ up = new Uint8Array(data.length); for (let y = 0; y < h; y++) up.set(data.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4); }
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, up);
+    [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER].forEach(p => gl.texParameteri(gl.TEXTURE_2D, p, gl.LINEAR));
+    [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T].forEach(p => gl.texParameteri(gl.TEXTURE_2D, p, gl.CLAMP_TO_EDGE));
+    const t0 = performance.now(), hr = srRun(C, id, { tex: t, w, h });
+    if (!hr) return { error: C.status || 'not ready' };
+    let out = new Uint8Array(hr.w * hr.h * 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, hr.fbo);
+    gl.readPixels(0, 0, hr.w, hr.h, gl.RGBA, gl.UNSIGNED_BYTE, out);
+    if (flipY){ const o = new Uint8Array(out.length), rw = hr.w * 4; for (let y = 0; y < hr.h; y++) o.set(out.subarray((hr.h - 1 - y) * rw, (hr.h - y) * rw), y * rw); out = o; }
+    try { gl.getExtension('WEBGL_lose_context').loseContext(); } catch (e){}
+    return { w: hr.w, h: hr.h, ms: performance.now() - t0, data: Array.from(out) };
+  };
 
   function memcEnhTex(name, w, h){
     const gl = memcGL, t = memcEnh[name];
@@ -1168,19 +1200,21 @@
       gl.uniform1f(u.uBlock, 8 * mid.w / Math.max(1, videoEl.videoWidth || mid.w));   // the codec's 8x8 grid at this size
       gl.uniform1f(u.uRad, Math.max(2, 8 * mid.h / 1080));
       memcEnhSeed = (memcEnhSeed + 1) % 997; gl.uniform1f(u.uSeed, memcEnhSeed * 1.37);
+      gl.uniform1f(u.uFlipY, 1);   // frames are stored bottom row first
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       src = pre;
     }
     // AI upscaler: 2x when the picture has to be enlarged and is small enough to keep up; the standard pass then fits
     // its result to the output size.
-    srStatus = enhAI === 'off' ? '' : srStatus;
-    if (enhAI !== 'off' && !srBroken[enhAI]){
+    const C = srLive();
+    if (enhAI === 'off') srStatus = '';
+    else if (C && !(C.broken && C.broken[enhAI])){
       if (!memcFloatOk) srStatus = 'Not available on this phone (no half-float rendering).';
       else if (!window.PP_SR_MODELS) srStatus = 'Loading\u2026';
       else if (memcOutW <= src.w * 1.15 && memcOutH <= src.h * 1.15) srStatus = 'Not needed: the picture is already as sharp as the screen.';
       else if (src.w * src.h > SR_MAX_PX) srStatus = 'Skipped: over 720p is too big to run live (standard upscaler used).';
-      else { const hr = srRun(enhAI, src); if (hr) src = hr; }
-    }
+      else { const hr = srRun(C, enhAI, src); srStatus = C.status; if (hr) src = hr; }
+    } else if (C) srStatus = C.status;
     if (memcOutW !== src.w || memcOutH !== src.h){
       const upT = memcEnhTex('up', memcOutW, memcOutH), u = P.enhUp.u;
       gl.bindFramebuffer(gl.FRAMEBUFFER, upT.fbo); gl.viewport(0, 0, upT.w, upT.h);
@@ -1349,8 +1383,14 @@
       mode: (memcMode !== 'off' && !perfLightActive()) ? memcMode : 'off',
       delayMs: Math.max(0, subtitleLatencyMs || 0),
       maxIn: memcMaxIn, outFps: memcOutFps, strength, quality: memcQuality, upscale: memcUpscale,
-      sharp: enhSharp / 100, deband: enhDeband, deblock: enhDeblock, anime: enhAnime, compare: enhCompare
+      sharp: enhSharp / 100, deband: enhDeband, deblock: enhDeblock, anime: enhAnime, compare: enhCompare, ai: enhAI
     });
+    // The AI upscaler's shader passes, built here once and handed to the native engine (8 outputs per pass, frames
+    // stored bottom row first there too).
+    if (enhAI !== 'off' && PPNative.setSrModel){
+      if (window.PP_SR_MODELS){ try { const sp = srSpec(enhAI, 8, true); if (sp) PPNative.setSrModel(enhAI, sp); } catch (e){ console.warn('[ai upscale]', e); } }
+      else srEnsureLoaded();
+    }
   }
   setInterval(nativeMemcPush, 700);   // sliders change these without calling memcSync; the bridge only sends changes
   if (window.PPNative) PPNative.hooks.memcStatus = (st) => {

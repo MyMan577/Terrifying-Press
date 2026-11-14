@@ -12,6 +12,10 @@
     if (onProgress) onProgress(0, 'Reading video…');
     const info = await MP4T.readForDecode(srcFile.blob);
     const tr = info.track, ts = tr.timescale, offSec = tr.offset0 / ts;
+    if (!isFinite(end)) end = Math.max(0.1, (tr.dts[tr.n - 1] + tr.delta[tr.n - 1] - tr.offset0) / ts);   // the whole video
+    // Enhanced copy: every frame goes through an AI upscaler (2x) on a WebGL canvas of its own, encoded at that size.
+    const enhance = opts && opts.enhance;
+    if (enhance && info.width * info.height > 1920 * 1088) throw new Error('This video is already HD or bigger: an enhanced copy would not look better.');
     const speed = (fx && fx.speed) || 1;
     const picDelay = ((fx && fx.picDelay) || 0) / 1000;
     const lookStr = (fx && fx.look && CUTTER_CTX_FILTER) ? fx.look : null;
@@ -33,8 +37,9 @@
     const srcDur = Math.max(0.1, (tr.dts[m] + tr.delta[m] - tr.dts[k]) / ts);
     const fps = Math.min(120, Math.max(1, (m - k + 1) / srcDur));
     const encFps = Math.min(60, fps * Math.max(1, speed));
-    const bitrate = Math.round(Math.min(60e6, Math.max(2e6, bytesTotal * 8 / srcDur * 1.15)));
-    const eW = info.width + (info.width & 1), eH = info.height + (info.height & 1);
+    const eW0 = info.width + (info.width & 1), eH0 = info.height + (info.height & 1);
+    const eW = enhance ? eW0 * 2 : eW0, eH = enhance ? eH0 * 2 : eH0;       // the encoded size
+    const bitrate = Math.round(Math.min(60e6, Math.max(enhance ? 8e6 : 2e6, bytesTotal * 8 / srcDur * (enhance ? 2.5 : 1.15))));
 
     // Prefer the device's video hardware for decoding; fall back to whatever the browser picks.
     let dcfg = null;
@@ -135,6 +140,8 @@
       venc.configure(ecfg);
 
       let canvas = null, cctx = null, lastOut = -1, frameIdx = 0, firstDone = false, lastFrameTs = -Infinity;
+      const enh = enhance ? srCopyEnhancer(enhance.model, eW, eH) : null;
+      if (enh) closers.push(() => enh.close());
       const frameDur = (1 / fps) / speed;
       const gop = Math.max(1, Math.round(encFps * 2));
       const minGap = speed > 1 ? 0.9 / 60 : 0;
@@ -157,7 +164,8 @@
           if (outT > outDur + 1e-4) return;
           if (lastOut >= 0 && outT - lastOut < minGap) return;
           let drawn = false;
-          if (lookStr || frame.displayWidth !== eW || frame.displayHeight !== eH){
+          if (enh){ enh.draw(frame); canvas = enh.canvas; drawn = true; }
+          else if (lookStr || frame.displayWidth !== eW || frame.displayHeight !== eH){
             if (!canvas){
               canvas = document.createElement('canvas');
               canvas.width = eW; canvas.height = eH;
@@ -204,7 +212,7 @@
           check();
           await waitDrain(vdec.decodeQueueSize > 16 ? vdec : venc);
         }
-        if (onProgress && (i & 7) === 0) onProgress(0.15 + 0.8 * Math.min(1, (i - k) / Math.max(1, m - k)), 'Encoding clip…');
+        if (onProgress && (i & 7) === 0) onProgress(0.15 + 0.8 * Math.min(1, (i - k) / Math.max(1, m - k)), enhance ? 'Enhancing video…' : 'Encoding clip…');
       }
       await vdec.flush(); check();
       await venc.flush(); check();
@@ -216,6 +224,97 @@
     } finally {
       closers.forEach(f => { try { f(); } catch(e){} });
       cutterExportAbort = null;
+    }
+  }
+
+  // The enhanced copy's frame pipeline: VideoFrame -> texture (top row first) -> AI upscaler (2x) -> fitted to the
+  // encoded size on the canvas, which the encoder then reads.
+  function srCopyEnhancer(id, W, H){
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, stencil: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
+    if (!gl) throw new Error('This phone has no WebGL2 for the AI upscaler.');
+    const floatOk = !!(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'));
+    if (!floatOk) throw new Error('This phone cannot run the AI upscaler (no half-float rendering).');
+    const C = { gl, floatOk, flipY: false, nets: {}, status: '' };
+    const sh = (type, s) => { const o = gl.createShader(type); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, '#version 300 es\nvoid main(){ vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }\n'));
+    // the 2x picture is top row first; the canvas's bottom row is drawn first, so the copy flips it
+    gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, '#version 300 es\nprecision highp float;\nuniform sampler2D t;\nuniform vec2 uOut;\nout vec4 oc;\nvoid main(){ vec2 uv = gl_FragCoord.xy / uOut; oc = vec4(texture(t, vec2(uv.x, 1.0 - uv.y)).rgb, 1.0); }\n'));
+    gl.linkProgram(prog);
+    const uT = gl.getUniformLocation(prog, 't'), uOut = gl.getUniformLocation(prog, 'uOut');
+    const src = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, src);
+    [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER].forEach(p => gl.texParameteri(gl.TEXTURE_2D, p, gl.LINEAR));
+    [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T].forEach(p => gl.texParameteri(gl.TEXTURE_2D, p, gl.CLAMP_TO_EDGE));
+    return {
+      canvas,
+      draw(frame){
+        const w = frame.displayWidth, h = frame.displayHeight;
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, frame);
+        const hr = srRun(C, id, { tex: src, w, h });
+        if (!hr) throw new Error(C.status || 'The AI upscaler could not start.');
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, W, H);
+        gl.useProgram(prog);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, hr.tex);
+        gl.uniform1i(uT, 0); gl.uniform2f(uOut, W, H);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      },
+      close(){ try { srFreeAll(C); gl.getExtension('WEBGL_lose_context').loseContext(); } catch (e){} }
+    };
+  }
+
+  // ---------- Enhanced copy (Picture enhance menu) ----------
+  // Makes "Title (Enhanced).mp4" from the video that is playing: every frame through the chosen AI upscaler (SESR-M5 when
+  // the standard upscaler is picked), at twice the size, with the original sound, and adds it to the library. Runs as a
+  // background job (notification with progress); playback pauses while it runs.
+  let enhCopyBusy = false;
+  async function enhMakeCopy(onStatus){
+    const t = currentIndex !== -1 ? tracks[currentIndex] : null;
+    if (!t || t.kind !== 'video'){ showToast('Play the video you want enhanced first.'); return; }
+    if (enhCopyBusy){ showToast('An enhanced copy is already being made.'); return; }
+    if (!CUTTER_WEBCODECS){ showToast('This phone cannot re-encode video here.'); return; }
+    const id = enhAI !== 'off' ? enhAI : 'sesr_m5';
+    if (!(await srEnsureLoaded())){ showToast('Could not load the AI models.'); return; }
+    enhCopyBusy = true;
+    const name = (window.PP_SR_MODELS[id] && window.PP_SR_MODELS[id].name) || id;
+    const wasPlaying = !media().paused;
+    media().pause();
+    const stopKeepAlive = startExportKeepAlive();
+    const say = (txt) => { try { if (onStatus) onStatus(txt); } catch (e){} };
+    const t0 = performance.now();
+    try {
+      const blob = await PPNative.jobs.run('Enhancing ' + (t.title || 'video'), async (job) => {
+        const prog = (p, label) => {
+          const pct = Math.round(p * 100), el = (performance.now() - t0) / 1000;
+          const left = p > 0.2 ? Math.max(0, el / p - el) : null;
+          const txt = (label || 'Working\u2026') + ' ' + pct + '%' + (left != null ? ' \u00b7 about ' + (left >= 90 ? Math.round(left / 60) + ' min' : Math.round(left) + ' s') + ' left' : '');
+          job(pct, txt); say(name + ': ' + txt);
+        };
+        try { return await exportVideoClipFast(t, 0, Infinity, prog, { speed: 1, audio: null }, { enhance: { model: id } }); }
+        catch (e1){
+          if (!(e1 && e1.reorder)) throw e1;
+          return await exportVideoClipFast(t, 0, Infinity, prog, { speed: 1, audio: null }, { enhance: { model: id }, noLowLatency: true });
+        }
+      });
+      const base = String(t.title || 'Video').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Video';
+      const file = new File([blob], base + ' (Enhanced).mp4', { type: 'video/mp4' });
+      await addFiles([file]);
+      const mins = (performance.now() - t0) / 60000;
+      say('Done in ' + (mins >= 1 ? mins.toFixed(1) + ' min' : Math.round(mins * 60) + ' s') + ': "' + file.name + '" is in your library.');
+      showExportBanner('Enhanced copy ready', file.name);
+    } catch (err){
+      const msg = err && err.message ? err.message : 'unknown error';
+      if (err && (err.cancelled || msg === 'Export cancelled.')){ say('Cancelled.'); }
+      else { say('Failed: ' + msg); showExportBanner('Enhanced copy failed', msg, 'err'); }
+    } finally {
+      enhCopyBusy = false;
+      stopKeepAlive();
+      if (wasPlaying) media().play().catch(() => {});
     }
   }
 
