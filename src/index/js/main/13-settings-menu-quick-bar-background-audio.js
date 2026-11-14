@@ -15,7 +15,7 @@
   // real listeners already attached above) that we relocate between the
   // quick bar row and its slot inside the settings menu, rather than
   // cloning or rebuilding anything.
-  const QUICKBAR_ORDER = ['eq', 'boost', 'fx', 'speed', 'marks', 'abloop', 'cutter', 'stems', 'mashup', 'sleep', 'framestep', 'viewmode', 'vizsens', 'latency', 'memc', 'upscale', 'appearance'];
+  const QUICKBAR_ORDER = ['eq', 'boost', 'fx', 'speed', 'marks', 'abloop', 'cutter', 'stems', 'mashup', 'spatial', 'sleep', 'framestep', 'viewmode', 'vizsens', 'latency', 'memc', 'upscale', 'appearance'];
   const QUICKBAR_DEFAULT = ['speed', 'marks', 'abloop', 'cutter', 'sleep'];
   const QUICKBAR_KEY = 'playerQuickBar';
   // Hard cap: the pill row lives in the same fixed-size column as the
