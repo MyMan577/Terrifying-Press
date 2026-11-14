@@ -17,9 +17,65 @@
     const ai = document.getElementById('enh-ai-select'); if (ai && ai.value !== enhAI) ai.value = enhAI;
     if (enhAI !== 'off' && pl) pl.textContent = 'AI';
   }
+  // ---- Compare: the before | after line, dragged on the video ----
+  // The picture on the left of the line is without Picture enhance, on the right with it. The line and its grip are
+  // drawn here (over the video box) so they can be dragged; the GPU only splits the picture at the same place.
+  // Positions are fractions of the picture itself, which can be narrower than the box (black bars).
+  const enhSplit = document.createElement('div');
+  enhSplit.id = 'enh-split';
+  enhSplit.innerHTML = '<span class="es-tag es-l">Before</span><span class="es-tag es-r">After</span><i class="es-line"></i>'
+    + '<b class="es-grip" aria-label="Drag to compare" role="slider" aria-valuemin="0" aria-valuemax="100"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7l-5 5 5 5M15 7l5 5-5 5"/></svg></b>';
+  videoWrap.appendChild(enhSplit);
+  // The picture's rectangle inside the video box (object-fit: contain).
+  function enhPicRect(){
+    const r = videoWrap.getBoundingClientRect();
+    const vw = videoEl.videoWidth || (window.PPNative && PPNative.videoSize && PPNative.videoSize().w) || r.width;
+    const vh = videoEl.videoHeight || (window.PPNative && PPNative.videoSize && PPNative.videoSize().h) || r.height;
+    const a = vw / Math.max(1, vh);
+    let w = r.width, h = r.height;
+    if (r.width / Math.max(1, r.height) > a) w = r.height * a; else h = r.width / a;
+    return { left: (r.width - w) / 2, top: (r.height - h) / 2, w, h };
+  }
+  function enhSplitPaint(){
+    const show = enhCompare && enhAnyOn() && currentIndex !== -1 && tracks[currentIndex] && tracks[currentIndex].kind === 'video';
+    enhSplit.classList.toggle('on', !!show);
+    if (!show) return;
+    const p = enhPicRect();
+    enhSplit.style.left = (p.left + p.w * enhCompareX) + 'px';
+    enhSplit.style.top = p.top + 'px';
+    enhSplit.style.height = p.h + 'px';
+    enhSplit.querySelector('.es-grip').setAttribute('aria-valuenow', Math.round(enhCompareX * 100));
+  }
+  function enhAnyOn(){ return memcEnhOn(); }
+  let enhDrag = null;
+  enhSplit.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    enhDrag = { id: e.pointerId };
+    try { enhSplit.setPointerCapture(e.pointerId); } catch (x){}
+    enhSplit.classList.add('drag');
+  });
+  enhSplit.addEventListener('pointermove', (e) => {
+    if (!enhDrag || e.pointerId !== enhDrag.id) return;
+    e.preventDefault(); e.stopPropagation();
+    const r = videoWrap.getBoundingClientRect(), p = enhPicRect();
+    enhCompareX = Math.max(0.02, Math.min(0.98, (e.clientX - r.left - p.left) / Math.max(1, p.w)));
+    enhSplitPaint();
+    if (memcActive) memcRepaint();
+    try { nativeMemcPush(); } catch (x){}
+  });
+  const enhDragEnd = (e) => { if (!enhDrag) return; e.stopPropagation(); enhDrag = null; enhSplit.classList.remove('drag'); };
+  enhSplit.addEventListener('pointerup', enhDragEnd);
+  enhSplit.addEventListener('pointercancel', enhDragEnd);
+  // keep the video's own taps and swipes from reacting to the handle
+  ['click', 'dblclick', 'touchstart', 'touchmove', 'touchend', 'mousedown'].forEach(n => enhSplit.addEventListener(n, (e) => e.stopPropagation(), { passive: n.startsWith('touch') }));
+  window.addEventListener('resize', enhSplitPaint);
+  document.addEventListener('fullscreenchange', () => setTimeout(enhSplitPaint, 60));
+  try { new ResizeObserver(enhSplitPaint).observe(videoWrap); } catch (e){}
+  videoEl.addEventListener('loadedmetadata', enhSplitPaint);
+
   // Any enhance change: start/stop the GPU engine as needed, resize its output, and show the result (also while paused).
   function enhChanged(){
-    enhSave(); memcUpdateUpscaleUI();
+    enhSave(); memcUpdateUpscaleUI(); enhSplitPaint();
     refreshVideoDelayState();
     if (memcActive){ memcApplyOutSize(); memcRepaint(); }
   }

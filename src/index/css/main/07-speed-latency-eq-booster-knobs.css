@@ -107,6 +107,16 @@
   .enh-ai-select{ width:100%; padding:8px 8px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; font-size:12px; }
   #enh-ai-status:empty, #enh-copy-status:empty{ display:none; }
   .enh-copy-row button[hidden]{ display:none !important; }
+  /* Compare: the before | after line over the video, dragged by its grip (see 08-quality) */
+  #enh-split{ position:absolute; z-index:6; width:44px; margin-left:-22px; display:none; touch-action:none; cursor:ew-resize; }
+  #enh-split.on{ display:block; }
+  #enh-split .es-line{ position:absolute; left:50%; top:0; bottom:0; width:2px; margin-left:-1px; background:#fff; box-shadow:0 0 0 1px rgba(0,0,0,.35); pointer-events:none; }
+  #enh-split .es-grip{ position:absolute; left:50%; top:50%; width:40px; height:40px; margin:-20px 0 0 -20px; border-radius:50%; background:#fff; color:#111; display:grid; place-items:center; box-shadow:0 2px 10px rgba(0,0,0,.45); transition:transform .12s; }
+  #enh-split .es-grip svg{ width:20px; height:20px; }
+  #enh-split.drag .es-grip{ transform:scale(1.12); }
+  #enh-split .es-tag{ position:absolute; top:8px; padding:3px 7px; border-radius:6px; background:rgba(0,0,0,.6); color:#fff; font-size:11px; font-weight:600; white-space:nowrap; pointer-events:none; }
+  #enh-split .es-l{ right:calc(50% + 8px); }
+  #enh-split .es-r{ left:calc(50% + 8px); }
   /* Close button on pill menus (see 09-dropdowns): stays in the top-right corner while the menu scrolls */
   .pp-dd-x{
     position:sticky; top:0; float:right; z-index:3;

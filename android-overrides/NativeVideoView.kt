@@ -80,10 +80,10 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
     data class MemcConfig(val mode: String = "off", val delayMs: Float = 0f, val maxIn: Int = 50, val outFps: Int = 120,
                           val strength: Float = 0.5f, val quality: Int = 1, val upscale: Int = 0,
                           val sharp: Float = 0f, val deband: Boolean = false, val deblock: Boolean = false,
-                          val anime: Boolean = false, val compare: Boolean = false, val ai: String = "off") {
+                          val anime: Boolean = false, val compare: Boolean = false, val ai: String = "off", val split: Float = 0.5f) {
         fun enhOn() = upscale > 0 || sharp > 0f || deband || deblock || anime || ai != "off"
         /** Same settings apart from picture enhance: no need to rebuild the frame ring. */
-        fun sameBut(o: MemcConfig) = copy(sharp = o.sharp, deband = o.deband, deblock = o.deblock, anime = o.anime, compare = o.compare, ai = o.ai) == o
+        fun sameBut(o: MemcConfig) = copy(sharp = o.sharp, deband = o.deband, deblock = o.deblock, anime = o.anime, compare = o.compare, ai = o.ai, split = o.split) == o
     }
 
     /**
@@ -1083,7 +1083,7 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
             target(o)
             val F = P.getValue("enhFin"); F.use()
             bind(0, src.tex); bind(1, mid.tex); F.i("uTex", 0); F.i("uBefore", 1)
-            F.f("uCon", c.sharp.coerceIn(0f, 1f)); F.f("uSplit", if (c.compare) 0.5f else -1f)
+            F.f("uCon", c.sharp.coerceIn(0f, 1f)); F.f("uSplit", if (c.compare) c.split.coerceIn(0f, 1f) else -1f)
             tri()
         }
 
@@ -1372,7 +1372,6 @@ class NativeVideoView(context: Context) : SurfaceView(context), SurfaceHolder.Ca
             "  if (uSplit >= 0.0){\n" +
             "    vec2 uv = (vec2(q) + 0.5) / vec2(mx + 1);\n" +
             "    if (uv.x < uSplit) o = texture(uBefore, uv).rgb;\n" +
-            "    if (abs(gl_FragCoord.x - uSplit * float(mx.x + 1)) < 1.5) o = vec3(1.0);\n" +
             "  }\n" +
             "  oc = vec4(clamp(o, 0.0, 1.0), 1.0);\n" +
             "}\n"

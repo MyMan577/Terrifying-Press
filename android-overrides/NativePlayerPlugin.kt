@@ -525,7 +525,8 @@ class NativePlayerPlugin : Plugin() {
             deblock = call.getBoolean("deblock") ?: false,
             anime = call.getBoolean("anime") ?: false,
             compare = call.getBoolean("compare") ?: false,
-            ai = call.getString("ai") ?: "off")
+            ai = call.getString("ai") ?: "off",
+            split = (call.getDouble("split") ?: 0.5).toFloat())
         main.post {
             MainActivity.playerView?.let { pv ->
                 srModels[c.ai]?.let { pv.setSrModel(c.ai, it) }   // a new player view gets the model it needs
