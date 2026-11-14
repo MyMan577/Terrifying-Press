@@ -491,7 +491,8 @@
     tracks.forEach((t, i) => { if (t.kind === 'audio' && !t.stem) audIdx.push(i); });
     const histAll = playHistory.map(h => ({ h, i: byId.get(h.id) })).filter(x => x.i != null);
     const plData = pls.map(pl => {
-      const idxs = []; tracks.forEach((t, i) => { if ((t.playlistIds || []).includes(pl.id)) idxs.push(i); });
+      let idxs = []; tracks.forEach((t, i) => { if ((t.playlistIds || []).includes(pl.id)) idxs.push(i); });
+      const A0 = window.__ppApi; if (A0 && A0.orderFor) idxs = A0.orderFor(idxs, pl.id);   // the playlist's own (e.g. shuffled) order
       return { pl, idxs };
     });
 
@@ -536,9 +537,13 @@
           '<div class="ph-pl-text"><div class="ph-detail-name">' + esc(pl.name) + '</div>' + n.counts +
           '<div class="ph-detail-dur">' + (fmtDur(n.total) || '') + '</div>' +
           '<div class="ph-detail-actions"><button type="button" class="ph-detail-link" data-act="pl-thumb" data-id="' + esc(pl.id) + '">' + (pl.thumb ? 'Change thumbnail' : 'Set thumbnail') + '</button>' +
-          (pl.thumb ? '<button type="button" class="ph-detail-link dim" data-act="pl-thumb-reset" data-id="' + esc(pl.id) + '">Reset</button>' : '') + '</div></div></div>' +
+          (pl.thumb ? '<button type="button" class="ph-detail-link dim" data-act="pl-thumb-reset" data-id="' + esc(pl.id) + '">Reset</button>' : '') + '</div>' +
+          (d.idxs.length > 1 ? '<div class="ph-detail-actions"><button type="button" class="ph-detail-link" data-act="pl-shuffle" data-id="' + esc(pl.id) + '">Shuffle order</button>' +
+            '<button type="button" class="ph-detail-link" data-act="pl-shufcopy" data-id="' + esc(pl.id) + '">Shuffled copy</button></div>' : '') +
+          '</div></div>' +
         '<div class="ph-detail-tracks">' + (d.idxs.length
-          ? '<button type="button" class="ph-pl-playall" data-act="pl-play" data-id="' + esc(pl.id) + '" data-idx="' + d.idxs[0] + '"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Play all</button>' + rows
+          ? '<div class="ph-pl-btns"><button type="button" class="ph-pl-playall" data-act="pl-play" data-id="' + esc(pl.id) + '" data-idx="' + d.idxs[0] + '"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Play all</button>' +
+            (d.idxs.length > 1 ? '<button type="button" class="ph-pl-playall alt" data-act="pl-shufplay" data-id="' + esc(pl.id) + '">' + IC_SHUF + 'Shuffle play</button>' : '') + '</div>' + rows
           : '<div class="ph-empty" style="padding:6px 0;">This playlist is empty.</div>') + '</div></div>';
     } else if (!plData.length){
       plHTML = '<div class="ph-empty">No playlists yet. Turn off \u201cSimple playlist mode\u201d in Settings to create them.</div>';
@@ -556,7 +561,7 @@
     const top = homeEl.scrollTop;
     if (view === 'playlists'){
       homeEl.innerHTML =
-        (openPlId ? '' : '<h1 class="ph-app-title">Playlists</h1>') +
+        (openPlId ? '' : '<h1 class="ph-app-title">Playlists</h1><div class="ph-chips" style="padding:0 var(--ph-r, 24px) 0 var(--ph-l, 24px);margin-top:10px;"><button type="button" class="ph-chip" data-act="pl-shufall">' + IC_SHUF + 'New shuffled playlist of everything</button></div>') +
         '<section class="ph-sec" style="margin-top:' + (openPlId ? 0 : 14) + 'px;">' + plHTML + '</section>';
     } else if (openSec){
       // One section on its own page: every item in a grid
@@ -665,9 +670,17 @@
     else if (act === 'pl-thumb'){ if (A.pickPlaylistThumb) A.pickPlaylistThumb(el.dataset.id); }
     else if (act === 'pl-thumb-reset'){ if (A.clearPlaylistThumb) A.clearPlaylistThumb(el.dataset.id); }
     else if (act === 'pl-play'){
-      const id = el.dataset.id, queue = [];
-      tracks.forEach((t, k) => { if ((t.playlistIds || []).includes(id)) queue.push(k); });
+      const id = el.dataset.id;
+      let queue = []; tracks.forEach((t, k) => { if ((t.playlistIds || []).includes(id)) queue.push(k); });
+      if (A.orderFor) queue = A.orderFor(queue, id);
       playFrom(+el.dataset.idx, queue);
+    }
+    else if (act === 'pl-shufplay'){ if (A.playShuffled){ A.playShuffled(el.dataset.id); const i = A.currentIndex(); if (A.tracks()[i] && A.tracks()[i].kind === 'video') openPlayer(); } }
+    else if (act === 'pl-shuffle'){ if (A.shufflePlaylist) A.shufflePlaylist(el.dataset.id); renderHome(true); }
+    else if (act === 'pl-shufcopy' || act === 'pl-shufall'){
+      if (!A.makeShuffledPlaylist) return;
+      const pl = A.makeShuffledPlaylist(act === 'pl-shufcopy' ? el.dataset.id : null);
+      if (pl){ openPlId = pl.id; renderHome(true); }
     }
   });
 
@@ -770,7 +783,7 @@
       e.stopImmediatePropagation();
       const t = A.tracks()[+el.dataset.idx];
       if (t) A.sel.toggle(t);
-    } else if (act === 'shuffle-all' || act === 'resume'){
+    } else if (act === 'shuffle-all' || act === 'resume' || /^pl-shuf/.test(act)){
       e.stopImmediatePropagation(); e.preventDefault();   // would start playback and open the player page mid-selection
     } else if (act === 'sec-open' || act === 'sec-back' || act === 'home-tab' || act === 'pl-open' || act === 'pl-back'){
       A.sel.exit();   // leaving the page ends the selection, like switching playlists in Library

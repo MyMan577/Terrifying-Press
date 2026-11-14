@@ -42,9 +42,19 @@
         <input type="search" id="track-search" placeholder="Search tracks or artists…" autocomplete="off">
       </div>
       <div id="playlist-view-row">
-        <select id="playlist-view-select">
-          <option value="__all__">All tracks</option>
-        </select>
+        <div class="pl-view-line">
+          <select id="playlist-view-select">
+            <option value="__all__">All tracks</option>
+          </select>
+          <button type="button" id="pl-shuffle-btn" title="Shuffle" aria-label="Shuffle playlist" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg>
+          </button>
+        </div>
+        <div id="pl-shuffle-menu" hidden>
+          <button type="button" data-shuf="play">Play it shuffled</button>
+          <button type="button" data-shuf="order">Shuffle this playlist (keeps the new order)</button>
+          <button type="button" data-shuf="copy">Make a shuffled copy</button>
+        </div>
       </div>
       <div id="browse-row" role="tablist" aria-label="Browse the library by">
         <button type="button" data-browse="songs" class="active">All</button>

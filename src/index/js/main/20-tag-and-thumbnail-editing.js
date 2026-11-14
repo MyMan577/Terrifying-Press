@@ -3,6 +3,21 @@
     trackEditPopover.classList.remove('open');
     trackEditPopover.innerHTML = '';
   }
+  // Below the row it was opened from, or above it when the keyboard leaves no room below; always inside the part of the
+  // screen that is not covered (the keyboard shrinks the page or the visual viewport, and both are followed).
+  let trackEditAnchor = null;
+  function placeTrackEditPopover(){
+    if (!trackEditPopover.classList.contains('open') || !trackEditAnchor) return;
+    const vv = window.visualViewport, top0 = vv ? vv.offsetTop : 0, H = vv ? Math.min(vv.height, window.innerHeight) : window.innerHeight;
+    const rect = trackEditAnchor.getBoundingClientRect(), h = trackEditPopover.offsetHeight || 170;
+    let top = rect.bottom + 4;
+    if (top + h > top0 + H - 8) top = rect.top - h - 4;
+    top = Math.max(top0 + 8, Math.min(top, top0 + H - h - 8));
+    trackEditPopover.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 232)) + 'px';
+    trackEditPopover.style.top = top + 'px';
+  }
+  window.addEventListener('resize', placeTrackEditPopover);
+  if (window.visualViewport){ visualViewport.addEventListener('resize', placeTrackEditPopover); visualViewport.addEventListener('scroll', placeTrackEditPopover); }
   function openTrackEditPopover(anchorEl, idx){
     const t = tracks[idx];
     if (!t) return;
@@ -25,10 +40,10 @@
     titleInput.value = t.title;
     artistInput.value = t.artist;
 
-    const rect = anchorEl.getBoundingClientRect();
-    trackEditPopover.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 232)) + 'px';
-    trackEditPopover.style.top = (rect.bottom + 4) + 'px';
+    trackEditAnchor = anchorEl;
     trackEditPopover.classList.add('open');
+    placeTrackEditPopover();
+    setTimeout(placeTrackEditPopover, 250); setTimeout(placeTrackEditPopover, 600);   // again once the keyboard is up
     titleInput.focus();
     titleInput.select();
 
@@ -365,6 +380,10 @@
     pickPlaylistThumb: id => pickPlaylistThumb(id),
     clearPlaylistThumb: id => clearPlaylistThumb(id),
     currentIndex: () => currentIndex,
+    shufflePlaylist: id => shufflePlaylistOrder(id),
+    makeShuffledPlaylist: id => makeShuffledPlaylist(id || null),
+    playShuffled: id => playShuffledOnce(id || null),
+    orderFor: (idxs, plId) => orderIndicesForPlaylist(idxs, playlists.find(p => p.id === plId)),
     gestureActions: () => GESTURE_ACTIONS,
     applyPlaylistStyle: el => applyStyleTo(el, uiCustomization.playlist),
     clearStyle: el => { clearCustomStyle(el); el.classList.remove('custom-bg-active', 'ppxp-anim-bg'); },

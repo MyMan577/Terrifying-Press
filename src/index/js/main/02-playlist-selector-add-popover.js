@@ -20,6 +20,28 @@
     playlistViewSelect.value = activePlaylistView;
     syncViewRow();
   }
+  (function(){
+    const btn = document.getElementById('pl-shuffle-btn'), menu = document.getElementById('pl-shuffle-menu');
+    if (!btn || !menu) return;
+    const show = (on) => { menu.hidden = !on; btn.setAttribute('aria-expanded', on ? 'true' : 'false'); };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const plId = userPlaylistViewId();
+      // All tracks: only "play shuffled" and "make a shuffled playlist of everything" make sense
+      menu.querySelector('[data-shuf="order"]').hidden = !plId;
+      menu.querySelector('[data-shuf="copy"]').textContent = plId ? 'Make a shuffled copy' : 'Make a shuffled playlist of everything';
+      show(menu.hidden);
+    });
+    menu.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-shuf]'); if (!b) return;
+      const plId = userPlaylistViewId();
+      show(false);
+      if (b.dataset.shuf === 'play') playShuffledOnce(plId);
+      else if (b.dataset.shuf === 'order') shufflePlaylistOrder(plId);
+      else { const pl = makeShuffledPlaylist(plId); if (pl){ playlistViewSelect.value = pl.id; playlistViewSelect.dispatchEvent(new Event('change')); } }
+    });
+    document.addEventListener('click', (e) => { if (!menu.hidden && !menu.contains(e.target)) show(false); });
+  })();
   playlistViewSelect.addEventListener('change', () => {
     if (selectMode) exitSelectMode();
     activePlaylistView = playlistViewSelect.value;
