@@ -244,28 +244,26 @@
              kickRaw: raw.kick, drumsRaw: raw.drums, has: vs.curves.has };
   }
 
-  // ---------- menu: stem switch, beat + stem readout ----------
+  // ---------- menu: stem switch, one short status line (stems + beat) ----------
   (function(){
-    const seg = document.getElementById('viz-stem-seg'), info = document.getElementById('viz-stem-info'), beatInfo = document.getElementById('viz-beat-info');
-    if (!seg) return;
-    const paint = () => seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', (b.dataset.v === '1') === vizStemsOn));
-    seg.addEventListener('click', (e) => {
-      const b = e.target.closest('button'); if (!b) return;
-      vizStemsOn = b.dataset.v === '1'; try { localStorage.setItem('ppVizStems', vizStemsOn ? '1' : '0'); } catch(x){}
-      paint();
-    });
-    paint();
+    const tog = document.getElementById('viz-stem-toggle'), line = document.getElementById('viz-status');
+    if (!tog) return;
+    tog.checked = vizStemsOn;
+    tog.addEventListener('change', () => { vizStemsOn = tog.checked; try { localStorage.setItem('ppVizStems', vizStemsOn ? '1' : '0'); } catch(x){} });
     const dd = document.getElementById('viz-sens-dropdown');
-    const names = { vocals: 'vocals', drums: 'drums', bass: 'bass', other: 'the rest' };
+    const names = { vocals: 'vocals', drums: 'drums', bass: 'bass', other: 'music' };
     setInterval(() => {
       if (!dd || !dd.classList.contains('open')) return;
       const bpm = Math.round(vbBpm()), locked = vbLocked(performance.now());
-      beatInfo.textContent = !isPlaying ? 'Beat: paused' : bpm ? (locked ? 'Beat: locked on, ' + bpm + ' BPM' : 'Beat: finding it (about ' + bpm + ' BPM)') : 'Beat: listening';
-      if (!vizStemsOn) info.textContent = 'Off: every song uses the full mix.';
-      else if (vs.status === 'ready') info.textContent = 'This song: ' + vs.roles.map(r => names[r]).join(', ') + '. The drums drive the beat, the bass the disc, the vocals a glow of their own.';
-      else if (vs.status === 'loading') info.textContent = 'Reading this song’s stems…';
-      else if (vs.status === 'error') info.textContent = 'Could not read this song’s stems.';
-      else info.textContent = 'This song has no stems. Split it (Stems button) and it gets its own visuals: the drums drive the beat, the bass the disc, the vocals a glow of their own.';
+      const beat = !isPlaying ? 'Beat: paused' : bpm ? 'Beat ' + (locked ? '' : '~') + bpm + ' BPM' : 'Beat: listening';
+      let stems = '';
+      if (vizStemsOn){
+        if (vs.status === 'ready') stems = 'Stems: ' + vs.roles.map(r => names[r]).join(', ');
+        else if (vs.status === 'loading') stems = 'Reading stems\u2026';
+        else if (vs.status === 'error') stems = 'Stems unreadable';
+        else stems = 'No stems for this song';
+      }
+      line.textContent = stems ? stems + ' \u00b7 ' + beat : beat;
     }, 500);
   })();
 
