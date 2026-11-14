@@ -438,10 +438,32 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
           <span>Marks</span>
         </button>
-        <button class="pill-btn" id="ab-loop-btn" title="Set loop point A" aria-label="A-B loop" data-item-wrapper="abloop">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-          <span id="ab-loop-label">A-B</span>
-        </button>
+        <div style="position:relative;" data-item-wrapper="abloop">
+          <button class="pill-btn" id="ab-loop-btn" title="A-B loop" aria-label="A-B loop">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+            <span id="ab-loop-label">A-B</span>
+          </button>
+          <div id="ab-dropdown">
+            <div class="pp-dd-pt">
+              <button type="button" class="pp-dd-set" id="ab-set-a">Set A <b id="ab-a-time">-</b></button>
+              <div class="pp-dd-nudge" data-pt="a"><button type="button" data-d="-1">-1s</button><button type="button" data-d="-0.1">-.1</button><button type="button" data-d="0.1">+.1</button><button type="button" data-d="1">+1s</button></div>
+            </div>
+            <div class="pp-dd-pt">
+              <button type="button" class="pp-dd-set" id="ab-set-b">Set B <b id="ab-b-time">-</b></button>
+              <div class="pp-dd-nudge" data-pt="b"><button type="button" data-d="-1">-1s</button><button type="button" data-d="-0.1">-.1</button><button type="button" data-d="0.1">+.1</button><button type="button" data-d="1">+1s</button></div>
+            </div>
+            <p class="tool-dropdown-label pp-dd-gap">Repeat</p>
+            <div class="pp-seg" id="ab-count"><button type="button" data-v="0">Forever</button><button type="button" data-v="2">2x</button><button type="button" data-v="4">4x</button><button type="button" data-v="8">8x</button></div>
+            <p class="tool-dropdown-label pp-dd-gap">Pause between repeats</p>
+            <div class="pp-seg" id="ab-gap"><button type="button" data-v="0">None</button><button type="button" data-v="1">1 s</button><button type="button" data-v="2">2 s</button><button type="button" data-v="3">3 s</button></div>
+            <p class="tool-dropdown-label pp-dd-gap">Start before A</p>
+            <div class="pp-seg" id="ab-pre"><button type="button" data-v="0">At A</button><button type="button" data-v="1">1 s</button><button type="button" data-v="2">2 s</button></div>
+            <p class="tool-dropdown-label pp-dd-gap">Practice: start slower, speed up each repeat</p>
+            <div class="pp-seg" id="ab-ramp"><button type="button" data-v="0">Off</button><button type="button" data-v="0.6">From 60%</button><button type="button" data-v="0.8">From 80%</button></div>
+            <p class="pp-dd-status" id="ab-status">Set A, then B.</p>
+            <button type="button" class="full-row" id="ab-clear">Clear loop</button>
+          </div>
+        </div>
         <button class="pill-btn" id="cutter-btn" title="Trim &amp; export clip" aria-label="Trim and export a clip" data-item-wrapper="cutter">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
           <span>Cut</span>
@@ -452,13 +474,18 @@
             <span id="sleep-label">Sleep</span>
           </button>
           <div id="sleep-dropdown">
-            <button class="full-row" data-sleep="off">Off</button>
-            <button class="full-row" data-sleep="15">15 minutes</button>
-            <button class="full-row" data-sleep="30">30 minutes</button>
-            <button class="full-row" data-sleep="45">45 minutes</button>
-            <button class="full-row" data-sleep="60">60 minutes</button>
-            <hr>
-            <button class="full-row" data-sleep="track">End of current track</button>
+            <p class="pp-dd-status" id="sleep-status">Off</p>
+            <div class="pp-dd-row" id="sleep-extend" style="display:none"><button type="button" data-ext="5">+5 min</button><button type="button" data-ext="15">+15 min</button><button type="button" data-sleep="off">Stop timer</button></div>
+            <div class="pp-dd-grid">
+              <button type="button" data-sleep="5">5</button><button type="button" data-sleep="10">10</button><button type="button" data-sleep="15">15</button><button type="button" data-sleep="20">20</button>
+              <button type="button" data-sleep="30">30</button><button type="button" data-sleep="45">45</button><button type="button" data-sleep="60">60</button><button type="button" data-sleep="90">90</button>
+            </div>
+            <div class="pp-dd-row"><input type="number" id="sleep-custom" min="1" max="720" value="25" inputmode="numeric" aria-label="Minutes"><span>min</span><button type="button" id="sleep-custom-go">Start</button></div>
+            <div class="pp-dd-row"><span>Stop at</span><input type="time" id="sleep-at" aria-label="Stop at this time"><button type="button" id="sleep-at-go">Set</button></div>
+            <p class="tool-dropdown-label pp-dd-gap">After</p>
+            <div class="pp-seg"><button type="button" data-sleep="track">This track</button><button type="button" data-sleep="tracks:2">2 tracks</button><button type="button" data-sleep="tracks:3">3</button><button type="button" data-sleep="tracks:5">5</button></div>
+            <p class="tool-dropdown-label pp-dd-gap">Fade out at the end</p>
+            <div class="pp-seg" id="sleep-fade"><button type="button" data-v="0">Off</button><button type="button" data-v="10">10 s</button><button type="button" data-v="30">30 s</button><button type="button" data-v="60">1 min</button><button type="button" data-v="180">3 min</button></div>
           </div>
         </div>
       </div>

@@ -512,6 +512,18 @@
     t.b0 += (e.beta - t.b0) * 0.02; t.g0 += ((e.gamma || 0) - t.g0) * 0.02;
     t.b = Math.max(-25, Math.min(25, e.beta - t.b0)); t.g = Math.max(-25, Math.min(25, (e.gamma || 0) - t.g0));
   }
+  // "Tilt the 3D view with the phone": on by default, remembered
+  let v3TiltOn = true;
+  try { v3TiltOn = localStorage.getItem('ppViz3dTilt') !== '0'; } catch(e){}
+  (function(){
+    const tog = document.getElementById('viz-tilt-toggle'), row = document.getElementById('viz-tilt-row'), seg = document.getElementById('viz-style-seg');
+    if (!tog) return;
+    tog.checked = v3TiltOn;
+    tog.addEventListener('change', () => { v3TiltOn = tog.checked; try { localStorage.setItem('ppViz3dTilt', v3TiltOn ? '1' : '0'); } catch(x){} if (!v3TiltOn) v3Tilt(false); vizIdle = false; });
+    const show = () => { row.style.display = vizStyle === 'disc3d' ? '' : 'none'; };
+    if (seg) seg.addEventListener('click', () => setTimeout(show, 0));
+    show();
+  })();
   function v3Tilt(on){
     if (on === v3.tilt.on) return;
     v3.tilt.on = on;
@@ -564,7 +576,7 @@
     const gl = v3.gl;
     vizSyncCanvas(vizGl);
     v3Art(pal.acc);
-    v3Tilt(true);
+    v3Tilt(v3TiltOn);
     const W = vizGl.width, H = vizGl.height;
     gl.viewport(0, 0, W, H);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);

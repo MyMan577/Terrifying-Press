@@ -43,7 +43,7 @@
     else if (rect.right > vw - margin) shiftX = (vw - margin) - rect.right;
     if (shiftX !== 0) dropdown.style.setProperty('--clamp-shift-x', shiftX + 'px');
   }
-  const CLAMPED_DROPDOWN_IDS = ['subtitle-dropdown','filter-dropdown','pip-dropdown','viz-sens-dropdown','latency-dropdown','speed-dropdown','sleep-dropdown','eq-dropdown','memc-dropdown','upscale-dropdown','boost-dropdown','fx-dropdown'];
+  const CLAMPED_DROPDOWN_IDS = ['subtitle-dropdown','filter-dropdown','pip-dropdown','viz-sens-dropdown','latency-dropdown','speed-dropdown','sleep-dropdown','ab-dropdown','eq-dropdown','memc-dropdown','upscale-dropdown','boost-dropdown','fx-dropdown'];
   function clampOpenDropdowns(){
     CLAMPED_DROPDOWN_IDS.forEach(id => clampDropdownToViewport(document.getElementById(id)));
   }
