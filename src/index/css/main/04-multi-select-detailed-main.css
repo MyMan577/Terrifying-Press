@@ -160,6 +160,9 @@
   #viz-gl, #viz-front{ position:absolute; inset:-10%; width:120%; height:120%; pointer-events:none; display:none; z-index:1; }
   #viz-wrap.viz-3d #viz-gl, #viz-wrap.viz-scope #viz-front{ display:block; }
   #viz-wrap.viz-3d #art-ring{ opacity:0; }
+  /* "Back to video" on a video that was switched to audio: top-left, mirroring the CC button */
+  #to-video-btn{ position:absolute; top:-6px; left:-6px; z-index:6; width:34px; height:34px; border-radius:50%; border:1px solid var(--line); background:var(--bg-elev); color:var(--text); padding:0; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+  #to-video-btn svg{ width:17px; height:17px; }
   #art-ring{
     position:absolute;
     inset:14%;
