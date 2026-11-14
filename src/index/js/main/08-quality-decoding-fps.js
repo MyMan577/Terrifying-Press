@@ -53,8 +53,19 @@
       setInterval(() => {
         const dd = document.getElementById('upscale-dropdown');
         if (!st || !dd || !dd.classList.contains('open')) return;
-        st.textContent = enhAI === 'off' ? '' : (window.PPNative && PPNative.videoActive && PPNative.videoActive()) ? 'The native video player uses the standard upscaler for now.' : (srStatus || (memcActive ? 'Waiting for a video frame\u2026' : 'Starts when a video plays.'));
+        const nat = window.PPNative && PPNative.videoActive && PPNative.videoActive();
+        st.textContent = enhAI === 'off' ? '' : nat ? ((PPNative.memcStatus && PPNative.memcStatus.ai) || 'Starts when a video plays.') : (srStatus || (memcActive ? 'Waiting for a video frame\u2026' : 'Starts when a video plays.'));
       }, 500);
+    }
+    const cb = document.getElementById('enh-copy-btn'), cc = document.getElementById('enh-copy-cancel'), cs = document.getElementById('enh-copy-status');
+    if (cb){
+      cb.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        cb.disabled = true; cc.hidden = false;
+        try { await enhMakeCopy((txt) => { cs.textContent = txt; }); }
+        finally { cb.disabled = false; cc.hidden = true; }
+      });
+      cc.addEventListener('click', (e) => { e.stopPropagation(); if (cutterExportAbort) cutterExportAbort(); });
     }
     const sl = document.getElementById('enh-sharp');
     if (sl) sl.addEventListener('input', () => { enhSharp = parseInt(sl.value, 10) || 0; enhSharpSet = true; enhChanged(); });

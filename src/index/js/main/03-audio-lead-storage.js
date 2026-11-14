@@ -320,7 +320,7 @@
   let memcDts = [], memcPeriod = 1 / 30, memcPeriodN = 0, memcLastT = null, memcOffMs = 0, memcOffValid = false, memcLastKey = '';
   let memcVfcId = null, memcRafId = null;
   let memcEnh = { mid: null, pre: null, up: null }, memcEnhSeed = 0;   // picture-enhance render targets
-  let srNets = {}, srLoading = null, srStatus = '', srBroken = {};      // AI upscalers (built per GL context)
+  let srLiveCtx = null, srLoading = null, srStatus = '';               // AI upscalers (player context)
   let latencyPresetMs = 150; // a saved value the latency-preset button toggles the slider to/from, e.g. one earbud's known Bluetooth delay
   const SUBTITLE_KEY = 'playerSubtitles';
   const SUBTITLE_FONTS = {

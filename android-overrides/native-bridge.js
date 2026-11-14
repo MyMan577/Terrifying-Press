@@ -218,6 +218,13 @@
     call(function () { return Player.setMemc(cfg); });
   };
   N.memcStatus = null;                                                  // latest status from the native engine
+  /** An AI upscaler for the native engine: the shader passes the page builds for it (sent once per model). */
+  var srSent = {};
+  N.setSrModel = function (id, spec) {
+    if (!enabled || !Player || !Player.setSrModel || srSent[id]) return;
+    srSent[id] = true;
+    call(function () { return Player.setSrModel({ id: id, spec: spec }); });
+  };
   /** {w, h, luma[]} of the current native frame, for auto-levels. Rejects when there is no frame. */
   N.sampleLuma = function () { return Player.sampleLuma(); };
 

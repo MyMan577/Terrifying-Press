@@ -105,7 +105,10 @@
   #latency-preset-btn:hover{ border-color:var(--accent-dim); color:var(--accent); background:#1d1e23; }
   #latency-preset-btn.toggled{ color:var(--accent); border-color:var(--accent-dim); background:color-mix(in srgb, var(--accent) 8%, transparent); }
   .enh-ai-select{ width:100%; padding:8px 8px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; font-size:12px; }
-  #enh-ai-status:empty{ display:none; }
+  #enh-ai-status:empty, #enh-copy-status:empty{ display:none; }
+  .enh-copy-row{ display:flex; gap:6px; margin-top:8px; }
+  .enh-copy-row button{ flex:1; padding:8px; border-radius:8px; border:1px solid var(--line); background:none; color:var(--text); font:inherit; font-size:12px; cursor:pointer; }
+  .enh-copy-row button:disabled{ opacity:.5; }
 
   /* ---------- Preset row for timing controls (subtitle sync, visualizer timing, song captions) ---------- */
   .pp-preset-row{ display:flex; align-items:center; gap:6px; margin-top:8px; }

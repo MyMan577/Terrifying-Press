@@ -515,6 +515,11 @@
                   </optgroup>
                 </select>
                 <p class="menu-section-hint" id="enh-ai-status" style="margin:4px 0 0 0;"></p>
+                <div class="enh-copy-row">
+                  <button type="button" class="full-row" id="enh-copy-btn" title="Saves a copy of this video at twice the size, made with the AI upscaler picked above (SESR-M5 when Standard is picked), with the original sound.">Make an enhanced copy</button>
+                  <button type="button" class="full-row" id="enh-copy-cancel" hidden>Cancel</button>
+                </div>
+                <p class="menu-section-hint" id="enh-copy-status" style="margin:4px 0 0 0;"></p>
                 <div class="latency-dropdown-row" style="margin:9px 0 4px 0;"><span class="tool-dropdown-label" style="padding:0;" title="Sharpens at the screen's resolution, more on soft detail and less on noise, without bright halos.">Sharpness</span><span id="enh-sharp-val" class="memc-val">Off</span></div>
                 <input type="range" id="enh-sharp" class="memc-range" min="0" max="100" step="5" value="0">
                 <label class="override-toggle" style="margin-top:8px;" title="Softens the 8x8 blocks and the shimmer around edges that low-bitrate video has.">
