@@ -381,7 +381,7 @@
   ];
   const MEMC_UP_CAPS = [0, 1080, 1440, 2160];   // upscale output height cap; 0 = off
   const MEMC_Q_KEY = 'playerMemcQuality', MEMC_UP_KEY = 'playerMemcUpscale';
-  let memcQuality = 0, memcUpscale = 0, memcOutW = 0, memcOutH = 0;
+  let memcQuality = 1, memcUpscale = 0, memcOutW = 0, memcOutH = 0;   // Medium unless a tier was picked
   try {
     const q = parseInt(localStorage.getItem(MEMC_Q_KEY), 10), u = parseInt(localStorage.getItem(MEMC_UP_KEY), 10);
     if (q >= 0 && q < MEMC_TIERS.length) memcQuality = q;
