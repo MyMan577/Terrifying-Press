@@ -341,9 +341,22 @@
   (function(){
     const el = document.getElementById('fps-counter'), tog = document.getElementById('fps-counter-toggle');
     if (!el || !tog) return;
-    const KEY = 'playerFpsCounter';
-    let on = false;
-    try { on = localStorage.getItem(KEY) === '1'; } catch (e){}
+    const KEY = 'playerFpsCounter', FULL_KEY = 'playerFpsCounterFull';
+    const fullTog = document.getElementById('fps-counter-full-toggle');
+    let on = false, full = false;
+    try { on = localStorage.getItem(KEY) === '1'; full = localStorage.getItem(FULL_KEY) === '1'; } catch (e){}
+    // Short form: one small line ("60 fps · 120 Hz", plus drops when there are any) that sits in the player's top bar.
+    function compact(shown, hz, dRate){
+      el.classList.add('compact');
+      el.innerHTML = '';
+      el.appendChild(document.createTextNode((shown == null ? '--' : Math.round(shown)) + ' fps \u00b7 ' + (hz == null ? '--' : Math.round(hz)) + ' Hz'));
+      if (dRate != null && dRate >= 0.5){
+        const d = document.createElement('span');
+        d.className = 'fps-drop';
+        d.textContent = ' \u00b7 ' + dRate.toFixed(dRate < 10 ? 1 : 0) + ' drop/s';
+        el.appendChild(d);
+      }
+    }
     let vfcId = null, rafId = null, timer = null;
     let vf = [];       // {w: wall ms, m: media s} per presented video frame
     let rafT = [];     // rAF timestamps
@@ -384,6 +397,8 @@
           if (smN) shownN = hzN != null ? Math.min(st.outFps || hzN, hzN) : (st.outFps || null);
           else if (srcN != null) shownN = hzN != null ? Math.min(srcN * rate, hzN) : srcN * rate;
         }
+        if (!full){ compact(shownN, hzN, null); return; }
+        el.classList.remove('compact');
         const fN = v => v == null ? '--' : v.toFixed(1);
         let modeN = 'native renderer';
         if (st.failed) modeN += ', smoothing unsupported';
@@ -426,6 +441,8 @@
         const a = dropHist[0], b = dropHist[dropHist.length - 1];
         if (b.w > a.w) dRate = Math.max(0, (b.d - a.d) * 1000 / (b.w - a.w));
       }
+      if (!full){ compact(shown, hz, dRate); return; }
+      el.classList.remove('compact');
       const overScreen = src != null && hz != null && src > hz + 1.5;
       const f1 = v => v == null ? '--' : v.toFixed(1);
       let mode = 'native';
@@ -463,6 +480,14 @@
       el.classList.remove('on');
     }
     tog.checked = on;
+    if (fullTog){
+      fullTog.checked = full;
+      fullTog.addEventListener('change', () => {
+        full = fullTog.checked;
+        try { localStorage.setItem(FULL_KEY, full ? '1' : '0'); } catch (e){}
+        if (on) render();
+      });
+    }
     tog.addEventListener('change', () => {
       on = tog.checked;
       try { localStorage.setItem(KEY, on ? '1' : '0'); } catch (e){}
