@@ -461,3 +461,153 @@ async function ppMp4Chapters(blob){
     if (tracks[currentIndex] === track) ppLoadLyricsFor(track);
   }
 
+  // ---------- Override for this song (filters, visualizer, motion smoothing, picture enhance, FX, video fit) ----------
+  // One shared layer for every menu that can keep its own settings per song. (EQ, volume boost and visualizer
+  // sensitivity have their own older switches; speed, pitch and reverb have "Remember for this song".)
+  // Each group knows how to read its current settings (get) and put a saved copy back (set). Ticking "Override for this
+  // song" saves the current settings as the song's own; while that song plays, any change goes to the song (captured
+  // when it changes and when the song is left). Other songs get the "all songs" settings, which are kept aside
+  // (and in localStorage, in case the app closes mid-song) while a song's own are showing.
+  const SONG_OV_KEY = 'ppSongOv', SONG_OV_BASE_KEY = 'ppSongOvBase';
+  const songOvGroups = {
+    filters: {
+      host: 'filter-dropdown', where: 'start',
+      get: () => ({ f: activeFilter, s: filterStrength, dd: duotoneDark, dl: duotoneLight, sh: sharpenAmount, cl: clarityAmount, al: !!autoLevelsOn }),
+      set: (v) => {
+        activeFilter = v.f; filterStrength = v.s; duotoneDark = v.dd; duotoneLight = v.dl; sharpenAmount = v.sh; clarityAmount = v.cl;
+        filterGrid.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.filter === activeFilter));
+        refreshFilterExtrasUI();
+        if (duotoneDarkInput) duotoneDarkInput.value = duotoneDark;
+        if (duotoneLightInput) duotoneLightInput.value = duotoneLight;
+        filterIntensity.value = filterStrength; sharpenIntensity.value = sharpenAmount; clarityIntensity.value = clarityAmount;
+        updateSharpenMatrix(); updateClarityBoost();
+        applyVideoFilter();
+        setAutoLevels(!!v.al);
+        filterBtn.classList.toggle('toggled', activeFilter !== 'none' || sharpenAmount > 0 || clarityAmount > 0 || !!v.al);
+      }
+    },
+    viz: {
+      host: 'viz-sens-dropdown', where: 'end', label: 'Override style for this song',
+      get: () => ({ st: vizStyle, stems: !!vizStemsOn }),
+      set: (v) => {
+        const b = document.querySelector('#viz-style-seg button[data-v="' + v.st + '"]'); if (b) b.click();
+        const t = document.getElementById('viz-stem-toggle');
+        if (t && t.checked !== !!v.stems){ t.checked = !!v.stems; t.dispatchEvent(new Event('change')); }
+      }
+    },
+    memc: {
+      host: 'memc-dropdown', where: 'start',
+      get: () => ({ m: memcMode, i: memcMaxIn, o: memcOutFps, s: memcStrength, q: memcQuality }),
+      set: (v) => {
+        memcMaxIn = v.i; memcOutFps = v.o; memcStrength = v.s;
+        if (memcQuality !== v.q){ memcQuality = v.q; memcResKey = ''; memcInvalidate(); }
+        try { localStorage.setItem(MEMC_IN_KEY, String(memcMaxIn)); localStorage.setItem(MEMC_OUT_KEY, String(memcOutFps)); localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); localStorage.setItem(MEMC_STR_KEY, String(Math.round(memcStrength * 100))); } catch (e){}
+        memcUpdateSliders(); memcUpdateStrength(); memcUpdateQualityUI();
+        setMemcMode(v.m);
+      }
+    },
+    enhance: {
+      host: 'upscale-dropdown', where: 'start',
+      get: () => ({ u: memcUpscale, sh: enhSharp, db: enhDeband, dk: enhDeblock, an: enhAnime }),
+      set: (v) => {
+        memcUpscale = v.u; enhSharp = v.sh; enhSharpSet = true; enhDeband = !!v.db; enhDeblock = !!v.dk; enhAnime = !!v.an;
+        try { localStorage.setItem(MEMC_UP_KEY, String(memcUpscale)); } catch (e){}
+        enhChanged();
+      }
+    },
+    fx: {   // reverb belongs to "Remember for this song" in the speed menu, so it is left out here
+      host: 'fx-section', where: 'start',
+      get: () => ({ b: bassBoost, f: filterAmount, d: distortionAmount, c: bitcrushAmount, e: echoMix, t: tremoloAmount }),
+      set: (v) => {
+        bassBoost = v.b; filterAmount = v.f; distortionAmount = v.d; bitcrushAmount = v.c; echoMix = v.e; tremoloAmount = v.t;
+        refreshFxUI(); applyFxAll();
+      }
+    },
+    view: {
+      host: 'view-autoreset', where: 'after-label', label: 'Override fit & zoom for this video', videoOnly: true,
+      get: () => ({ f: viewFitIdx, z: viewZoomIdx }),
+      set: (v) => { viewFitIdx = v.f; viewZoomIdx = v.z; viewPanX = 0; viewPanY = 0; applyViewMode(); }
+    }
+  };
+  let songOv = {}, songOvBase = {}, songOvTrack = null, songOvBooted = false;
+  try { songOv = JSON.parse(localStorage.getItem(SONG_OV_KEY) || '{}') || {}; } catch (e){ songOv = {}; }
+  try { songOvBase = JSON.parse(localStorage.getItem(SONG_OV_BASE_KEY) || '{}') || {}; } catch (e){ songOvBase = {}; }
+  const songOvSave = () => { try { localStorage.setItem(SONG_OV_KEY, JSON.stringify(songOv)); localStorage.setItem(SONG_OV_BASE_KEY, JSON.stringify(songOvBase)); } catch (e){} };
+  const songOvSafeSet = (g, v) => { try { songOvGroups[g].set(v); } catch (e){ console.warn('[song override]', g, e); } };
+  function songOvActive(g){ const t = songOvTrack; return !!(t && songOv[t.dbId] && songOv[t.dbId][g]); }
+  // Keep what was changed while this song played.
+  function songOvCapture(t){
+    const o = t && songOv[t.dbId]; if (!o) return;
+    let changed = false;
+    Object.keys(o).forEach(g => {
+      if (!songOvGroups[g]) return;
+      const v = songOvGroups[g].get();
+      if (JSON.stringify(v) !== JSON.stringify(o[g])){ o[g] = v; changed = true; }
+    });
+    if (changed) songOvSave();
+  }
+  // Called by loadTrack (with the song being left and the new one).
+  function songOvSwitch(prev, next){
+    if (!songOvBooted){
+      songOvBooted = true;
+      Object.keys(songOvBase).forEach(g => { if (songOvGroups[g]) songOvSafeSet(g, songOvBase[g]); });   // the app closed mid-song
+      songOvBase = {};
+    } else if (prev && prev !== next) songOvCapture(prev);
+    songOvTrack = next || null;
+    const o = next ? songOv[next.dbId] : null;
+    Object.keys(songOvGroups).forEach(g => {
+      if (o && o[g]){
+        if (!(g in songOvBase)) songOvBase[g] = songOvGroups[g].get();
+        songOvSafeSet(g, o[g]);
+      } else if (g in songOvBase){
+        const b = songOvBase[g]; delete songOvBase[g]; songOvSafeSet(g, b);
+      }
+    });
+    songOvSave();
+    songOvPaint();
+  }
+  function songOvToggle(g, on){
+    const t = songOvTrack; if (!t) return;
+    if (on){
+      if (!(g in songOvBase)) songOvBase[g] = songOvGroups[g].get();
+      (songOv[t.dbId] = songOv[t.dbId] || {})[g] = songOvGroups[g].get();
+      showToast('This song keeps its own ' + songOvName(g) + ' from now on');
+    } else {
+      if (songOv[t.dbId]){ delete songOv[t.dbId][g]; if (!Object.keys(songOv[t.dbId]).length) delete songOv[t.dbId]; }
+      if (g in songOvBase){ const b = songOvBase[g]; delete songOvBase[g]; songOvSafeSet(g, b); }
+      showToast('This song uses the ' + songOvName(g) + ' for all songs again');
+    }
+    songOvSave();
+    songOvPaint();
+  }
+  function songOvName(g){ return { filters: 'filters', viz: 'visualizer style', memc: 'motion smoothing', enhance: 'picture enhance', fx: 'FX', view: 'fit & zoom' }[g] || 'settings'; }
+  const songOvBoxes = {};
+  function songOvPaint(){
+    const t = songOvTrack;
+    Object.keys(songOvBoxes).forEach(g => {
+      const box = songOvBoxes[g];
+      box.input.checked = songOvActive(g);
+      box.input.disabled = !t || (songOvGroups[g].videoOnly && t.kind !== 'video');
+      box.label.classList.toggle('is-on', box.input.checked);
+    });
+  }
+  // The switch in each menu.
+  Object.keys(songOvGroups).forEach(g => {
+    const G = songOvGroups[g], host = document.getElementById(G.host); if (!host) return;
+    const label = document.createElement('label');
+    label.className = 'override-toggle song-ov-toggle';
+    label.innerHTML = '<input type="checkbox"><span></span>';
+    label.querySelector('span').textContent = G.label || 'Override for this song';
+    const input = label.querySelector('input');
+    input.addEventListener('change', () => songOvToggle(g, input.checked));
+    label.addEventListener('click', (e) => e.stopPropagation());
+    if (G.where === 'start') host.insertBefore(label, host.firstChild);
+    else if (G.where === 'after-label'){ const l = host.closest('label') || host; l.parentNode.insertBefore(label, l.nextSibling); }
+    else host.appendChild(label);
+    songOvBoxes[g] = { label, input };
+  });
+  songOvPaint();
+  // Changes come from many places (menus, gestures, keys, the quick bar), so they are picked up by looking, not by listening.
+  setInterval(() => { if (songOvTrack) songOvCapture(songOvTrack); }, 1500);
+  window.addEventListener('pagehide', () => { if (songOvTrack) songOvCapture(songOvTrack); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && songOvTrack) songOvCapture(songOvTrack); });

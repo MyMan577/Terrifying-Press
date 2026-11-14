@@ -156,16 +156,65 @@
     setSubtitleCues([]);
     subtitleDropdown.classList.remove('open');
   });
+  function setSubtitleOffset(v){
+    subtitleOffsetSec = Math.max(-600, Math.min(600, Math.round(v * 10) / 10));
+    subtitleLastText = null;
+    updateSubtitleBtnState();
+    renderSubtitleFrame();
+    persistSubtitleState(false);
+  }
   subtitleOffsetRow.querySelectorAll('button').forEach(btn => {
     btn.addEventListener('click', () => {
       const d = parseFloat(btn.dataset.d);
-      subtitleOffsetSec = d === 0 ? 0 : Math.max(-600, Math.min(600, Math.round((subtitleOffsetSec + d) * 10) / 10));
-      subtitleLastText = null;
-      updateSubtitleBtnState();
-      renderSubtitleFrame();
-      persistSubtitleState(false);
+      setSubtitleOffset(d === 0 ? 0 : subtitleOffsetSec + d);
     });
   });
+
+  // ---- Preset buttons for timing controls ----
+  // The same one-tap switch as the latency preset: a number box for your own value and a "Use N" button that jumps to
+  // it, and tapping it again goes back to what was set before (or 0). Used for subtitle sync, the visualizer timing
+  // and the captions' "Timing for this song" (vocal-separator.js), so a known delay is one tap away everywhere.
+  window.ppPresetRow = function(o){
+    const row = document.createElement('div');
+    row.className = 'pp-preset-row';
+    row.innerHTML = '<input type="number" inputmode="decimal"><button type="button"></button>';
+    const inp = row.querySelector('input'), btn = row.querySelector('button');
+    const round = v => o.unit === 's' ? Math.round(v * 10) / 10 : Math.round(v / o.step) * o.step;
+    const clamp = v => Math.max(o.min, Math.min(o.max, round(v)));
+    let preset = o.def, prev = null;
+    try { const v = parseFloat(localStorage.getItem(o.key)); if (isFinite(v)) preset = clamp(v); } catch (e){}
+    const fmt = v => o.unit === 's' ? (v > 0 ? '+' : '') + v.toFixed(1) + ' s' : (v > 0 ? '+' : '') + Math.round(v) + ' ms';
+    const same = (a, b) => Math.abs(a - b) < o.step / 2;
+    inp.min = o.min; inp.max = o.max; inp.step = o.step; inp.value = preset;
+    inp.title = o.title || 'Your preset';
+    const paint = () => {
+      btn.textContent = 'Use ' + fmt(preset);
+      let cur = 0; try { cur = +o.get() || 0; } catch (e){}
+      btn.classList.toggle('toggled', same(cur, preset));
+      btn.disabled = !!(o.enabled && !o.enabled());
+    };
+    inp.addEventListener('input', () => {
+      const v = parseFloat(inp.value); if (!isFinite(v)) return;
+      preset = clamp(v);
+      try { localStorage.setItem(o.key, String(preset)); } catch (e){}
+      paint();
+    });
+    inp.addEventListener('change', () => { inp.value = preset; });
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const cur = +o.get() || 0;
+      if (same(cur, preset)) o.set(prev != null && !same(prev, preset) ? prev : 0);
+      else { prev = cur; o.set(preset); }
+      paint();
+    });
+    row.addEventListener('click', (e) => e.stopPropagation());
+    o.after.parentNode.insertBefore(row, o.after.nextSibling);
+    paint(); setInterval(() => { if (row.offsetParent) paint(); }, 600);   // the value also changes from the other buttons
+    return { paint };
+  };
+  ppPresetRow({ after: subtitleOffsetRow, key: 'ppPresetSubSync', unit: 's', def: 0.5, min: -60, max: 60, step: 0.1,
+    title: 'Subtitle sync preset (seconds)', get: () => subtitleOffsetSec, set: setSubtitleOffset,
+    enabled: () => !subtitleOffsetRow.querySelector('button').disabled });
   subtitleSizeRow.querySelectorAll('button').forEach(btn => {
     btn.addEventListener('click', () => {
       subtitleSizeRow.querySelectorAll('button').forEach(b => b.classList.remove('active'));

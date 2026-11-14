@@ -443,6 +443,9 @@
             ui.querySelector('#st-bg').value = ST.bg; ui.querySelector('#st-bg-v').textContent = ST.bg + '%';
             if (/^#[0-9a-f]{6}$/i.test(ST.color)) ui.querySelector('#st-col').value = ST.color;
           };
+          const stSetSync = v => { const t = cur(); if (!t) return; stSync = Math.max(-30, Math.min(30, +(+v).toFixed(2))); const m = syncMap(); if (stSync) m[t.dbId] = stSync; else delete m[t.dbId]; ls('ppvSongSync', JSON.stringify(m)); stSyncUi(); tick(); };
+          if (window.ppPresetRow) window.ppPresetRow({ after: ui.querySelector('#st-sync'), key: 'ppPresetSongSync', unit: 's', def: 0.3, min: -30, max: 30, step: 0.1,
+            title: 'Timing preset for songs (seconds)', get: () => stSync, set: stSetSync, enabled: () => !!cur() });
           function stSyncUi() { const v = ui.querySelector('#st-sync-v'); if (v) v.textContent = (stSync > 0 ? '+' : '') + stSync.toFixed(1) + 's' + (stSync > 0 ? ' later' : stSync < 0 ? ' earlier' : ''); }
           // Any change replays the line, so the effect that was just picked is seen straight away.
           const stChanged = () => { ls('ppvSongText', JSON.stringify(ST)); stApply(); stPaint(); shown = null; sp.__stT = null; const lc = lyEl && lyEl.querySelector('.ly-cur'); if (lc && lc.__stT) { const tx = lc.__stRaw != null ? lc.__stRaw : lc.__stT; lc.__stT = null; stFill(lc, tx, lc.__stS, lc.__stE, lc.__stP, lc.__stWt); } tick(); };

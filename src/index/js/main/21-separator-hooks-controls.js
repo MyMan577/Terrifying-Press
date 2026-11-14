@@ -128,6 +128,7 @@
     setABLabel();
     applySavedSubtitles(t.dbId);
     try { songSoundSwitch(_prevTrack, t); } catch(e){}   // this song's own speed / pitch / reverb, if it has one
+    try { songOvSwitch(_prevTrack, t); } catch(e){ console.warn('[song override]', e); }   // its own filters, visualizer, smoothing, enhance, FX, fit
     applySpeed();
     syncAudioLoop();
 
