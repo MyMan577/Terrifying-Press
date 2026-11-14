@@ -325,7 +325,6 @@
       + '  if (uSplit >= 0.0){\n'
       + '    vec2 uv = (vec2(q) + 0.5) / vec2(mx + 1);\n'
       + '    if (uv.x < uSplit) o = texture(uBefore, uv).rgb;\n'
-      + '    if (abs(gl_FragCoord.x - uSplit * float(mx.x + 1)) < 1.5) o = vec3(1.0);\n'
       + '  }\n'
       + '  oc = vec4(clamp(o, 0.0, 1.0), 1.0);\n'
       + '}\n';
@@ -1227,7 +1226,7 @@
     gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, memcCanvas.width, memcCanvas.height);
     gl.useProgram(P.enhFin.p); memcBind(0, src.tex); memcBind(1, mid.tex);
     gl.uniform1i(u.uTex, 0); gl.uniform1i(u.uBefore, 1);
-    gl.uniform1f(u.uCon, enhSharp / 100); gl.uniform1f(u.uSplit, enhCompare ? 0.5 : -1);
+    gl.uniform1f(u.uCon, enhSharp / 100); gl.uniform1f(u.uSplit, enhCompare ? enhCompareX : -1);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
@@ -1383,7 +1382,7 @@
       mode: (memcMode !== 'off' && !perfLightActive()) ? memcMode : 'off',
       delayMs: Math.max(0, subtitleLatencyMs || 0),
       maxIn: memcMaxIn, outFps: memcOutFps, strength, quality: memcQuality, upscale: memcUpscale,
-      sharp: enhSharp / 100, deband: enhDeband, deblock: enhDeblock, anime: enhAnime, compare: enhCompare, ai: enhAI
+      sharp: enhSharp / 100, deband: enhDeband, deblock: enhDeblock, anime: enhAnime, compare: enhCompare, split: Math.round(enhCompareX * 1000) / 1000, ai: enhAI
     });
     // The AI upscaler's shader passes, built here once and handed to the native engine (8 outputs per pass, frames
     // stored bottom row first there too).

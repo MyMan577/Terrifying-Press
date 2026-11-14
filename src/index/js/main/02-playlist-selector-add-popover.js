@@ -392,6 +392,7 @@
   const ENH_KEY = 'playerEnhance';
   const ENH_AI_IDS = ['sesr_m5', 'quicksrnet_small', 'quicksrnet_medium', 'xlsr', 'anime4k_s', 'anime4k_m'];
   let enhSharp = 0, enhDeband = false, enhDeblock = false, enhAnime = false, enhCompare = false, enhSharpSet = false, enhAI = 'off';
+  let enhCompareX = 0.5;   // where the Compare line is, 0 (left edge) .. 1 (right edge) of the picture; dragged on the video
   try {
     const e = JSON.parse(localStorage.getItem(ENH_KEY) || '{}') || {};
     if (typeof e.sharp === 'number' && e.sharp >= 0 && e.sharp <= 100){ enhSharp = e.sharp; enhSharpSet = true; }
