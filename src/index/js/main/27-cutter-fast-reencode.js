@@ -13,9 +13,17 @@
     const info = await MP4T.readForDecode(srcFile.blob);
     const tr = info.track, ts = tr.timescale, offSec = tr.offset0 / ts;
     if (!isFinite(end)) end = Math.max(0.1, (tr.dts[tr.n - 1] + tr.delta[tr.n - 1] - tr.offset0) / ts);   // the whole video
-    // Enhanced copy: every frame goes through an AI upscaler (2x) on a WebGL canvas of its own, encoded at that size.
+    // Enhanced copy: every frame goes through an AI upscaler on a WebGL canvas of its own (once for up to 2x, twice for
+    // more), then is fitted to the chosen size (enhance.short = the shorter side, e.g. 1440 for 1440p).
     const enhance = opts && opts.enhance;
-    if (enhance && info.width * info.height > 1920 * 1088) throw new Error('This video is already HD or bigger: an enhanced copy would not look better.');
+    let enhScale = 1, enhPasses = 0;
+    if (enhance){
+      const srcShort = Math.min(info.width, info.height);
+      if (info.width * info.height > 2560 * 1440) throw new Error('This video is already bigger than 1440p: an enhanced copy would not look better.');
+      enhScale = enhance.short / srcShort;
+      if (enhScale < 1.05) throw new Error('This video is already ' + srcShort + 'p or bigger. Pick a bigger size.');
+      enhPasses = enhScale > 2.05 ? 2 : 1;
+    }
     const speed = (fx && fx.speed) || 1;
     const picDelay = ((fx && fx.picDelay) || 0) / 1000;
     const lookStr = (fx && fx.look && CUTTER_CTX_FILTER) ? fx.look : null;
@@ -38,8 +46,9 @@
     const fps = Math.min(120, Math.max(1, (m - k + 1) / srcDur));
     const encFps = Math.min(60, fps * Math.max(1, speed));
     const eW0 = info.width + (info.width & 1), eH0 = info.height + (info.height & 1);
-    const eW = enhance ? eW0 * 2 : eW0, eH = enhance ? eH0 * 2 : eH0;       // the encoded size
-    const bitrate = Math.round(Math.min(60e6, Math.max(enhance ? 8e6 : 2e6, bytesTotal * 8 / srcDur * (enhance ? 2.5 : 1.15))));
+    const even = (v) => Math.max(2, Math.round(v / 2) * 2);
+    const eW = enhance ? even(info.width * enhScale) : eW0, eH = enhance ? even(info.height * enhScale) : eH0;   // the encoded size
+    const bitrate = Math.round(Math.min(60e6, Math.max(enhance ? 8e6 : 2e6, bytesTotal * 8 / srcDur * (enhance ? Math.max(1.5, enhScale * enhScale * 0.7) : 1.15))));
 
     // Prefer the device's video hardware for decoding; fall back to whatever the browser picks.
     let dcfg = null;
@@ -140,7 +149,7 @@
       venc.configure(ecfg);
 
       let canvas = null, cctx = null, lastOut = -1, frameIdx = 0, firstDone = false, lastFrameTs = -Infinity;
-      const enh = enhance ? srCopyEnhancer(enhance.model, eW, eH) : null;
+      const enh = enhance ? srCopyEnhancer(enhance.model, eW, eH, enhPasses) : null;
       if (enh) closers.push(() => enh.close());
       const frameDur = (1 / fps) / speed;
       const gop = Math.max(1, Math.round(encFps * 2));
@@ -229,7 +238,7 @@
 
   // The enhanced copy's frame pipeline: VideoFrame -> texture (top row first) -> AI upscaler (2x) -> fitted to the
   // encoded size on the canvas, which the encoder then reads.
-  function srCopyEnhancer(id, W, H){
+  function srCopyEnhancer(id, W, H, passes){
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
     const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, stencil: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
@@ -237,6 +246,7 @@
     const floatOk = !!(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'));
     if (!floatOk) throw new Error('This phone cannot run the AI upscaler (no half-float rendering).');
     const C = { gl, floatOk, flipY: false, nets: {}, status: '' };
+    const C2 = { gl, floatOk, flipY: false, nets: {}, status: '' };   // the second 2x pass needs its own textures
     const sh = (type, s) => { const o = gl.createShader(type); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
     const prog = gl.createProgram();
     gl.attachShader(prog, sh(gl.VERTEX_SHADER, '#version 300 es\nvoid main(){ vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }\n'));
@@ -255,8 +265,9 @@
         gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, src);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, frame);
-        const hr = srRun(C, id, { tex: src, w, h });
-        if (!hr) throw new Error(C.status || 'The AI upscaler could not start.');
+        let hr = srRun(C, id, { tex: src, w, h });
+        if (hr && passes > 1) hr = srRun(C2, id, hr);
+        if (!hr) throw new Error(C.status || C2.status || 'The AI upscaler could not start.');
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.viewport(0, 0, W, H);
         gl.useProgram(prog);
@@ -264,7 +275,7 @@
         gl.uniform1i(uT, 0); gl.uniform2f(uOut, W, H);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
       },
-      close(){ try { srFreeAll(C); gl.getExtension('WEBGL_lose_context').loseContext(); } catch (e){} }
+      close(){ try { srFreeAll(C); srFreeAll(C2); gl.getExtension('WEBGL_lose_context').loseContext(); } catch (e){} }
     };
   }
 
@@ -273,12 +284,25 @@
   // the standard upscaler is picked), at twice the size, with the original sound, and adds it to the library. Runs as a
   // background job (notification with progress); playback pauses while it runs.
   let enhCopyBusy = false;
-  async function enhMakeCopy(onStatus){
+  // Copy size: 'auto' = one step above the video's own size on 480p > 720p > 1080p > 1440p > 4K, else that size
+  // (the shorter side).
+  const ENH_COPY_SIZES = [480, 720, 1080, 1440, 2160];
+  function enhCopyTarget(choice, w, h){
+    const short = Math.min(w || 0, h || 0);
+    if (!short) return 0;
+    if (choice !== 'auto') return +choice;
+    return ENH_COPY_SIZES.find(s => s > short * 1.05) || 0;
+  }
+  async function enhMakeCopy(onStatus, sizeChoice){
     const t = currentIndex !== -1 ? tracks[currentIndex] : null;
     if (!t || t.kind !== 'video'){ showToast('Play the video you want enhanced first.'); return; }
     if (enhCopyBusy){ showToast('An enhanced copy is already being made.'); return; }
     if (!CUTTER_WEBCODECS){ showToast('This phone cannot re-encode video here.'); return; }
     const id = enhAI !== 'off' ? enhAI : 'sesr_m5';
+    const vw = t.width || videoEl.videoWidth, vh = t.height || videoEl.videoHeight;
+    const short = enhCopyTarget(sizeChoice || 'auto', vw, vh);
+    if (!short){ showToast('This video is already 4K or bigger.'); return; }
+    if (vw && vh && short < Math.min(vw, vh) * 1.05){ showToast('This video is already ' + Math.min(vw, vh) + 'p. Pick a bigger size.'); return; }
     if (!(await srEnsureLoaded())){ showToast('Could not load the AI models.'); return; }
     enhCopyBusy = true;
     const name = (window.PP_SR_MODELS[id] && window.PP_SR_MODELS[id].name) || id;
@@ -295,14 +319,14 @@
           const txt = (label || 'Working\u2026') + ' ' + pct + '%' + (left != null ? ' \u00b7 about ' + (left >= 90 ? Math.round(left / 60) + ' min' : Math.round(left) + ' s') + ' left' : '');
           job(pct, txt); say(name + ': ' + txt);
         };
-        try { return await exportVideoClipFast(t, 0, Infinity, prog, { speed: 1, audio: null }, { enhance: { model: id } }); }
+        try { return await exportVideoClipFast(t, 0, Infinity, prog, { speed: 1, audio: null }, { enhance: { model: id, short } }); }
         catch (e1){
           if (!(e1 && e1.reorder)) throw e1;
-          return await exportVideoClipFast(t, 0, Infinity, prog, { speed: 1, audio: null }, { enhance: { model: id }, noLowLatency: true });
+          return await exportVideoClipFast(t, 0, Infinity, prog, { speed: 1, audio: null }, { enhance: { model: id, short }, noLowLatency: true });
         }
       });
       const base = String(t.title || 'Video').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Video';
-      const file = new File([blob], base + ' (Enhanced).mp4', { type: 'video/mp4' });
+      const file = new File([blob], base + ' (Enhanced ' + (short >= 2160 ? '4K' : short + 'p') + ').mp4', { type: 'video/mp4' });
       await addFiles([file]);
       const mins = (performance.now() - t0) / 60000;
       say('Done in ' + (mins >= 1 ? mins.toFixed(1) + ' min' : Math.round(mins * 60) + ' s') + ': "' + file.name + '" is in your library.');
