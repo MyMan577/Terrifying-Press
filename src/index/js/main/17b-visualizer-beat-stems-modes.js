@@ -448,7 +448,7 @@
         'void main(){ float r = length(vP); vec3 col = vec3(0.0);' +
         ' if (uMode == 0){ if (r < 1.0) discard; float sh = 0.0;' +
         '  for (int i = 0; i < 4; i++){ float d = (r - uW[i].x) / 0.04; sh += uW[i].y * exp(-d * d); }' +
-        '  col = uC * (sh + uBass * 0.6 * exp(-(r - 1.0) * 3.0)) + uC2 * sh * 0.25;' +
+        '  col = (uC * (sh + uBass * 0.6 * exp(-(r - 1.0) * 3.0)) + uC2 * sh * 0.25) * smoothstep(2.8, 2.1, r);' +
         ' } else { float d1 = (r - uR) / 0.022, d2 = (r - uR) / 0.14; col = uC * uVoc * (exp(-d1 * d1) * 0.95 + exp(-d2 * d2) * 0.35); }' +
         ' gl_FragColor = vec4(col, 0.0); }');
       v3.gl = gl; v3.P = { disc, bar, fx };
@@ -539,7 +539,8 @@
         const phi = side * (k + 0.5) / VIZ_BANDS * Math.PI;
         const px = Math.sin(phi) * R, pz = -Math.cos(phi) * R;              // k = 0 at the back
         const tx = Math.cos(phi), tz = Math.sin(phi), nx = Math.sin(phi), nz = -Math.cos(phi);
-        const hw = (isB ? 0.034 : 0.026), hd = 0.022, h = 0.025 + lv * (isB ? 1.05 : 0.85);
+        // shorter towards the front, so the bars never hide the record
+        const hw = (isB ? 0.034 : 0.026), hd = 0.022, h = 0.025 + lv * (isB ? 0.9 : 0.7) * (0.45 + 0.55 * (1 + Math.cos(phi)) / 2);
         const white = lv * lv * 0.55;
         let base = pal.acc;
         if (st && st.has.bass && isB) base = pal.bass;
