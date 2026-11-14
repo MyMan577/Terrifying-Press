@@ -260,89 +260,242 @@
       abMarkerB.classList.add('on');
     } else abMarkerB.classList.remove('on');
   }
-  function setABLabel(){
-    if (abLoop.a == null) { abLoopLabel.textContent = 'A-B'; abLoopBtn.title = 'Set loop point A'; }
-    else if (abLoop.b == null) { abLoopLabel.textContent = 'A-B'; abLoopBtn.title = 'Set loop point B'; }
-    else { abLoopLabel.textContent = 'A-B'; abLoopBtn.title = 'Looping, click to clear'; }
-    abLoopBtn.classList.toggle('toggled', abLoop.a != null);
+  // ---------- A-B loop ----------
+  // Tapping A-B opens its panel: set A and B where the song is (and nudge them), repeat forever or a set number of
+  // times (then it plays on), an optional pause between repeats, a lead-in before A, and a practice ramp that starts
+  // slower and speeds up a step each repeat until normal speed. Options are kept for every song; the points per song.
+  const abDropdown = document.getElementById('ab-dropdown');
+  const AB_OPTS_KEY = 'ppABOpts';
+  let abOpts = { count: 0, gap: 0, pre: 0, ramp: 0 };
+  try { Object.assign(abOpts, JSON.parse(localStorage.getItem(AB_OPTS_KEY) || '{}')); } catch(e){}
+  const abRun = { key: '', done: 0, finished: false, waiting: false, rampBase: null };
+  function abFmt(t){ if (t == null) return '-'; const m = Math.floor(t / 60), x = t - m * 60; return m + ':' + (x < 10 ? '0' : '') + x.toFixed(1); }
+  function abResetRun(){
+    if (abRun.rampBase != null){ playbackSpeed = abRun.rampBase; applySpeed(); }
+    abRun.done = 0; abRun.finished = false; abRun.waiting = false; abRun.rampBase = null;
   }
-  abLoopBtn.addEventListener('click', () => {
+  function abRampSpeed(){            // practice: from the chosen % up to the normal speed in steps of a few %
+    if (!abOpts.ramp || abLoop.a == null || abLoop.b == null) return;
+    if (abRun.rampBase == null) abRun.rampBase = playbackSpeed;
+    const steps = abOpts.count ? Math.max(1, abOpts.count - 1) : 8;
+    const f = Math.min(1, abOpts.ramp + (1 - abOpts.ramp) * abRun.done / steps);
+    playbackSpeed = Math.round(abRun.rampBase * f * 100) / 100; applySpeed();
+  }
+  function setABLabel(){
+    const both = abLoop.a != null && abLoop.b != null;
+    if (abLoop.a == null) abLoopBtn.title = 'A-B loop';
+    else if (abLoop.b == null) abLoopBtn.title = 'Set loop point B';
+    else abLoopBtn.title = 'Looping A-B';
+    abLoopLabel.textContent = both && abOpts.count ? 'A-B ' + Math.min(abRun.done + 1, abOpts.count) + '/' + abOpts.count : 'A-B';
+    abLoopBtn.classList.toggle('toggled', abLoop.a != null);
+    paintABPanel();
+  }
+  function paintABPanel(){
+    if (!abDropdown) return;
+    document.getElementById('ab-a-time').textContent = abFmt(abLoop.a);
+    document.getElementById('ab-b-time').textContent = abFmt(abLoop.b);
+    abDropdown.querySelectorAll('.pp-dd-nudge').forEach(n => n.querySelectorAll('button').forEach(b => { b.disabled = abLoop[n.dataset.pt] == null; }));
+    [['ab-count', 'count'], ['ab-gap', 'gap'], ['ab-pre', 'pre'], ['ab-ramp', 'ramp']].forEach(([id, k]) => {
+      document.getElementById(id).querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.v === +abOpts[k]));
+    });
+    const st = document.getElementById('ab-status'), both = abLoop.a != null && abLoop.b != null;
+    st.textContent = !both ? (abLoop.a == null ? 'Set A, then B.' : 'Now set B.')
+      : abRun.finished ? 'Done: playing on. Seek back before A to loop again.'
+      : 'Looping ' + (abLoop.b - abLoop.a).toFixed(1) + ' s' + (abOpts.count ? ', repeat ' + Math.min(abRun.done + 1, abOpts.count) + ' of ' + abOpts.count : '') + (abOpts.ramp ? ', at ' + Math.round(playbackSpeed * 100) + '%' : '') + '.';
+  }
+  function abSaveLoop(){
+    if (currentIndex === -1) return;
+    saveABLoop(tracks[currentIndex].dbId, abLoop.a != null && abLoop.b != null ? abLoop : null);
+    setABLabel(); updateABMarkers();
+  }
+  function abSet(pt){
     if (currentIndex === -1) return;
     const t = media().currentTime;
-    if (abLoop.a == null){
-      abLoop = { a: t, b: null };
-    } else if (abLoop.b == null){
-      if (t <= abLoop.a){ abLoop = { a: null, b: null }; }
-      else { abLoop.b = t; }
-    } else {
-      abLoop = { a: null, b: null };
+    if (pt === 'a'){ abLoop = { a: t, b: abLoop.b != null && abLoop.b > t + 0.05 ? abLoop.b : null }; }
+    else {
+      if (abLoop.a == null) abLoop = { a: 0, b: t };
+      else if (t > abLoop.a + 0.05) abLoop = { a: abLoop.a, b: t };
+      else { showToast('B has to come after A'); return; }
     }
-    saveABLoop(tracks[currentIndex].dbId, abLoop.a != null && abLoop.b != null ? abLoop : null);
-    setABLabel();
-    updateABMarkers();
+    abResetRun(); abRampSpeed(); abSaveLoop();
+  }
+  abLoopBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (currentIndex === -1) return;
+    abDropdown.classList.toggle('open');
+    if (abDropdown.classList.contains('open')){ paintABPanel(); clampDropdownToViewport(abDropdown); }
   });
+  abDropdown.addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', () => abDropdown.classList.remove('open'));
+  document.getElementById('ab-set-a').addEventListener('click', () => abSet('a'));
+  document.getElementById('ab-set-b').addEventListener('click', () => abSet('b'));
+  document.getElementById('ab-clear').addEventListener('click', () => { abResetRun(); abLoop = { a: null, b: null }; abSaveLoop(); });
+  abDropdown.querySelectorAll('.pp-dd-nudge').forEach(n => n.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const pt = n.dataset.pt; if (abLoop[pt] == null) return;
+    let dur = media().duration; if (!isFinite(dur)) dur = 1e9;
+    let v = Math.max(0, Math.min(dur, abLoop[pt] + +b.dataset.d));
+    if (pt === 'a' && abLoop.b != null) v = Math.min(v, abLoop.b - 0.1);
+    if (pt === 'b') v = Math.max(v, (abLoop.a || 0) + 0.1);
+    abLoop[pt] = Math.round(v * 100) / 100;
+    if (pt === 'a' && abLoop.b != null) { try { media().currentTime = Math.max(0, abLoop.a - abOpts.pre); } catch(x){} }   // hear the new start
+    if (pt === 'b') { try { media().currentTime = Math.max(abLoop.a || 0, abLoop.b - 2); } catch(x){} }                      // hear the new end
+    abSaveLoop();
+  }));
+  [['ab-count', 'count'], ['ab-gap', 'gap'], ['ab-pre', 'pre'], ['ab-ramp', 'ramp']].forEach(([id, k]) => {
+    document.getElementById(id).addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      abOpts[k] = +b.dataset.v;
+      try { localStorage.setItem(AB_OPTS_KEY, JSON.stringify(abOpts)); } catch(x){}
+      if (k === 'ramp' || k === 'count'){ abResetRun(); abRampSpeed(); }
+      setABLabel();
+    });
+  });
+  // Called by the player's time updates and by a fast timer while a loop is set, so the jump back lands on B
+  // (time updates alone come only every ~250 ms, which let the loop run noticeably past B).
+  function abTick(m){
+    if (abLoop.a == null || abLoop.b == null || abRun.waiting) return;
+    const key = currentIndex + '|' + abLoop.a + '|' + abLoop.b;
+    if (key !== abRun.key){ abRun.key = key; abResetRun(); abRampSpeed(); setABLabel(); }
+    const t = m.currentTime;
+    if (abRun.finished){ if (t < abLoop.a - 0.5){ abResetRun(); abRampSpeed(); setABLabel(); } return; }   // sought back: loop again
+    if (t < abLoop.b - 0.015) return;
+    abRun.done++;
+    if (abOpts.count && abRun.done >= abOpts.count){
+      abRun.finished = true;
+      if (abRun.rampBase != null){ playbackSpeed = abRun.rampBase; abRun.rampBase = null; applySpeed(); }
+      setABLabel(); return;
+    }
+    abRampSpeed();
+    const back = () => { try { m.currentTime = Math.max(0, abLoop.a - abOpts.pre); } catch(e){} };
+    if (abOpts.gap > 0 && isPlaying){
+      abRun.waiting = true;
+      togglePlay();                                     // pause through the player, so the controls stay right
+      back();
+      setTimeout(() => { abRun.waiting = false; if (!isPlaying && currentIndex !== -1) togglePlay(); }, abOpts.gap * 1000);
+    } else back();
+    setABLabel();
+  }
+  setInterval(() => { if (isPlaying && abLoop.a != null && abLoop.b != null && currentIndex !== -1){ try { abTick(media()); } catch(e){} } }, 25);
 
   // ---------- Sleep timer ----------
+  // Minutes (quick picks or any number), a clock time, the end of this track or after a few tracks, with an optional
+  // fade-out at the end. The fade lowers the players' volume and puts it back afterwards.
+  const SLEEP_FADE_KEY = 'ppSleepFade';
+  let sleepFade = 0; try { sleepFade = +localStorage.getItem(SLEEP_FADE_KEY) || 0; } catch(e){}
+  let sleepFaded = false;
+  function sleepSetGain(f){
+    const v = (volume.value / 100) * f;
+    [audioEl, videoEl, bgPlainEl, bgFxEl].forEach(el => { try { if (Math.abs(el.volume - v) > 0.002) el.volume = v; } catch(e){} });
+    if (typeof audioLeadActive !== 'undefined' && audioLeadActive) audioLeadApplyGain();
+  }
+  function sleepUnfade(){ if (sleepFaded){ sleepFaded = false; sleepSetGain(1); } }
+  function sleepStop(){
+    cancelResumeOnReturn();   // stopped on purpose: must not restart when the app comes back to the foreground
+    audioEl.pause();
+    videoEl.pause();
+    bgPlainEl.pause();        // background sound is carried by these, not audioEl
+    bgFxEl.pause();
+    isPlaying = false;
+    updatePlayIcon();
+    clearSleepTimer();
+  }
   function clearSleepTimer(){
     if (sleepTimer.intervalId) clearInterval(sleepTimer.intervalId);
     sleepTimer = { mode: 'off', endAt: null, intervalId: null };
     sleepLabel.textContent = 'Sleep';
     sleepBtn.classList.remove('toggled');
+    sleepUnfade();
+    paintSleepPanel();
     syncAudioLoop();
+  }
+  function sleepRemainingMs(){
+    if (sleepTimer.mode === 'duration') return Math.max(0, sleepTimer.endAt - Date.now());
+    if (sleepTimer.mode === 'track'){
+      try { const m = media(); if (isFinite(m.duration) && m.duration > 0) return Math.max(0, (m.duration - m.currentTime) / (playbackSpeed || 1) * 1000); } catch(e){}
+    }
+    return Infinity;
   }
   function tickSleepLabel(){
-    if (sleepTimer.mode === 'track'){
-      sleepLabel.textContent = 'End of track';
-      return;
+    if (sleepTimer.mode === 'tracks'){
+      const id = currentIndex !== -1 && tracks[currentIndex] ? tracks[currentIndex].dbId : null;
+      if (id !== sleepTimer.lastId){ sleepTimer.lastId = id; sleepTimer.left--; }
+      if (sleepTimer.left <= 1){ sleepTimer.mode = 'track'; syncAudioLoop(); }     // the last one: stop when it ends
+      else sleepLabel.textContent = sleepTimer.left + ' tracks';
     }
-    if (!sleepTimer.endAt) return;
-    const remaining = Math.max(0, sleepTimer.endAt - Date.now());
-    const mins = Math.floor(remaining/60000);
-    const secs = Math.floor((remaining%60000)/1000).toString().padStart(2,'0');
-    sleepLabel.textContent = `${mins}:${secs}`;
-    if (remaining <= 0){
-      cancelResumeOnReturn();   // stopped on purpose: must not restart when the app comes back to the foreground
-      audioEl.pause();
-      videoEl.pause();
-      bgPlainEl.pause();        // background sound is carried by these, not audioEl
-      bgFxEl.pause();
-      isPlaying = false;
-      updatePlayIcon();
-      clearSleepTimer();
+    if (sleepTimer.mode === 'track') sleepLabel.textContent = 'End of track';
+    const remaining = sleepRemainingMs();
+    if (sleepTimer.mode === 'duration'){
+      const mins = Math.floor(remaining/60000), secs = Math.floor((remaining%60000)/1000).toString().padStart(2,'0');
+      sleepLabel.textContent = mins >= 60 ? Math.floor(mins / 60) + 'h ' + String(mins % 60).padStart(2, '0') : `${mins}:${secs}`;
     }
+    // fade out over the last part
+    if (sleepFade > 0 && isPlaying && remaining <= sleepFade * 1000){ sleepFaded = true; sleepSetGain(Math.max(0, remaining / (sleepFade * 1000))); }
+    else if (sleepFaded && remaining > sleepFade * 1000) sleepUnfade();
+    if (sleepTimer.mode === 'duration' && remaining <= 0) sleepStop();
+    paintSleepPanel();
   }
-  function startSleepTimer(minutes){
+  function startSleep(mode, extra){
     if (sleepTimer.intervalId) clearInterval(sleepTimer.intervalId);
-    sleepTimer.mode = 'duration';
-    sleepTimer.endAt = Date.now() + minutes*60000;
+    sleepUnfade();
+    sleepTimer = { mode, endAt: null, intervalId: null };
+    if (mode === 'duration') sleepTimer.endAt = extra;
+    if (mode === 'tracks'){ sleepTimer.left = extra; sleepTimer.lastId = currentIndex !== -1 && tracks[currentIndex] ? tracks[currentIndex].dbId : null; }
     sleepBtn.classList.add('toggled');
     tickSleepLabel();
-    sleepTimer.intervalId = setInterval(tickSleepLabel, 1000);
-    syncAudioLoop();
+    sleepTimer.intervalId = setInterval(tickSleepLabel, 250);
+    syncAudioLoop();   // "end of track" needs the song to really end, so it may not loop
   }
-  function startSleepAtEndOfTrack(){
-    if (sleepTimer.intervalId) clearInterval(sleepTimer.intervalId);
-    sleepTimer.mode = 'track';
-    sleepTimer.endAt = null;
-    sleepBtn.classList.add('toggled');
-    tickSleepLabel();
-    syncAudioLoop();   // the song must really end for this timer, so it may not loop
+  function startSleepTimer(minutes){ startSleep('duration', Date.now() + minutes * 60000); }
+  function startSleepAtEndOfTrack(){ startSleep('track'); }
+  function paintSleepPanel(){
+    const st = document.getElementById('sleep-status'); if (!st) return;
+    const on = sleepTimer.mode !== 'off';
+    st.textContent = !on ? 'Off' : sleepTimer.mode === 'duration'
+      ? 'Stops at ' + new Date(sleepTimer.endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (' + sleepLabel.textContent + ')'
+      : sleepTimer.mode === 'tracks' ? 'Stops after ' + sleepTimer.left + ' tracks' : 'Stops at the end of this track';
+    if (on && sleepFade) st.textContent += ', fading out';
+    document.getElementById('sleep-extend').style.display = on ? '' : 'none';
+    document.getElementById('sleep-extend').querySelectorAll('[data-ext]').forEach(b => { b.style.display = sleepTimer.mode === 'duration' ? '' : 'none'; });
+    document.getElementById('sleep-fade').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.v === sleepFade));
   }
   sleepBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     sleepDropdown.classList.toggle('open');
+    paintSleepPanel();
     clampDropdownToViewport(sleepDropdown);
   });
   sleepDropdown.addEventListener('click', (e) => e.stopPropagation());
   document.addEventListener('click', () => sleepDropdown.classList.remove('open'));
-  sleepDropdown.querySelectorAll('button[data-sleep]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      sleepDropdown.classList.remove('open');
-      const val = btn.dataset.sleep;
+  sleepDropdown.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.sleep){
+      const val = b.dataset.sleep;
       if (val === 'off') clearSleepTimer();
       else if (val === 'track') startSleepAtEndOfTrack();
+      else if (val.startsWith('tracks:')) startSleep('tracks', parseInt(val.slice(7), 10));
       else startSleepTimer(parseInt(val, 10));
-    });
+      if (val !== 'off') sleepDropdown.classList.remove('open');
+      return;
+    }
+    if (b.dataset.ext && sleepTimer.mode === 'duration'){ sleepTimer.endAt += +b.dataset.ext * 60000; sleepUnfade(); tickSleepLabel(); return; }
+  });
+  document.getElementById('sleep-custom-go').addEventListener('click', () => {
+    const n = parseInt(document.getElementById('sleep-custom').value, 10);
+    if (!(n > 0)) return;
+    startSleepTimer(Math.min(720, n)); sleepDropdown.classList.remove('open');
+  });
+  document.getElementById('sleep-at-go').addEventListener('click', () => {
+    const v = document.getElementById('sleep-at').value; if (!/^\d{1,2}:\d{2}/.test(v)) return;
+    const [h, mi] = v.split(':').map(Number), at = new Date(); at.setHours(h, mi, 0, 0);
+    if (at.getTime() <= Date.now() + 30000) at.setDate(at.getDate() + 1);   // a time already past means tomorrow
+    startSleep('duration', at.getTime()); sleepDropdown.classList.remove('open');
+  });
+  document.getElementById('sleep-fade').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    sleepFade = +b.dataset.v; try { localStorage.setItem(SLEEP_FADE_KEY, String(sleepFade)); } catch(x){}
+    if (!sleepFade) sleepUnfade();
+    paintSleepPanel();
   });
 
   // ---------- Equalizer UI ----------

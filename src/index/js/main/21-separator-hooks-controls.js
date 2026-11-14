@@ -340,9 +340,7 @@
     curTimeEl.textContent = fmtTime(m.currentTime);
     durTimeEl.textContent = fmtTime(m.duration);
     updateSeekFill();
-    if (abLoop.a != null && abLoop.b != null && m.currentTime >= abLoop.b){
-      m.currentTime = abLoop.a;
-    }
+    if (abLoop.a != null && abLoop.b != null) abTick(m);
     if (m === videoEl) renderSubtitleFrame();
     trackListenTick(m);
     // Throttled (interval configurable in Settings, default 1s) so a
