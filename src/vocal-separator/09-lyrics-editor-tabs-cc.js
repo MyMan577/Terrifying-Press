@@ -284,11 +284,21 @@
           panel.innerHTML = '<div class="ppv-row"><b style="flex:1;align-self:center">Captions &amp; lyrics</b><button class="ppv-sec" id="ppv-apx" style="width:auto;padding:4px 12px" data-keep="1">Close</button></div><div class="ppv-note" id="ppv-ast">No subtitles</div><button id="ppv-aton" class="ppv-sec">Turn on</button><button id="ppv-ald" class="ppv-sec">Load subtitle file (.srt/.vtt/.lrc)</button><button id="ppv-arm" class="ppv-sec">Remove from this track</button><input type="file" id="ppv-af" accept=".srt,.vtt,.lrc,.txt" style="display:none"><div id="ppv-stui"></div><hr style="border:0;border-top:1px solid var(--line,#444);margin:10px 0">';
           viz.append(btn, box); document.body.appendChild(panel);
           audPanel = panel;
-          let cues = [], off = 0, lastId = null, shown = '', cuePace = 0;
-          const isOn = () => ls('ppvAudSub') === '1';
+          let cues = [], off = 0, lastId = null, shown = '', cuePace = 0, vidOn = null;
+          // A video switched to audio keeps its own subtitles and their on/off from the video; other audio tracks
+          // follow the one "captions on audio" switch.
+          const keyOf = t => t ? t.dbId + '|' + t.kind : null;
+          const isOn = () => { const t = cur(); return t && t.convertedFromVideo && vidOn != null ? vidOn : ls('ppvAudSub') === '1'; };
+          const setOn = on => {
+            const t = cur();
+            if (t && t.convertedFromVideo && vidOn != null) {
+              vidOn = on;
+              try { const all = JSON.parse(localStorage.getItem('playerSubtitles') || '{}'), o = all[t.dbId]; if (o && !Array.isArray(o)) { o.on = on ? 1 : 0; localStorage.setItem('playerSubtitles', JSON.stringify(all)); } } catch (e) {}
+            } else ls('ppvAudSub', on ? '1' : '0');
+          };
           const loadCues = () => {
-            cues = []; off = 0; const t = cur(); lastId = t ? t.dbId : null; if (!t || t.kind === 'video') return;
-            try { const o = JSON.parse(localStorage.getItem('playerSubtitles') || '{}')[t.dbId]; const c = o && (Array.isArray(o) ? o.map(x => [x.start, x.end, x.text]) : o.c); if (c) { cues = c.map(x => ({ s: +x[0], e: +x[1], text: String(x[2]) })).sort((a, b) => a.s - b.s); off = (!Array.isArray(o) && isFinite(+o.o)) ? +o.o : 0; } } catch (e) {}
+            cues = []; off = 0; vidOn = null; const t = cur(); lastId = keyOf(t); if (!t || t.kind === 'video') return;
+            try { const o = JSON.parse(localStorage.getItem('playerSubtitles') || '{}')[t.dbId]; const c = o && (Array.isArray(o) ? o.map(x => [x.start, x.end, x.text]) : o.c); if (c) { cues = c.map(x => ({ s: +x[0], e: +x[1], text: String(x[2]) })).sort((a, b) => a.s - b.s); off = (!Array.isArray(o) && isFinite(+o.o)) ? +o.o : 0; if (t.convertedFromVideo) vidOn = Array.isArray(o) || (o.on !== 0 && o.on !== false); } } catch (e) {}
             cuePace = stPace(cues);
           };
           const status = () => { $('#ppv-ast').textContent = cues.length ? cues.length + ' lines' + (cues.length ? '' : '') : 'No subtitles for this track yet. Generate them with Whisper below, or load a file.'; $('#ppv-aton').textContent = isOn() ? 'Turn off' : 'Turn on'; $('#ppv-aton').disabled = !cues.length; $('#ppv-arm').disabled = !cues.length; btn.classList.toggle('on', isOn() && cues.length > 0); };
@@ -398,7 +408,7 @@
             const t = cur(), a = t && t.kind !== 'video';
             btn.style.display = a ? 'block' : 'none';
             if (!a) { box.style.display = 'none'; lastId = null; return; }
-            if (t.dbId !== lastId) { loadCues(); status(); stSync = +syncMap()[t.dbId] || 0; stSyncUi(); }
+            if (keyOf(t) !== lastId) { loadCues(); status(); stSync = +syncMap()[t.dbId] || 0; stSyncUi(); }
             const now = aud.currentTime - stSync, n = now - off; let txt = '', s0 = -1, e0 = -1;
             if (isOn() && cues.length) for (const c of cues) { if (c.s > n) break; if (n < c.e) { txt += (txt ? '\n' : '') + c.text; if (s0 < 0) s0 = c.s; e0 = Math.max(e0, c.e); } }
             const lyOn = !!(lyEl && lyEl.classList.contains('show'));
@@ -451,7 +461,7 @@
           try { const a = A(); if (a && a.setSubtitles && !a.__ppvW) { const o = a.setSubtitles; a.setSubtitles = function () { const r = o.apply(this, arguments); lastId = null; return r; }; a.__ppvW = 1; } } catch (e) {}
           btn.onclick = () => { loadCues(); status(); placeWhisper('aud'); panel.classList.toggle('open'); };
           $('#ppv-apx').onclick = () => panel.classList.remove('open');
-          $('#ppv-aton').onclick = () => { ls('ppvAudSub', isOn() ? '0' : '1'); status(); tick(); };
+          $('#ppv-aton').onclick = () => { setOn(!isOn()); status(); tick(); };
           $('#ppv-arm').onclick = () => { const t = cur(); if (!t) return; try { const all = JSON.parse(localStorage.getItem('playerSubtitles') || '{}'); delete all[t.dbId]; localStorage.setItem('playerSubtitles', JSON.stringify(all)); } catch (e) {} loadCues(); status(); tick(); };
           $('#ppv-ald').onclick = () => $('#ppv-af').click();
           $('#ppv-af').onchange = async e => {
