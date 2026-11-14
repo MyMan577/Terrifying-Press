@@ -459,6 +459,22 @@
     memcBypass = false;
   }
 
+  // A toast (once per video and size) when a video is drawn smaller than it is AND smaller than the screen can show,
+  // so detail is really lost. Says why and what raises it.
+  let memcFullOom = false, memcResNoted = '';
+  function memcResNote(vw, vh, rw, rh, screenPx, smoothing){
+    const long = Math.max(rw, rh), want = Math.min(Math.max(vw, vh), screenPx);
+    if (long >= want * 0.97) return;
+    let id = ''; try { const t = tracks[currentIndex]; id = t ? (t.id || t.name || '') : ''; } catch (e){}
+    const k = id + '|' + vw + 'x' + vh + '|' + rw + 'x' + rh;
+    if (k === memcResNoted) return;
+    memcResNoted = k;
+    const why = !smoothing ? (memcFullOom ? 'the GPU ran short of memory' : 'the picture delay keeps many frames in memory')
+      : memcQuality < MEMC_TIERS.length - 1 ? 'Motion smoothing quality is ' + MEMC_TIERS[memcQuality].name + '. Raise it for full detail'
+      : 'smoothing at this size needs more GPU memory';
+    showToast('Playing at ' + rw + '\u00d7' + rh + ' (video is ' + vw + '\u00d7' + vh + '): ' + why + '.');
+  }
+
   function memcEnsureResources(vw, vh){
     const gl = memcGL;
     const smoothing = memcSmoothing();
@@ -467,7 +483,7 @@
     const needFrames = Math.ceil((Math.min(Math.max(effLatencyMs(), 0), 2000) / 1000 + (smoothing ? 0.4 : 0.3)) * fps) + 4;
     const wantN = Math.max(12, Math.ceil(needFrames / 8) * 8);
     const tier = MEMC_TIERS[memcQuality];
-    const key = (motion ? (memcMode === 'ultra' ? 'u' : 'm') : 'b') + memcQuality + ':' + vw + 'x' + vh;
+    const key = (motion ? (memcMode === 'ultra' ? 'u' : 'm') : smoothing ? 'b' : 'd') + memcQuality + ':' + vw + 'x' + vh;
     if (key === memcResKey && wantN <= memcRing.length) return;
     // Slider pushed the delay past the ring: grow in place instead of wiping.
     // Old frames stay, new empty slots go in at the write head, so the picture
@@ -492,12 +508,18 @@
 
     memcFreeResources();
     const N = wantN;
-    const maxW = motion ? tier.motionW : tier.simpleW;
-    let scale = Math.min(1, maxW / vw);
-    scale = Math.min(scale, Math.sqrt(((smoothing ? tier.mb : Math.max(tier.mb, 160)) * 1048576) / (N * 4 * vw * vh)));
+    // Only holding the picture back (no smoothing): keep the video's own size, up to the screen's real pixels,
+    // instead of the smoothing tier's width (Low drew a 1080p video at 720p). The smoothing tiers still apply
+    // when it is smoothing, and after the GPU once ran out of memory at full size.
+    const full = !smoothing && !memcFullOom;
+    const screenPx = Math.round(Math.max(screen.width || 0, screen.height || 0, window.innerWidth, window.innerHeight) * (window.devicePixelRatio || 1));
+    const maxW = full ? Math.max(screenPx, 1280) : (motion ? tier.motionW : tier.simpleW);
+    let scale = Math.min(1, maxW / (full ? Math.max(vw, vh) : vw));
+    scale = Math.min(scale, Math.sqrt(((full ? 400 : smoothing ? tier.mb : Math.max(tier.mb, 160)) * 1048576) / (N * 4 * vw * vh)));
     const rw = Math.max(64, Math.round(vw * scale / 2) * 2);
     const rh = Math.max(36, Math.round(vh * scale / 2) * 2);
     memcRingW = rw; memcRingH = rh;
+    memcResNote(vw, vh, rw, rh, screenPx, smoothing);
     // Mipmaps are regenerated for every frame, which is costly at full video size. Delay-only
     // mode skips them unless the downscale is large (over 2x).
     memcSrcMip = rw < vw * (smoothing ? 0.7 : 0.5);
@@ -523,7 +545,10 @@
     }
     for (let i = 0; i < N; i++) memcRing.push(memcMakeSlot(motion));
     // Out of GPU memory: drop one tier and rebuild on the next frame.
-    if (gl.getError() === gl.OUT_OF_MEMORY && memcQuality > 0){
+    if (gl.getError() === gl.OUT_OF_MEMORY && full){
+      memcFreeResources(); memcFullOom = true; memcResKey = ''; return;   // fall back to the tier size
+    }
+    if (!full && gl.getError() === gl.OUT_OF_MEMORY && memcQuality > 0){
       memcFreeResources();
       memcQuality--;
       try { localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); } catch (e){}
