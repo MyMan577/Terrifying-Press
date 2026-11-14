@@ -342,7 +342,7 @@
           <div class="menu-item-head">
             <div class="menu-item-title">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V14M4 10V3M12 21V12M12 8V3M20 21V16M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg>
-              <span>Visualizer sensitivity</span>
+              <span>Visualizer</span>
             </div>
             <label class="qb-toggle"><input type="checkbox" class="qb-checkbox" data-qb="vizsens"> Quick bar</label>
           </div>
@@ -359,25 +359,22 @@
                   <input type="checkbox" id="viz-sens-override">
                   <span>Override for this song</span>
                 </label>
-                <p class="tool-dropdown-label"><span>This song</span><span id="viz-sens-track-value">100%</span></p>
-                <input type="range" id="viz-sensitivity-track" min="25" max="250" value="100" step="5" disabled>
-                <p class="tool-dropdown-label" style="margin-top:12px;"><span>Style</span></p>
-                <div id="viz-style-seg">
-                  <div class="pp-seg"><button type="button" data-v="bars">Bars</button><button type="button" data-v="blocks">Blocks</button><button type="button" data-v="pulse">Bass pulse</button></div>
-                  <div class="pp-seg" style="margin-top:6px;"><button type="button" data-v="wave">Wave ring</button><button type="button" data-v="scope">Scope</button><button type="button" data-v="disc3d">3D disc</button></div>
+                <div class="viz-track-row">
+                  <p class="tool-dropdown-label"><span>This song</span><span id="viz-sens-track-value">100%</span></p>
+                  <input type="range" id="viz-sensitivity-track" min="25" max="250" value="100" step="5" disabled>
                 </div>
-                <p class="tool-dropdown-label" style="margin-top:12px;"><span>Stem visuals</span></p>
-                <div class="pp-seg" id="viz-stem-seg">
-                  <button type="button" data-v="0">Off</button><button type="button" data-v="1">On</button>
+                <p class="tool-dropdown-label viz-gap"><span>Style</span></p>
+                <div id="viz-style-seg" class="viz-grid">
+                  <button type="button" data-v="bars">Bars</button><button type="button" data-v="blocks">Blocks</button><button type="button" data-v="pulse">Pulse</button><button type="button" data-v="wave">Wave</button><button type="button" data-v="scope">Scope</button><button type="button" data-v="disc3d">3D disc</button>
                 </div>
-                <p class="menu-section-hint" id="viz-stem-info" style="margin:4px 0 0 0;">Songs you have split into stems get their own visuals: the drums drive the beat, the bass the disc, the vocals a glow of their own.</p>
-                <p class="menu-section-hint" id="viz-beat-info" style="margin:6px 0 0 0;">Beat: listening</p>
+                <label class="override-toggle viz-gap"><input type="checkbox" id="viz-stem-toggle"><span>Stem visuals (split songs)</span></label>
+                <p class="viz-status" id="viz-status">Beat: listening</p>
                 <div id="viz-trim-row" style="display:none;">
-                  <p class="tool-dropdown-label" style="margin-top:12px;"><span>Timing</span><span id="viz-trim-value">Automatic</span></p>
+                  <p class="tool-dropdown-label viz-gap"><span>Timing</span><span id="viz-trim-value">Automatic</span></p>
                   <input type="range" id="viz-trim" min="-300" max="300" value="0" step="10">
-                  <p class="menu-section-hint" style="margin:4px 0 0 0;">Follows the sound by itself. Slide right if the bars move before you hear it (some Bluetooth headphones), left if they move after.</p>
+                  <p class="viz-status">Right if the bars run early, left if late.</p>
                 </div>
-                <p class="tool-dropdown-label" style="margin-top:12px;"><span>Bass haptics (phone vibrates on the kick)</span></p>
+                <p class="tool-dropdown-label viz-gap"><span>Vibrate on the kick</span></p>
                 <div class="pp-seg" id="viz-haptic-seg">
                   <button type="button" data-v="0">Off</button><button type="button" data-v="1">Light</button><button type="button" data-v="2">Strong</button>
                 </div>
