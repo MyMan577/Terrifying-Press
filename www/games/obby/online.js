@@ -85,7 +85,7 @@
   var smNet = {
     get role(){ return role; },
     remotePos: function(){ return remote ? { x: blendX || remote.x, y: blendY || remote.y, w: remote.w, h: remote.h, char: remote.char, vx: remote.vx, vy: remote.vy, onGround: remote.onGround,
-      em: remote.em && remote.em.id ? { id: remote.em.id, t: remote.em.t + (performance.now() - (remote._at || performance.now())) / 1000 } : null } : null; },
+      em: remote.em && remote.em.id ? { id: remote.em.id, t: remote.em.t + (performance.now() - (remote._at || performance.now())) / 1000 } : null, fk: remote.fk || null } : null; },
     sendHit: function(pct, ix, iy, fromX, k){ if (conn) conn.send({ t: 'smHit', pct: pct, ix: ix, iy: iy, fromX: fromX, k: k }); },
     sendKO: function(){ var S = SMK(); if (conn && S) conn.send({ t: 'smKO', stocks: S.me.stocks }); },
     sendOver: function(w){ if (conn && role === 'host') conn.send({ t: 'smOver', w: w === 'me' ? 'foe' : w === 'foe' ? 'me' : 'draw' }); },
@@ -320,6 +320,8 @@
     // their emote, played forward from when it was sent
     s.em = remote.em && remote.em.id ? { id: remote.em.id, t: remote.em.t + (now - (remote._at || now)) / 1000 } : null;
     g.drawAs(s, role === 'host' ? 'Friend' : 'Host');
+    // their fighter's moves: projectiles, kites, items, hit sparks (fighter-kit fighters send a copy of them)
+    if (window.FKit && FKit.drawRemote && s.fk && s.fk.w) FKit.drawRemote(s.char, s.fk.w, { x: s.x, y: s.y, w: s.w, h: s.h, dashDir: s.dashDir, onGround: s.onGround }, g.ctx, g.cam);
   }
   function r2(v){ return Math.round((v || 0) * 100) / 100; }
 

@@ -449,7 +449,41 @@
     const f = FK._states[window.selectedCharacter]; if (!f) return null;
     const S = f(); if (!S || !S.pose) return null;
     const pose = {}; for (const k in S.pose) { const v = S.pose[k]; pose[k] = Array.isArray(v) ? v.map(n => Math.round(n * 100) / 100) : typeof v === 'number' ? Math.round(v * 100) / 100 : v; }
-    return { pose, rot: S.rot ? Math.round(S.rot * 100) / 100 : 0, pr: S.pr || 0, invis: S.invis > 0 ? S.invis : 0, reveal: S.reveal > 0 ? 1 : 0, charge: S.charge || 0, jav: S.jav ? 1 : 0 };
+    return { pose, rot: S.rot ? Math.round(S.rot * 100) / 100 : 0, pr: S.pr || 0, invis: S.invis > 0 ? S.invis : 0, reveal: S.reveal > 0 ? 1 : 0, charge: S.charge || 0, jav: S.jav ? 1 : 0, w: FK.snapWorld(S) };
+  };
+  // What the other phone needs to draw this fighter's world (projectiles, kites, pillars, items, hit sparks, move names):
+  // a plain copy of the state, numbers rounded, Maps / Sets / functions left out, an enemy reference cut down to where
+  // it is. Capped in size so the link stays quick.
+  const SKIP = { pose: 1, target: 1, goal: 1, anim: 1, seq: 1, rate: 1, run: 1, walk: 1, lastPX: 1, lastPY: 1, prevJump: 1, selfMove: 1, atkCD: 1, active: 1, bank: 1 };
+  function clean(v, d) {
+    if (v == null) return v;
+    const t = typeof v;
+    if (t === 'number') return isFinite(v) ? Math.round(v * 100) / 100 : 0;
+    if (t === 'string' || t === 'boolean') return v;
+    if (t !== 'object' || d > 4 || v instanceof Map || v instanceof Set || (typeof Node !== 'undefined' && v instanceof Node)) return undefined;
+    if (Array.isArray(v)) { const a = []; for (let i = 0; i < v.length && i < 40; i++) { const c = clean(v[i], d + 1); if (c !== undefined) a.push(c); } return a; }
+    if (typeof v.hp === 'number' && typeof v.x === 'number') return { x: clean(v.x, 9), y: clean(v.y, 9), w: v.w || 0.9, h: v.h || 0.9 };   // a foe
+    const o = {}; for (const k in v) { if (d === 0 && SKIP[k]) continue; const c = clean(v[k], d + 1); if (c !== undefined) o[k] = c; }
+    return o;
+  }
+  FK.snapWorld = function (S) {
+    try {
+      let w = clean(S, 0), n = JSON.stringify(w).length;
+      if (n > 9000 && w.fx) { w.fx = w.fx.filter(f => f.k === 'pop').slice(-4); n = JSON.stringify(w).length; }   // too much going on: keep the move names, drop the sparks
+      return n > 12000 ? null : w;
+    } catch (e) { return null; }
+  };
+  // draw another phone's fighter world from that copy. body: where their fighter is ({ x, y, w, h, dashDir })
+  FK._defs = {};
+  FK.drawRemote = function (char, w, body, ctx, cam) {
+    const C = FK._defs[char]; if (!C || !w || !ctx) return;
+    const T = window._TILE || 40, cx0 = cam ? cam.x : 0, cy0 = cam ? cam.y : 0;
+    const p = Object.assign({ w: 0.9, h: 0.9, vx: 0, vy: 0, onGround: true }, body); p.lastMoveDir = p.dashDir || 1;
+    const V = { T, SX: x => x * T - cx0, SY: y => y * T - cy0, now: performance.now() / 1000, p, remote: true };
+    ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.shadowBlur = 0;
+    try { if (C.drawWorld) C.drawWorld(ctx, V, w); } catch (e) {}
+    try { FK.drawFx(ctx, V, w.fx || [], C.drawFx); } catch (e) {}
+    ctx.restore();
   };
 
   // ---------------------------------------------------------------- define a fighter
@@ -577,7 +611,7 @@
       }
       if (isOwned()) { register(); window.injectCboxCharButtons(); }
     })();
-    FK._states[ID] = () => S;
+    FK._states[ID] = () => S; FK._defs[ID] = C;
     return { state: () => S };
   };
 })();
