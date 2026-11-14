@@ -417,6 +417,7 @@
     window._selectCharacter = w;
   }
   wrapSelect();
+  SM.pickChar = function (id) { var g = G(); if (!g || !isFighter(id) || g.char === id) return; allowSel = true; try { window._selectCharacter(id); } finally { allowSel = false; } };
   // the character buttons (some set the character directly, not through _selectCharacter): swallow the tap
   window.addEventListener('click', function (e) {
     if (!SM.active) return;
@@ -1981,10 +1982,10 @@
     el.innerHTML = '<div class="box"><h2>' + (w === 'me' ? '🏆 You win!' : w === 'foe' ? '💥 You lost' : '🤝 Draw') + '</h2>' +
       '<div style="opacity:.8;font:600 14px system-ui">You: ' + Math.max(me.stocks, 0) + ' stock' + (me.stocks === 1 ? '' : 's') + ' · ' + Math.floor(me.pct) + '%<br>' +
       (foe.kind === 'cpu' ? 'CPU' : 'Friend') + ': ' + Math.max(foe.stocks, 0) + ' stock' + (foe.stocks === 1 ? '' : 's') + ' · ' + Math.floor(foe.pct) + '%</div>' +
-      (guest ? '' : '<button class="go" id="smAgain" type="button">Rematch</button>') + '<button class="x" id="smExit" type="button">Exit to build</button></div>';
+      (guest && !(SM.net && SM.net.rematch) ? '' : '<button class="go" id="smAgain" type="button">Rematch</button>') + '<button class="x" id="smExit" type="button">Exit to build</button></div>';
     el.style.display = 'flex';
     var again = document.getElementById('smAgain');
-    if (again) again.onclick = function () { el.style.display = 'none'; SM.rematch(); };
+    if (again) again.onclick = function () { el.style.display = 'none'; if (SM.net && SM.net.rematch) SM.net.rematch(); else SM.rematch(); };   // online: both phones pick fighters again
     document.getElementById('smExit').onclick = function () { el.style.display = 'none'; if (SM.net && SM.net.quit) SM.net.quit(); else SM.stop(); };
   }
   SM.rematch = function () {
@@ -2007,8 +2008,14 @@
     var el = document.getElementById('smMenu');
     if (!el) { el = document.createElement('div'); el.id = 'smMenu'; document.body.appendChild(el); }
     var ros = roster().map(function (f) { return { v: f.id, l: f.e + ' ' + f.n }; });
-    var online = !!opts.online;
-    var html = '<div class="box"><h2>🥊 Smash Mode</h2>' +
+    var online = !!opts.online, guestMenu = !!opts.guest;
+    var html = guestMenu ? '<div class="box"><h2>🥊 Pick your fighter</h2>' +
+      '<div style="font:500 12px system-ui;opacity:.7">The host picks the stage and starts the match when you are both ready.</div>' +
+      '<div class="lb">Your fighter</div>' + chips('ch', ros, 'char', sel.char) +
+      '<div id="smNote" style="font:600 13px system-ui;margin:12px 0 2px;opacity:.85"></div>' +
+      '<button class="go" id="smGo" type="button">Ready</button>' +
+      '<button class="x" id="smNo" type="button">Leave</button></div>'
+    : '<div class="box"><h2>🥊 Smash Mode</h2>' +
       '<div style="font:500 12px system-ui;opacity:.7">Damage is a percent. The higher it gets, the farther you fly. Get launched off the stage and you lose a stock.</div>' +
       '<div class="lb">Your fighter</div>' + chips('ch', ros, 'char', sel.char) +
       '<div class="lb">Stage</div>' + chips('st', STAGE_ORDER.map(function (k) { return { v: k, l: STAGES[k].e + ' ' + STAGES[k].n, s: STAGES[k].d }; }), 'stage', sel.stage) +
@@ -2016,6 +2023,7 @@
       '<div class="lb">Time limit</div>' + chips('tm', [{ v: 0, l: 'None' }, { v: 180, l: '3:00' }, { v: 300, l: '5:00' }], 'time', sel.time) +
       (online ? '' : '<div class="lb">Opponent</div>' + chips('cp', [{ v: 0, l: '🎯 Dummy' }, { v: 1, l: 'CPU 1', s: 'easy' }, { v: 2, l: 'CPU 2', s: 'normal' }, { v: 3, l: 'CPU 3', s: 'hard' }], 'cpu', sel.cpu) +
         '<div class="lb">Opponent fighter</div>' + chips('cc', [{ v: 'random', l: '🎲 Random' }].concat(ros), 'cpuChar', sel.cpuChar)) +
+      (online ? '<div id="smNote" style="font:600 13px system-ui;margin:12px 0 2px;opacity:.85"></div>' : '') +
       '<button class="go" id="smGo" type="button">' + (online ? 'Start match' : 'Fight!') + '</button>' +
       (online || !(window.__obbyNet && window.__obbyNet.smash) ? '' : '<button class="go" id="smNet" type="button" style="background:#3b5bdb">🌐 Play a friend (2 phones)</button>') +
       '<button class="x" id="smNo" type="button">Cancel</button></div>';
@@ -2025,16 +2033,34 @@
         var b = e.target.closest('.chip'); if (!b) return; var k = row.getAttribute('data-k'), v = b.getAttribute('data-v');
         sel[k] = (k === 'stage' || k === 'char' || k === 'cpuChar') ? v : +v;
         row.querySelectorAll('.chip').forEach(function (c) { c.classList.toggle('on', c === b); });
+        if (k === 'char' && opts.onChar) { if (guestMenu) setReady(false); opts.onChar(v); }   // online: tell the other phone (a changed pick is not ready yet)
       });
     });
     document.getElementById('smNo').onclick = function () { hideMenu(); if (opts.onCancel) opts.onCancel(); };
     var nb = document.getElementById('smNet');
     if (nb) nb.onclick = function () { hideMenu(); if (isFighter(sel.char) && g.char !== sel.char) window._selectCharacter(sel.char); window.__obbyNet.smash(); };
-    document.getElementById('smGo').onclick = function () {
+    var goBtn = document.getElementById('smGo'), ready = false;
+    function setReady(r) { ready = r; if (guestMenu) { goBtn.textContent = r ? '✓ Ready · waiting for the host' : 'Ready'; goBtn.style.opacity = r ? 0.75 : 1; } }
+    if (guestMenu) goBtn.onclick = function () { if (ready) return; SM.pickChar(sel.char); setReady(true); if (opts.onReady) opts.onReady(sel.char); };
+    else goBtn.onclick = function () {
+      if (opts.needReady && !menuFriendReady) { SM.menuNote('⏳ Wait for your friend to tap Ready.'); return; }
       var cfg = Object.assign({}, sel); if (cfg.cpu === 0) { cfg.stocks = cfg.stocks; }
       if (opts.onGo) opts.onGo(cfg); else SM.start(cfg);
     };
+    menuFriendReady = false;
+    if (opts.needReady) { goBtn.style.opacity = 0.5; }
+    if (opts.note) SM.menuNote(opts.note);
   }
+  // online: what the other phone has picked, and whether they are ready (the host's Start match waits for it)
+  var menuFriendReady = false;
+  SM.menuNote = function (t) { var n = document.getElementById('smNote'); if (n) n.textContent = t || ''; };
+  SM.menuFriend = function (charId, ready) {
+    menuFriendReady = !!ready;
+    var f = charId ? fInfo(charId) : null, b = document.getElementById('smGo');
+    if (document.getElementById('smMenu') && document.getElementById('smMenu').style.display !== 'none' && b && b.textContent.indexOf('Start') === 0) b.style.opacity = ready ? 1 : 0.5;
+    SM.menuNote(f ? 'Friend: ' + f.e + ' ' + f.n + (ready ? '  ✓ ready' : '  · picking…') : 'Friend: picking a fighter…');
+  };
+  SM.menuHost = function (charId) { var f = charId ? fInfo(charId) : null; SM.menuNote(f ? 'Host: ' + f.e + ' ' + f.n : ''); };
   function hideMenu() { var el = document.getElementById('smMenu'); if (el) el.style.display = 'none'; }
   SM.openMenu = showMenu; SM.hideMenu = hideMenu;
 
