@@ -403,7 +403,7 @@
                   <span class="tool-dropdown-label" style="padding:0;">Latency</span>
                   <span id="latency-dropdown-value">0 ms</span>
                 </div>
-                <input type="range" id="latency-slider" min="-2000" max="2000" step="50" value="0">
+                <input type="range" id="latency-slider" min="-2000" max="2000" step="10" value="0">
                 <div class="latency-range-labels"><span>-2000 ms (delay sound)</span><span>+2000 ms (delay picture)</span></div>
                 <p class="menu-section-hint" style="margin:6px 0 0 0;">Delays the picture and subtitles to match audio arriving late over Bluetooth. Positive values hold the video and subtitles back; negative values shift subtitle timing earlier.</p>
                 <div class="latency-preset-row">
@@ -418,14 +418,8 @@
                 </label>
                 <p class="menu-section-hint" style="margin:4px 0 0 0;">Stops heavy videos dropping frames while latency is on. Turn it off if a video looks wrong.</p>
                 <hr style="margin:10px 0;">
-                <label class="override-toggle">
-                  <input type="checkbox" id="latency-metronome-toggle">
-                  <span>Latency ruler</span>
-                </label>
-                <p class="menu-section-hint" style="margin:6px 0 0 0;">A line sweeps across the ruler and a click plays as it crosses each bar. Note the bar number at the click and set the slider to it.</p>
-                <div id="latency-ruler-wrap" style="display:none;">
-                  <svg id="latency-ruler" viewBox="0 0 300 60" preserveAspectRatio="none"></svg>
-                </div>
+                <button class="full-row" id="latency-tester-btn">Open latency tester</button>
+                <p class="menu-section-hint" style="margin:6px 0 0 0;">Measures how late the sound is by tapping along to a beat, then lets you check it by eye.</p>
                 <button class="full-row" id="latency-reset-btn">Reset to 0 ms</button>
               </div>
             </div>

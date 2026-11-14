@@ -148,7 +148,6 @@
   const latencyPresetInput = document.getElementById('latency-preset-input');
   const latencyPresetBtn = document.getElementById('latency-preset-btn');
   const latencyPresetBtnValue = document.getElementById('latency-preset-btn-value');
-  const latencyMetronomeToggle = document.getElementById('latency-metronome-toggle');
 
   const videoTools = document.getElementById('video-tools');
   const fullscreenBtn = document.getElementById('fullscreen-btn');
