@@ -802,7 +802,7 @@
 
   // ---------------------------------------------------------------- opponent
   function foePos() {
-    if (foe.kind === 'remote' && SM.net && SM.net.remotePos) { var r = SM.net.remotePos(); if (r) { foe.x = r.x; foe.y = r.y; foe.w = r.w || .72; foe.h = r.h || .92; foe.char = r.char || foe.char; foe.vx = r.vx || 0; foe.vy = r.vy || 0; foe.onGround = !!r.onGround; foe.remEm = r.em || null; } }
+    if (foe.kind === 'remote' && SM.net && SM.net.remotePos) { var r = SM.net.remotePos(); if (r) { foe.x = r.x; foe.y = r.y; foe.w = r.w || .72; foe.h = r.h || .92; foe.char = r.char || foe.char; foe.vx = r.vx || 0; foe.vy = r.vy || 0; foe.onGround = !!r.onGround; foe.remEm = r.em || null; foe.remFk = r.fk || null; } }
     return { x: foe.x, y: foe.y, w: foe.w, h: foe.h };
   }
 
@@ -1819,7 +1819,10 @@
           ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 3;
           ctx.strokeText(foeLabel(), cx, f.y * T - cam.y - 8); ctx.fillText(foeLabel(), cx, f.y * T - cam.y - 8);
         } else g.drawAs({ x: f.x, y: f.y - hop, w: f.w, h: f.h, vx: f.vx, vy: f.vy, onGround: f.onGround, dashDir: f.face, isDashing: !!(f.atk && f.atk.d.lunge && f.atk.t > f.atk.d.wind),
-          char: f.char, em: fem, slashTimer: f.atk ? 0.15 : 0, swordMode: 'blue', gravityFlipped: false, isWallSliding: false, onWall: false, wallSide: 0 }, foeLabel());
+          char: f.char, em: fem, slashTimer: f.atk ? 0.15 : 0, swordMode: 'blue', gravityFlipped: false, isWallSliding: false, onWall: false, wallSide: 0,
+          fk: f.kind === 'remote' ? f.remFk || undefined : undefined }, foeLabel());   // (online: their fighter's pose)
+        // online: their fighter's projectiles, kites, items and hit sparks, from the copy their phone sends
+        if (f.kind === 'remote' && f.remFk && f.remFk.w && window.FKit && FKit.drawRemote) FKit.drawRemote(f.char, f.remFk.w, { x: f.x, y: f.y, w: f.w, h: f.h, dashDir: f.face, onGround: f.onGround }, ctx, cam);
         ctx.restore();
         if (f.taunt > 0 && f.tauntTxt) {
           var a0 = Math.min(1, f.taunt / 0.2, (f.tauntLen - f.taunt) / 0.1);
