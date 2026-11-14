@@ -8,61 +8,53 @@
   // startup by their own separate modules, the simplest reliable way to
   // apply a restored snapshot is to write it to localStorage and reload,
   // rather than trying to live-patch a dozen independent closures.
-  const PROGRESS_BACKUP_KEYS = [
-    'playerSettings',
-    'playerGestureSettings',
-    'playerUICustomization',
-    'playerQuickBar',
-    'playerTrackEq',
-    'playerTrackBoosts',
-    'playerTrackVizSensitivity',
-    'playerABLoops',
-    'playerSubtitles',
-    'playerBookmarksV1',
-    'playerLyricsV1',
-    'playerReplayGainOn',
-    'playerSidebarWidth',
-    'playerSidebarHeight',
-    'playerPlaylistsV1',
-    'playerPlaylistMeta',
-    'ppTagsV2',
-    'discClickerSaveV1',
-    'discClickerHiddenV1',
-    'discClickerBackgroundEarnV1',
-    'pppSaveV1',
-    'ppXpSaveV1',
-    'ppxpAccentColorV1',
-    'ppxpQuizBestV2',
-    'ppxpQuizPlusOneV2',
-    'ppMarathonBestV1',
-    'ppMarathonBgV1',
-    'ppModeGateV1',
-    'playerPerfModeV1',
-    'playerMemcSpeedAware',
-    'playerLayoutMode',
-    'playerHistoryV1',
-    'playerGestureMapPlayerMode',
-    'ppPointsV1',
-    'ppShopUnlocksV1'
+  // Which keys: every key the app writes (by its name prefixes), so new settings are backed up without anyone
+  // having to remember to list them. Left out: things that only make sense on the phone that wrote them (hardware
+  // speed tests, folder permissions and scan results, the error log, update reminders).
+  // Older backups (a fixed list of 35 keys) restore the same way.
+  const PROGRESS_BACKUP_PREFIXES = ['player', 'pp', 'disc', 'ccGacha', 'dashcube', 'pgr'];
+  const PROGRESS_BACKUP_SKIP = [
+    /^ppvAccel_/,          // which processor ran a model fastest, measured on this phone
+    /^ppErrorLog$/,        // problems the app ran into here
+    /^ppNativeFolders$/, /^ppIgnoredUris$/, /^ppFoundV1$/,   // this phone's folders, their permissions and scan results
+    /^pp_backup_speed$/,   // measured copy speed
+    /^ppUpdateAt$/, /^ppUpdateLater$/                        // update reminders
   ];
+  function progressBackupKey(key){
+    return PROGRESS_BACKUP_PREFIXES.some(p => key.startsWith(p)) && !PROGRESS_BACKUP_SKIP.some(r => r.test(key));
+  }
+  // All of the app's settings and progress (also stored inside the library backup .zip as settings.json).
+  function progressBackupData(){
+    if (window.PPPortfolioApi && window.PPPortfolioApi.flush) window.PPPortfolioApi.flush();
+    if (window.PPXpApi && window.PPXpApi.flush) window.PPXpApi.flush();
+    const data = {};
+    for (let i = 0; i < localStorage.length; i++){
+      const key = localStorage.key(i);
+      if (key && progressBackupKey(key)){ const v = localStorage.getItem(key); if (v !== null) data[key] = v; }
+    }
+    return data;
+  }
+  // Writes a backup's settings back. skip: keys to leave as they are. Returns how many were written.
+  function progressBackupApply(data, skip){
+    let n = 0;
+    Object.keys(data || {}).forEach(key => {
+      if (progressBackupKey(key) && typeof data[key] === 'string' && !(skip && skip.includes(key))){
+        try { localStorage.setItem(key, data[key]); n++; } catch(e){ /* quota */ }
+      }
+    });
+    return n;
+  }
 
   function exportProgressBackup(){
     const btn = document.getElementById('progress-export-btn');
     const originalLabel = btn ? btn.textContent : '';
     if (btn){ btn.disabled = true; btn.textContent = 'Preparing…'; }
     try {
-      // Portfolio (and XP) stats are written to localStorage on a debounce,
-      // not immediately on every change - force any pending write out first
-      // so the export reflects what's actually on screen right now.
-      if (window.PPPortfolioApi && window.PPPortfolioApi.flush) window.PPPortfolioApi.flush();
-      if (window.PPXpApi && window.PPXpApi.flush) window.PPXpApi.flush();
-      const data = {};
-      PROGRESS_BACKUP_KEYS.forEach(key => {
-        const v = localStorage.getItem(key);
-        if (v !== null) data[key] = v;
-      });
+      // Portfolio (and XP) stats are written to localStorage on a debounce; progressBackupData forces any pending
+      // write out first so the export reflects what's actually on screen right now.
+      const data = progressBackupData();
       if (Object.keys(data).length === 0){ showToast('Nothing to export yet.'); return; }
-      const payload = { version: 1, exportedAt: new Date().toISOString(), data };
+      const payload = { version: 2, exportedAt: new Date().toISOString(), data };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       window.ppSaveBlob(blob, 'press-play-progress-backup-' + new Date().toISOString().slice(0,10) + '.json');
       showToast('Progress & settings exported.');
@@ -83,12 +75,7 @@
         const parsed = JSON.parse(reader.result);
         const data = parsed && typeof parsed.data === 'object' ? parsed.data : null;
         if (!data) throw new Error('Invalid backup file');
-        let restored = 0;
-        PROGRESS_BACKUP_KEYS.forEach(key => {
-          if (Object.prototype.hasOwnProperty.call(data, key)){
-            try { localStorage.setItem(key, data[key]); restored++; } catch(e){ /* quota */ }
-          }
-        });
+        const restored = progressBackupApply(data);
         if (restored === 0) throw new Error('Backup contains no recognized settings');
         showToast('Progress & settings restored. Reloading…');
         // Stop the disc clicker/portfolio/XP modules' own beforeunload
@@ -216,6 +203,9 @@
           height: autoRevert ? (m.origHeight != null ? m.origHeight : null) : (m.height || null),
           playlistIds: Array.isArray(m.playlistIds) ? m.playlistIds : [],
           fileName: m.fileName || null,
+          // tag details (were saved but not read back, so they were lost on every restart)
+          album: m.album || '', genre: m.genre || '', trackNo: m.trackNo || null, disc: m.disc || null, year: m.year || null,
+          folder: m.folder || '', mdv: m.mdv || 0, remoteUrl: m.remoteUrl || null,
           stem: m.stem || undefined, stemOf: m.stemOf || null, stemSrc: m.stemSrc || null,
           convertedFromVideo: autoRevert ? false : wasConverted,
           _origExt: autoRevert ? undefined : m.origExt,
