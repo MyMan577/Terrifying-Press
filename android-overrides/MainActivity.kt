@@ -15,6 +15,8 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.media3.common.util.UnstableApi
 import com.getcapacitor.BridgeActivity
 
@@ -63,8 +65,50 @@ class MainActivity : BridgeActivity() {
         instance = this
         nativeVideo = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("native", false)
         installVideoLayer()
+        installKeyboardFit()
         handleIntent(intent)
         askPermissions()
+    }
+
+    /**
+     * Keeps the page above the on-screen keyboard. On this phone the keyboard slid over the page without the page getting
+     * shorter (adjustResize had no effect), so popups and dialogs for editing a title or artist ended up under it. When the
+     * keyboard is up, the WebView's bottom edge is lifted by exactly the part the keyboard covers, so the page really is
+     * shorter and everything fixed to it moves up. If the system already resized the window, the overlap is 0 and nothing
+     * changes.
+     */
+    private var kbGap = 0
+    private fun installKeyboardFit() {
+        if (bridge?.webView == null) return
+        val decor = window.decorView
+        val imeOf = { insets: WindowInsetsCompat ->
+            if (insets.isVisible(WindowInsetsCompat.Type.ime())) insets.getInsets(WindowInsetsCompat.Type.ime()).bottom else 0
+        }
+        // Read at the top of the window, before any view uses the insets up; the window's own handling still runs.
+        ViewCompat.setOnApplyWindowInsetsListener(decor) { v, insets ->
+            val ime = imeOf(insets)
+            v.post { fitKeyboard(ime) }
+            ViewCompat.onApplyWindowInsets(v, insets)
+        }
+        // Backup: some keyboards only show up as a layout change.
+        decor.viewTreeObserver.addOnGlobalLayoutListener {
+            val ins = ViewCompat.getRootWindowInsets(decor) ?: return@addOnGlobalLayoutListener
+            fitKeyboard(imeOf(ins))
+        }
+    }
+    private fun fitKeyboard(ime: Int) {
+        val web = bridge?.webView ?: return
+        val lp = web.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+        val loc = IntArray(2)
+        web.getLocationInWindow(loc)
+        val winH = window.decorView.height
+        if (winH <= 0) return
+        val fullBottom = loc[1] + web.height + kbGap                  // where the WebView ends without our lift
+        val gap = if (ime > 0) (fullBottom - (winH - ime)).coerceIn(0, winH / 2 + ime) else 0
+        if (gap == kbGap) return
+        kbGap = gap
+        lp.bottomMargin = gap
+        web.layoutParams = lp
     }
 
     private fun installVideoLayer() {

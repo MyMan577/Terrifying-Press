@@ -235,7 +235,8 @@
         <button class="pl-manager-thumb" data-id="${pl.id}" title="Set playlist thumbnail" type="button">🖼️</button>
         <span class="pl-manager-name" data-id="${pl.id}" title="Click to rename">${escapeHtml(pl.name)}</span>
         <span class="pl-manager-count">${count} track${count!==1?'s':''}${pl.stemOf ? (pl.libOnly ? ' · split, library only' : ' · split') : pl.auto === 'smart' ? ' · smart (live)' : pl.auto === 'surprise' ? (pl.libOnly ? ' · surprise, library only' : ' · surprise') : ''}</span>
-        <button class="pl-manager-btn" data-id="${pl.id}" title="Delete playlist" type="button">&times;</button>
+        <button class="pl-manager-btn pl-manager-shuf" data-id="${pl.id}" title="Shuffle this playlist's order" type="button">⇄</button>
+        <button class="pl-manager-btn pl-manager-del" data-id="${pl.id}" title="Delete playlist" type="button">&times;</button>
       `;
       const nameEl = row.querySelector('.pl-manager-name');
       nameEl.addEventListener('click', () => startRenamePlaylist(nameEl, pl));
@@ -248,10 +249,11 @@
         reset.type = 'button'; reset.className = 'pl-manager-btn'; reset.textContent = '\u21ba';
         reset.title = "Use the first video's thumbnail instead";
         reset.addEventListener('click', () => clearPlaylistThumb(pl.id));
-        row.insertBefore(reset, row.querySelector('.pl-manager-btn'));
+        row.insertBefore(reset, row.querySelector('.pl-manager-shuf'));
       }
       thumbBtn.addEventListener('click', () => pickPlaylistThumb(pl.id));
-      row.querySelector('.pl-manager-btn').addEventListener('click', () => deletePlaylist(pl.id));
+      row.querySelector('.pl-manager-del').addEventListener('click', () => deletePlaylist(pl.id));
+      row.querySelector('.pl-manager-shuf').addEventListener('click', () => shufflePlaylistOrder(pl.id));
       playlistsListEl.appendChild(row);
     });
     renderPlaylistViewSelect();
@@ -330,6 +332,39 @@
     savePlaylists();
     renderPlaylistsManager();
     return pl;
+  }
+  // ---------- Shuffle: really reorder a playlist, or make a shuffled copy ----------
+  function ppShuffled(a){ a = a.slice(); for (let k = a.length - 1; k > 0; k--){ const r = Math.floor(Math.random() * (k + 1)); [a[k], a[r]] = [a[r], a[k]]; } return a; }
+  // the songs of a playlist, or of the whole library (no split stems) when plId is empty
+  function ppMembers(plId){ return tracks.filter(t => plId ? (t.playlistIds || []).includes(plId) : !t.stem).map(t => t.dbId); }
+  function shufflePlaylistOrder(plId){
+    const pl = playlists.find(p => p.id === plId); if (!pl) return null;
+    const ids = ppMembers(plId); if (ids.length < 2){ showToast('Nothing to shuffle yet'); return pl; }
+    pl.order = ppShuffled(ids);
+    try { if (typeof sortViews === 'object' && sortViews[plId]){ delete sortViews[plId]; saveSortViews(); } } catch(e){}   // a title/artist sort would hide the new order
+    savePlaylists(); renderPlaylist(); renderPlaylistsManager();
+    showToast('Shuffled “' + pl.name + '”');
+    return pl;
+  }
+  function makeShuffledPlaylist(fromPlId){
+    const src = fromPlId ? playlists.find(p => p.id === fromPlId) : null;
+    const ids = ppMembers(fromPlId || null); if (!ids.length){ showToast('Nothing to shuffle yet'); return null; }
+    const base = (src ? src.name : 'Everything') + ' (shuffled)';
+    let name = base, n = 2; while (playlists.some(p => p.name === name)) name = base + ' ' + n++;
+    const pl = createPlaylist(name), set = new Set(ids);
+    tracks.forEach(t => { if (set.has(t.dbId)){ t.playlistIds = t.playlistIds || []; if (!t.playlistIds.includes(pl.id)) t.playlistIds.push(pl.id); } });
+    pl.order = ppShuffled(ids);
+    saveLibraryMeta(); savePlaylists(); renderPlaylistsManager(); renderPlaylist();
+    showToast('Made “' + name + '” (' + ids.length + ' track' + (ids.length === 1 ? '' : 's') + ')');
+    return pl;
+  }
+  // play a playlist (or everything) in a random order without changing its saved order
+  function playShuffledOnce(plId){
+    const ids = new Set(ppMembers(plId || null)), q = [];
+    tracks.forEach((t, i) => { if (ids.has(t.dbId)) q.push(i); });
+    if (!q.length) return;
+    const order = ppShuffled(q);
+    playQueue = order; shuffleOrder = []; loadTrack(order[0], true);
   }
   newPlaylistBtn.addEventListener('click', () => {
     createPlaylist(newPlaylistNameInput.value);

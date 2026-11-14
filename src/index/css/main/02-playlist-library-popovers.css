@@ -8,6 +8,16 @@
     cursor:pointer;
   }
   #playlist-view-select:focus{ outline:none; border-color:var(--accent-dim); }
+  /* shuffle button next to the playlist picker, and its menu */
+  #playlist-view-row .pl-view-line{ display:flex; gap:8px; align-items:stretch; }
+  #playlist-view-row .pl-view-line #playlist-view-select{ flex:1; min-width:0; width:auto; }
+  #pl-shuffle-btn{ flex:0 0 38px; display:flex; align-items:center; justify-content:center; background:var(--bg); border:1px solid var(--line); color:var(--text); border-radius:8px; cursor:pointer; padding:0; }
+  #pl-shuffle-btn svg{ width:17px; height:17px; }
+  #pl-shuffle-btn[aria-expanded="true"]{ border-color:var(--accent); color:var(--accent); }
+  #pl-shuffle-menu{ display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+  #pl-shuffle-menu[hidden]{ display:none; }
+  #pl-shuffle-menu button{ text-align:left; padding:10px 12px; background:var(--bg-elev); border:1px solid var(--line); color:var(--text); border-radius:8px; font-size:13px; cursor:pointer; font-family:inherit; }
+  #pl-shuffle-menu button:hover{ border-color:var(--accent-dim); color:var(--accent); }
   #action-row{
     display:flex;
     gap:8px;

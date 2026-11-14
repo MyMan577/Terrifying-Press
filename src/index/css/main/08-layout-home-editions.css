@@ -393,6 +393,9 @@
     padding:7px 14px; font:600 12px inherit; font-family:inherit; cursor:pointer;
   }
   .ph-pl-playall svg{ width:12px; height:12px; }
+  .ph-pl-btns{ display:flex; gap:8px; flex-wrap:wrap; }
+  .ph-pl-playall.alt{ background:none; border:1px solid var(--accent-dim); color:var(--accent); }
+  .ph-pl-playall.alt svg{ width:13px; height:13px; }
   .ph-trk{
     display:flex; align-items:center; gap:10px; width:100%; padding:8px 0;
     background:none; border:none; border-top:1px solid var(--line); color:inherit; font-family:inherit;
