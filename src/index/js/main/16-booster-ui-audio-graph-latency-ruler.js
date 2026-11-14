@@ -402,6 +402,20 @@
   ltSlider.addEventListener('input', () => ltSetLatency(parseFloat(ltSlider.value) || 0));
   window.addEventListener('resize', () => { if (ltOpenNow && ltTab === 'measure') ltDrawScale(); });
 
+  // ---------- Open-source licences (Settings) ----------
+  (function(){
+    const sheet = document.getElementById('pp-licences'), btn = document.getElementById('licences-btn');
+    if (!sheet || !btn) return;
+    const close = () => { sheet.hidden = true; };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation(); sheet.hidden = false;
+      const pre = document.getElementById('pp-licences-text');
+      fetch('THIRD-PARTY-NOTICES.txt').then(r => r.text()).then(t => { pre.textContent = t; }).catch(() => { pre.textContent = 'Could not open the licence file.'; });
+    });
+    document.getElementById('pp-licences-close').addEventListener('click', close);
+    sheet.addEventListener('click', (e) => { if (e.target === sheet) close(); });
+  })();
+
   function getGraphFor(kind){
     if (graphs[kind]) return graphs[kind];
     const ctx = ensureAudioCtx();

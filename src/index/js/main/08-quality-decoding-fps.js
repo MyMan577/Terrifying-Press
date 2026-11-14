@@ -14,6 +14,8 @@
     [['enh-deblock-toggle', enhDeblock], ['enh-deband-toggle', enhDeband], ['enh-anime-toggle', enhAnime], ['enh-compare-toggle', enhCompare]]
       .forEach(([id, v]) => { const el = document.getElementById(id); if (el) el.checked = v; });
     const ub = document.getElementById('upscale-btn'); if (ub) ub.classList.toggle('toggled', memcEnhOn());
+    const ai = document.getElementById('enh-ai-select'); if (ai && ai.value !== enhAI) ai.value = enhAI;
+    if (enhAI !== 'off' && pl) pl.textContent = 'AI';
   }
   // Any enhance change: start/stop the GPU engine as needed, resize its output, and show the result (also while paused).
   function enhChanged(){
@@ -39,6 +41,21 @@
     enhChanged();
   }));
   (function(){
+    const ai = document.getElementById('enh-ai-select'), st = document.getElementById('enh-ai-status');
+    if (ai){
+      ai.addEventListener('change', () => {
+        enhAI = ENH_AI_IDS.includes(ai.value) ? ai.value : 'off';
+        if (enhAI !== 'off'){ srStatus = 'Loading\u2026'; srEnsureLoaded().then(ok => { if (!ok) srStatus = 'Could not load the AI models.'; memcApplyOutSize(); memcRepaint(); }); }
+        enhChanged();
+      });
+      if (enhAI !== 'off') srEnsureLoaded();
+      // what the AI upscaler is doing right now, while the menu is open
+      setInterval(() => {
+        const dd = document.getElementById('upscale-dropdown');
+        if (!st || !dd || !dd.classList.contains('open')) return;
+        st.textContent = enhAI === 'off' ? '' : (window.PPNative && PPNative.videoActive && PPNative.videoActive()) ? 'The native video player uses the standard upscaler for now.' : (srStatus || (memcActive ? 'Waiting for a video frame\u2026' : 'Starts when a video plays.'));
+      }, 500);
+    }
     const sl = document.getElementById('enh-sharp');
     if (sl) sl.addEventListener('input', () => { enhSharp = parseInt(sl.value, 10) || 0; enhSharpSet = true; enhChanged(); });
     [['enh-deblock-toggle', v => { enhDeblock = v; }], ['enh-deband-toggle', v => { enhDeband = v; }],
