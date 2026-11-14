@@ -23,6 +23,7 @@ The owner tests on a Galaxy S24 Ultra (120 Hz, strong GPU).
   - The parts are plain cuts of one long file, so most are not complete scripts by themselves. Search across `src/` to find code, and check the built files, not the parts.
   - A new part under `src/index/` must be added to `src/index.html`; `assemble.py` fails on a part nothing includes.
 - `backup/unsplit/` holds the full files as they were at the split. It is a snapshot: do not edit it or build from it.
+- `android-overrides/native-bridge.js` is the copy that ships: the workflow overwrites `www/native-bridge.js` with it. Edit that one, and keep `www/native-bridge.js` identical to it.
 - `android-overrides/` holds the native Android code. The workflow copies it into the generated Capacitor project.
 - The signing key is `android-overrides/pp.keystore.enc`, unlocked in CI by the `KEYSTORE_FILE_PASSWORD` secret. Never commit a plain keystore.
 

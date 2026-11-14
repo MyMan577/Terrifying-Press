@@ -86,7 +86,7 @@
       kind: kind, raw: raw, proxy: null, active: false, track: null, uri: null,
       pwr: false, playing: false, state: 'idle', ready: false, ended: false, seeking: false,
       base: 0, baseAt: 0, durMs: NaN, rate: 1, vol: 1, muted: false, loop: false, vw: 0, vh: 0,
-      preservePitch: true, loadId: 0, loading: Promise.resolve(), err: null, localAt: 0,
+      preservePitch: true, pitch: 1, loadId: 0, loading: Promise.resolve(), err: null, localAt: 0,
       advancedUri: null, adopting: false, seekTimer: 0
     };
     S.after = function (fn) { var id = S.loadId; S.loading = S.loading.then(function () { if (id === S.loadId && S.active) return fn(); }); return S.loading; };
@@ -108,7 +108,7 @@
       S.seekTimer = setTimeout(function () { if (S.seeking) { S.seeking = false; emit(S, 'seeked'); emit(S, 'timeupdate'); } }, 8000);
       S.after(function () { return Player.seek({ ms: Math.round(sec * 1000) }); }).then(function () { confirmSeek(S); });
     };
-    S.applyRate = function () { S.after(function () { return Player.setRate({ rate: S.rate, preservePitch: S.preservePitch }); }); };
+    S.applyRate = function () { S.after(function () { return Player.setRate({ rate: S.rate, preservePitch: S.preservePitch, pitch: S.pitch }); }); };
     S.applyVol = function () { S.after(function () { return Player.setVolume({ volume: S.muted ? 0 : S.vol }); }); };
 
     var proxy = new Proxy(raw, {
@@ -125,6 +125,7 @@
             case 'readyState': return S.ready ? 4 : (S.state === 'buffering' ? 2 : 0);
             case 'networkState': return 1;
             case 'playbackRate': case 'defaultPlaybackRate': return S.rate;
+            case 'ppPitch': return S.pitch;
             case 'volume': return S.vol;
             case 'muted': return S.muted;
             case 'loop': return S.loop;
@@ -154,6 +155,7 @@
           case 'loop': S.loop = !!value; if (S.active) S.after(function () { return Player.setLoop({ loop: S.loop }); }); break;
           case 'preservesPitch': case 'mozPreservesPitch': case 'webkitPreservesPitch':
             S.preservePitch = !!value; if (S.active) S.applyRate(); break;
+          case 'ppPitch': S.pitch = Math.max(0.25, Math.min(4, +value || 1)); if (S.active) S.applyRate(); break;   // pitch shift on its own (1 = none), on top of the speed
           case 'currentTime': if (S.active) { S.seek(+value); return true; } break;
           case 'src': if (S.active) return true; break;     // native owns the source; ignore stray writes
         }
@@ -319,7 +321,7 @@
         Player.loadMedia(Object.assign(metaFor(t, uri), { autoplay: false })),
         Player.setLoop({ loop: S.loop }).catch(function () {}),
         Player.setVolume({ volume: S.muted ? 0 : S.vol }).catch(function () {}),
-        Player.setRate({ rate: S.rate, preservePitch: S.preservePitch }).catch(function () {})
+        Player.setRate({ rate: S.rate, preservePitch: S.preservePitch, pitch: S.pitch }).catch(function () {})
       ]);
       pushFx(true);
       syncViz();
@@ -553,33 +555,69 @@
   };
 
   // ---------- video surface placement ----------
-  var rectRaf = 0, lastRect = '', rectTimer = 0, holeNodes = [], hiddenNodes = [], lastBackdrop = '', lastShow = false;
+  var rectRaf = 0, lastRect = '', rectTimer = 0, holeNodes = [], hiddenNodes = [], lastBackdrop = '', lastShow = false, hideAgain = 0, settleUntil = 0;
   // The page must be see-through above the video box: clear the backgrounds of everything that contains it,
   // and give the window itself the page colour so the rest of the screen looks unchanged.
   // Anything painted UNDER the video box (e.g. the home screen behind the full-screen player) would show through the
   // cleared backgrounds and cover the native picture, so it is hidden while the native video is on screen.
-  function hideBeneath(el) {
-    hiddenNodes.forEach(function (n) { n.classList.remove('pp-hole-hide'); }); hiddenNodes = [];
-    if (!el) return;
-    var wrap = el.parentElement || el, r = wrap.getBoundingClientRect();
-    if (r.width < 4 || r.height < 4) return;
+  // Returns false when the video box was not among the layers yet (the player still opening): try again later.
+  function setHidden(found) {                                           // only touches what changed: this runs on every poll
+    hiddenNodes.forEach(function (n) { if (!found.has(n)) n.classList.remove('pp-hole-hide'); });
+    found.forEach(function (n) { if (hiddenNodes.indexOf(n) < 0) n.classList.add('pp-hole-hide'); });
+    hiddenNodes = Array.from(found);
+  }
+  // The full-screen player covers the whole screen, so everything stacked below it is out of sight anyway. Those layers
+  // are found from their own z-index, not by poking at points: no animation or timing can make it miss one. (Opening
+  // from a Library row, the player grows out of the row, and a look at the wrong moment used to leave the Library
+  // showing through the see-through player, so only its buttons showed and the native picture stayed covered.)
+  function layersBelow(wrap, chain) {
+    var top = null, Z = 0;
+    for (var n = wrap; n && n !== document.body; n = n.parentElement) {   // the outermost layer of the player, and its z-index
+      var cs = getComputedStyle(n);
+      if (cs.position !== 'static' && cs.zIndex !== 'auto') { top = n; Z = +cs.zIndex || 0; }
+    }
+    if (!top || Z <= 0) return null;
+    var found = new Set();
+    for (var c = top; c && c.parentElement && c !== document.documentElement; c = c.parentElement) {
+      var kids = c.parentElement.children;
+      for (var i = 0; i < kids.length; i++) {
+        var k = kids[i]; if (chain.has(k) || /^(SCRIPT|STYLE|LINK|TEMPLATE|AUDIO|VIDEO)$/.test(k.tagName)) continue;
+        var ks = getComputedStyle(k); if (ks.display === 'none') continue;
+        var z = ks.position === 'static' || ks.zIndex === 'auto' ? 0 : (+ks.zIndex || 0);
+        if (z < Z) found.add(k);
+      }
+      if (c.parentElement === document.body) break;
+    }
+    return found;
+  }
+  // deep = also poke at points when the box does not fill the screen (costs a style recalc, so only after a change).
+  function hideBeneath(el, deep) {
+    if (!el) { setHidden(new Set()); return true; }
+    var wrap = el.parentElement || el, r = wrap.getBoundingClientRect(), seen = false;
+    if (r.width < 4 || r.height < 4) { setHidden(new Set()); return false; }
     var chain = new Set(); for (var n = el; n; n = n.parentElement) chain.add(n);
+    if (r.left <= 1 && r.top <= 1 && r.right >= window.innerWidth - 1 && r.bottom >= window.innerHeight - 1) {
+      var all = layersBelow(wrap, chain); if (all) { setHidden(all); return true; }
+    }
+    if (!deep) return true;
     var probe = document.createElement('style');                        // hit-test layers that ignore taps too
     probe.textContent = '*{pointer-events:auto !important}'; document.head.appendChild(probe);
+    hiddenNodes.forEach(function (n) { n.classList.remove('pp-hole-hide'); }); hiddenNodes = [];
     var pts = [[0.5, 0.5], [0.08, 0.08], [0.92, 0.08], [0.08, 0.92], [0.92, 0.92]], found = new Set();
     try {
       pts.forEach(function (q) {
         var list = document.elementsFromPoint(r.left + r.width * q[0], r.top + r.height * q[1]), below = false;
         for (var i = 0; i < list.length; i++) {
           var e = list[i];
-          if (e === wrap || e === el) { below = true; continue; }
+          if (e === wrap || e === el) { below = true; seen = true; continue; }
           if (!below || chain.has(e)) continue;
           var top = e; while (top.parentElement && !chain.has(top.parentElement)) top = top.parentElement;   // the whole branch
           if (!chain.has(top)) found.add(top);
         }
       });
     } finally { probe.remove(); }
-    found.forEach(function (n) { n.classList.add('pp-hole-hide'); hiddenNodes.push(n); });
+    setHidden(found);
+    return seen;
   }
   function markHole(el) {
     if (!el) { holeNodes.forEach(function (n) { n.classList.remove('pp-hole-anc'); }); holeNodes = []; hideBeneath(null); return; }
@@ -611,7 +649,8 @@
       var box = S.raw.parentElement || S.raw, bs = getComputedStyle(box);
       var shown = box.checkVisibility ? box.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
         : (bs.visibility !== 'hidden' && +bs.opacity > 0 && bs.display !== 'none');
-      var vis = b.width > 2 && b.height > 2 && getComputedStyle(S.raw).display !== 'none' && shown && !document.hidden;
+      var onScreen = b.right > 2 && b.bottom > 2 && b.left < window.innerWidth - 2 && b.top < window.innerHeight - 2;   // a player slid away counts as closed
+      var vis = b.width > 2 && b.height > 2 && onScreen && getComputedStyle(S.raw).display !== 'none' && shown && !document.hidden;
       var cs = getComputedStyle(S.raw), vf = (getComputedStyle(wrapBox).getPropertyValue('--vfit') || cs.objectFit || '').trim();
       var m = /matrix\(([^)]+)\)/.exec(cs.transform || ''), mv = m ? m[1].split(',').map(parseFloat) : [1, 0, 0, 1, 0, 0];
       r = { x: Math.round(b.left * dpr), y: Math.round(b.top * dpr), w: Math.round(b.width * dpr), h: Math.round(b.height * dpr), visible: vis,
@@ -622,16 +661,32 @@
     // The page is only made see-through while the video box is actually on screen. With the player closed (a video
     // still loaded), the home screen, the custom background and everything else look exactly as normal.
     markHole(show && r.visible ? S.raw : null);
-    var j = JSON.stringify(r);
-    if (j !== lastRect) {
+    var j = JSON.stringify(r), moved = j !== lastRect;
+    // The layout moved (player opened, rotated...): look again. Tapping a video opens the player with an animation, and the
+    // first look can come before the video box is on top of the page; then the page under it was never hidden and only the
+    // player's buttons showed over it. So it keeps looking (every poll, a few seconds at most) until it finds the box.
+    // Opening from a list row, the player grows out of that row, and while it does the list is stacked ABOVE the video
+    // box. A look taken then hides nothing, so it also keeps looking for a while after the box last moved (and after any
+    // animation on the page ends): the last look, on the settled page, is the one that counts.
+    var t = now();
+    if (show && r.visible) {
+      if (moved) settleUntil = t + 1500;
+      var deep = moved || hideAgain > 0 || t < settleUntil;          // the full-screen check is cheap and runs on every poll
+      var ok = hideBeneath(S.raw, deep); if (deep) hideAgain = ok ? 0 : (moved ? 15 : Math.max(0, hideAgain - 1));
+    } else { hideAgain = 0; settleUntil = 0; }
+    if (moved) {
       lastRect = j;
-      if (show && r.visible) hideBeneath(S.raw);                       // the layout moved (player opened, rotated...): look again
       call(function () { return Player.setVideoRect(r); });
     }
     if (show && !rectTimer) rectTimer = setInterval(scheduleRect, 300);
+    if (show && (hideAgain > 0 || now() < settleUntil)) setTimeout(scheduleRect, 250);
     if (!show && rectTimer) { clearInterval(rectTimer); rectTimer = 0; }
   }
   function scheduleRect() { if (!rectRaf) rectRaf = requestAnimationFrame(sendRect); }
+  // Something on the page finished moving (the player's open/close animation, a list sliding...): look again.
+  ['transitionend', 'animationend'].forEach(function (ev) {
+    document.addEventListener(ev, function () { if (!lastShow) return; settleUntil = Math.max(settleUntil, now() + 400); scheduleRect(); }, true);
+  });
   // Zoom and pan change the video's inline transform (and the fit mode the container's style) many times a second
   // while dragging: follow them right away instead of waiting for the 300 ms poll.
   var viewObs = null, viewObsEl = null;
