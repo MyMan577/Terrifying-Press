@@ -107,6 +107,10 @@
   .enh-ai-select{ width:100%; padding:8px 8px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; font-size:12px; }
   #enh-ai-status:empty, #enh-copy-status:empty{ display:none; }
   .enh-copy-row button[hidden]{ display:none !important; }
+  /* Picture enhance's Apply button, at the end of the menu */
+  .enh-apply{ display:block; width:100%; margin-top:12px; padding:12px 10px; border-radius:10px; border:1.5px solid var(--accent-dim, var(--line));
+    background:none; color:var(--accent); font:inherit; font-size:13.5px; font-weight:650; cursor:pointer; }
+  .enh-apply.on{ background:var(--accent); border-color:var(--accent); color:#0b0c0e; }
   /* Compare: the before | after line over the video, dragged by its grip (see 08-quality) */
   #enh-split{ position:absolute; z-index:6; width:44px; margin-left:-22px; display:none; touch-action:none; cursor:ew-resize; }
   #enh-split.on{ display:block; }

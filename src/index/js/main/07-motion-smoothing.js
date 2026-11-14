@@ -710,7 +710,7 @@
     if (!memcRingW) return;
     const dpr = window.devicePixelRatio || 1;
     const bw = memcCanvas.clientWidth * dpr, bh = memcCanvas.clientHeight * dpr;
-    const capH = MEMC_UP_CAPS[memcUpscale] || (enhAI !== 'off' ? 2160 : 0);   // an AI upscaler enlarges up to the screen even with Upscale off
+    const capH = !enhMaster ? 0 : (MEMC_UP_CAPS[memcUpscale] || (enhAI !== 'off' ? 2160 : 0));   // an AI upscaler enlarges up to the screen even with Upscale off
     let scale = 1;
     if (capH && bw > 0 && bh > 0){
       const fit = Math.min(bw / memcRingW, bh / memcRingH);
@@ -1381,12 +1381,14 @@
     PPNative.setMemc({
       mode: (memcMode !== 'off' && !perfLightActive()) ? memcMode : 'off',
       delayMs: Math.max(0, subtitleLatencyMs || 0),
-      maxIn: memcMaxIn, outFps: memcOutFps, strength, quality: memcQuality, upscale: memcUpscale,
-      sharp: enhSharp / 100, deband: enhDeband, deblock: enhDeblock, anime: enhAnime, compare: enhCompare, split: Math.round(enhCompareX * 1000) / 1000, ai: enhAI
+      maxIn: memcMaxIn, outFps: memcOutFps, strength, quality: memcQuality,
+      // Picture enhance only when its Apply button is on
+      upscale: enhMaster ? memcUpscale : 0, sharp: enhMaster ? enhSharp / 100 : 0, deband: !!enhMaster && enhDeband, deblock: !!enhMaster && enhDeblock,
+      anime: !!enhMaster && enhAnime, compare: !!enhMaster && enhCompare, split: Math.round(enhCompareX * 1000) / 1000, ai: enhMaster ? enhAI : 'off'
     });
     // The AI upscaler's shader passes, built here once and handed to the native engine (8 outputs per pass, frames
     // stored bottom row first there too).
-    if (enhAI !== 'off' && PPNative.setSrModel){
+    if (enhMaster && enhAI !== 'off' && PPNative.setSrModel){
       if (window.PP_SR_MODELS){ try { const sp = srSpec(enhAI, 8, true); if (sp) PPNative.setSrModel(enhAI, sp); } catch (e){ console.warn('[ai upscale]', e); } }
       else srEnsureLoaded();
     }

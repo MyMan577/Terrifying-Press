@@ -7,7 +7,7 @@
   function memcUpdateUpscaleUI(){
     memcUpBtns.forEach(b => b.classList.toggle('toggled', parseInt(b.dataset.memcUp, 10) === memcUpscale));
     const pl = document.getElementById('upscale-pill-label');
-    if (pl) pl.textContent = memcUpscale ? (MEMC_UP_CAPS[memcUpscale] === 2160 ? '4K' : MEMC_UP_CAPS[memcUpscale] + 'p') : memcEnhOn() ? 'On' : 'Off';
+    if (pl) pl.textContent = !memcEnhOn() ? 'Off' : enhAI !== 'off' ? 'AI' : memcUpscale ? (MEMC_UP_CAPS[memcUpscale] === 2160 ? '4K' : MEMC_UP_CAPS[memcUpscale] + 'p') : 'On';
     const sl = document.getElementById('enh-sharp'), sv = document.getElementById('enh-sharp-val');
     if (sl) sl.value = enhSharp;
     if (sv) sv.textContent = enhSharp ? enhSharp + '%' : 'Off';
@@ -15,7 +15,15 @@
       .forEach(([id, v]) => { const el = document.getElementById(id); if (el) el.checked = v; });
     const ub = document.getElementById('upscale-btn'); if (ub) ub.classList.toggle('toggled', memcEnhOn());
     const ai = document.getElementById('enh-ai-select'); if (ai && ai.value !== enhAI) ai.value = enhAI;
-    if (enhAI !== 'off' && pl) pl.textContent = 'AI';
+    // the Apply button: says plainly whether the settings above are being applied
+    const ap = document.getElementById('enh-apply'), dd = document.getElementById('upscale-dropdown');
+    if (ap){
+      const on = memcEnhOn();
+      ap.classList.toggle('on', on);
+      ap.setAttribute('aria-pressed', on ? 'true' : 'false');
+      ap.textContent = on ? 'Enhancements on \u00b7 tap to turn off' : enhMaster ? 'On, but nothing is set above' : 'Apply enhancements';
+    }
+    if (dd) dd.classList.toggle('enh-off', !memcEnhOn());
   }
   // ---- Compare: the before | after line, dragged on the video ----
   // The picture on the left of the line is without Picture enhance, on the right with it. The line and its grip are
@@ -74,7 +82,9 @@
   videoEl.addEventListener('loadedmetadata', enhSplitPaint);
 
   // Any enhance change: start/stop the GPU engine as needed, resize its output, and show the result (also while paused).
-  function enhChanged(){
+  // auto (default): a setting was changed, which turns the enhancements on so its effect shows straight away.
+  function enhChanged(auto){
+    if (auto !== false && memcEnhSettings()) enhMaster = true;
     enhSave(); memcUpdateUpscaleUI(); enhSplitPaint();
     refreshVideoDelayState();
     if (memcActive){ memcApplyOutSize(); memcRepaint(); }
@@ -143,7 +153,15 @@
     [['enh-deblock-toggle', v => { enhDeblock = v; }], ['enh-deband-toggle', v => { enhDeband = v; }],
      ['enh-anime-toggle', v => { enhAnime = v; }], ['enh-compare-toggle', v => { enhCompare = v; }]].forEach(([id, set]) => {
       const el = document.getElementById(id);
-      if (el) el.addEventListener('change', () => { set(el.checked); enhChanged(); });
+      if (el) el.addEventListener('change', () => { set(el.checked); enhChanged(id !== 'enh-compare-toggle'); });
+    });
+    const ap = document.getElementById('enh-apply');
+    if (ap) ap.addEventListener('click', (e) => {
+      e.stopPropagation();
+      enhMaster = !memcEnhOn();
+      if (enhMaster && !memcEnhSettings()){ enhMaster = true; showToast('Pick an upscaler or a setting above first.'); }
+      if (enhMaster && enhAI !== 'off') srEnsureLoaded().then(() => memcRepaint());
+      enhChanged(false);
     });
   })();
   memcUpdateQualityUI(); memcUpdateUpscaleUI();

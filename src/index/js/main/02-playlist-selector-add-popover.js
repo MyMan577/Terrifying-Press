@@ -392,17 +392,21 @@
   const ENH_KEY = 'playerEnhance';
   const ENH_AI_IDS = ['sesr_m5', 'quicksrnet_small', 'quicksrnet_medium', 'xlsr', 'anime4k_s', 'anime4k_m'];
   let enhSharp = 0, enhDeband = false, enhDeblock = false, enhAnime = false, enhCompare = false, enhSharpSet = false, enhAI = 'off';
+  let enhMaster = null;      // the Apply button at the bottom of the menu: off keeps the settings but applies none
   let enhCompareX = 0.5;   // where the Compare line is, 0 (left edge) .. 1 (right edge) of the picture; dragged on the video
   try {
     const e = JSON.parse(localStorage.getItem(ENH_KEY) || '{}') || {};
     if (typeof e.sharp === 'number' && e.sharp >= 0 && e.sharp <= 100){ enhSharp = e.sharp; enhSharpSet = true; }
     enhDeband = !!e.deband; enhDeblock = !!e.deblock; enhAnime = !!e.anime;
     if (ENH_AI_IDS.includes(e.ai)) enhAI = e.ai;
+    if (typeof e.on === 'boolean') enhMaster = e.on;
   } catch (e){}
+  if (enhMaster === null) enhMaster = memcEnhSettings();   // first time: on if something was already set up
   function enhSave(){
-    try { localStorage.setItem(ENH_KEY, JSON.stringify({ sharp: enhSharpSet ? enhSharp : undefined, deband: enhDeband, deblock: enhDeblock, anime: enhAnime, ai: enhAI })); } catch (e){}
+    try { localStorage.setItem(ENH_KEY, JSON.stringify({ sharp: enhSharpSet ? enhSharp : undefined, deband: enhDeband, deblock: enhDeblock, anime: enhAnime, ai: enhAI, on: !!enhMaster })); } catch (e){}
   }
-  function memcEnhOn(){ return memcUpscale > 0 || enhSharp > 0 || enhDeband || enhDeblock || enhAnime || enhAI !== 'off'; }
+  function memcEnhSettings(){ return memcUpscale > 0 || enhSharp > 0 || enhDeband || enhDeblock || enhAnime || enhAI !== 'off'; }
+  function memcEnhOn(){ return !!enhMaster && memcEnhSettings(); }
   const MEMC_DELAY_KEY = 'playerMemcDelayGL';
   let memcDelayGL = true;   // carry the picture delay on the GPU engine when smoothing is off/skipped
   // Hidden decode compensation: a fixed extra picture delay added to every video to cover the
