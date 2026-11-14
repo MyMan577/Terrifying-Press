@@ -7,7 +7,19 @@
   function memcUpdateUpscaleUI(){
     memcUpBtns.forEach(b => b.classList.toggle('toggled', parseInt(b.dataset.memcUp, 10) === memcUpscale));
     const pl = document.getElementById('upscale-pill-label');
-    if (pl) pl.textContent = memcUpscale ? (MEMC_UP_CAPS[memcUpscale] === 2160 ? '4K' : MEMC_UP_CAPS[memcUpscale] + 'p') : 'Off';
+    if (pl) pl.textContent = memcUpscale ? (MEMC_UP_CAPS[memcUpscale] === 2160 ? '4K' : MEMC_UP_CAPS[memcUpscale] + 'p') : memcEnhOn() ? 'On' : 'Off';
+    const sl = document.getElementById('enh-sharp'), sv = document.getElementById('enh-sharp-val');
+    if (sl) sl.value = enhSharp;
+    if (sv) sv.textContent = enhSharp ? enhSharp + '%' : 'Off';
+    [['enh-deblock-toggle', enhDeblock], ['enh-deband-toggle', enhDeband], ['enh-anime-toggle', enhAnime], ['enh-compare-toggle', enhCompare]]
+      .forEach(([id, v]) => { const el = document.getElementById(id); if (el) el.checked = v; });
+    const ub = document.getElementById('upscale-btn'); if (ub) ub.classList.toggle('toggled', memcEnhOn());
+  }
+  // Any enhance change: start/stop the GPU engine as needed, resize its output, and show the result (also while paused).
+  function enhChanged(){
+    enhSave(); memcUpdateUpscaleUI();
+    refreshVideoDelayState();
+    if (memcActive){ memcApplyOutSize(); memcRepaint(); }
   }
   function memcRepaint(){
     memcLastKey = '';
@@ -23,10 +35,18 @@
   memcUpBtns.forEach(b => b.addEventListener('click', () => {
     memcUpscale = parseInt(b.dataset.memcUp, 10) || 0;
     try { localStorage.setItem(MEMC_UP_KEY, String(memcUpscale)); } catch (e){}
-    memcUpdateUpscaleUI();
-    memcApplyOutSize();
-    memcRepaint();
+    if (memcUpscale && !enhSharpSet){ enhSharp = 50; enhSharpSet = true; }   // upscaling on its own looks like nothing: start with some sharpening
+    enhChanged();
   }));
+  (function(){
+    const sl = document.getElementById('enh-sharp');
+    if (sl) sl.addEventListener('input', () => { enhSharp = parseInt(sl.value, 10) || 0; enhSharpSet = true; enhChanged(); });
+    [['enh-deblock-toggle', v => { enhDeblock = v; }], ['enh-deband-toggle', v => { enhDeband = v; }],
+     ['enh-anime-toggle', v => { enhAnime = v; }], ['enh-compare-toggle', v => { enhCompare = v; }]].forEach(([id, set]) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', () => { set(el.checked); enhChanged(); });
+    });
+  })();
   memcUpdateQualityUI(); memcUpdateUpscaleUI();
   if ('ResizeObserver' in window){
     new ResizeObserver(() => { if (memcActive){ memcApplyOutSize(); memcRepaint(); } }).observe(memcCanvas);

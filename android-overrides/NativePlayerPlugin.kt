@@ -519,7 +519,12 @@ class NativePlayerPlugin : Plugin() {
             outFps = call.getInt("outFps") ?: 120,
             strength = (call.getDouble("strength") ?: 0.5).toFloat(),
             quality = call.getInt("quality") ?: 1,
-            upscale = call.getInt("upscale") ?: 0)
+            upscale = call.getInt("upscale") ?: 0,
+            sharp = (call.getDouble("sharp") ?: 0.0).toFloat(),
+            deband = call.getBoolean("deband") ?: false,
+            deblock = call.getBoolean("deblock") ?: false,
+            anime = call.getBoolean("anime") ?: false,
+            compare = call.getBoolean("compare") ?: false)
         main.post {
             MainActivity.playerView?.let { pv ->
                 pv.onStatus = { m ->

@@ -50,7 +50,7 @@
   // lighter than the 2D-canvas capture path, so heavy videos stop dropping frames.
   function memcWanted(){
     const glDelay = memcDelayGL && effLatencyMs() > 0 && !(losslessLatency && VIDEO_DELAY_CAN_USE_TRACK);
-    return !memcFailed && (memcSmoothing() || glDelay)
+    return !memcFailed && (memcSmoothing() || glDelay || memcEnhOn())
       && 'requestVideoFrameCallback' in videoEl
       && videoWrap.style.display !== 'none'
       && currentIndex !== -1 && tracks[currentIndex] && tracks[currentIndex].kind === 'video';
@@ -189,6 +189,145 @@
       + '         + texture(t, vec2(p12.x, p3.y)).rgb * (w12.x * w3.y)\n'
       + '         + texture(t, vec2(p3.x, p3.y)).rgb * (w3.x * w3.y);\n'
       + '  return clamp(r, 0.0, 1.0);\n'
+      + '}\n';
+
+    // Picture enhance (see memcEnhPasses). Kept identical to NativeVideoView.kt.
+    // PRE, at the processing size: compression clean-up (8x8 block edges + an edge-keeping smooth for ringing),
+    // banding smoothing (averages flat areas, then a 1-step grain so the bands stay gone) and anime lines
+    // (darker line art).
+    const FS_ENH_PRE = 'uniform sampler2D uTex; uniform vec2 uSize; uniform float uDeblock; uniform float uDeband; uniform float uAnime; uniform float uBlock; uniform float uRad; uniform float uSeed;\n'
+      + 'float lum(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }\n'
+      + 'vec3 tx(vec2 p){ return texture(uTex, p / uSize).rgb; }\n'
+      + 'float hash(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }\n'
+      + 'vec3 deblockAxis(vec3 c, vec2 p, float fq, vec2 ax){\n'
+      + '  float dl = fq, dr = uBlock - fq;\n'
+      + '  float k = floor(min(dl, dr));\n'
+      + '  if (k > 1.0) return c;\n'
+      + '  vec2 s = dl < dr ? -ax : ax;\n'
+      + '  vec3 A = tx(p + s * k), B = tx(p + s * (k + 1.0));\n'
+      + '  vec3 A2 = tx(p + s * (k - 1.0)), B2 = tx(p + s * (k + 2.0));\n'
+      + '  float step0 = abs(lum(B) - lum(A));\n'
+      + '  if (step0 > 0.09 || abs(lum(A2) - lum(A)) > 0.03 || abs(lum(B2) - lum(B)) > 0.03) return c;\n'
+      + '  return c + (B - A) * (k < 0.5 ? 0.375 : 0.125);\n'
+      + '}\n'
+      + 'void main(){\n'
+      + '  vec2 p = vUv * uSize;\n'
+      + '  vec3 c = tx(p);\n'
+      + '  if (uDeblock > 0.5){\n'
+      + '    if (uBlock >= 4.0){\n'
+      + '      vec2 fq = mod(p, uBlock);\n'
+      + '      c = deblockAxis(c, p, fq.x, vec2(1.0, 0.0));\n'
+      + '      c = deblockAxis(c, p, fq.y, vec2(0.0, 1.0));\n'
+      + '    }\n'
+      + '    vec3 acc = vec3(0.0); float ws = 0.0; float l0 = lum(c);\n'
+      + '    for (int j = -1; j <= 1; j++){ for (int i = -1; i <= 1; i++){\n'
+      + '      vec3 s = (i == 0 && j == 0) ? c : tx(p + vec2(float(i), float(j)));\n'
+      + '      float d = lum(s) - l0;\n'
+      + '      float w = exp(-d * d * 900.0) * ((i == 0 || j == 0) ? 1.0 : 0.6);\n'
+      + '      acc += s * w; ws += w;\n'
+      + '    } }\n'
+      + '    c = mix(c, acc / ws, 0.5);\n'
+      + '  }\n'
+      + '  if (uDeband > 0.5){\n'
+      + '    vec3 a = c;\n'
+      + '    for (int it = 1; it <= 2; it++){\n'
+      + '      float fi = float(it);\n'
+      + '      float r = uRad * fi * (0.5 + hash(p + fi * 17.0));\n'
+      + '      float an = hash(p * 1.7 + fi * 31.0) * 6.2831853;\n'
+      + '      vec2 o = vec2(cos(an), sin(an)) * r;\n'
+      + '      vec3 s1 = tx(p + o), s2 = tx(p - o), s3 = tx(p + vec2(-o.y, o.x)), s4 = tx(p + vec2(o.y, -o.x));\n'
+      + '      vec3 av = (s1 + s2 + s3 + s4) * 0.25;\n'
+      + '      vec3 df = max(max(abs(s1 - a), abs(s2 - a)), max(abs(s3 - a), abs(s4 - a)));\n'
+      + '      a = mix(av, a, step(vec3(0.011 / fi), df));\n'
+      + '    }\n'
+      + '    c = a + (hash(p + uSeed) - hash(p.yx + uSeed + 7.0)) * (1.0 / 255.0);\n'
+      + '  }\n'
+      + '  if (uAnime > 0.5){\n'
+      + '    float t00 = lum(tx(p + vec2(-1.0, -1.0))), t10 = lum(tx(p + vec2(0.0, -1.0))), t20 = lum(tx(p + vec2(1.0, -1.0)));\n'
+      + '    float t01 = lum(tx(p + vec2(-1.0, 0.0))), t11 = lum(tx(p)), t21 = lum(tx(p + vec2(1.0, 0.0)));\n'
+      + '    float t02 = lum(tx(p + vec2(-1.0, 1.0))), t12 = lum(tx(p + vec2(0.0, 1.0))), t22 = lum(tx(p + vec2(1.0, 1.0)));\n'
+      + '    vec2 g = vec2(t20 + 2.0 * t21 + t22 - t00 - 2.0 * t01 - t02, t02 + 2.0 * t12 + t22 - t00 - 2.0 * t10 - t20);\n'
+      + '    float m = length(g);\n'
+      + '    float e = smoothstep(0.1, 0.45, m);\n'
+      + '    float mean = (t00 + t10 + t20 + t01 + t11 + t21 + t02 + t12 + t22) * (1.0 / 9.0);\n'
+      + '    c -= vec3(max(0.0, mean - t11) * 1.2 * e);\n'
+      + '  }\n'
+      + '  oc = vec4(clamp(c, 0.0, 1.0), 1.0);\n'
+      + '}\n';
+
+    const FS_ENH_UP = 'uniform sampler2D uTex; uniform vec2 uSrc;\n'
+      + 'void main(){\n'
+      + '  vec2 pos = vUv * uSrc - 0.5;\n'
+      + '  vec2 fp = floor(pos); vec2 f = pos - fp;\n'
+      + '  ivec2 ip = ivec2(fp); ivec2 mx = ivec2(uSrc) - 1;\n'
+      + '  vec3 c[16]; float l[16];\n'
+      + '  for (int j = 0; j < 4; j++){ for (int i = 0; i < 4; i++){\n'
+      + '    vec3 s = texelFetch(uTex, clamp(ip + ivec2(i - 1, j - 1), ivec2(0), mx), 0).rgb;\n'
+      + '    c[j * 4 + i] = s; l[j * 4 + i] = dot(s, vec3(0.299, 0.587, 0.114));\n'
+      + '  } }\n'
+      + '  float sxx = 0.0, syy = 0.0, sxy = 0.0;\n'
+      + '  for (int j = 1; j <= 2; j++){ for (int i = 1; i <= 2; i++){\n'
+      + '    float w = (i == 1 ? 1.0 - f.x : f.x) * (j == 1 ? 1.0 - f.y : f.y);\n'
+      + '    float gx = l[j * 4 + i + 1] - l[j * 4 + i - 1];\n'
+      + '    float gy = l[(j + 1) * 4 + i] - l[(j - 1) * 4 + i];\n'
+      + '    sxx += w * gx * gx; syy += w * gy * gy; sxy += w * gx * gy;\n'
+      + '  } }\n'
+      + '  float tr = sxx + syy;\n'
+      + '  float dd = sqrt((sxx - syy) * (sxx - syy) + 4.0 * sxy * sxy);\n'
+      + '  float l1 = 0.5 * (tr + dd), l2 = 0.5 * (tr - dd);\n'
+      + '  vec2 v = vec2(l1 - syy, sxy);\n'
+      + '  float vl = length(v);\n'
+      + '  vec2 dir = vl > 1e-8 ? v / vl : vec2(1.0, 0.0);\n'
+      + '  float len = tr > 1e-7 ? (l1 - l2) / (l1 + l2) : 0.0;\n'
+      + '  len *= smoothstep(0.0002, 0.003, tr);\n'
+      + '  float stretch = 1.0 / max(abs(dir.x), abs(dir.y));\n'
+      + '  vec2 len2 = vec2(1.0 + (stretch - 1.0) * len, 1.0 - 0.5 * len);\n'
+      + '  float lob = 0.5 + ((0.25 - 0.04) - 0.5) * len;\n'
+      + '  float clp = 1.0 / lob;\n'
+      + '  vec3 acc = vec3(0.0); float ws = 0.0;\n'
+      + '  for (int j = 0; j < 4; j++){ for (int i = 0; i < 4; i++){\n'
+      + '    vec2 d = vec2(float(i - 1), float(j - 1)) - f;\n'
+      + '    vec2 r = vec2(dot(d, dir), dot(d, vec2(-dir.y, dir.x))) * len2;\n'
+      + '    float x2 = min(dot(r, r), clp);\n'
+      + '    float wB = 0.4 * x2 - 1.0; float wA = lob * x2 - 1.0;\n'
+      + '    float w = (1.5625 * wB * wB - 0.5625) * (wA * wA);\n'
+      + '    acc += c[j * 4 + i] * w; ws += w;\n'
+      + '  } }\n'
+      + '  vec3 o = acc / ws;\n'
+      + '  vec3 mn = min(min(c[5], c[6]), min(c[9], c[10]));\n'
+      + '  vec3 mxv = max(max(c[5], c[6]), max(c[9], c[10]));\n'
+      + '  oc = vec4(clamp(o, mn, mxv), 1.0);\n'
+      + '}\n';
+
+    const FS_ENH_FIN = 'uniform sampler2D uTex; uniform sampler2D uBefore; uniform float uCon; uniform float uSplit;\n'
+      + 'void main(){\n'
+      + '  ivec2 q = ivec2(gl_FragCoord.xy); ivec2 mx = textureSize(uTex, 0) - 1;\n'
+      + '  vec3 e = texelFetch(uTex, clamp(q, ivec2(0), mx), 0).rgb;\n'
+      + '  vec3 o = e;\n'
+      + '  if (uCon > 0.0){\n'
+      + '    vec3 b = texelFetch(uTex, clamp(q + ivec2(0, -1), ivec2(0), mx), 0).rgb;\n'
+      + '    vec3 d = texelFetch(uTex, clamp(q + ivec2(-1, 0), ivec2(0), mx), 0).rgb;\n'
+      + '    vec3 f = texelFetch(uTex, clamp(q + ivec2(1, 0), ivec2(0), mx), 0).rgb;\n'
+      + '    vec3 h = texelFetch(uTex, clamp(q + ivec2(0, 1), ivec2(0), mx), 0).rgb;\n'
+      + '    vec3 mn4 = min(min(b, d), min(f, h)); vec3 mx4 = max(max(b, d), max(f, h));\n'
+      + '    vec3 hitMin = min(mn4, e) / (4.0 * mx4 + 1e-4);\n'
+      + '    vec3 hitMax = (1.0 - max(mx4, e)) / (4.0 * min(mn4, e) - 4.0 - 1e-4);\n'
+      + '    vec3 lr = max(-hitMin, hitMax);\n'
+      + '    float lobe = max(-0.1875, min(max(lr.r, max(lr.g, lr.b)), 0.0)) * uCon;\n'
+      + '    vec3 W = vec3(0.299, 0.587, 0.114);\n'
+      + '    float bL = dot(b, W), dL = dot(d, W), eL = dot(e, W), fL = dot(f, W), hL = dot(h, W);\n'
+      + '    float nz = 0.25 * (bL + dL + fL + hL) - eL;\n'
+      + '    float rng = max(max(max(bL, dL), max(eL, fL)), hL) - min(min(min(bL, dL), min(eL, fL)), hL);\n'
+      + '    nz = clamp(abs(nz) / max(rng, 1e-4), 0.0, 1.0);\n'
+      + '    lobe *= 1.0 - 0.5 * nz;\n'
+      + '    o = (lobe * (b + d + f + h) + e) / (4.0 * lobe + 1.0);\n'
+      + '  }\n'
+      + '  if (uSplit >= 0.0){\n'
+      + '    vec2 uv = (vec2(q) + 0.5) / vec2(mx + 1);\n'
+      + '    if (uv.x < uSplit) o = texture(uBefore, uv).rgb;\n'
+      + '    if (abs(gl_FragCoord.x - uSplit * float(mx.x + 1)) < 1.5) o = vec3(1.0);\n'
+      + '  }\n'
+      + '  oc = vec4(clamp(o, 0.0, 1.0), 1.0);\n'
       + '}\n';
 
     // Ultra: refine the 8px vectors to 4px blocks (8x8 window). Candidates: the parent's and its
@@ -346,7 +485,10 @@
         blend: mk(FS_BLEND, ['uF0', 'uF1', 'uA', 'uUp']),
         mc:    mk(FS_MC,    ['uF0', 'uF1', 'uMv', 'uA', 'uInvAna', 'uFall', 'uUp']),
         ref:   mk(FS_REF,   ['uCur', 'uPrev', 'uRaw', 'uPrior', 'uHasPrior', 'uSize', 'uGrid']),
-        mc2:   mk(FS_MC2,   ['uF0', 'uF1', 'uMvF', 'uMvB', 'uA', 'uInvAna', 'uFall', 'uUp'])
+        mc2:   mk(FS_MC2,   ['uF0', 'uF1', 'uMvF', 'uMvB', 'uA', 'uInvAna', 'uFall', 'uUp']),
+        enhPre: mk(FS_ENH_PRE, ['uTex', 'uSize', 'uDeblock', 'uDeband', 'uAnime', 'uBlock', 'uRad', 'uSeed']),
+        enhUp:  mk(FS_ENH_UP,  ['uTex', 'uSrc']),
+        enhFin: mk(FS_ENH_FIN, ['uTex', 'uBefore', 'uCon', 'uSplit'])
       };
     } catch (e){
       return fail('Shader error: ' + (e && e.message ? e.message : e));
@@ -430,7 +572,9 @@
       memcLuma.forEach(l => { gl.deleteFramebuffer(l.fbo); gl.deleteTexture(l.tex); });
       if (memcMvRaw){ gl.deleteFramebuffer(memcMvRaw.fbo); gl.deleteTexture(memcMvRaw.tex); }
       if (memcMvRef){ gl.deleteFramebuffer(memcMvRef.fbo); gl.deleteTexture(memcMvRef.tex); }
+      for (const k in memcEnh){ const t = memcEnh[k]; if (t){ gl.deleteFramebuffer(t.fbo); gl.deleteTexture(t.tex); } }
     }
+    memcEnh = { mid: null, pre: null, up: null };
     memcRing = []; memcLuma = []; memcMvRaw = null; memcMvRef = null; memcAna = null;
     memcResKey = ''; memcWrite = 0; memcPrevSeq = 0; memcPrevLumaValid = false; memcLumaIdx = 0;
     memcPrevSlot = null; memcUniqSlot = null;
@@ -780,8 +924,11 @@
   function memcDraw(f0, f1, a){
     const gl = memcGL;
     if (memcCountDraws) memcDrawStamps.push(performance.now());
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, memcCanvas.width, memcCanvas.height);
+    // With picture enhance on, the frame goes to a texture at the processing size first; memcEnhPasses takes it from there.
+    const mid = memcEnhOn() ? memcEnhTex('mid', memcRingW, memcRingH) : null;
+    const up = mid ? 0 : (memcOutW > memcRingW ? 1 : 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, mid ? mid.fbo : null);
+    gl.viewport(0, 0, mid ? mid.w : memcCanvas.width, mid ? mid.h : memcCanvas.height);
     if (f1 && a > 0 && memcIsMotion() && memcAna && f1.hasMv && f1.prevSeq === f0.seq && (memcMode !== 'ultra' || f1.mvTexB)){
       const ultra = memcMode === 'ultra';
       const P = ultra ? memcProgs.mc2 : memcProgs.mc;
@@ -792,7 +939,7 @@
       else gl.uniform1i(P.u.uMv, 2);
       gl.uniform1f(P.u.uA, a);
       gl.uniform2f(P.u.uInvAna, 1 / memcAna.w, 1 / memcAna.h);
-      gl.uniform1f(P.u.uUp, memcOutW > memcRingW ? 1 : 0);
+      gl.uniform1f(P.u.uUp, up);
       gl.uniform2f(P.u.uFall, 0.06 + 0.24 * memcStrength, 0.15 + 0.6 * memcStrength);
     } else {
       const P = memcProgs.blend;
@@ -801,8 +948,50 @@
       memcBind(0, f0.tex); memcBind(1, second.tex);
       gl.uniform1i(P.u.uF0, 0); gl.uniform1i(P.u.uF1, 1);
       gl.uniform1f(P.u.uA, (f1 && a > 0) ? a : 0);
-      gl.uniform1f(P.u.uUp, memcOutW > memcRingW ? 1 : 0);
+      gl.uniform1f(P.u.uUp, up);
     }
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    if (mid) memcEnhPasses(mid);
+  }
+
+  function memcEnhTex(name, w, h){
+    const gl = memcGL, t = memcEnh[name];
+    if (t && t.w === w && t.h === h) return t;
+    if (t){ gl.deleteFramebuffer(t.fbo); gl.deleteTexture(t.tex); }
+    const tex = memcMakeTex(w, h, gl.LINEAR);
+    return (memcEnh[name] = { tex, fbo: memcMakeFbo(tex), w, h });
+  }
+  // mid (the plain frame, processing size) -> [clean-up / deband / anime] -> [edge-aware upscale to the output size]
+  // -> adaptive sharpening (FSR-style RCAS: strongest on soft detail, held back on noise and where it would overshoot)
+  // -> the canvas. With Compare on, the left half shows the plain frame as it would look without any of this.
+  function memcEnhPasses(mid){
+    const gl = memcGL, P = memcProgs;
+    let src = mid;
+    if (enhDeblock || enhDeband || enhAnime){
+      const pre = memcEnhTex('pre', mid.w, mid.h), u = P.enhPre.u;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, pre.fbo); gl.viewport(0, 0, pre.w, pre.h);
+      gl.useProgram(P.enhPre.p); memcBind(0, mid.tex);
+      gl.uniform1i(u.uTex, 0); gl.uniform2f(u.uSize, mid.w, mid.h);
+      gl.uniform1f(u.uDeblock, enhDeblock ? 1 : 0); gl.uniform1f(u.uDeband, enhDeband ? 1 : 0); gl.uniform1f(u.uAnime, enhAnime ? 1 : 0);
+      gl.uniform1f(u.uBlock, 8 * mid.w / Math.max(1, videoEl.videoWidth || mid.w));   // the codec's 8x8 grid at this size
+      gl.uniform1f(u.uRad, Math.max(2, 8 * mid.h / 1080));
+      memcEnhSeed = (memcEnhSeed + 1) % 997; gl.uniform1f(u.uSeed, memcEnhSeed * 1.37);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      src = pre;
+    }
+    if (memcOutW !== src.w || memcOutH !== src.h){
+      const upT = memcEnhTex('up', memcOutW, memcOutH), u = P.enhUp.u;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, upT.fbo); gl.viewport(0, 0, upT.w, upT.h);
+      gl.useProgram(P.enhUp.p); memcBind(0, src.tex);
+      gl.uniform1i(u.uTex, 0); gl.uniform2f(u.uSrc, src.w, src.h);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      src = upT;
+    }
+    const u = P.enhFin.u;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, memcCanvas.width, memcCanvas.height);
+    gl.useProgram(P.enhFin.p); memcBind(0, src.tex); memcBind(1, mid.tex);
+    gl.uniform1i(u.uTex, 0); gl.uniform1i(u.uBefore, 1);
+    gl.uniform1f(u.uCon, enhSharp / 100); gl.uniform1f(u.uSplit, enhCompare ? 0.5 : -1);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
@@ -957,7 +1146,8 @@
     PPNative.setMemc({
       mode: (memcMode !== 'off' && !perfLightActive()) ? memcMode : 'off',
       delayMs: Math.max(0, subtitleLatencyMs || 0),
-      maxIn: memcMaxIn, outFps: memcOutFps, strength, quality: memcQuality, upscale: memcUpscale
+      maxIn: memcMaxIn, outFps: memcOutFps, strength, quality: memcQuality, upscale: memcUpscale,
+      sharp: enhSharp / 100, deband: enhDeband, deblock: enhDeblock, anime: enhAnime, compare: enhCompare
     });
   }
   setInterval(nativeMemcPush, 700);   // sliders change these without calling memcSync; the bridge only sends changes
