@@ -6,6 +6,11 @@
  * fingerprint, a few addresses), so it stays small and quick to scan.
  * Codes can also be copied and pasted, e.g. sent through a chat app.
  *
+ * QUICK LINK (the default): the host gets a 4-letter room code; the other phone types it (or scans it) once.
+ * The code is matched up through PeerJS's free public broker (0.peerjs.com, loaded from peerjs.min.js here);
+ * once the phones are linked they talk directly and the broker is let go. With no internet, the two-QR flow
+ * below still works ("No internet? Use QR codes").
+ *
  * Usage:
  *   QRLink.open({ app:'kitchen', title:'Co-op', hostLabel:'Host', joinLabel:'Join',
  *                 onConnected(conn, role){...}, onClose(){...} });
@@ -154,6 +159,10 @@
   '#qrl textarea{width:min(80vw,320px);height:70px;border-radius:10px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.06);color:#f1ece2;font:12px monospace;padding:8px;-webkit-user-select:text;user-select:text}' +
   '#qrl .err{color:#ff9b8a;min-height:20px;font-size:13px}' +
   '#qrl p.detail{font-size:11px;opacity:.7;word-break:break-word;font-family:ui-monospace,monospace}' +
+  '#qrl .code{font:800 54px/1 ui-monospace,monospace;letter-spacing:.18em;padding:6px 0 6px .18em;color:#fff}' +
+  '#qrl .qr.small canvas{width:min(38vw,150px)}' +
+  '#qrl input.codein{width:min(70vw,240px);font:800 34px/1 ui-monospace,monospace;letter-spacing:.3em;text-align:center;text-transform:uppercase;padding:12px 8px;border-radius:12px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.07);color:#fff;-webkit-user-select:text;user-select:text}' +
+  '#qrl button.link{background:none;min-width:0;padding:6px;color:#bdb6a8;font-weight:500;text-decoration:underline}' +
   '#qrl .spin{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,.15);border-top-color:var(--qrl-acc,#e8a33a);animation:qrlspin .8s linear infinite}' +
   '@keyframes qrlspin{to{transform:rotate(360deg)}}';
 
@@ -195,7 +204,7 @@
   function open(opts){
     opts = opts || {};
     var app = opts.app || 'game';
-    var root, body, pc, dc, stream, scanTimer, finished = false;
+    var root, body, pc, dc, stream, scanTimer, finished = false, peer = null;
 
     if (!document.getElementById('qrl-css')){ var st = el('style', { id:'qrl-css' }); st.textContent = CSS; document.head.appendChild(st); }
     root = el('div', { id:'qrl' }); if (opts.accent) root.style.setProperty('--qrl-acc', opts.accent);
@@ -206,6 +215,7 @@
     function teardown(){
       stopCam();
       if (!finished){ try { if (dc) dc.close(); } catch(e){} try { if (pc) pc.close(); } catch(e){} }
+      if (peer && !finished){ try { peer.destroy(); } catch(e){} peer = null; }
       if (root && root.parentNode) root.parentNode.removeChild(root);
     }
     function stopCam(){
@@ -386,14 +396,127 @@
       setTimeout(function(){ if (!finished && pc === mine && root.parentNode) showError(ERRS.fail, why('linking', { message: 'no answer in ' + Math.round((ms || 20000) / 1000) + ' s (' + (pc && pc.iceConnectionState) + ')' })); }, ms || 20000);
     }
 
-    function start(){
+    // ---- quick link: a room code ----
+    var CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';   // no 0/O, 1/I/L: easy to read out and type
+    function makeCode(){ var c = ''; var r = new Uint8Array(4); (window.crypto || {}).getRandomValues ? crypto.getRandomValues(r) : r.forEach(function(_, i){ r[i] = Math.random() * 256; }); for (var i = 0; i < 4; i++) c += CODE_CHARS[r[i] % CODE_CHARS.length]; return c; }
+    function peerId(code){ return 'pplink-' + String(app).toLowerCase().replace(/[^a-z0-9]/g, '') + '-' + code.toLowerCase(); }
+    function cleanCode(t){ var m = /^PPL2\|([^|]+)\|([A-Za-z0-9]{4})$/.exec(String(t || '').trim()); if (m) return m[1] === app ? m[2].toUpperCase() : 'otherapp'; return String(t || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4); }
+    function freshPeer(id){
+      try { if (peer) peer.destroy(); } catch(e){}
+      var P = window.Peer, cfg = Object.assign({ config: { iceServers: ICE }, debug: 0 }, window.QRLinkBroker || {});   // (QRLinkBroker: { host, port, path, secure } for a self-hosted broker or tests)
+      peer = id ? new P(id, cfg) : new P(cfg);
+      return peer;
+    }
+    function linked(c, role){   // a PeerJS DataConnection opened: wrap its own channel, let the broker go
+      if (finished) return;
+      if (!c.dataChannel || !c.peerConnection) { quickFail({ message: 'no data channel' }); return; }
+      finished = true; pc = c.peerConnection; dc = c.dataChannel;
+      var conn = makeConn(pc, dc); conn.role = role;
+      var pr = peer; peer = null; setTimeout(function(){ try { pr.disconnect(); } catch(e){} }, 1500);   // the link is direct now; keep it, drop the broker
+      teardown();
+      if (opts.onConnected) opts.onConnected(conn, role);
+    }
+    function quickFail(e){
+      try { if (peer) peer.destroy(); } catch(err){} peer = null;
+      if (!root.parentNode || finished) return;
+      screen([el('h2',{text:'Not connected'}),
+        el('p',{text:"Couldn't reach the link service. Check the internet on this phone and try again, or link with QR codes (that needs no internet)."}),
+        el('p',{cls:'detail', text: why('code link', e)}),
+        el('div',{cls:'row'},[ el('button',{text:'Try again', onclick:start}), el('button',{cls:'ghost', text:'Use QR codes', onclick:qrStart}) ]),
+        el('button',{cls:'ghost', text:'Close', onclick:cancel})]);
+    }
+    function quickHost(){
+      busy('Getting a room code…');
+      var tries = 0;
+      loadLib('peerjs.min.js', 'Peer').then(function next(){
+        if (!root.parentNode || finished) return;
+        var code = makeCode(), p = freshPeer(peerId(code)), shown = false;
+        p.on('open', function(){
+          if (p !== peer) return; shown = true;
+          var qr = el('div',{cls:'qr small'});
+          loadLib('qrcode.min.js', 'qrcode').then(function(){ qr.appendChild(drawQR('PPL2|' + app + '|' + code)); }).catch(function(){ qr.style.display = 'none'; });
+          screen([el('h2',{text:'Your room code'}), el('div',{cls:'code', text:code}),
+            el('p',{text:'On the other phone, tap Join and type this code, or scan it.'}), qr,
+            el('div',{cls:'spin'}), el('p',{text:'Waiting for the other player…'}),
+            el('button',{cls:'ghost', text:'Cancel', onclick:cancel})]);
+        });
+        p.on('connection', function(c){ if (c.open) linked(c, 'host'); else c.on('open', function(){ linked(c, 'host'); }); });
+        p.on('error', function(e){
+          if (p !== peer) return;
+          if (e && e.type === 'unavailable-id' && ++tries < 5) { next(); return; }   // that code is taken right now: another one
+          if (!shown || (e && /network|server-error|socket|disconnected/.test(e.type || ''))) quickFail(e);
+        });
+        setTimeout(function(){ if (p === peer && !shown && !finished) quickFail({ message: 'no answer from the link service in 10 s' }); }, 10000);
+      }).catch(function(e){ quickFail(e); });
+    }
+    function quickJoin(errText){
+      var box = el('input',{ cls:'codein', maxlength:'4', autocomplete:'off', autocapitalize:'characters', spellcheck:'false', placeholder:'CODE', 'aria-label':'Room code' });
+      var err = el('div',{cls:'err', text: errText || ''});
+      function go(){
+        var code = cleanCode(box.value);
+        if (code === 'otherapp') { err.textContent = ERRS.otherapp; return; }
+        if (code.length !== 4) { err.textContent = 'The room code has 4 letters.'; return; }
+        joinCode(code);
+      }
+      box.addEventListener('input', function(){ var v = cleanCode(box.value); if (v !== 'otherapp' && v !== box.value) box.value = v; err.textContent = ''; if (v.length === 4) go(); });
+      box.addEventListener('keydown', function(e){ if (e.key === 'Enter') go(); });
+      screen([el('h2',{text:'Join'}), el('p',{text:'Type the room code shown on the host’s phone.'}), box, err,
+        el('div',{cls:'row'},[ el('button',{text:'Join', onclick:go}), el('button',{cls:'ghost', text:'Scan code', onclick:scanRoom}) ]),
+        el('button',{cls:'ghost', text:'Back', onclick:start})]);
+      setTimeout(function(){ try { box.focus(); } catch(e){} }, 50);
+    }
+    function scanRoom(){
+      scan('Scan the room code', 'Point your camera at the code on the host’s phone.', function(text){
+        var code = cleanCode(text);
+        if (code === 'otherapp') return 'otherapp';
+        if (code.length !== 4) return 'notcode';
+        joinCode(code); return null;
+      });
+    }
+    function joinCode(code){
+      busy('Joining ' + code + '…');
+      loadLib('peerjs.min.js', 'Peer').then(function(){
+        if (!root.parentNode || finished) return;
+        var p = freshPeer(null), asked = false;
+        p.on('open', function(){
+          if (p !== peer) return; asked = true;
+          var c = p.connect(peerId(code), { reliable: true, serialization: 'raw' });
+          c.on('open', function(){ linked(c, 'guest'); });
+        });
+        p.on('error', function(e){
+          if (p !== peer) return;
+          if (e && e.type === 'peer-unavailable') { try { p.destroy(); } catch(err){} peer = null; quickJoin('No game with code ' + code + '. Check the code on the host’s phone.'); return; }
+          quickFail(e);
+        });
+        setTimeout(function(){ if (p === peer && !finished) quickFail({ message: asked ? 'the host did not answer in 15 s' : 'no answer from the link service in 15 s' }); }, 15000);
+      }).catch(function(e){ quickFail(e); });
+    }
+
+    // ---- the two-QR flow, with no internet ----
+    function qrStart(){
+      try { if (peer) peer.destroy(); } catch(e){} peer = null;
       screen([
-        el('h2',{text: opts.title || 'Play together'}),
-        el('p',{text: opts.hint || 'One phone hosts, the other joins. You’ll scan each other’s codes.'}),
+        el('h2',{text:'Link with QR codes'}),
+        el('p',{text:'Works with no internet (on the same Wi-Fi, or close by). You’ll scan each other’s codes.'}),
         el('div',{cls:'row'},[
           el('button',{text: opts.hostLabel || 'Host', onclick:host}),
           el('button',{text: opts.joinLabel || 'Join', onclick:join})
         ]),
+        el('button',{cls:'ghost', text:'Back', onclick:start})
+      ]);
+    }
+
+    function start(){
+      resetPeer();
+      try { if (peer) peer.destroy(); } catch(e){} peer = null;
+      screen([
+        el('h2',{text: opts.title || 'Play together'}),
+        el('p',{text: opts.hint || 'One phone hosts and gets a 4-letter code; the other joins with it.'}),
+        el('div',{cls:'row'},[
+          el('button',{text: opts.hostLabel || 'Host', onclick:quickHost}),
+          el('button',{text: opts.joinLabel || 'Join', onclick:function(){ quickJoin(); }})
+        ]),
+        el('button',{cls:'link', text:'No internet? Use QR codes', onclick:qrStart}),
         el('button',{cls:'ghost', text:'Back', onclick:cancel})
       ]);
     }
