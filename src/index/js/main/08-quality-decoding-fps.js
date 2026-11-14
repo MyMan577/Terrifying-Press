@@ -58,11 +58,26 @@
       }, 500);
     }
     const cb = document.getElementById('enh-copy-btn'), cc = document.getElementById('enh-copy-cancel'), cs = document.getElementById('enh-copy-status');
+    const csz = document.getElementById('enh-copy-size');
+    if (csz){
+      try { const v = localStorage.getItem('ppEnhCopySize'); if (v && csz.querySelector('option[value="' + v + '"]')) csz.value = v; } catch (e){}
+      // what "this video" would become, so the choice is clear before starting
+      const show = () => {
+        const t = currentIndex !== -1 ? tracks[currentIndex] : null;
+        if (!t || t.kind !== 'video' || !cb || cb.disabled) return;
+        const vw = t.width || videoEl.videoWidth, vh = t.height || videoEl.videoHeight, s = enhCopyTarget(csz.value, vw, vh);
+        const sh = Math.min(vw || 0, vh || 0);
+        cs.textContent = !sh ? '' : !s ? 'This video is already 4K or bigger.' : s < sh * 1.05 ? 'This video is already ' + sh + 'p: pick a bigger size.'
+          : 'This video: ' + sh + 'p \u2192 ' + (s >= 2160 ? '4K' : s + 'p') + (s / sh > 2.05 ? ' (two AI passes, slower)' : '');
+      };
+      csz.addEventListener('change', () => { try { localStorage.setItem('ppEnhCopySize', csz.value); } catch (e){} show(); });
+      document.getElementById('upscale-btn').addEventListener('click', () => setTimeout(show, 0));
+    }
     if (cb){
       cb.addEventListener('click', async (e) => {
         e.stopPropagation();
         cb.disabled = true; cc.hidden = false;
-        try { await enhMakeCopy((txt) => { cs.textContent = txt; }); }
+        try { await enhMakeCopy((txt) => { cs.textContent = txt; }, csz ? csz.value : 'auto'); }
         finally { cb.disabled = false; cc.hidden = true; }
       });
       cc.addEventListener('click', (e) => { e.stopPropagation(); if (cutterExportAbort) cutterExportAbort(); });
