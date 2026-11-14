@@ -1,161 +1,199 @@
-  /* ---------- Player page, phone held sideways: compact overlay (video and audio) ----------
-     Built like a classic phone video player so the picture (or the art) keeps the room:
-       top bar     Back, the title on one line, the FPS readout, the menu
-       left rail   speed, marks, A-B, cut, sleep (icons only)
-       bottom      the seek bar, then one row: volume | transport ... video tools, pin
-     A soft dark fade behind the top and bottom keeps it readable on bright video
-     without a solid bar (video only). Only applies to the player page in landscape;
-     the audio page puts its art / visualizer in the middle and centres the bottom row. */
+  /* ---------- Player page: compact overlay (video and audio, both orientations) ----------
+     Laid out like a classic phone video player so the picture (or the art) keeps the room:
+       top bar     Back, the title on one line, the FPS readout (video), the menu
+       bottom      the seek bar, then the buttons:
+                     sideways  one row: volume | transport ... video tools, pin; speed/marks/A-B/cut/sleep as a left rail
+                     upright   video tools row above the seek bar (video); transport; then speed/marks/A-B/cut/sleep icons, volume, pin
+     On video a soft dark fade behind the top and bottom keeps it readable on bright frames without a solid bar.
+     Selector weights: the shared rules carry :is(.pl-video, :not(.pl-video)) so they weigh the same as the older
+     ".pl-video" player rules they replace, and win by coming later. */
+
+  body.player-layout[data-pl-player]{
+    --cv-l:max(12px, env(safe-area-inset-left, 0px));
+    --cv-r:max(12px, env(safe-area-inset-right, 0px));
+    --cv-t:max(6px, env(safe-area-inset-top, 0px));
+    --cv-b:max(8px, env(safe-area-inset-bottom, 0px));
+    --cv-row:44px;     /* height of a bottom button row */
+  }
+
+  /* ---- video: fade behind the top bar and the bottom controls (follows the controls in and out) ---- */
+  body.player-layout.pl-video[data-pl-player] #controls-col::before{
+    content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:
+      linear-gradient(to bottom, rgba(0,0,0,.6), rgba(0,0,0,0) 72px),
+      linear-gradient(to top, rgba(0,0,0,.72), rgba(0,0,0,0) var(--cv-fade, 120px));
+  }
+
+  /* ---- the controls: pinned to the bottom edge, rows wrap ---- */
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #controls-col,
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #controls-col.custom-bg-active{
+    position:fixed; left:0; right:0; bottom:0; top:auto; z-index:75;
+    width:auto; max-width:none; margin:0; flex:none;
+    flex-direction:row; flex-wrap:wrap; align-items:center; justify-content:flex-start;
+    gap:0; text-align:left;
+    padding:0 var(--cv-r) var(--cv-b) var(--cv-l);
+    background:transparent; border:none; box-shadow:none; backdrop-filter:none;
+    /* no slide-in: a translate would make it the box its fixed-position title bar and rail are placed in */
+    translate:none !important; transform:none !important;
+  }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #seek-row{
+    order:1; flex:0 0 100%; width:100%; max-width:none; margin:0; gap:12px;
+  }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #seek-row :is(#cur-time, #dur-time){ font-size:12px; min-width:38px; }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) :is(#seek, #volume){ height:4px; border-radius:2px; }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) :is(#seek, #volume)::-webkit-slider-thumb{ width:14px; height:14px; }
+
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #transport{
+    flex:0 0 auto; height:var(--cv-row); margin:0; gap:4px; justify-content:flex-start;
+  }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #transport .ctrl-btn{ width:40px; height:40px; padding:8px; flex:0 0 40px; }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #transport .ctrl-btn svg{ width:22px; height:22px; }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #transport #play-btn{
+    width:42px; height:42px; flex-basis:42px; margin:0 6px;
+    background:transparent !important; border:none !important;
+  }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #transport #play-btn svg{ width:30px !important; height:30px !important; }
+
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #controls-footer{
+    flex:0 0 auto; width:auto; max-width:none; height:28px; margin:0; padding:0;
+  }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #hint{ display:none; }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #vol-row{ width:clamp(90px, 16vw, 150px); max-width:none; margin:0; padding-right:6px; gap:8px; }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #vol-row svg{ width:18px; height:18px; }
+
+  /* ---- top bar: Back, title, FPS, menu (and fullscreen on audio) ---- */
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) :is(#pl-back, #menu-btn, #immersive-btn){
+    top:var(--cv-t); bottom:auto; width:40px; height:40px;
+    background:transparent; border-color:transparent; box-shadow:none;
+  }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #pl-back{ left:var(--cv-l); }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #menu-btn{ right:var(--cv-r); }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #immersive-btn{ right:calc(var(--cv-r) + 44px); }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) :is(#pl-back, #menu-btn, #immersive-btn) svg{ filter:drop-shadow(0 1px 3px rgba(0,0,0,.9)); }
+  body.pp-refined.player-layout.pl-video[data-pl-player]:not(.pl-ui-show) #pl-back{ translate:0 -18px; }
+
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #now-playing{
+    position:fixed; order:0; margin:0;
+    top:var(--cv-t); height:40px; width:auto; max-width:none;
+    left:calc(var(--cv-l) + 48px); right:calc(var(--cv-r) + 48px + 120px);
+    display:flex; flex-direction:column; align-items:flex-start; justify-content:center; text-align:left; pointer-events:none;
+  }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #now-playing #np-title{ font-size:17px; font-weight:500; line-height:1.25; text-align:left; width:100%; }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #now-playing :is(#np-artist, #np-format){ display:none; }
+  /* audio: room for fullscreen + menu on the right, and the artist small under the title */
+  body.player-layout[data-pl-player]:not(.pl-video) #now-playing{ right:calc(var(--cv-r) + 92px); }
+  body.player-layout[data-pl-player]:not(.pl-video) #now-playing #np-title{ font-size:16px; }
+  body.player-layout[data-pl-player]:not(.pl-video) #now-playing #np-artist{ display:block; font-size:12px; line-height:1.2; text-align:left; opacity:.75; margin:0; }
+
+  /* FPS readout: a small chip in the top bar, left of the menu. It stays put while the controls are hidden. */
+  body.player-layout.pl-video[data-pl-player] #fps-counter{
+    top:calc(var(--cv-t) + 11px); left:auto; right:calc(var(--cv-r) + 48px);
+  }
+
+  /* ---- speed, marks, A-B, cut, sleep: icon buttons ---- */
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport{
+    display:flex; margin:0; width:auto; flex-wrap:nowrap; align-items:center; gap:2px;
+  }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport .pill-btn{
+    width:38px; height:38px; min-width:0; padding:0; gap:0; justify-content:center;
+    background:transparent; border:none; border-radius:10px; position:relative;
+  }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport .pill-btn svg{ width:21px; height:21px; }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport .pill-btn > span{ display:none; }
+  /* speed shows its number instead of the clock, like "1x" */
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #speed-btn svg{ display:none; }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #speed-btn > #speed-label{ display:block; font-size:15px; font-weight:700; }
+
+  /* ---- video tools: transparent icons in a row ---- */
+  body.player-layout.pl-video[data-pl-player] #video-tools{ top:auto; flex-wrap:nowrap; gap:2px; align-items:center; }
+  /* the snapshot button shares the PiP button's wrapper: keep them side by side */
+  body.player-layout.pl-video[data-pl-player] #video-tools > div:has(> #snap-btn){ display:flex; gap:2px; }
+  body.player-layout.pl-video[data-pl-player] #video-tools .video-tool-btn{
+    width:36px; height:36px; background:transparent; border-color:transparent; border-radius:10px;
+  }
+  body.player-layout.pl-video[data-pl-player] #video-tools .video-tool-btn svg{ width:21px; height:21px; filter:drop-shadow(0 1px 3px rgba(0,0,0,.9)); }
+  body.player-layout.pl-video[data-pl-player] #video-tools .video-tool-btn.toggled{ color:var(--accent); }
+  /* the tool menus open upward from the bottom */
+  body.player-layout.pl-video[data-pl-player] #video-tools :is(#subtitle-dropdown, #filter-dropdown, #pip-dropdown){ top:auto; bottom:calc(100% + 8px); }
+  body.pp-refined.player-layout.pl-video[data-pl-player]:not(.pl-ui-show) #video-tools{ translate:0 18px; }
+
+  body.player-layout.pl-video[data-pl-player] #pl-pin-btn{
+    right:var(--cv-r); bottom:calc(var(--cv-b) + (var(--cv-row) - 36px) / 2);
+    background:transparent; border-color:transparent;
+  }
+  body.player-layout.pl-video[data-pl-player] #pl-pin-btn svg{ width:20px; height:20px; filter:drop-shadow(0 1px 3px rgba(0,0,0,.9)); }
+
+  /* ---- audio: art in the middle, between the title bar and the controls ---- */
+  body.player-layout[data-pl-player]:not(.pl-video) #main{
+    flex-direction:column; justify-content:center; align-items:center; gap:0;
+    padding:52px var(--cv-r) var(--cv-main-b) var(--cv-l);
+  }
+  body.player-layout[data-pl-player]:not(.pl-video) #lyrics-overlay{ bottom:-36px; }
+
+  /* ================= sideways ================= */
   @media (max-height:480px) and (orientation:landscape){
-    body.player-layout[data-pl-player]{
-      --cv-l:max(12px, env(safe-area-inset-left, 0px));
-      --cv-r:max(12px, env(safe-area-inset-right, 0px));
-      --cv-t:max(6px, env(safe-area-inset-top, 0px));
-      --cv-b:max(8px, env(safe-area-inset-bottom, 0px));
-      --cv-row:44px;     /* height of the bottom button row */
-    }
-
-    /* Fade behind the top bar and the bottom controls (follows the controls in and out) */
-    body.player-layout.pl-video[data-pl-player] #controls-col::before{
-      content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
-      background:
-        linear-gradient(to bottom, rgba(0,0,0,.6), rgba(0,0,0,0) 72px),
-        linear-gradient(to top, rgba(0,0,0,.72), rgba(0,0,0,0) 120px);
-    }
-
-    /* ---- bottom: seek bar on its own line, then one row of buttons ---- */
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #controls-col,
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #controls-col.custom-bg-active{
-      flex-direction:row; flex-wrap:wrap; align-items:center; justify-content:flex-start;
-      gap:0; text-align:left;
-      padding:0 var(--cv-r) var(--cv-b) var(--cv-l);
-      /* no slide-in here: a translate would make it the box its fixed-position top bar and side rail are placed in */
-      translate:none !important; transform:none !important;
-    }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #seek-row{
-      order:1; flex:0 0 100%; width:100%; max-width:none; margin:0; gap:12px;
-    }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #seek-row :is(#cur-time, #dur-time){ font-size:12px; min-width:38px; }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #seek,
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #volume{ height:4px; border-radius:2px; }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #seek::-webkit-slider-thumb,
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #volume::-webkit-slider-thumb{ width:14px; height:14px; }
-
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #transport{
-      order:3; flex:0 0 auto; height:var(--cv-row); margin:0; gap:4px; justify-content:flex-start;
-    }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #transport .ctrl-btn{ width:40px; height:40px; padding:8px; flex:0 0 40px; }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #transport .ctrl-btn svg{ width:22px; height:22px; }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #transport #play-btn{
-      width:42px; height:42px; flex-basis:42px; margin:0 6px;
-      background:transparent !important; border:none !important;
-    }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #transport #play-btn svg{ width:30px !important; height:30px !important; }
-
+    /* one row: volume | transport ... video tools, pin */
+    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #transport{ order:3; }
     body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #controls-footer{
-      order:2; flex:0 0 auto; width:auto; max-width:none; height:28px;
-      margin:0 12px 0 38px; padding:0 14px 0 0; border-right:1px solid rgba(255,255,255,.35);
+      order:2; margin:0 12px 0 38px; padding:0 14px 0 0; border-right:1px solid rgba(255,255,255,.35);
     }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #hint{ display:none; }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #vol-row{ width:clamp(90px, 16vw, 150px); margin:0; padding-right:6px; gap:8px; }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #vol-row svg{ width:18px; height:18px; }
+    body.player-layout[data-pl-player]:not(.pl-video) #controls-col{ justify-content:center; }
+    body.player-layout[data-pl-player]:not(.pl-video) #controls-footer{ margin-left:0; }
 
-    /* ---- top bar: Back, title, FPS, menu ---- */
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #pl-back,
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #menu-btn{
-      top:var(--cv-t); bottom:auto; width:40px; height:40px;
-      background:transparent; border-color:transparent; box-shadow:none;
-    }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #pl-back{ left:var(--cv-l); }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #menu-btn{ right:var(--cv-r); }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) :is(#pl-back, #menu-btn) svg{ filter:drop-shadow(0 1px 3px rgba(0,0,0,.9)); }
-    body.pp-refined.player-layout.pl-video[data-pl-player]:not(.pl-ui-show) #pl-back{ translate:0 -18px; }
-
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #now-playing{
-      position:fixed; order:0; margin:0;
-      top:var(--cv-t); height:40px; width:auto; max-width:none;
-      left:calc(var(--cv-l) + 48px); right:calc(var(--cv-r) + 48px + 120px);
-      display:flex; align-items:center; text-align:left; pointer-events:none;
-    }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #now-playing #np-title{ font-size:17px; font-weight:500; text-align:left; width:100%; }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #now-playing :is(#np-artist, #np-format){ display:none; }
-
-    /* FPS readout: a small chip in the top bar, left of the menu. It stays put while the controls are hidden. */
-    body.player-layout.pl-video[data-pl-player] #fps-counter{
-      top:calc(var(--cv-t) + 11px); left:auto; right:calc(var(--cv-r) + 48px);
-    }
-
-    /* ---- left rail: speed, marks, A-B, cut, sleep as icon buttons ---- */
+    /* left rail */
     body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport{
-      position:fixed; order:0; margin:0;
+      position:fixed; order:0;
       left:var(--cv-l); top:calc(var(--cv-t) + 48px); bottom:calc(var(--cv-b) + var(--cv-row) + 30px);
-      width:auto; flex-direction:column; flex-wrap:nowrap; align-items:flex-start; justify-content:center; gap:4px;
+      flex-direction:column; align-items:flex-start; justify-content:center; gap:4px;
     }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport .pill-btn{
-      width:40px; height:40px; min-width:0; padding:0; gap:0; justify-content:center;
-      background:transparent; border:none; border-radius:10px; position:relative;
-    }
+    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport .pill-btn{ width:40px; height:40px; }
     body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport .pill-btn svg{ width:22px; height:22px; }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport .pill-btn > span{ display:none; }
-    /* speed shows its number instead of the clock, like "1x" */
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #speed-btn svg{ display:none; }
-    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #speed-btn > #speed-label{ display:block; font-size:15px; font-weight:700; }
-    /* their menus open to the right of the rail */
+    /* the rail's menus open to its right */
     body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport :is(#speed-dropdown, #ab-dropdown, #sleep-dropdown){
       left:calc(100% + 8px); right:auto; top:0; bottom:auto;
       transform:translateX(var(--clamp-shift-x, 0px));
     }
+    /* audio: the rail clears the side drawer's pull tab on the left edge */
+    body.player-layout[data-pl-player]:not(.pl-video) #extra-transport{ left:calc(var(--cv-l) + 20px); }
 
-    /* ---- bottom right: the video tools in the button row, then the pin ---- */
     body.player-layout.pl-video[data-pl-player] #video-tools{
-      top:auto; right:calc(var(--cv-r) + 44px);
-      bottom:calc(var(--cv-b) + (var(--cv-row) - 36px) / 2);
-      flex-wrap:nowrap; gap:2px; align-items:center;
+      right:calc(var(--cv-r) + 44px); bottom:calc(var(--cv-b) + (var(--cv-row) - 36px) / 2);
     }
-    /* the snapshot button shares the PiP button's wrapper: keep them side by side */
-    body.player-layout.pl-video[data-pl-player] #video-tools > div:has(> #snap-btn){ display:flex; gap:2px; }
-    body.player-layout.pl-video[data-pl-player] #video-tools .video-tool-btn{
-      width:36px; height:36px; background:transparent; border-color:transparent; border-radius:10px;
-    }
-    body.player-layout.pl-video[data-pl-player] #video-tools .video-tool-btn svg{ width:21px; height:21px; filter:drop-shadow(0 1px 3px rgba(0,0,0,.9)); }
-    body.player-layout.pl-video[data-pl-player] #video-tools .video-tool-btn.toggled{ color:var(--accent); }
-    /* the tool menus open upward from the bottom row */
-    body.player-layout.pl-video[data-pl-player] #video-tools :is(#subtitle-dropdown, #filter-dropdown, #pip-dropdown){
-      top:auto; bottom:calc(100% + 8px);
-    }
-    body.pp-refined.player-layout.pl-video[data-pl-player]:not(.pl-ui-show) #video-tools{ translate:0 18px; }
 
-    body.player-layout.pl-video[data-pl-player] #pl-pin-btn{
-      right:var(--cv-r); bottom:calc(var(--cv-b) + (var(--cv-row) - 36px) / 2);
-      background:transparent; border-color:transparent;
-    }
-    body.player-layout.pl-video[data-pl-player] #pl-pin-btn svg{ width:20px; height:20px; filter:drop-shadow(0 1px 3px rgba(0,0,0,.9)); }
-    /* ---- audio page: art in the middle, controls pinned to the edges like the video page ---- */
-    body.player-layout[data-pl-player]:not(.pl-video) #main{
-      flex-direction:column; justify-content:center; align-items:center; gap:0;
-      padding:52px var(--cv-r) calc(var(--cv-b) + var(--cv-row) + 34px) var(--cv-l);
-    }
+    body.player-layout[data-pl-player]:not(.pl-video){ --cv-main-b:calc(var(--cv-b) + var(--cv-row) + 34px); }
     body.player-layout[data-pl-player]:not(.pl-video) #viz-wrap{
       width:min(calc(100dvh - 160px), 44vw); height:min(calc(100dvh - 160px), 44vw);
     }
-    body.player-layout[data-pl-player]:not(.pl-video) #lyrics-overlay{ bottom:-36px; }
-    body.player-layout[data-pl-player]:not(.pl-video) #controls-col,
-    body.player-layout[data-pl-player]:not(.pl-video) #controls-col.custom-bg-active{
-      position:fixed; left:0; right:0; bottom:0; top:auto; z-index:75;
-      width:auto; max-width:none; margin:0; flex:none; justify-content:center;
-      background:transparent; border:none; box-shadow:none; backdrop-filter:none;
+  }
+
+  /* ================= upright ================= */
+  @media not all and (max-height:480px) and (orientation:landscape){
+    body.player-layout.pl-video[data-pl-player]{ --cv-fade:220px; }
+    /* transport centred on its own row */
+    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #transport{
+      order:2; flex:0 0 100%; height:52px; justify-content:space-between; padding:0 6px; box-sizing:border-box;
     }
-    body.player-layout[data-pl-player]:not(.pl-video) #controls-footer{ margin-left:0; }
-    body.player-layout[data-pl-player]:not(.pl-video) #immersive-btn{ top:var(--cv-t); right:calc(var(--cv-r) + 44px); width:40px; height:40px; background:transparent; border-color:transparent; box-shadow:none; }
-    body.player-layout[data-pl-player]:not(.pl-video) #menu-btn{ right:var(--cv-r); }
-    /* title bar leaves room for both top-right buttons; the artist shows small under the title */
-    body.player-layout[data-pl-player]:not(.pl-video) #now-playing{
-      right:calc(var(--cv-r) + 92px); flex-direction:column; align-items:flex-start; justify-content:center;
+    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #transport #play-btn{ width:52px; height:52px; flex-basis:52px; }
+    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #transport #play-btn svg{ width:36px !important; height:36px !important; }
+    /* last row: speed / marks / A-B / cut / sleep | volume, pin */
+    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport{ order:3; height:var(--cv-row); justify-content:flex-start; }
+    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #controls-footer{
+      order:4; flex:1 1 0; min-width:0; margin:0 0 0 8px; padding:0 0 0 10px; border-left:1px solid rgba(255,255,255,.3);
     }
-    body.player-layout[data-pl-player]:not(.pl-video) #now-playing #np-artist{ display:block; font-size:12px; line-height:1.2; text-align:left; opacity:.75; }
-    body.player-layout[data-pl-player]:not(.pl-video) #now-playing #np-title{ font-size:16px; line-height:1.25; }
-    /* the rail clears the side drawer's pull tab on the left edge */
-    body.player-layout[data-pl-player]:not(.pl-video) #extra-transport{ display:flex; left:calc(var(--cv-l) + 20px); }
+    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #vol-row{ width:100%; min-width:0; box-sizing:border-box; display:flex; }
+    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #vol-row #volume{ flex:1 1 auto; width:auto; min-width:0; }
+    body.player-layout.pl-video[data-pl-player] #controls-footer{ margin-right:44px; }
+
+    /* video tools: their own row just above the seek bar */
+    body.player-layout.pl-video[data-pl-player] #video-tools{
+      left:0; right:0; justify-content:center;
+      bottom:calc(var(--cv-b) + var(--cv-row) + 52px + 22px + 6px);
+    }
+
+    body.player-layout[data-pl-player]:not(.pl-video){ --cv-main-b:calc(var(--cv-b) + var(--cv-row) + 52px + 22px + 24px); }
+    body.player-layout[data-pl-player]:not(.pl-video) #viz-wrap{
+      width:min(86vw, calc(100dvh - 260px)); height:min(86vw, calc(100dvh - 260px));
+    }
   }
 
   /* FPS readout: one short line by default ("60 fps · 120 Hz"); the full block is an option under the FPS counter setting. */
