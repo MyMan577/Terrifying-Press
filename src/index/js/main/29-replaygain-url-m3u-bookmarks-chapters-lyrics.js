@@ -508,12 +508,13 @@ async function ppMp4Chapters(blob){
     },
     enhance: {
       host: 'upscale-dropdown', where: 'start',
-      get: () => ({ u: memcUpscale, sh: enhSharp, db: enhDeband, dk: enhDeblock, an: enhAnime, ai: enhAI }),
+      get: () => ({ u: memcUpscale, sh: enhSharp, db: enhDeband, dk: enhDeblock, an: enhAnime, ai: enhAI, on: !!enhMaster }),
       set: (v) => {
         memcUpscale = v.u; enhSharp = v.sh; enhSharpSet = true; enhDeband = !!v.db; enhDeblock = !!v.dk; enhAnime = !!v.an;
         enhAI = ENH_AI_IDS.includes(v.ai) ? v.ai : 'off'; if (enhAI !== 'off') srEnsureLoaded().then(() => memcRepaint());
+        enhMaster = v.on !== false;
         try { localStorage.setItem(MEMC_UP_KEY, String(memcUpscale)); } catch (e){}
-        enhChanged();
+        enhChanged(false);   // the song's own on/off, as saved
       }
     },
     fx: {   // reverb belongs to "Remember for this song" in the speed menu, so it is left out here
