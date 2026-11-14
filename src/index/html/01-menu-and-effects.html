@@ -346,9 +346,16 @@
                 <p class="tool-dropdown-label"><span>This song</span><span id="viz-sens-track-value">100%</span></p>
                 <input type="range" id="viz-sensitivity-track" min="25" max="250" value="100" step="5" disabled>
                 <p class="tool-dropdown-label" style="margin-top:12px;"><span>Style</span></p>
-                <div class="pp-seg" id="viz-style-seg">
-                  <button type="button" data-v="bars">Bars</button><button type="button" data-v="blocks">Blocks</button><button type="button" data-v="pulse">Bass pulse</button>
+                <div id="viz-style-seg">
+                  <div class="pp-seg"><button type="button" data-v="bars">Bars</button><button type="button" data-v="blocks">Blocks</button><button type="button" data-v="pulse">Bass pulse</button></div>
+                  <div class="pp-seg" style="margin-top:6px;"><button type="button" data-v="wave">Wave ring</button><button type="button" data-v="scope">Scope</button><button type="button" data-v="disc3d">3D disc</button></div>
                 </div>
+                <p class="tool-dropdown-label" style="margin-top:12px;"><span>Stem visuals</span></p>
+                <div class="pp-seg" id="viz-stem-seg">
+                  <button type="button" data-v="0">Off</button><button type="button" data-v="1">On</button>
+                </div>
+                <p class="menu-section-hint" id="viz-stem-info" style="margin:4px 0 0 0;">Songs you have split into stems get their own visuals: the drums drive the beat, the bass the disc, the vocals a glow of their own.</p>
+                <p class="menu-section-hint" id="viz-beat-info" style="margin:6px 0 0 0;">Beat: listening</p>
                 <div id="viz-trim-row" style="display:none;">
                   <p class="tool-dropdown-label" style="margin-top:12px;"><span>Timing</span><span id="viz-trim-value">Automatic</span></p>
                   <input type="range" id="viz-trim" min="-300" max="300" value="0" step="10">

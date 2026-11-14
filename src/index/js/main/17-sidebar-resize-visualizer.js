@@ -132,8 +132,11 @@
   let vizBandPos = null, vizBandPosFor = '';      // [first bin, last bin] (fractional) per band
   let vizBassAvg = 0, vizPulse = 0, vizBeatAt = 0, vizWave = 0, vizScaleSet = '';
   const vizWaves = [];                            // 'pulse' style: several rings can be travelling at once
-  let vizStyle = 'bars', hapticBass = 0;          // style: bars | blocks | pulse.  haptics: 0 off, 1 light, 2 strong
-  try { const v = localStorage.getItem('ppVizStyle'); if (v === 'blocks' || v === 'pulse') vizStyle = v; } catch(e){}
+  const vizBandV = new Float32Array(VIZ_BANDS);  // each band's raw level this frame (for the beat tracker)
+  // style: bars | blocks | pulse | wave | scope | disc3d (see 17b).  haptics: 0 off, 1 light, 2 strong
+  const VIZ_STYLES = ['bars', 'blocks', 'pulse', 'wave', 'scope', 'disc3d'];
+  let vizStyle = 'bars', hapticBass = 0;
+  try { const v = localStorage.getItem('ppVizStyle'); if (VIZ_STYLES.includes(v)) vizStyle = v; } catch(e){}
   try { hapticBass = Math.max(0, Math.min(2, parseInt(localStorage.getItem('ppHapticBass'), 10) || 0)); } catch(e){}
   (function(){
     const styleSeg = document.getElementById('viz-style-seg'), hapSeg = document.getElementById('viz-haptic-seg');
@@ -143,7 +146,10 @@
     };
     styleSeg.addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
-      vizStyle = b.dataset.v; try { localStorage.setItem('ppVizStyle', vizStyle); } catch(x){}
+      vizStyle = VIZ_STYLES.includes(b.dataset.v) ? b.dataset.v : 'bars';
+      if (vizStyle === 'disc3d' && !v3Init()) vizStyle = 'bars';     // no WebGL: stay on the plain bars
+      try { localStorage.setItem('ppVizStyle', vizStyle); } catch(x){}
+      vizIdle = false;                                                // draw the new style even while paused
       paint();
     });
     hapSeg.addEventListener('click', (e) => {
@@ -244,6 +250,7 @@
         // v is on the analyser's dB scale (0 = -100 dB, 1 = -30 dB), tilted up towards the treble, which is
         // naturally much quieter than the bass.
         const v = Math.min(1, vizBandPeak(raw, vizBandPos[k], vizBandPos[k + 1]) * (1 + 0.42 * k / (VIZ_BANDS - 1)));
+        vizBandV[k] = v;
         if (k < 7) bass += v / 7;
         // Two parts: how loud the band is (curved, so "fairly loud" is not already a full bar), plus how far it
         // just jumped above its own recent average. The jump is what makes hits, notes and syllables visible.
@@ -258,19 +265,20 @@
       vizLevel[k] += (target - vizLevel[k]) * (target > vizLevel[k] ? kRise : kFall);
     }
 
-    // --- beat: the bass jumps above its short-term average ---
-    if (raw){
-      if (bass - vizBassAvg > 0.045 && bass > 0.45 && ts - vizBeatAt > 170){
-        vizBeatAt = ts;
-        vizPulse = Math.min(1, 0.55 + (bass - vizBassAvg) * 5);
-        vizWave = 0.0001;
-        vizWaves.push(0.0001); if (vizWaves.length > 4) vizWaves.shift();
-        if (hapticBass && navigator.vibrate && !document.hidden){
-          try { navigator.vibrate(Math.round((hapticBass === 2 ? 34 : 16) * (0.6 + 0.4 * vizPulse))); } catch(e){}
-        }
+    // --- stems (if this song was split) and the beat (tracked and predicted, see 17b) ---
+    const stems = vizStemsNow(dt);
+    const beat = vizBeatStep(ts, raw ? vizBandV : null, stems);
+    if (beat > 0){
+      vizBeatAt = ts;
+      vizPulse = Math.min(1, 0.5 + beat * 0.5);
+      vizWave = 0.0001;
+      vizWaves.push(0.0001); if (vizWaves.length > 4) vizWaves.shift();
+      vizDraw3DBeat();
+      if (hapticBass && navigator.vibrate && !document.hidden){
+        try { navigator.vibrate(Math.round((hapticBass === 2 ? 34 : 16) * (0.6 + 0.4 * vizPulse))); } catch(e){}
       }
-      vizBassAvg += (bass - vizBassAvg) * (1 - Math.exp(-dt / 0.35));
     }
+    if (raw) vizBassAvg += (bass - vizBassAvg) * (1 - Math.exp(-dt / 0.35));
     vizPulse *= Math.exp(-dt / 0.14);
     if (vizWave > 0){ vizWave += dt / 0.45; if (vizWave >= 1) vizWave = 0; }
     for (let i = vizWaves.length - 1; i >= 0; i--){ vizWaves[i] += dt / 0.7; if (vizWaves[i] >= 1) vizWaves.splice(i, 1); }
@@ -280,7 +288,12 @@
     let maxLv = 0;
     for (let k = 0; k < VIZ_BANDS; k++) if (vizLevel[k] > maxLv) maxLv = vizLevel[k];
     vizIdle = !raw && maxLv < 0.004 && vizPulse < 0.01;
-    if (!vizShown) return;
+    if (!vizShown){ v3Tilt(false); return; }
+    const wantsWave = vizStyle === 'wave' || vizStyle === 'scope';
+    if (wantsWave) vizReadWave(raw ? currentGraph() : null, !!raw, dt);
+    if (vizStyle === 'disc3d' && v3.failed) vizStyle = 'bars';
+    vizSetMode(vizStyle);
+    if (vizStyle !== 'disc3d') v3Tilt(false);
 
     // --- draw ---
     // The canvas is 20% larger than the ring box (see #viz), so the disc radius (0.36 of the box) is 0.30 here.
@@ -289,12 +302,28 @@
     const [cr, cg, cb] = vizAccent(ts);
     const barW = Math.max(2, (Math.PI * 2 * baseR / (VIZ_BANDS * 2)) * 0.42);
     ctx.lineCap = 'butt';   // square ends
+    const pal = vizPalette([cr, cg, cb]);
+    if (vizStyle === 'disc3d' && vizDraw3D(ts, dt, pal, pulse, stems, !!raw)) return;
+    if (vizStyle === 'wave' || vizStyle === 'scope'){
+      let avg = 0; for (let k = 0; k < VIZ_BANDS; k++) avg += vizLevel[k] / VIZ_BANDS;
+      if (vizStyle === 'wave'){ vizDrawWaveRing(ctx, cx, cy, baseR, maxLen, S, pal, pulse, stems, avg); return; }
+      vizDrawScope(ts, pal, pulse, stems);
+      // the ring around the disc keeps the beat rings and the stem glow, so it is not empty under the line
+      vizDrawStemRing(ctx, cx, cy, baseR, maxLen, S, stems, pal);
+      for (const wv of vizWaves){
+        ctx.strokeStyle = vizRgba(pal.acc, 0.45 * (1 - wv) * (1 - wv)); ctx.lineWidth = S * 0.01 * (1 - wv) + 1;
+        ctx.beginPath(); ctx.arc(cx, cy, baseR + maxLen * wv, 0, Math.PI * 2); ctx.stroke();
+      }
+      return;
+    }
 
     if (vizStyle === 'pulse'){
       // Bass only: a band of light around the disc as thick as the bass is loud, rings thrown off by each kick,
       // and one thin line further out that follows everything above the bass.
       let bassLv = 0, restLv = 0;
       for (let k = 0; k < VIZ_BANDS; k++){ if (k < VIZ_BASS) bassLv += vizLevel[k] / VIZ_BASS; else restLv += vizLevel[k] / (VIZ_BANDS - VIZ_BASS); }
+      if (stems && stems.has.bass) bassLv = Math.max(bassLv * 0.5, stems.bass);      // the bass stem itself, when there is one
+      if (stems && stems.has.vocals) vizDrawStemRing(ctx, cx, cy, baseR, maxLen, S, { has: { vocals: true }, vocals: stems.vocals }, pal);
       for (const wv of vizWaves){
         ctx.strokeStyle = `rgba(${cr},${cg},${cb},${(0.5 * (1 - wv) * (1 - wv)).toFixed(3)})`;
         ctx.lineWidth = S * 0.012 * (1 - wv) + 1;
@@ -318,6 +347,7 @@
     // 'blocks': the same bars cut into stacked segments, lit a whole segment at a time
     const blocks = vizStyle === 'blocks', VIZ_SEGS = 10, segStep = maxLen / VIZ_SEGS;
 
+    vizDrawStemRing(ctx, cx, cy, baseR, maxLen, S, stems, pal);
     if (vizWave > 0){   // ring thrown off by a kick
       ctx.strokeStyle = `rgba(${cr},${cg},${cb},${(0.34 * (1 - vizWave)).toFixed(3)})`;
       ctx.lineWidth = S * 0.006 * (1 - vizWave) + 1;
