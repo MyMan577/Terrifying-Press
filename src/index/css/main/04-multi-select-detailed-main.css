@@ -156,6 +156,10 @@
     width:120%; height:120%;
     pointer-events:none;
   }
+  /* 3D disc (WebGL) and the scope line: same box as #viz, above the album art, never take taps */
+  #viz-gl, #viz-front{ position:absolute; inset:-10%; width:120%; height:120%; pointer-events:none; display:none; z-index:1; }
+  #viz-wrap.viz-3d #viz-gl, #viz-wrap.viz-scope #viz-front{ display:block; }
+  #viz-wrap.viz-3d #art-ring{ opacity:0; }
   #art-ring{
     position:absolute;
     inset:14%;
