@@ -462,6 +462,11 @@
   .pp-dd-nudge button:disabled{ opacity:.35; }
   #ab-dropdown .pp-seg button, #sleep-dropdown .pp-seg button{ padding:7px 2px; font-size:11px; min-width:0; }
   #ab-dropdown button.full-row{ margin-top:8px; }
+  .pp-dd-fields{ display:flex; flex-direction:column; gap:6px; margin:10px 0 4px 0; }
+  .pp-dd-fields label{ display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-dim); }
+  .pp-dd-fields label > input{ margin-left:auto; width:64px; flex:0 0 64px; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px; font-size:13px; text-align:right; }
+  .pp-dd-fields label > small{ flex:0 0 48px; font-size:11px; color:var(--text-dim); }
+  .pp-dd-hint{ font-size:11px; color:var(--text-dim); line-height:1.4; margin:2px 0 8px 0; }
   .tool-dropdown-label{
     font-size:10px;
     color:var(--text-dim);

@@ -268,6 +268,7 @@
   const AB_OPTS_KEY = 'ppABOpts';
   let abOpts = { count: 0, gap: 0, pre: 0, ramp: 0 };
   try { Object.assign(abOpts, JSON.parse(localStorage.getItem(AB_OPTS_KEY) || '{}')); } catch(e){}
+  const AB_FIELDS = [['ab-count', 'count', 1, 999], ['ab-gap', 'gap', 0, 60], ['ab-pre', 'pre', 0, 30], ['ab-ramp', 'ramp', 10, 100]];
   const abRun = { key: '', done: 0, finished: false, waiting: false, rampBase: null };
   function abFmt(t){ if (t == null) return '-'; const m = Math.floor(t / 60), x = t - m * 60; return m + ':' + (x < 10 ? '0' : '') + x.toFixed(1); }
   function abResetRun(){
@@ -295,8 +296,9 @@
     document.getElementById('ab-a-time').textContent = abFmt(abLoop.a);
     document.getElementById('ab-b-time').textContent = abFmt(abLoop.b);
     abDropdown.querySelectorAll('.pp-dd-nudge').forEach(n => n.querySelectorAll('button').forEach(b => { b.disabled = abLoop[n.dataset.pt] == null; }));
-    [['ab-count', 'count'], ['ab-gap', 'gap'], ['ab-pre', 'pre'], ['ab-ramp', 'ramp']].forEach(([id, k]) => {
-      document.getElementById(id).querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.v === +abOpts[k]));
+    AB_FIELDS.forEach(([id, k]) => {
+      const el = document.getElementById(id); if (document.activeElement === el) return;
+      const v = abOpts[k]; el.value = !v ? '' : k === 'ramp' ? Math.round(v * 100) : v;
     });
     const st = document.getElementById('ab-status'), both = abLoop.a != null && abLoop.b != null;
     st.textContent = !both ? (abLoop.a == null ? 'Set A, then B.' : 'Now set B.')
@@ -342,14 +344,19 @@
     if (pt === 'b') { try { media().currentTime = Math.max(abLoop.a || 0, abLoop.b - 2); } catch(x){} }                      // hear the new end
     abSaveLoop();
   }));
-  [['ab-count', 'count'], ['ab-gap', 'gap'], ['ab-pre', 'pre'], ['ab-ramp', 'ramp']].forEach(([id, k]) => {
-    document.getElementById(id).addEventListener('click', (e) => {
-      const b = e.target.closest('button'); if (!b) return;
-      abOpts[k] = +b.dataset.v;
+  // typed values: blank or 0 = off (repeat: forever); kept within sensible limits
+  AB_FIELDS.forEach(([id, k, lo, hi]) => {
+    const el = document.getElementById(id);
+    el.addEventListener('change', () => {
+      let v = parseFloat(el.value);
+      v = isFinite(v) && v > 0 ? Math.min(hi, Math.max(lo, v)) : 0;
+      if (k === 'count') v = Math.round(v);
+      abOpts[k] = k === 'ramp' ? (v && v < 100 ? v / 100 : 0) : v;
       try { localStorage.setItem(AB_OPTS_KEY, JSON.stringify(abOpts)); } catch(x){}
       if (k === 'ramp' || k === 'count'){ abResetRun(); abRampSpeed(); }
-      setABLabel();
+      el.blur(); setABLabel();
     });
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') el.blur(); });
   });
   // Called by the player's time updates and by a fast timer while a loop is set, so the jump back lands on B
   // (time updates alone come only every ~250 ms, which let the loop run noticeably past B).
@@ -457,7 +464,7 @@
     if (on && sleepFade) st.textContent += ', fading out';
     document.getElementById('sleep-extend').style.display = on ? '' : 'none';
     document.getElementById('sleep-extend').querySelectorAll('[data-ext]').forEach(b => { b.style.display = sleepTimer.mode === 'duration' ? '' : 'none'; });
-    document.getElementById('sleep-fade').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.v === sleepFade));
+    const fe = document.getElementById('sleep-fade'); if (document.activeElement !== fe) fe.value = sleepFade || '';
   }
   sleepBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -491,12 +498,25 @@
     if (at.getTime() <= Date.now() + 30000) at.setDate(at.getDate() + 1);   // a time already past means tomorrow
     startSleep('duration', at.getTime()); sleepDropdown.classList.remove('open');
   });
-  document.getElementById('sleep-fade').addEventListener('click', (e) => {
-    const b = e.target.closest('button'); if (!b) return;
-    sleepFade = +b.dataset.v; try { localStorage.setItem(SLEEP_FADE_KEY, String(sleepFade)); } catch(x){}
+  document.getElementById('sleep-fade').addEventListener('change', (e) => {
+    const v = parseFloat(e.target.value);
+    sleepFade = isFinite(v) && v > 0 ? Math.min(900, Math.round(v)) : 0;
+    try { localStorage.setItem(SLEEP_FADE_KEY, String(sleepFade)); } catch(x){}
     if (!sleepFade) sleepUnfade();
-    paintSleepPanel();
+    e.target.blur(); paintSleepPanel();
   });
+  document.getElementById('sleep-tracks-go').addEventListener('click', () => {
+    const n = parseInt(document.getElementById('sleep-tracks').value, 10);
+    if (!(n > 0)) return;
+    if (n === 1) startSleepAtEndOfTrack(); else startSleep('tracks', Math.min(200, n));
+    sleepDropdown.classList.remove('open');
+  });
+  ['sleep-custom', 'sleep-tracks', 'sleep-fade'].forEach(id => document.getElementById(id).addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.target.blur();
+    if (id === 'sleep-custom') document.getElementById('sleep-custom-go').click();
+    if (id === 'sleep-tracks') document.getElementById('sleep-tracks-go').click();
+  }));
 
   // ---------- Equalizer UI ----------
   // 6-band peaking EQ. Frequencies chosen to spread evenly (log-ish) across
