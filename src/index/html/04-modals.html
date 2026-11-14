@@ -307,4 +307,42 @@
   </div>
 </div>
 
-
+<!-- Latency tester: measure (tap along to a beat) and fine-tune (flash vs. beep). Built by the "Latency tester" code. -->
+<div id="lat-tester" role="dialog" aria-modal="true" aria-labelledby="lt-title" hidden>
+  <div class="lt-sheet">
+    <div class="lt-head">
+      <h2 id="lt-title">Latency tester</h2>
+      <button type="button" id="lt-close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="lt-tabs" role="tablist">
+      <button type="button" role="tab" data-lt-tab="measure" aria-selected="true">1. Measure</button>
+      <button type="button" role="tab" data-lt-tab="tune" aria-selected="false">2. Fine-tune</button>
+    </div>
+    <section id="lt-measure" class="lt-pane">
+      <p class="lt-hint">Use the headphones or speaker you want to fix. Don't watch the screen: tap the pad <b>in time with</b> the beeps (not after you hear them). About 8 taps is enough.</p>
+      <div class="lt-result"><span id="lt-ms">&ndash;</span><span id="lt-sub">Tap along to measure</span></div>
+      <svg id="lt-scale" aria-hidden="true"></svg>
+      <button type="button" id="lt-pad">Tap with the beat</button>
+      <div class="lt-row">
+        <button type="button" id="lt-reset" class="lt-btn">Start over</button>
+        <button type="button" id="lt-use" class="lt-btn lt-primary" disabled>Use this</button>
+      </div>
+    </section>
+    <section id="lt-tune" class="lt-pane" hidden>
+      <p class="lt-hint">The picture is held back by your setting, like a video. Change it until the flash and the ball hitting the line land exactly on the beep.</p>
+      <div class="lt-stage">
+        <div id="lt-flash"></div>
+        <div id="lt-track"><b class="lt-target"></b><i id="lt-ball"></i></div>
+      </div>
+      <div class="lt-val">
+        <button type="button" class="lt-btn" data-lt-step="-50">&minus;50</button>
+        <button type="button" class="lt-btn" data-lt-step="-10">&minus;10</button>
+        <output id="lt-cur">0 ms</output>
+        <button type="button" class="lt-btn" data-lt-step="10">+10</button>
+        <button type="button" class="lt-btn" data-lt-step="50">+50</button>
+      </div>
+      <input type="range" id="lt-slider" min="-500" max="1000" step="10" value="0" aria-label="Latency">
+      <div class="lt-range-labels"><span>&minus;500</span><span>0</span><span>+1000 ms</span></div>
+    </section>
+  </div>
+</div>

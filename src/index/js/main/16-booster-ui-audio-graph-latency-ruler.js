@@ -228,157 +228,179 @@
     return ctx;
   }
 
-  // ---------- Latency ruler ----------
-  // A ruler with numbered bars every 200ms across a fixed 2000ms loop
-  // (matching the slider's positive range, since Bluetooth lag is
-  // essentially always positive delay). A thin playhead line sweeps
-  // across at constant speed and a click plays at the exact instant the
-  // playhead's position reaches each bar. Both the audible click and the
-  // visual "hit" flash are driven from one continuously-read audio-clock
-  // position, computed fresh every animation frame - not two separately
-  // scheduled events (an audio-clock click plus a setTimeout flash) that
-  // can drift apart under any main-thread delay. Whichever bar's number
-  // you hear the click land on IS the delay: read it and set the slider
-  // to that.
-  const RULER_LOOP_MS = 2000;
-  const RULER_BAR_STEP_MS = 200;
-  const RULER_VIEW_W = 300;
-  const RULER_VIEW_H = 60;
-  let rulerRafId = null;
-  let rulerStartTime = 0;      // audioCtx.currentTime at which the loop began
-  let rulerClicksScheduled = -1; // last loop index whose clicks have been scheduled
-  let rulerLastHitBarMs = -1;  // which bar (by ms) most recently got its flash triggered, this loop
-  let rulerLastLoopIndex = -1;
-  const rulerBars = []; // {ms, lineEl, labelEl}
+  // ---------- Latency tester ----------
+  // A full-screen sheet opened from the Latency menu.
+  //  1. Measure: a beep every second; you tap the pad in time with it. Each tap is compared with when that beep left the
+  //     browser's audio output (getOutputTimestamp, so the latency the browser already knows about and corrects for
+  //     itself is not counted). What is left is how late the sound reaches you, which is what the latency setting fixes.
+  //     The median of the last 8 taps is the result; their spread says how steady the tapping was.
+  //  2. Fine-tune: the same beep, plus a flash and a ball that hit the line on the beat, held back by the current setting
+  //     (as a video is). Adjust until they land together.
+  // Playback pauses while it is open and resumes after.
+  const LT_PERIOD = 1.0;                 // seconds between beeps: taps can be matched up to 700 ms late without mixing beats up
+  const LT_EARLY = 300, LT_LATE = 700;   // a tap is matched to the beep from LT_EARLY ms after it to LT_LATE ms before it
+  const ltEl = document.getElementById('lat-tester');
+  const ltScale = document.getElementById('lt-scale');
+  let ltT0 = 0, ltNextBeat = 0, ltTimer = null, ltRaf = null, ltTab = 'measure', ltTaps = [], ltWasPlaying = false, ltOpenNow = false;
 
-  function buildRulerSvg(){
-    const svg = document.getElementById('latency-ruler');
-    svg.innerHTML = '';
-    const ns = 'http://www.w3.org/2000/svg';
-    rulerBars.length = 0;
-    for (let ms = 0; ms <= RULER_LOOP_MS; ms += RULER_BAR_STEP_MS){
-      const x = (ms / RULER_LOOP_MS) * RULER_VIEW_W;
-      const line = document.createElementNS(ns, 'line');
-      line.setAttribute('class', 'ruler-bar');
-      line.setAttribute('x1', x); line.setAttribute('x2', x);
-      line.setAttribute('y1', 14); line.setAttribute('y2', 44);
-      svg.appendChild(line);
-      const label = document.createElementNS(ns, 'text');
-      label.setAttribute('class', 'ruler-label');
-      label.setAttribute('x', Math.min(Math.max(x, 12), RULER_VIEW_W - 12));
-      label.setAttribute('y', 54);
-      label.textContent = ms;
-      svg.appendChild(label);
-      rulerBars.push({ ms, lineEl: line, labelEl: label });
-    }
-    const playhead = document.createElementNS(ns, 'line');
-    playhead.setAttribute('class', 'ruler-playhead');
-    playhead.setAttribute('id', 'latency-ruler-playhead');
-    playhead.setAttribute('y1', 6); playhead.setAttribute('y2', 54);
-    svg.appendChild(playhead);
-  }
-
-  function playRulerClick(atTime){
+  function ltBeep(at, accent){
     const ctx = ensureAudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = 1000;
-    gain.gain.setValueAtTime(0, atTime);
-    gain.gain.linearRampToValueAtTime(0.5, atTime + 0.001);
-    gain.gain.exponentialRampToValueAtTime(0.0001, atTime + 0.05);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(atTime);
-    osc.stop(atTime + 0.06);
+    const osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = 'triangle'; osc.frequency.value = accent ? 1760 : 1320;
+    g.gain.setValueAtTime(0, at);
+    g.gain.linearRampToValueAtTime(accent ? 0.7 : 0.5, at + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + 0.07);
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start(at); osc.stop(at + 0.08);
   }
-
-  // Schedules every bar's click for a given loop index, all at once,
-  // ahead of when the playhead will reach them - the audio clock's own
-  // scheduling queue keeps these sample-accurate regardless of any
-  // main-thread jank. Called one loop ahead of the one currently
-  // playing, so every bar (including ms=0) always gets a click scheduled
-  // before the playhead reaches it - unlike scheduling the current loop
-  // reactively, which could schedule a bar's click after the playhead
-  // had already passed its position, silently skipping it.
-  function scheduleRulerClicksForLoop(loopIndex){
-    if (loopIndex <= rulerClicksScheduled) return;
-    rulerClicksScheduled = loopIndex;
-    const loopStartTime = rulerStartTime + (loopIndex * RULER_LOOP_MS) / 1000;
-    rulerBars.forEach(bar => {
-      if (bar.ms >= RULER_LOOP_MS) return; // ms=2000 is the same instant as next loop's ms=0; don't double-click it
-      playRulerClick(loopStartTime + bar.ms / 1000);
-    });
-  }
-
-  function flashRulerBar(bar){
-    bar.lineEl.classList.add('hit');
-    bar.labelEl.classList.add('hit');
-    setTimeout(() => {
-      bar.lineEl.classList.remove('hit');
-      bar.labelEl.classList.remove('hit');
-    }, 120);
-  }
-
-  function drawRulerPlayhead(){
-    rulerRafId = requestAnimationFrame(drawRulerPlayhead);
+  // Audio-clock time -> performance.now() time at which that sample is heard (as far as the browser knows).
+  function ltCtxToPerf(t){
     const ctx = ensureAudioCtx();
-    const elapsedMs = (ctx.currentTime - rulerStartTime) * 1000;
-    const loopIndex = Math.floor(elapsedMs / RULER_LOOP_MS);
-    const posMs = elapsedMs - loopIndex * RULER_LOOP_MS;
-
-    // Always keep the NEXT loop's clicks scheduled ahead of the playhead
-    // reaching them, not just the current one - this is what guarantees
-    // every bar gets a click before drawing ever needs to show it as hit.
-    scheduleRulerClicksForLoop(loopIndex);
-    scheduleRulerClicksForLoop(loopIndex + 1);
-
-    if (loopIndex !== rulerLastLoopIndex){
-      rulerLastLoopIndex = loopIndex;
-      rulerLastHitBarMs = -1; // fresh loop: no bar has been flashed yet
-    }
-
-    // The flash fires here, driven by the exact same posMs used to place
-    // the playhead line below - not a separate setTimeout - so the visual
-    // hit and the playhead's on-screen position crossing the bar are
-    // necessarily the same frame, and (because playRulerClick above used
-    // this same clock) the same moment the click actually plays.
-    rulerBars.forEach(bar => {
-      if (bar.ms < RULER_LOOP_MS && posMs >= bar.ms && bar.ms > rulerLastHitBarMs){
-        flashRulerBar(bar);
-        rulerLastHitBarMs = bar.ms;
-      }
-    });
-
-    const x = (posMs / RULER_LOOP_MS) * RULER_VIEW_W;
-    const playhead = document.getElementById('latency-ruler-playhead');
-    if (playhead){
-      playhead.setAttribute('x1', x);
-      playhead.setAttribute('x2', x);
+    try {
+      const ts = ctx.getOutputTimestamp && ctx.getOutputTimestamp();
+      if (ts && ts.performanceTime > 0) return ts.performanceTime + (t - ts.contextTime) * 1000;
+    } catch (e){}
+    return performance.now() + (t - ctx.currentTime + (ctx.outputLatency || ctx.baseLatency || 0)) * 1000;
+  }
+  function ltSchedule(){   // keeps the next ~0.4 s of beeps queued on the audio clock
+    const ctx = ensureAudioCtx();
+    while (ltNextBeat < ctx.currentTime + 0.4){
+      const k = Math.round((ltNextBeat - ltT0) / LT_PERIOD);
+      ltBeep(ltNextBeat, k % 4 === 0);
+      ltNextBeat += LT_PERIOD;
     }
   }
+  const ltMedian = a => { const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+  function ltStats(){
+    if (ltTaps.length < 4) return null;
+    const last = ltTaps.slice(-8), med = ltMedian(last);
+    return { med, spread: ltMedian(last.map(v => Math.abs(v - med))), n: last.length };
+  }
 
-  async function startRuler(){
+  // The scale: built at the real pixel width (no stretching), -100 ms to at least 600 ms, numbers every 100 ms.
+  function ltDrawScale(){
+    const W = Math.max(240, Math.round(ltScale.clientWidth || 320)), H = 86, pad = 16;
+    const hi = Math.max(600, Math.ceil((Math.max(0, ...ltTaps) + 60) / 200) * 200), lo = -100;
+    const x = ms => pad + (Math.min(hi, Math.max(lo, ms)) - lo) / (hi - lo) * (W - 2 * pad);
+    const st = ltStats();
+    let h = '<line class="lt-axis" x1="' + pad + '" x2="' + (W - pad) + '" y1="44" y2="44"/>';
+    for (let ms = lo; ms <= hi; ms += 50){
+      const major = ms % 100 === 0, X = x(ms).toFixed(1);
+      h += '<line class="lt-tick' + (major ? ' major' : '') + '" x1="' + X + '" x2="' + X + '" y1="' + (major ? 34 : 38) + '" y2="' + (major ? 54 : 50) + '"/>';
+      // with a wide range the numbers go every 200 ms so they never touch
+      if (major && (hi - lo <= 800 || ms % 200 === 0)) h += '<text class="lt-num" x="' + X + '" y="72">' + ms + '</text>';
+    }
+    if (st){
+      const X = x(st.med).toFixed(1);
+      h += '<line class="lt-med" x1="' + X + '" x2="' + X + '" y1="14" y2="58"/><text class="lt-medlabel" x="' + X + '" y="10">' + Math.round(st.med) + '</text>';
+    }
+    const shown = ltTaps.slice(-8);
+    shown.forEach((v, i) => {
+      h += '<circle class="lt-dot' + (i === shown.length - 1 ? ' last' : '') + '" cx="' + x(v).toFixed(1) + '" cy="' + (26 - (i % 3) * 5) + '" r="5"/>';
+    });
+    ltScale.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    ltScale.innerHTML = h;
+  }
+  function ltPaintResult(){
+    const st = ltStats(), ms = document.getElementById('lt-ms'), sub = document.getElementById('lt-sub'), use = document.getElementById('lt-use');
+    if (!st){
+      ms.textContent = '–';
+      sub.textContent = ltTaps.length ? 'Keep tapping (' + ltTaps.length + ' of 4)' : 'Tap along to measure';
+      use.disabled = true; use.textContent = 'Use this';
+    } else {
+      const v = Math.round(st.med / 10) * 10;
+      ms.textContent = v + ' ms';
+      const steady = st.spread <= 20 ? 'steady' : st.spread <= 45 ? 'fairly steady, a few more taps help' : 'uneven, keep tapping';
+      sub.textContent = (v >= 0 ? 'Sound arrives ' + v + ' ms late' : 'Sound arrives ' + (-v) + ' ms early') + ' · ' + steady + ' (±' + Math.round(st.spread) + ' ms)';
+      use.disabled = false; use.textContent = 'Use ' + v + ' ms';
+    }
+    ltDrawScale();
+  }
+  function ltTap(ev){
+    if (!ltOpenNow) return;
+    const t = (ev && ev.timeStamp) || performance.now();
+    let off = (t - ltCtxToPerf(ltT0)) % (LT_PERIOD * 1000);
+    if (off < 0) off += LT_PERIOD * 1000;
+    if (off > LT_LATE) off -= LT_PERIOD * 1000;
+    if (off < -LT_EARLY) return;
+    ltTaps.push(off); if (ltTaps.length > 24) ltTaps.shift();
+    ltPaintResult();
+  }
+
+  function ltSetLatency(v){
+    v = Math.max(-2000, Math.min(2000, Math.round(v / 10) * 10));
+    subtitleLatencyMs = v;
+    latencySlider.value = v;
+    updateLatencyDisplay();
+    refreshVideoDelayState();
+    refreshLatencyPresetBtn();
+    saveSettings();
+    ltPaintTune();
+  }
+  function ltPaintTune(){
+    document.getElementById('lt-cur').textContent = Math.round(subtitleLatencyMs) + ' ms';
+    document.getElementById('lt-slider').value = subtitleLatencyMs;
+  }
+  // Fine-tune picture: the beat as a video would show it, i.e. held back by the setting.
+  function ltFrame(){
+    ltRaf = requestAnimationFrame(ltFrame);
+    if (ltTab !== 'tune') return;
+    const P = LT_PERIOD * 1000;
+    let u = (performance.now() - subtitleLatencyMs - ltCtxToPerf(ltT0)) % P; if (u < 0) u += P;
+    document.getElementById('lt-flash').classList.toggle('on', u < 90);
+    const track = document.getElementById('lt-track');
+    const p = ((u / P) + 0.75) % 1;   // reaches the line (75%) exactly on the held-back beat
+    document.getElementById('lt-ball').style.transform = 'translateX(' + (p * track.clientWidth).toFixed(1) + 'px)';
+  }
+  function ltShowTab(t){
+    ltTab = t;
+    ltEl.querySelectorAll('[data-lt-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.ltTab === t ? 'true' : 'false'));
+    document.getElementById('lt-measure').hidden = t !== 'measure';
+    document.getElementById('lt-tune').hidden = t !== 'tune';
+    if (t === 'measure') ltPaintResult(); else ltPaintTune();
+  }
+  async function ltOpen(){
+    if (ltOpenNow) return;
+    ltOpenNow = true;
+    ltWasPlaying = !!isPlaying;
+    if (ltWasPlaying) togglePlay();
+    latencyDropdown.classList.remove('open');
+    ltEl.hidden = false;
     const ctx = await resumeAudioCtx();
-    buildRulerSvg();
-    rulerStartTime = ctx.currentTime;
-    rulerClicksScheduled = -1;
-    rulerLastHitBarMs = -1;
-    rulerLastLoopIndex = -1;
-    drawRulerPlayhead();
+    if (!ltOpenNow) return;
+    ltT0 = ctx.currentTime + 0.5; ltNextBeat = ltT0;
+    ltSchedule();
+    ltTimer = setInterval(ltSchedule, 100);
+    ltShowTab(ltTab);
+    if (ltRaf == null) ltFrame();
   }
-
-  function stopRuler(){
-    if (rulerRafId != null) cancelAnimationFrame(rulerRafId);
-    rulerRafId = null;
+  function ltClose(){
+    if (!ltOpenNow) return;
+    ltOpenNow = false;
+    clearInterval(ltTimer); ltTimer = null;
+    if (ltRaf != null) cancelAnimationFrame(ltRaf); ltRaf = null;
+    ltEl.hidden = true;
+    if (ltWasPlaying && !isPlaying) togglePlay();
   }
-
-  latencyMetronomeToggle.addEventListener('change', () => {
-    const on = latencyMetronomeToggle.checked;
-    document.getElementById('latency-ruler-wrap').style.display = on ? 'block' : 'none';
-    latencyDropdown.classList.toggle('ruler-open', on);
-    if (on) startRuler(); else stopRuler();
+  document.getElementById('latency-tester-btn').addEventListener('click', (e) => { e.stopPropagation(); ltOpen(); });
+  document.getElementById('lt-close').addEventListener('click', ltClose);
+  ltEl.addEventListener('click', (e) => { if (e.target === ltEl) ltClose(); });
+  document.addEventListener('keydown', (e) => { if (ltOpenNow && e.key === 'Escape'){ e.stopPropagation(); ltClose(); } }, true);
+  ltEl.querySelectorAll('[data-lt-tab]').forEach(b => b.addEventListener('click', () => ltShowTab(b.dataset.ltTab)));
+  const ltPad = document.getElementById('lt-pad');
+  ltPad.addEventListener('pointerdown', (e) => { e.preventDefault(); ltPad.classList.add('down'); ltTap(e); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(n => ltPad.addEventListener(n, () => ltPad.classList.remove('down')));
+  ltPad.addEventListener('keydown', (e) => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat){ e.preventDefault(); ltTap(e); } });
+  document.getElementById('lt-reset').addEventListener('click', () => { ltTaps = []; ltPaintResult(); });
+  document.getElementById('lt-use').addEventListener('click', () => {
+    const st = ltStats(); if (!st) return;
+    ltSetLatency(st.med);
+    ltShowTab('tune');
   });
+  ltEl.querySelectorAll('[data-lt-step]').forEach(b => b.addEventListener('click', () => ltSetLatency(subtitleLatencyMs + parseInt(b.dataset.ltStep, 10))));
+  const ltSlider = document.getElementById('lt-slider');
+  ltSlider.addEventListener('input', () => ltSetLatency(parseFloat(ltSlider.value) || 0));
+  window.addEventListener('resize', () => { if (ltOpenNow && ltTab === 'measure') ltDrawScale(); });
 
   function getGraphFor(kind){
     if (graphs[kind]) return graphs[kind];
