@@ -28,7 +28,9 @@
     function loadHeight(){
       try {
         const v = parseInt(localStorage.getItem(SIDEBAR_HEIGHT_KEY), 10);
-        if (v && v >= MIN_HEIGHT) applyHeight(Math.min(v, window.innerHeight - 160));
+        // A size dragged in an older version could leave the track list a sliver; keep it between a quarter and
+        // three quarters of the screen.
+        if (v && v >= MIN_HEIGHT) applyHeight(Math.max(Math.round(window.innerHeight * 0.25), Math.min(v, Math.round(window.innerHeight * 0.75))));
       } catch(e){}
     }
 
@@ -71,8 +73,8 @@
       if (!dragging) return;
       if (isNarrow()){
         const rect = sidebarEl.getBoundingClientRect();
-        const max = window.innerHeight - 160;
-        const h = Math.max(MIN_HEIGHT, Math.min(e.clientY - rect.top, max));
+        const max = Math.round(window.innerHeight * 0.75);
+        const h = Math.max(Math.max(MIN_HEIGHT, Math.round(window.innerHeight * 0.25)), Math.min(e.clientY - rect.top, max));
         applyHeight(h);
       } else {
         const max = window.innerWidth - 80;

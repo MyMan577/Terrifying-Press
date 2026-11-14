@@ -506,7 +506,8 @@
       box.innerHTML = SMART.map(s => '<label><input type="checkbox" value="' + s.id + '"' + (ticked.has(s.id) ? ' checked' : '') + '> ' + s.name + ' <span style="opacity:.6">(' + rows.filter(r => s.test(r[0], r[1])).length + ')</span></label>').join('');
     }
     d1.addEventListener('toggle', () => { if (d1.open) refreshCount(); });
-    try { if (localStorage.getItem('ppvSavedOpen') === '0') savedEl.open = false; } catch (e) {}   // remember open/closed across launches
+    // remember open/closed across launches; with nothing tagged yet it starts closed, so it does not push the track list down
+    try { const pref = localStorage.getItem('ppvSavedOpen'); if (pref === '0' || (pref == null && !Object.keys(loadTags() || {}).length)) savedEl.open = false; } catch (e) {}
     savedEl.addEventListener('toggle', () => { try { localStorage.setItem('ppvSavedOpen', savedEl.open ? '1' : '0'); } catch (e) {} if (savedEl.open) renderSaved(); }); $('#ppv-sf').onchange = () => { savedLimit = 100; renderSaved(); }; $('#ppv-ss').oninput = () => { savedLimit = 100; renderSaved(); };
     $('#ppv-heads').onclick = async () => { await resetHeads(); h.status('Mood models will be downloaded again on the next tagging run.'); };
 
