@@ -104,6 +104,22 @@
   }
   #latency-preset-btn:hover{ border-color:var(--accent-dim); color:var(--accent); background:#1d1e23; }
   #latency-preset-btn.toggled{ color:var(--accent); border-color:var(--accent-dim); background:color-mix(in srgb, var(--accent) 8%, transparent); }
+  /* ---------- Preset row for timing controls (subtitle sync, visualizer timing, song captions) ---------- */
+  .pp-preset-row{ display:flex; align-items:center; gap:6px; margin-top:8px; }
+  .pp-preset-row input{
+    width:62px; flex-shrink:0; text-align:center;
+    background:var(--bg); border:1px solid var(--line); color:var(--text);
+    border-radius:6px; padding:7px 4px; font-size:12px; font-family:inherit;
+  }
+  .pp-preset-row input:focus{ outline:none; border-color:var(--accent-dim); }
+  .pp-preset-row button{
+    flex:1; min-width:0; text-align:center; padding:7px 8px;
+    background:none; border:1px solid var(--line); color:var(--text);
+    font-size:12px; font-family:inherit; border-radius:6px; cursor:pointer;
+  }
+  .pp-preset-row button.toggled{ color:var(--accent); border-color:var(--accent-dim); background:color-mix(in srgb, var(--accent) 8%, transparent); }
+  .pp-preset-row button:disabled{ opacity:.45; cursor:default; }
+
   /* ---------- Latency tester (full-screen sheet) ---------- */
   #lat-tester{ position:fixed; inset:0; z-index:100001; background:rgba(0,0,0,.72); display:flex; align-items:flex-end; justify-content:center; }
   #lat-tester[hidden]{ display:none; }

@@ -165,7 +165,7 @@
       ar.checked = auto;
       ar.addEventListener('change', () => { auto = ar.checked; try { localStorage.setItem('playerViewAutoReset', auto ? '1' : '0'); } catch(e){} if (auto && (viewFitIdx || viewZoomIdx)) resetViewMode(); });
     }
-    try { videoEl.addEventListener('loadedmetadata', () => { if (auto && (viewFitIdx || viewZoomIdx)) resetViewMode(true); }); } catch(e){}
+    try { videoEl.addEventListener('loadedmetadata', () => { if (auto && (viewFitIdx || viewZoomIdx) && !songOvActive('view')) resetViewMode(true); }); } catch(e){}   // a video with its own fit (Override fit & zoom) keeps it
   })();
   applyViewMode();
   document.addEventListener('keydown', (e) => {

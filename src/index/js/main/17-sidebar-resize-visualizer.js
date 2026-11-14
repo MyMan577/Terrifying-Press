@@ -168,6 +168,8 @@
       trimRow.style.display = '';
       trim.value = PPNative.vizTrim(); show(PPNative.vizTrim());
       trim.addEventListener('input', () => { const v = parseInt(trim.value, 10) || 0; show(v); PPNative.setVizTrim(v); });
+      ppPresetRow({ after: trim, key: 'ppPresetVizTrim', unit: 'ms', def: 100, min: -300, max: 300, step: 10, title: 'Visualizer timing preset (ms)',
+        get: () => PPNative.vizTrim(), set: (v) => { trim.value = v; show(v); PPNative.setVizTrim(v); } });
     }
   })();
   let vizRgb = [110, 231, 208], vizRgbAt = 0;
