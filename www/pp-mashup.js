@@ -442,7 +442,7 @@
     keep(false);
     var d = $('ppm'); if (d) d.classList.remove('open');
   }
-  window.PPMashup = { open: show, close: close, _els: function () { return [back, voc]; }, _stretch: stretch, _findBeat: findBeat, _state: function () { return st; }, _autoRate: autoRate, _keyFit: keyFit };
+  window.PPMashup = { open: show, close: close, _els: function () { return [back, voc]; }, _stretch: stretch, _findBeat: findBeat, _beatOf: beatOf, _state: function () { return st; }, _autoRate: autoRate, _keyFit: keyFit };
 
   function wire() {
     var b = $('mashup-btn'); if (b) b.addEventListener('click', show);
