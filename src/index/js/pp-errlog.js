@@ -17,6 +17,7 @@
   function stack(e, n){ return e && e.stack ? '\n' + String(e.stack).split('\n').slice(0, n).join('\n') : ''; }
   window.addEventListener('error', function(e){
     if (!e) return;
+    if (e.message && /^ResizeObserver loop/.test(e.message)) return;   // harmless browser notice, not a fault
     if (e.message) add('error', e.message + stack(e.error, 4), String(e.filename || '').split('/').pop() + ':' + (e.lineno || 0) + ':' + (e.colno || 0));
     else if (e.target && e.target.tagName === 'SCRIPT') add('load', 'A script did not load: ' + (e.target.src || ''));
   }, true);

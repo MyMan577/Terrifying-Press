@@ -59,14 +59,14 @@
 @@include index/html/03-player.html@@
 @@include index/html/04-modals.html@@
 @@include index/html/05-tabbar-and-mini-player.html@@
-<script id="jsmediatags-script" src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.7/jsmediatags.min.js"></script>
+<script id="jsmediatags-script" src="./jsmediatags.min.js"></script>   <!-- jsmediatags 3.9.7, shipped in the app: the CDN copy often failed to load on the phone -->
 <script id="pp-mp4-muxer">
 @@include index/js/vendor-mp4-muxer.js@@
 </script>
 <script src="pp-build.js"></script>
 <script src="native-bridge.js"></script>
 <script>/* safety net: if native-bridge.js is missing, run exactly as the plain web app */if(!window.PPNative){window.PPNative={available:false,enabled:false,hooks:{},lib:null,wrapMedia:function(e){return e},setSrc:function(e,t){e.src=t.url;return Promise.resolve()},raw:function(e){return e},active:function(){return false},videoActive:function(){return false},decorateAnalyser:function(){},queueNext:function(){},updateMeta:function(){},setFxProvider:function(){},mirror:function(){},setVideoFilterCss:function(){},boot:function(){return Promise.resolve()},sameUri:function(){return false},expectAdvance:function(){}};}</script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+<script src="./lame.min.js"></script>   <!-- lamejs 1.2.1 (MP3 encoder for stems), shipped in the app -->
 <script>
 @@include index/js/main/01-playlists-sidebar-tabs.js@@
 @@include index/js/main/02-playlist-selector-add-popover.js@@
