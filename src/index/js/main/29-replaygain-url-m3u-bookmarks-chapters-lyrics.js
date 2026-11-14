@@ -612,3 +612,113 @@ async function ppMp4Chapters(blob){
   setInterval(() => { if (songOvTrack) songOvCapture(songOvTrack); }, 1500);
   window.addEventListener('pagehide', () => { if (songOvTrack) songOvCapture(songOvTrack); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && songOvTrack) songOvCapture(songOvTrack); });
+
+  // ---------- Sharper artwork (AI) ----------
+  // Covers and video thumbnails are often far smaller than they are shown (a 300 px cover on the player, a 160 px video
+  // frame on a home card). When one is shown at least 25% bigger than it is, it is redrawn once at 2x with QuickSRNet
+  // medium (see "AI upscalers") on a small WebGL context of its own, and the sharper copy replaces it. Results are kept
+  // for the session; the context is let go when idle. Settings > Sharper artwork (AI) turns it off.
+  const ART_SHARP_KEY = 'ppArtSharp', ART_SHARP_MODEL = 'quicksrnet_medium';
+  let artSharpOn = true;
+  try { if (localStorage.getItem(ART_SHARP_KEY) === '0') artSharpOn = false; } catch (e){}
+  const artSharpCache = new Map(), artSharpPending = new Map();
+  let artCtx = null, artIdleTimer = 0;
+  function artGetCtx(){
+    if (artCtx) return artCtx;
+    const cv = document.createElement('canvas');
+    const gl = cv.getContext('webgl2', { alpha: false, antialias: false, depth: false, stencil: false, premultipliedAlpha: false });
+    if (!gl) return null;
+    const floatOk = !!(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'));
+    if (!floatOk) return null;
+    artCtx = { gl, floatOk, flipY: false, nets: {}, status: '' };
+    return artCtx;
+  }
+  function artLetGo(){
+    clearTimeout(artIdleTimer);
+    artIdleTimer = setTimeout(() => {
+      if (!artCtx) return;
+      try { srFreeAll(artCtx); artCtx.gl.getExtension('WEBGL_lose_context').loseContext(); } catch (e){}
+      artCtx = null;
+    }, 20000);
+  }
+  function artSharpen(src){
+    if (artSharpCache.has(src)) return Promise.resolve(artSharpCache.get(src));
+    if (artSharpPending.has(src)) return artSharpPending.get(src);
+    const p = (async () => {
+      let out = '';
+      try {
+        if (!(await srEnsureLoaded())) return '';
+        const bmp = await createImageBitmap(await (await fetch(src)).blob());
+        const w = bmp.width, h = bmp.height;
+        if (w < 24 || h < 24 || w * h > 1100 * 1100){ bmp.close(); return ''; }
+        const C = artGetCtx(); if (!C){ bmp.close(); return ''; }
+        const gl = C.gl, t = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
+        bmp.close();
+        [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER].forEach(q => gl.texParameteri(gl.TEXTURE_2D, q, gl.LINEAR));
+        [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T].forEach(q => gl.texParameteri(gl.TEXTURE_2D, q, gl.CLAMP_TO_EDGE));
+        const hr = srRun(C, ART_SHARP_MODEL, { tex: t, w, h });
+        gl.deleteTexture(t);
+        artLetGo();
+        if (!hr) return '';
+        const px = new Uint8ClampedArray(hr.w * hr.h * 4);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, hr.fbo);
+        gl.readPixels(0, 0, hr.w, hr.h, gl.RGBA, gl.UNSIGNED_BYTE, px);   // top row first, as uploaded
+        const c2 = document.createElement('canvas'); c2.width = hr.w; c2.height = hr.h;
+        c2.getContext('2d').putImageData(new ImageData(px, hr.w, hr.h), 0, 0);
+        const blob = await new Promise(r => c2.toBlob(r, 'image/jpeg', 0.9));
+        if (blob) out = URL.createObjectURL(blob);
+      } catch (e){ out = ''; }   // e.g. a picture from another site that WebGL may not read
+      return out;
+    })();
+    artSharpPending.set(src, p);
+    return p.then(u => { artSharpPending.delete(src); artSharpCache.set(src, u); return u; });
+  }
+  // One <img>: once it has loaded, if it is shown much bigger than it is, swap in the sharpened copy.
+  function artSharpImg(img){
+    if (!artSharpOn || !img || !img.isConnected) return;
+    const src = img.getAttribute('src');
+    if (!src || src === img.dataset.sharpUrl) return;
+    const go = () => {
+      if (img.getAttribute('src') !== src) return;
+      const need = Math.max(img.clientWidth, img.clientHeight) * (window.devicePixelRatio || 1);
+      if (!img.naturalWidth || Math.max(img.naturalWidth, img.naturalHeight) * 1.25 >= need) return;
+      artSharpen(src).then(u => {
+        if (!u || !artSharpOn || img.getAttribute('src') !== src) return;
+        img.dataset.sharpUrl = u; img.dataset.sharpOf = src;
+        img.src = u;
+      });
+    };
+    if (img.complete && img.naturalWidth) requestAnimationFrame(go); else img.addEventListener('load', go, { once: true });
+  }
+  // Where artwork is shown big: the player's cover, the home cards and the mini-player.
+  (function(){
+    const scan = (root) => { if (root) root.querySelectorAll('.ph-thumb img, #pl-mini-art img').forEach(artSharpImg); };
+    const art = document.getElementById('art-img');
+    if (art) new MutationObserver(() => artSharpImg(art)).observe(art, { attributes: true, attributeFilter: ['src', 'style'] });
+    const home = document.getElementById('pl-home');
+    if (home) new MutationObserver((muts) => {
+      muts.forEach(m => {
+        if (m.type === 'attributes' && m.target.tagName === 'IMG') artSharpImg(m.target);
+        m.addedNodes && m.addedNodes.forEach(n => { if (n.nodeType !== 1) return; if (n.tagName === 'IMG') artSharpImg(n); else scan(n); });
+      });
+    }).observe(home, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+    const mini = document.querySelector('#pl-mini-art img');
+    if (mini) new MutationObserver(() => artSharpImg(mini)).observe(mini, { attributes: true, attributeFilter: ['src'] });
+    const tog = document.getElementById('art-sharp-toggle');
+    if (tog){
+      tog.checked = artSharpOn;
+      tog.addEventListener('change', () => {
+        artSharpOn = tog.checked;
+        try { localStorage.setItem(ART_SHARP_KEY, artSharpOn ? '1' : '0'); } catch (e){}
+        // switched off: put the original pictures back
+        if (!artSharpOn) document.querySelectorAll('img[data-sharp-of]').forEach(i => { if (i.getAttribute('src') === i.dataset.sharpUrl){ i.src = i.dataset.sharpOf; } delete i.dataset.sharpOf; delete i.dataset.sharpUrl; });
+        else { if (art) artSharpImg(art); scan(home); scan(document); }
+      });
+    }
+    if (art) artSharpImg(art);
+    scan(home);
+  })();
+
