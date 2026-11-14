@@ -106,6 +106,24 @@
   #latency-preset-btn.toggled{ color:var(--accent); border-color:var(--accent-dim); background:color-mix(in srgb, var(--accent) 8%, transparent); }
   .enh-ai-select{ width:100%; padding:8px 8px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; font-size:12px; }
   #enh-ai-status:empty, #enh-copy-status:empty{ display:none; }
+  .enh-copy-row button[hidden]{ display:none !important; }
+  /* Close button on pill menus (see 09-dropdowns): stays in the top-right corner while the menu scrolls */
+  .pp-dd-x{
+    position:sticky; top:0; float:right; z-index:3;
+    width:34px; height:34px; margin:-4px -6px 4px 8px; padding:0;
+    display:grid; place-items:center; border-radius:50%;
+    border:1px solid var(--line); background:var(--bg-elev); color:var(--text); cursor:pointer;
+  }
+  .pp-dd-x svg{ width:16px; height:16px; }
+  #menu-panel .pp-dd-x{ display:none; }
+  /* Pill menus never run off the screen: they scroll inside themselves instead */
+  #subtitle-dropdown, #filter-dropdown, #pip-dropdown, #viz-sens-dropdown, #latency-dropdown, #speed-dropdown, #sleep-dropdown, #ab-dropdown,
+  #eq-dropdown, #memc-dropdown, #upscale-dropdown, #boost-dropdown, #fx-dropdown{
+    max-height:calc(100dvh - 24px - env(safe-area-inset-top, 0px)); overflow-y:auto; overscroll-behavior:contain;
+  }
+  #menu-panel #subtitle-dropdown, #menu-panel #filter-dropdown, #menu-panel #pip-dropdown, #menu-panel #viz-sens-dropdown, #menu-panel #latency-dropdown,
+  #menu-panel #speed-dropdown, #menu-panel #sleep-dropdown, #menu-panel #ab-dropdown, #menu-panel #eq-dropdown, #menu-panel #memc-dropdown,
+  #menu-panel #upscale-dropdown, #menu-panel #boost-dropdown, #menu-panel #fx-dropdown{ max-height:none; overflow:visible; }
   .enh-copy-row{ display:flex; gap:6px; margin-top:8px; }
   .enh-copy-row button{ flex:1; padding:8px; border-radius:8px; border:1px solid var(--line); background:none; color:var(--text); font:inherit; font-size:12px; cursor:pointer; }
   .enh-copy-row button:disabled{ opacity:.5; }

@@ -64,7 +64,8 @@
     d.parentNode.replaceChild(ph, d);
     ppHoisted.set(d, ph);
     ppPopupHost().appendChild(d);
-    Object.assign(d.style, { position:'fixed', left:r.left+'px', top:r.top+'px', right:'auto', bottom:'auto', transform:'none', width:r.width+'px', zIndex:'99980', pointerEvents:'auto' });
+    Object.assign(d.style, { position:'fixed', left:r.left+'px', top:Math.max(8, Math.min(r.top, window.innerHeight - r.height - 8))+'px',   // never above the screen's top edge
+       right:'auto', bottom:'auto', transform:'none', width:r.width+'px', zIndex:'99980', pointerEvents:'auto' });
   }
   function ppUnhoist(d){
     const ph = ppHoisted.get(d); if (!ph) return;
@@ -107,6 +108,22 @@
     const over = r.bottom - (vh - 10);
     if (over > 0) d.style.top = Math.max(8, dr.top - over) + 'px';
   }
+  // A close button (X) on every pop-up menu that opens from a pill: in the player, taps outside the menu go to the
+  // video's own tap and gesture handling instead, so tapping outside did not always close it. The X sends the same
+  // "tap elsewhere" every menu already closes on. Hidden where these menus sit open in the Settings menu.
+  PP_HOIST_IDS.forEach(id => {
+    const d = document.getElementById(id);
+    if (!d || d.querySelector(':scope > .pp-dd-x')) return;
+    const x = document.createElement('button');
+    x.type = 'button'; x.className = 'pp-dd-x'; x.setAttribute('aria-label', 'Close');
+    x.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+    x.addEventListener('click', (e) => {
+      e.stopPropagation();
+      d.classList.remove('open');
+      document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));   // lets each menu reset its own button too
+    });
+    d.insertBefore(x, d.firstChild);
+  });
   window.addEventListener('resize', ppRefreshPopups);
   if (window.visualViewport) window.visualViewport.addEventListener('resize', () => {
     const ae = document.activeElement;
