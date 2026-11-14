@@ -390,16 +390,18 @@
   // (deblock), banding smoothing (deband), anime line mode, and a before/after split. Runs on the motion-smoothing
   // GPU engine, which starts for these even with smoothing and the picture delay off.
   const ENH_KEY = 'playerEnhance';
-  let enhSharp = 0, enhDeband = false, enhDeblock = false, enhAnime = false, enhCompare = false, enhSharpSet = false;
+  const ENH_AI_IDS = ['sesr_m5', 'quicksrnet_small', 'quicksrnet_medium', 'xlsr', 'anime4k_s', 'anime4k_m'];
+  let enhSharp = 0, enhDeband = false, enhDeblock = false, enhAnime = false, enhCompare = false, enhSharpSet = false, enhAI = 'off';
   try {
     const e = JSON.parse(localStorage.getItem(ENH_KEY) || '{}') || {};
     if (typeof e.sharp === 'number' && e.sharp >= 0 && e.sharp <= 100){ enhSharp = e.sharp; enhSharpSet = true; }
     enhDeband = !!e.deband; enhDeblock = !!e.deblock; enhAnime = !!e.anime;
+    if (ENH_AI_IDS.includes(e.ai)) enhAI = e.ai;
   } catch (e){}
   function enhSave(){
-    try { localStorage.setItem(ENH_KEY, JSON.stringify({ sharp: enhSharpSet ? enhSharp : undefined, deband: enhDeband, deblock: enhDeblock, anime: enhAnime })); } catch (e){}
+    try { localStorage.setItem(ENH_KEY, JSON.stringify({ sharp: enhSharpSet ? enhSharp : undefined, deband: enhDeband, deblock: enhDeblock, anime: enhAnime, ai: enhAI })); } catch (e){}
   }
-  function memcEnhOn(){ return memcUpscale > 0 || enhSharp > 0 || enhDeband || enhDeblock || enhAnime; }
+  function memcEnhOn(){ return memcUpscale > 0 || enhSharp > 0 || enhDeband || enhDeblock || enhAnime || enhAI !== 'off'; }
   const MEMC_DELAY_KEY = 'playerMemcDelayGL';
   let memcDelayGL = true;   // carry the picture delay on the GPU engine when smoothing is off/skipped
   // Hidden decode compensation: a fixed extra picture delay added to every video to cover the

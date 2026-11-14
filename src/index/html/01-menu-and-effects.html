@@ -500,6 +500,21 @@
                   <button type="button" class="memc-mode-btn" data-memc-up="2">1440p</button>
                   <button type="button" class="memc-mode-btn" data-memc-up="3">4K</button>
                 </div>
+                <div class="latency-dropdown-row" style="margin:9px 0 4px 0;"><span class="tool-dropdown-label" style="padding:0;" title="AI upscalers rebuild detail when enlarging videos up to about 720p. They run live on the GPU.">Upscaler</span></div>
+                <select id="enh-ai-select" class="enh-ai-select" aria-label="Upscaler">
+                  <option value="off">Standard (edge-aware)</option>
+                  <optgroup label="AI: films, TV, photos">
+                    <option value="sesr_m5">SESR-M5 (fast)</option>
+                    <option value="quicksrnet_small">QuickSRNet small (fast)</option>
+                    <option value="xlsr">XLSR (balanced)</option>
+                    <option value="quicksrnet_medium">QuickSRNet medium (sharpest)</option>
+                  </optgroup>
+                  <optgroup label="AI: anime and cartoons">
+                    <option value="anime4k_s">Anime4K S (fast)</option>
+                    <option value="anime4k_m">Anime4K M (sharper)</option>
+                  </optgroup>
+                </select>
+                <p class="menu-section-hint" id="enh-ai-status" style="margin:4px 0 0 0;"></p>
                 <div class="latency-dropdown-row" style="margin:9px 0 4px 0;"><span class="tool-dropdown-label" style="padding:0;" title="Sharpens at the screen's resolution, more on soft detail and less on noise, without bright halos.">Sharpness</span><span id="enh-sharp-val" class="memc-val">Off</span></div>
                 <input type="range" id="enh-sharp" class="memc-range" min="0" max="100" step="5" value="0">
                 <label class="override-toggle" style="margin-top:8px;" title="Softens the 8x8 blocks and the shimmer around edges that low-bitrate video has.">

@@ -104,6 +104,9 @@
   }
   #latency-preset-btn:hover{ border-color:var(--accent-dim); color:var(--accent); background:#1d1e23; }
   #latency-preset-btn.toggled{ color:var(--accent); border-color:var(--accent-dim); background:color-mix(in srgb, var(--accent) 8%, transparent); }
+  .enh-ai-select{ width:100%; padding:8px 8px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; font-size:12px; }
+  #enh-ai-status:empty{ display:none; }
+
   /* ---------- Preset row for timing controls (subtitle sync, visualizer timing, song captions) ---------- */
   .pp-preset-row{ display:flex; align-items:center; gap:6px; margin-top:8px; }
   .pp-preset-row input{
@@ -121,6 +124,12 @@
   .pp-preset-row button:disabled{ opacity:.45; cursor:default; }
 
   /* ---------- Latency tester (full-screen sheet) ---------- */
+  #pp-licences{ position:fixed; inset:0; z-index:100001; background:rgba(0,0,0,.72); display:flex; align-items:flex-end; justify-content:center; }
+  #pp-licences[hidden]{ display:none; }
+  #pp-licences .lt-sheet{ width:min(560px, 100vw); max-height:92dvh; overflow-y:auto; background:var(--bg-elev, #17181c); color:var(--text); border:1px solid var(--line); border-radius:18px 18px 0 0; padding:14px 16px calc(18px + env(safe-area-inset-bottom)) 16px; box-sizing:border-box; }
+  #pp-licences-text{ white-space:pre-wrap; word-break:break-word; font-size:11.5px; line-height:1.45; color:var(--text-dim); margin:0; font-family:ui-monospace, monospace; }
+  .lt-close-btn, #lt-close{ width:40px; height:40px; border-radius:50%; border:1px solid var(--line); background:none; color:var(--text); display:grid; place-items:center; cursor:pointer; }
+  .lt-close-btn svg{ width:20px; height:20px; }
   #lat-tester{ position:fixed; inset:0; z-index:100001; background:rgba(0,0,0,.72); display:flex; align-items:flex-end; justify-content:center; }
   #lat-tester[hidden]{ display:none; }
   #lat-tester .lt-sheet{

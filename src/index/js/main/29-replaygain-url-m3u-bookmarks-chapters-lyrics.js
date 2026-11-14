@@ -508,9 +508,10 @@ async function ppMp4Chapters(blob){
     },
     enhance: {
       host: 'upscale-dropdown', where: 'start',
-      get: () => ({ u: memcUpscale, sh: enhSharp, db: enhDeband, dk: enhDeblock, an: enhAnime }),
+      get: () => ({ u: memcUpscale, sh: enhSharp, db: enhDeband, dk: enhDeblock, an: enhAnime, ai: enhAI }),
       set: (v) => {
         memcUpscale = v.u; enhSharp = v.sh; enhSharpSet = true; enhDeband = !!v.db; enhDeblock = !!v.dk; enhAnime = !!v.an;
+        enhAI = ENH_AI_IDS.includes(v.ai) ? v.ai : 'off'; if (enhAI !== 'off') srEnsureLoaded().then(() => memcRepaint());
         try { localStorage.setItem(MEMC_UP_KEY, String(memcUpscale)); } catch (e){}
         enhChanged();
       }

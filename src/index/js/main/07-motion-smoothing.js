@@ -504,7 +504,7 @@
 
     memcCanvas.addEventListener('webglcontextlost', (e) => {
       e.preventDefault();
-      memcGL = null; memcRing = []; memcResKey = '';
+      memcGL = null; memcRing = []; memcResKey = ''; srNets = {};
       memcFailed = true; memcFailWhy = 'The graphics context was lost.';
       memcStop();
       document.body.classList.remove('memc-active');
@@ -573,8 +573,9 @@
       if (memcMvRaw){ gl.deleteFramebuffer(memcMvRaw.fbo); gl.deleteTexture(memcMvRaw.tex); }
       if (memcMvRef){ gl.deleteFramebuffer(memcMvRef.fbo); gl.deleteTexture(memcMvRef.tex); }
       for (const k in memcEnh){ const t = memcEnh[k]; if (t){ gl.deleteFramebuffer(t.fbo); gl.deleteTexture(t.tex); } }
+      srFreeAll();
     }
-    memcEnh = { mid: null, pre: null, up: null };
+    memcEnh = { mid: null, pre: null, up: null, ai: null };
     memcRing = []; memcLuma = []; memcMvRaw = null; memcMvRef = null; memcAna = null;
     memcResKey = ''; memcWrite = 0; memcPrevSeq = 0; memcPrevLumaValid = false; memcLumaIdx = 0;
     memcPrevSlot = null; memcUniqSlot = null;
@@ -710,7 +711,7 @@
     if (!memcRingW) return;
     const dpr = window.devicePixelRatio || 1;
     const bw = memcCanvas.clientWidth * dpr, bh = memcCanvas.clientHeight * dpr;
-    const capH = MEMC_UP_CAPS[memcUpscale];
+    const capH = MEMC_UP_CAPS[memcUpscale] || (enhAI !== 'off' ? 2160 : 0);   // an AI upscaler enlarges up to the screen even with Upscale off
     let scale = 1;
     if (capH && bw > 0 && bh > 0){
       const fit = Math.min(bw / memcRingW, bh / memcRingH);
@@ -954,6 +955,197 @@
     if (mid) memcEnhPasses(mid);
   }
 
+  // ---------- AI upscalers (Picture enhance) ----------
+  // Small neural upscalers (2x) from www/pp-sr-models.js (built by tools/build_sr_models.py), run as shader passes on
+  // the same GPU engine: QuickSRNet small/medium, XLSR, SESR-M5 (trained on photos) and Anime4K S/M (anime). Each
+  // layer becomes one pass writing up to 8 textures at once (multiple render targets), so every input pixel is read
+  // once per tap for all of its outputs. Features are half floats. Only used when the picture must be enlarged and is
+  // at most ~720p (bigger frames would not keep up), otherwise the standard upscaler carries on.
+  const SR_MAX_PX = 1280 * 736;
+  function srEnsureLoaded(){
+    if (window.PP_SR_MODELS) return Promise.resolve(true);
+    if (srLoading) return srLoading;
+    srLoading = new Promise((res) => {
+      const s = document.createElement('script');
+      s.src = 'pp-sr-models.js';
+      s.onload = () => res(!!window.PP_SR_MODELS);
+      s.onerror = () => { srLoading = null; res(false); };
+      document.head.appendChild(s);
+    });
+    return srLoading;
+  }
+  function srHalf(b64){
+    const bin = atob(b64), u = new Uint16Array(bin.length >> 1);
+    for (let i = 0; i < u.length; i++) u[i] = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8);
+    const f = new Float32Array(u.length);
+    for (let i = 0; i < u.length; i++){
+      const h = u[i], s = h & 0x8000 ? -1 : 1, e = (h >> 10) & 31, m = h & 1023;
+      f[i] = e === 0 ? s * m * Math.pow(2, -24) : e === 31 ? (m ? NaN : s * Infinity) : s * (1 + m / 1024) * Math.pow(2, e - 15);
+    }
+    return f;
+  }
+  const srNum = (v) => { let s = String(+v.toPrecision(6)); if (!/[.e]/.test(s)) s += '.0'; return s; };
+  // One program per (layer, group of up to G output textures).
+  function srBuild(id){
+    if (srNets[id]) return srNets[id];
+    const gl = memcGL, M = window.PP_SR_MODELS && window.PP_SR_MODELS[id];
+    if (!gl || !M || !memcFloatOk) return null;
+    const G = Math.max(1, Math.min(8, gl.getParameter(gl.MAX_DRAW_BUFFERS) || 4));
+    const chans = { x: 4 };
+    M.layers.forEach(L => { chans[L.out] = L.o; });
+    const fetchFn = M.pad === 'clamp'
+      ? 'vec4 F(sampler2D t, ivec2 p){ return texelFetch(t, clamp(p, ivec2(0), uSize - 1), 0); }\n'
+      : 'vec4 F(sampler2D t, ivec2 p){ return (p.x < 0 || p.y < 0 || p.x >= uSize.x || p.y >= uSize.y) ? vec4(0.0) : texelFetch(t, p, 0); }\n';
+    const compile = (src) => {
+      const sh = (type, s) => { const o = gl.createShader(type); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o) || 'sr compile'); return o; };
+      const p = gl.createProgram();
+      gl.attachShader(p, sh(gl.VERTEX_SHADER, '#version 300 es\nvoid main(){ vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }\n'));
+      gl.attachShader(p, sh(gl.FRAGMENT_SHADER, src));
+      gl.linkProgram(p);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) || 'sr link');
+      return p;
+    };
+    const passes = [];
+    M.layers.forEach(L => {
+      const w = srHalf(L.w), b = srHalf(L.b), k = L.k, r = k >> 1, ctot = L.ins.reduce((n, i) => n + i.c, 0);
+      const nOut = L.o / 4;
+      // distinct input textures (map, part) -> sampler slot
+      const slots = [], slotOf = (t, part) => { const key = t + ':' + part; let i = slots.findIndex(s => s.key === key); if (i < 0){ slots.push({ key, t, part }); i = slots.length - 1; } return i; };
+      for (let g0 = 0; g0 < nOut; g0 += G){
+        const g1 = Math.min(nOut, g0 + G), outs = [];
+        for (let j = g0; j < g1; j++) outs.push(j);
+        const used = new Set(), body = [];
+        outs.forEach(j => body.push('  vec4 a' + j + ' = vec4(' + [0, 1, 2, 3].map(o => srNum(b[4 * j + o])).join(', ') + ');'));
+        let cOff = 0;
+        L.ins.forEach(inp => {
+          for (let part = 0; part < inp.c / 4; part++){
+            const si = slotOf(inp.t, part); used.add(si);
+            for (let ky = 0; ky < k; ky++) for (let kx = 0; kx < k; kx++){
+              const terms = [];
+              outs.forEach(j => {
+                const m = [];
+                let any = false;
+                for (let i = 0; i < 4; i++) for (let o = 0; o < 4; o++){
+                  const v = w[(((4 * j + o) * ctot + cOff + 4 * part + i) * k + ky) * k + kx];
+                  if (v !== 0) any = true;
+                  m.push(srNum(v));
+                }
+                if (any) terms.push('  a' + j + ' += mat4(' + m.join(', ') + ') * v;');
+              });
+              if (!terms.length) continue;
+              const raw = 'F(s' + si + ', p + ivec2(' + (kx - r) + ', ' + (ky - r) + '))';
+              body.push('  v = ' + (inp.f === 1 ? 'max(' + raw + ', 0.0)' : inp.f === 2 ? 'max(-' + raw + ', 0.0)' : raw) + ';');
+              terms.forEach(t => body.push(t));
+            }
+          }
+          cOff += inp.c;
+        });
+        const addSlots = [];
+        outs.forEach(j => {
+          if (L.act === 'relu') body.push('  a' + j + ' = max(a' + j + ', 0.0);');
+          else if (L.act === 'clip') body.push('  a' + j + ' = clamp(a' + j + ', 0.0, 1.0);');
+          if (L.add){ const si = slotOf(L.add, j); used.add(si); body.push('  a' + j + ' += texelFetch(s' + si + ', p, 0);'); }
+          body.push('  o' + (j - g0) + ' = a' + j + ';');
+        });
+        const src = '#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\nuniform ivec2 uSize;\n'
+          + slots.map((s, i) => 'uniform sampler2D s' + i + ';').join('\n') + '\n'
+          + outs.map((j, i) => 'layout(location = ' + i + ') out vec4 o' + i + ';').join('\n') + '\n'
+          + fetchFn + 'void main(){\n  ivec2 p = ivec2(gl_FragCoord.xy);\n  vec4 v;\n' + body.join('\n') + '\n}\n';
+        const prog = compile(src);
+        passes.push({ prog, out: L.out, outs, slots: slots.slice(), uSize: gl.getUniformLocation(prog, 'uSize'),
+          locs: slots.map((s, i) => gl.getUniformLocation(prog, 's' + i)) });
+      }
+    });
+    const fin = M.kind === 'rgb'
+      ? 'uniform sampler2D s0, s1, s2;\nout vec4 oc;\nvoid main(){ ivec2 q = ivec2(gl_FragCoord.xy), p = q / 2; int s = (q.y & 1) * 2 + (q.x & 1);\n'
+        + '  oc = vec4(clamp(vec3(texelFetch(s0, p, 0)[s], texelFetch(s1, p, 0)[s], texelFetch(s2, p, 0)[s]), 0.0, 1.0), 1.0); }\n'
+      : 'uniform sampler2D s0, sx;\nuniform vec2 uHr;\nout vec4 oc;\nvoid main(){ ivec2 q = ivec2(gl_FragCoord.xy), p = q / 2; int s = (q.y & 1) * 2 + (q.x & 1);\n'
+        + '  vec3 base = texture(sx, (vec2(q) + 0.5) / uHr).rgb;\n  oc = vec4(clamp(base + texelFetch(s0, p, 0)[s], 0.0, 1.0), 1.0); }\n';
+    const finProg = compile('#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\n' + fin);
+    const net = { M, chans, passes, fin: finProg, finLoc: ['s0', 's1', 's2', 'sx', 'uHr'].reduce((o, n) => (o[n] = gl.getUniformLocation(finProg, n), o), {}), tex: {}, w: 0, h: 0 };
+    srNets[id] = net;
+    return net;
+  }
+  function srFreeNet(net){
+    const gl = memcGL; if (!gl || !net) return;
+    Object.values(net.tex).forEach(t => { t.texs.forEach(x => gl.deleteTexture(x)); t.fbos.forEach(f => gl.deleteFramebuffer(f)); });
+    net.tex = {}; net.w = net.h = 0;
+  }
+  function srFreeAll(){ Object.values(srNets).forEach(srFreeNet); }
+  // Feature textures for this frame size: one set per map, plus one framebuffer per pass (its output group).
+  function srAlloc(net, w, h){
+    if (net.w === w && net.h === h) return;
+    srFreeNet(net);
+    const gl = memcGL;
+    net.w = w; net.h = h;
+    Object.keys(net.chans).forEach(name => {
+      if (name === 'x') return;
+      const texs = [];
+      for (let i = 0; i < net.chans[name] / 4; i++){
+        const t = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA16F, w, h);
+        [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER].forEach(p => gl.texParameteri(gl.TEXTURE_2D, p, gl.NEAREST));
+        [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T].forEach(p => gl.texParameteri(gl.TEXTURE_2D, p, gl.CLAMP_TO_EDGE));
+        texs.push(t);
+      }
+      net.tex[name] = { texs, fbos: [] };
+    });
+    net.passes.forEach(P => {
+      const f = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+      P.outs.forEach((j, i) => gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, net.tex[P.out].texs[j], 0));
+      P.fbo = f; net.tex[P.out].fbos.push(f);
+    });
+  }
+  // Self-test (developer use): runs one model on raw RGBA pixels and returns the 2x RGBA pixels, to compare against
+  // the reference implementation in tools/. Not used by the app itself.
+  window.__ppSrSelfTest = async function(id, rgba, w, h){
+    if (!memcInitGL()) return null;
+    if (!(await srEnsureLoaded())) return null;
+    const gl = memcGL, t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(rgba));
+    [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER].forEach(p => gl.texParameteri(gl.TEXTURE_2D, p, gl.LINEAR));
+    [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T].forEach(p => gl.texParameteri(gl.TEXTURE_2D, p, gl.CLAMP_TO_EDGE));
+    const t0 = performance.now(), hr = srRun(id, { tex: t, w, h });
+    if (!hr) return { error: srStatus };
+    const out = new Uint8Array(hr.w * hr.h * 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, hr.fbo);
+    gl.readPixels(0, 0, hr.w, hr.h, gl.RGBA, gl.UNSIGNED_BYTE, out);
+    gl.deleteTexture(t);
+    return { w: hr.w, h: hr.h, ms: performance.now() - t0, data: Array.from(out) };
+  };
+  // src: {tex, w, h} (RGBA8, linear) -> the 2x picture, or null (not ready / not worth it / failed).
+  function srRun(id, src){
+    const gl = memcGL;
+    let net = null;
+    try { net = srBuild(id); } catch (e){ console.warn('[ai upscale]', e); srStatus = 'Could not start this model on this phone.'; srNets[id] = null; srBroken[id] = true; return null; }
+    if (!net) return null;
+    srAlloc(net, src.w, src.h);
+    const texOf = (t, part) => t === 'x' ? src.tex : net.tex[t].texs[part];
+    gl.viewport(0, 0, src.w, src.h);
+    net.passes.forEach(P => {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, P.fbo);
+      gl.drawBuffers(P.outs.map((j, i) => gl.COLOR_ATTACHMENT0 + i));
+      gl.useProgram(P.prog);
+      gl.uniform2i(P.uSize, src.w, src.h);
+      P.slots.forEach((s, i) => { memcBind(i, texOf(s.t, s.part)); gl.uniform1i(P.locs[i], i); });
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    });
+    const hr = memcEnhTex('ai', src.w * 2, src.h * 2);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, hr.fbo);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+    gl.viewport(0, 0, hr.w, hr.h);
+    gl.useProgram(net.fin);
+    const fin = net.tex[net.M.final].texs, L = net.finLoc;
+    if (net.M.kind === 'rgb'){ [0, 1, 2].forEach(i => { memcBind(i, fin[i]); gl.uniform1i(L['s' + i], i); }); }
+    else { memcBind(0, fin[0]); gl.uniform1i(L.s0, 0); memcBind(1, src.tex); gl.uniform1i(L.sx, 1); gl.uniform2f(L.uHr, hr.w, hr.h); }
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    srStatus = (net.M.name || id) + ': ' + src.w + '×' + src.h + ' → ' + hr.w + '×' + hr.h;
+    return hr;
+  }
+
   function memcEnhTex(name, w, h){
     const gl = memcGL, t = memcEnh[name];
     if (t && t.w === w && t.h === h) return t;
@@ -978,6 +1170,16 @@
       memcEnhSeed = (memcEnhSeed + 1) % 997; gl.uniform1f(u.uSeed, memcEnhSeed * 1.37);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       src = pre;
+    }
+    // AI upscaler: 2x when the picture has to be enlarged and is small enough to keep up; the standard pass then fits
+    // its result to the output size.
+    srStatus = enhAI === 'off' ? '' : srStatus;
+    if (enhAI !== 'off' && !srBroken[enhAI]){
+      if (!memcFloatOk) srStatus = 'Not available on this phone (no half-float rendering).';
+      else if (!window.PP_SR_MODELS) srStatus = 'Loading\u2026';
+      else if (memcOutW <= src.w * 1.15 && memcOutH <= src.h * 1.15) srStatus = 'Not needed: the picture is already as sharp as the screen.';
+      else if (src.w * src.h > SR_MAX_PX) srStatus = 'Skipped: over 720p is too big to run live (standard upscaler used).';
+      else { const hr = srRun(enhAI, src); if (hr) src = hr; }
     }
     if (memcOutW !== src.w || memcOutH !== src.h){
       const upT = memcEnhTex('up', memcOutW, memcOutH), u = P.enhUp.u;
