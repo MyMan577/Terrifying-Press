@@ -290,8 +290,8 @@
       v.addEventListener('seeked', () => {
         try {
           const c = document.createElement('canvas');
-          c.width = 160;
-          c.height = 160 * (v.videoHeight / v.videoWidth || 1);
+          c.width = Math.min(480, v.videoWidth || 480);   // 480 px: sharp on the big cards and the player (was 160)
+          c.height = Math.round(c.width * (v.videoHeight / v.videoWidth || 1));
           const cctx = c.getContext('2d');
           cctx.drawImage(v, 0, 0, c.width, c.height);
           c.toBlob((blob) => {
@@ -301,7 +301,7 @@
             }
             cleanup();
             resolve();
-          }, 'image/jpeg', 0.75);
+          }, 'image/jpeg', 0.82);
           return;
         } catch(e) { /* tainted canvas or decode issue, skip thumbnail */ }
         cleanup();

@@ -337,10 +337,10 @@
       v.onloadedmetadata = () => { try { v.currentTime = Math.min(1, (v.duration || 2) * 0.1); } catch(e){ fin(null); } };
       v.onseeked = () => {
         try {
-          const w = 320, h = Math.round(w * (v.videoHeight || 9) / (v.videoWidth || 16));
+          const w = Math.min(480, v.videoWidth || 480), h = Math.round(w * (v.videoHeight || 9) / (v.videoWidth || 16));
           const c = document.createElement('canvas'); c.width = w; c.height = h;
           c.getContext('2d').drawImage(v, 0, 0, w, h);
-          fin(c.toDataURL('image/jpeg', 0.7));
+          fin(c.toDataURL('image/jpeg', 0.8));
         } catch(e){ fin(null); }
       };
       v.onerror = () => fin(null);
