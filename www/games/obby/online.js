@@ -90,19 +90,40 @@
     sendKO: function(){ var S = SMK(); if (conn && S) conn.send({ t: 'smKO', stocks: S.me.stocks }); },
     sendOver: function(w){ if (conn && role === 'host') conn.send({ t: 'smOver', w: w === 'me' ? 'foe' : w === 'foe' ? 'me' : 'draw' }); },
     sendStart: function(cfg){ if (conn && role === 'host') conn.send({ t: 'smStart', stage: cfg.stage, stocks: cfg.stocks, time: cfg.time, char: G().char }); },
+    // either phone's Rematch: both go back to their menus to pick fighters again
+    rematch: function(){ if (conn) conn.send({ t: 'smMenu' }); smMenus(); },
     quit: function(){ leave(true); },
     onStop: function(){}
   };
+  var remoteReady = false;
   function smHostMenu(){
     var S = SMK(); if (!S) return;
-    S.openMenu({ online: true, onCancel: function(){ leave(true); }, onGo: function(cfg){
+    var rs = document.getElementById('smResult'); if (rs) rs.style.display = 'none';
+    S.openMenu({ online: true, needReady: true,
+      onChar: function(c){ if (conn) conn.send({ t: 'smChar', char: c }); },
+      onCancel: function(){ leave(true); }, onGo: function(cfg){
       if (cfg.stage === 'course') sendCourse();                  // your own course as the stage: the other phone gets a copy first
       if (cfg.stocks <= 0) cfg.stocks = 3;
       cfg.online = true; cfg.cpuChar = remoteChar || 'brawler';
-      S.start(cfg); smNet.sendStart(S.cfg);
+      if (S.active) S.stop(true);                                // a rematch: back to your own course first
+      S.start(cfg); smNet.sendStart(S.cfg); remoteReady = false;
       status('🥊 Smash · vs Friend');
     } });
+    S.menuFriend(remoteChar, remoteReady);
+    if (conn) conn.send({ t: 'smChar', char: G().char });         // the guest sees what you have picked
   }
+  // the guest's menu: just their fighter and Ready (the host picks the stage)
+  function smGuestMenu(){
+    var S = SMK(); if (!S) return;
+    var rs = document.getElementById('smResult'); if (rs) rs.style.display = 'none';
+    S.openMenu({ online: true, guest: true,
+      onChar: function(c){ if (conn) conn.send({ t: 'smChar', char: c, ready: false }); },
+      onReady: function(c){ if (conn) conn.send({ t: 'smChar', char: c, ready: true }); status('🥊 Smash · ready'); },
+      onCancel: function(){ leave(true); } });
+    S.menuHost(remoteChar);
+    if (conn) conn.send({ t: 'smChar', char: G().char, ready: false });
+  }
+  function smMenus(){ remoteReady = false; if (role === 'host') smHostMenu(); else smGuestMenu(); status('🥊 Smash · pick your fighters'); }
 
   // ---------- session ----------
   function start(c, r){
@@ -207,16 +228,23 @@
       if (kind === 'smash' && role === 'guest') {
         if (SMK()) SMK().setNet(smNet);
         guestOwnCourse = null;                                   // Smash keeps and restores your course itself
-        conn.send({ t: 'smChar', char: g.char });
-        status('🥊 Smash · waiting for the host'); say('Linked! The host is picking the stage.');
+        status('🥊 Smash · pick your fighter'); say('Linked! Pick your fighter and tap Ready. The host picks the stage.');
+        smGuestMenu();
       }
       return;
     }
     var S = SMK();
-    if (m.t === 'smChar') { remoteChar = m.char; return; }
+    if (m.t === 'smChar') {
+      remoteChar = m.char;
+      if (role === 'host') { remoteReady = !!m.ready; if (S) S.menuFriend(remoteChar, remoteReady); }
+      else if (S) S.menuHost(remoteChar);
+      return;
+    }
+    if (m.t === 'smMenu') { smMenus(); return; }
     if (m.t === 'smStart' && role === 'guest' && S) {
       var rs = document.getElementById('smResult'); if (rs) rs.style.display = 'none';
       if (m.stage === 'course' && !smCourse) { say("Couldn't get the host's course."); return; }
+      if (S.hideMenu) S.hideMenu();
       if (S.active) S.stop(true);                                // a rematch: back to your own course first, then load theirs again
       S.setNet(smNet);
       S.start({ stage: m.stage, stocks: m.stocks, time: m.time, online: true, char: g.char, cpuChar: m.char || 'brawler', courseJson: m.stage === 'course' ? smCourse : null });
