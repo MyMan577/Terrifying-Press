@@ -8,6 +8,7 @@
   });
   document.addEventListener('fullscreenchange', () => {
     fullscreenBtn.classList.toggle('toggled', !!document.fullscreenElement);
+    document.body.classList.toggle('pp-fs', !!document.fullscreenElement);   // turns off the retro phone layout's sizing around the video
     if (!document.fullscreenElement){ releaseRotation(); return; }
     // Entering fullscreen on a video turns the screen to match it (landscape video -> landscape), like any video app.
     // The Rotate button's own choice wins if it is already in charge.
