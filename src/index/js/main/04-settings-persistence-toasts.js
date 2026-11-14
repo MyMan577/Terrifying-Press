@@ -316,12 +316,21 @@
           title: t.title, artist: t.artist, duration: t.duration, size: t.size != null ? t.size : null,
           width: t.width || null, height: t.height || null, playlistIds: t.playlistIds || [],
           stem: t.stem || undefined, stemOf: t.stemOf || undefined, stemSrc: t.stemSrc || undefined,
+          album: t.album || undefined, genre: t.genre || undefined, trackNo: t.trackNo || undefined, disc: t.disc || undefined,
+          year: t.year || undefined, folder: t.folder || undefined, fileName: t.fileName || undefined, remoteUrl: t.remoteUrl || undefined,
+          convertedFromVideo: t.convertedFromVideo || undefined,
+          origExt: t.convertedFromVideo ? (t._origExt || 'mp4') : undefined,
+          origArtist: t.convertedFromVideo ? (t._origArtist != null ? t._origArtist : 'Video') : undefined,
+          origWidth: t.convertedFromVideo ? (t._origWidth || null) : undefined,
+          origHeight: t.convertedFromVideo ? (t._origHeight || null) : undefined,
           mediaFile: 'media/' + fileName, artFile: artFile ? 'art/' + artFile : null
         });
       }
       // Every track is packed now. What is left is writing the whole archive out, which used to show no progress at all and looked frozen on the last song.
       if (btn) btn.textContent = 'Finishing…';
-      await zip.add('manifest.json', new TextEncoder().encode(JSON.stringify({ version: 1, playlists, tracks: manifest }, null, 2)));
+      await zip.add('manifest.json', new TextEncoder().encode(JSON.stringify({ version: 2, playlists, tracks: manifest }, null, 2)));
+      // Every setting and all progress too (per-song EQ, overrides, loops, subtitles, XP...), so one file restores everything.
+      try { await zip.add('settings.json', new TextEncoder().encode(JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), data: progressBackupData() }))); } catch(e){}
       const blob = zip.finish();
       await backupPause(0);
       await window.ppSaveBlob(blob, 'press-play-library-backup-' + new Date().toISOString().slice(0,10) + '.zip', (f, phase) => {
@@ -423,7 +432,13 @@
           dbId: m.dbId, artDbId: m.artDbId || null, url: URL.createObjectURL(mediaBlob), artUrl,
           kind: m.kind, ext: m.ext, title: m.title, artist: m.artist, duration: m.duration,
           size: m.size, width: m.width, height: m.height, playlistIds: m.playlistIds || [],
-          stem: m.stem || undefined, stemOf: m.stemOf || null, stemSrc: m.stemSrc || null
+          stem: m.stem || undefined, stemOf: m.stemOf || null, stemSrc: m.stemSrc || null,
+          album: m.album || '', genre: m.genre || '', trackNo: m.trackNo || null, disc: m.disc || null, year: m.year || null,
+          folder: m.folder || '', fileName: m.fileName || null, remoteUrl: m.remoteUrl || null,
+          convertedFromVideo: !!m.convertedFromVideo,
+          _origExt: m.convertedFromVideo ? (m.origExt || 'mp4') : undefined, _origArtist: m.convertedFromVideo ? (m.origArtist != null ? m.origArtist : 'Video') : undefined,
+          _origWidth: m.convertedFromVideo ? (m.origWidth != null ? m.origWidth : null) : undefined,
+          _origHeight: m.convertedFromVideo ? (m.origHeight != null ? m.origHeight : null) : undefined
         });
         restored++;
       }
@@ -443,6 +458,20 @@
       step(renderPlaylistViewSelect);
       step(refreshStorageEstimate);
       showToast('Restored ' + restored + ' track' + (restored === 1 ? '' : 's') + (failed ? (', ' + failed + ' failed') : '') + '.', failed ? 'warn' : undefined);
+      // Settings and progress from the same backup (newer backups carry them). The track and playlist lists were just
+      // merged above, so those two are left alone. Applying needs a reload, so it asks first.
+      if (zip.has('settings.json')){
+        let sdata = null;
+        try { const sj = JSON.parse(await zip.text('settings.json')); sdata = sj && typeof sj.data === 'object' ? sj.data : null; } catch(e){}
+        if (sdata && Object.keys(sdata).length && window.confirm('This backup also has your settings and progress (EQ, per-song settings, loops, XP and more). Restore those too? The app will reload.')){
+          const n = progressBackupApply(sdata, [PLAYLIST_KEY, PLAYLISTS_KEY]);
+          if (n){
+            showToast('Settings and progress restored. Reloading\u2026');
+            window.__ppSkipUnloadSave = true;
+            setTimeout(() => location.reload(), 900);
+          }
+        }
+      }
     } catch(e){
       showToast('Restore failed: ' + (e && e.message ? e.message : 'invalid file'), 'error');
     } finally {
