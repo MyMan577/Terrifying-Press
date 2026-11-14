@@ -602,7 +602,7 @@ async function ppMp4Chapters(blob){
     const input = label.querySelector('input');
     input.addEventListener('change', () => songOvToggle(g, input.checked));
     label.addEventListener('click', (e) => e.stopPropagation());
-    if (G.where === 'start') host.insertBefore(label, host.firstChild);
+    if (G.where === 'start'){ const x = host.querySelector(':scope > .pp-dd-x'); host.insertBefore(label, x ? x.nextSibling : host.firstChild); }   // after the menu's X, which stays top-right
     else if (G.where === 'after-label'){ const l = host.closest('label') || host; l.parentNode.insertBefore(label, l.nextSibling); }
     else host.appendChild(label);
     songOvBoxes[g] = { label, input };
