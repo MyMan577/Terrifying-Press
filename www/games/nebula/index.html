@@ -681,6 +681,7 @@
 
 <div id="topbar">
   <div class="brand">Nebula Touch</div>
+  <div id="fps" aria-hidden="true">-- FPS</div>
 </div>
 
 <div id="hint">drag to play</div>
@@ -1227,7 +1228,7 @@ import * as THREE from 'three';
   // ---------- Interaction modes ----------
   // These describe HOW touch pushes the always-on field of particles around,
   // not spawn effects — the particle count never changes when you touch.
-  const MODES = ['Swirl', 'Repel', 'Attract', 'Orbit', 'Wind', 'Gravity Well', 'Comet', 'Sphere', 'Cosmos', 'Whirlpool', 'Pulse', 'Bloom', 'Lattice', 'Prism', 'Gyroscope', 'Torus Flow', 'Singularity', 'Magnetar'];
+  const MODES = ['Swirl', 'Repel', 'Attract', 'Orbit', 'Wind', 'Gravity Well', 'Comet', 'Sphere', 'Cosmos', 'Whirlpool', 'Pulse', 'Bloom', 'Lattice', 'Ripple Pool', 'Jellyfish', 'Knot Flow', 'Attractor', 'Aurora'];
   let mode = 'Swirl';
   // Every mode in this set gets the same real-depth treatment Sphere
   // pioneered: wider orbitRadius camera framing, a rotating formX/Y/Z
@@ -1237,8 +1238,9 @@ import * as THREE from 'three';
   // Cosmos is the same idea but with a whole ladder of shapes instead of
   // one — see COSMOS_SHAPE_BY_FINGERS — so it counts as a single 3D mode
   // even though what it actually renders changes with finger count.
-  const MODES_3D = new Set(['Sphere', 'Cosmos', 'Prism', 'Gyroscope', 'Torus Flow', 'Singularity', 'Magnetar']);
-  const HYBRID_3D_MODES = new Set(['Torus Flow', 'Singularity', 'Magnetar']);
+  // The flow modes (Ripple Pool .. Aurora, see FLOW_3D_MODES) are 3D too, but
+  // animate on their own instead of springing onto a still shape.
+  const MODES_3D = new Set(['Sphere', 'Cosmos', 'Ripple Pool', 'Jellyfish', 'Knot Flow', 'Attractor', 'Aurora']);
 
   // simTime (accumulated dt, not wall-clock time) — used by any mode whose
   // force depends on elapsed time rather than just current finger position,
@@ -1373,9 +1375,13 @@ import * as THREE from 'three';
       latticePhase: rand(0, Math.PI * 2),
       latticeBand: (Math.random() * 5) | 0,
       latticeOffset: rand(0.25, 1),
-      gyroRing: (Math.random() * 3) | 0, // one of Gyroscope's three interlocking rings
-      flowChannel: (Math.random() * 5) | 0, // stable strand assignment for hybrid 3D mode variations
-      polarity: Math.random() < 0.5 ? -1 : 1,
+      // flow 3D modes: fixed per-particle seeds that place it on the moving form
+      flowU: Math.random(), flowV: Math.random(), flowW: Math.random(),
+      flowR: Math.random(), flowJ: Math.random(), flowK: (Math.random() * 100000) | 0,
+      flowLight: 1,
+      ox: 0, oy: 0, ovx: 0, ovy: 0, // touch wake offset (springs back to the form)
+      ax: 0, ay: 0, az: 0, aSys: -1, // Attractor: the particle's own state in its system
+      fsx: 0, fsy: 0, fsz: 0,         // last unit-space target, so a morph can carry it over
       saturnRing: rand(0, 1) < 0.38, // Saturn mode: fixed once — is this particle part of the tilted ring, or the core?
       // Sphere mode: a fixed point on a unit sphere, assigned once so the
       // same particle always sits at the same spot on the shape instead of
@@ -1422,13 +1428,20 @@ import * as THREE from 'three';
   function updatePointer(id, x, y) {
     let p = pointers.get(id);
     if (!p) {
-      p = { x, y, px: x, py: y, vx: 0, vy: 0, angle: rand(0, Math.PI * 2), t: 0 };
+      p = { x, y, px: x, py: y, vx: 0, vy: 0, angle: rand(0, Math.PI * 2), t: 0, ts: performance.now() };
       pointers.set(id, p);
+      spawnRipple(x, y);
     } else {
+      // Velocity is kept in "pixels per 60 Hz frame" whatever the display
+      // runs at, so drag-to-spin and every drag-driven force feel the same
+      // at 120 Hz (where samples arrive twice as often, half as far apart).
+      const now = performance.now();
+      const per60 = 16.67 / Math.max(4, Math.min(100, now - p.ts));
+      p.ts = now;
       p.px = p.x; p.py = p.y;
       p.x = x; p.y = y;
-      p.vx = p.x - p.px;
-      p.vy = p.y - p.py;
+      p.vx = (p.x - p.px) * per60;
+      p.vy = (p.y - p.py) * per60;
     }
   }
   function removePointer(id) {
@@ -1455,7 +1468,7 @@ import * as THREE from 'three';
   }
 
   const RELEASE_STRENGTH = 6.5;
-  const RELEASE_STRENGTH_BY_MODE = { Attract: 10, Orbit: 10.5, 'Gravity Well': 11, Whirlpool: 9, Bloom: 9, Lattice: 7, Prism: 8.5, Gyroscope: 8.5 };
+  const RELEASE_STRENGTH_BY_MODE = { Attract: 10, Orbit: 10.5, 'Gravity Well': 11, Whirlpool: 9, Bloom: 9, Lattice: 7 };
 
   // When a finger lifts, every particle gets a burst kick — the direction
   // depends on the active mode, not just "away from the touch point":
@@ -1517,7 +1530,14 @@ import * as THREE from 'three';
           pt.vy += ny * kick;
           break;
         }
-        case 'Sphere': case 'Cosmos': case 'Prism': case 'Gyroscope': case 'Torus Flow': case 'Singularity': case 'Magnetar': {
+        case 'Ripple Pool': case 'Jellyfish': case 'Knot Flow': case 'Attractor': case 'Aurora': {
+          // flow modes: shake the form loose around the finger; it wobbles
+          // back into shape on its own
+          pt.ovx += nx * kick * 0.9;
+          pt.ovy += ny * kick * 0.9;
+          break;
+        }
+        case 'Sphere': case 'Cosmos': {
           // scatter off the shape's surface, same shape as Repel's burst
           pt.vx += nx * kick;
           pt.vy += ny * kick;
@@ -1659,7 +1679,7 @@ import * as THREE from 'three';
   // gently the farther away it is. Orbit uses a tighter reach so its
   // pull stays local instead of dragging the whole screen into a slow spin.
   const FALLOFF_REACH = 260;
-  const REACH_BY_MODE = { Swirl: 260, Repel: 260, Attract: 260, Orbit: 190, Wind: 260, 'Gravity Well': 240, Comet: 260, Sphere: 260, Cosmos: 260, Whirlpool: 220, Pulse: 260, Bloom: 250, Lattice: 240, Prism: 260, Gyroscope: 260 };
+  const REACH_BY_MODE = { Swirl: 260, Repel: 260, Attract: 260, Orbit: 190, Wind: 260, 'Gravity Well': 240, Comet: 260, Sphere: 260, Cosmos: 260, Whirlpool: 220, Pulse: 260, Bloom: 250, Lattice: 240 };
 
   // Orbit settles particles onto a ring at this radius around the touch,
   // like a small gravity well, instead of a wide diffuse swirl.
@@ -1817,237 +1837,384 @@ import * as THREE from 'three';
   // of the geometric one.
   const COSMOS_SHAPE_BY_FINGERS = { 1: shapePointGalaxy, 2: shapePointVortex, 3: shapePointSaturn, 4: shapePointNebula, 5: shapePointWormhole };
 
-  function shapePointPrism(pt, fingerCount) {
-    const theta = Math.atan2(pt.formZ, pt.formX);
-    if (fingerCount === 2) {
-      // Two fingers turn the pillar into a diamond/bipyramid: a large, sharp
-      // silhouette whose waist opens and closes as the whole form is spun.
-      const y = pt.formY;
-      const radius = 0.10 + (1 - Math.abs(y)) * 0.88;
-      return { x: Math.cos(theta) * radius, y: y * 1.08, z: Math.sin(theta) * radius };
+  // ---------- Flow 3D modes (Ripple Pool, Jellyfish, Knot Flow, Attractor, Aurora) ----------
+  // Unlike Sphere/Cosmos, these never sit still: every particle's target is
+  // recomputed each frame from time, so the form itself swims, pulses, flows
+  // or folds whether or not a finger is down. Particles glide toward that
+  // moving target with frame-rate-independent easing (same feel at 60 or
+  // 120 Hz). Touch never breaks the form: a drag both turns it and leaves a
+  // soft wake (an offset that springs back), more fingers morph it into a
+  // new variant, and lifting off sends a ripple of scatter through it.
+  const FLOW_3D_MODES = new Set(['Ripple Pool', 'Jellyfish', 'Knot Flow', 'Attractor', 'Aurora']);
+  // Per mode: viewing tilt (radians, applied after the user's own spin) and the
+  // idle spin it drifts back to after a drag, in radians per 60 Hz frame.
+  const FLOW_VIEW = {
+    'Ripple Pool': { tilt: 0.92, spin: 0.0016, wake: 0.55 },
+    'Jellyfish':   { tilt: 0.16, spin: 0.0020, wake: 1.00 },
+    'Knot Flow':   { tilt: 0.62, spin: 0.0032, wake: 1.00 },
+    'Attractor':   { tilt: 0.10, spin: 0.0026, wake: 0.90 },
+    'Aurora':      { tilt: 0.22, spin: 0.0014, wake: 0.80 }
+  };
+  const FLOW_VARIANTS = 5;          // fingers 2..5 pick variants 1..4; variant 0 is the default
+  const FLOW_AUTO_CYCLE_S = 24;     // untouched for this long -> morph to the next variant on its own
+  let flowVariant = 0;
+  let flowVariantSince = 0;          // simTime (seconds) when the variant last changed
+  let flowGestureMax = 0;            // most fingers down at once during the current gesture
+  let flowGestureMaxSince = 0;       // when that count was reached (seconds)
+  const ripples = [];                // Ripple Pool drops: { x, z, t0 }
+
+  // Strange attractors. Step sizes are tuned so each one flows at roughly the
+  // same on-screen speed; toShape/fromShape map the system's own coordinates
+  // to the unit volume (and back, so a morph carries each particle across).
+  const ATTRACTORS = [
+    { // Lorenz butterfly
+      h: 0.00225, k: 26, c: [0, 0, 26], swap: true,
+      f(x, y, z, o) { o[0] = 10 * (y - x); o[1] = x * (28 - z) - y; o[2] = x * y - 8 / 3 * z; }
+    },
+    { // Aizawa: a spinning apple with a tube through its core
+      h: 0.0076, k: 1.45, c: [0, 0, 0.62], swap: true,
+      f(x, y, z, o) { const zb = z - 0.7; o[0] = zb * x - 3.5 * y; o[1] = 3.5 * x + zb * y; o[2] = 0.6 + 0.95 * z - z * z * z / 3 - (x * x + y * y) * (1 + 0.25 * z) + 0.1 * z * x * x * x; }
+    },
+    { // Thomas: cyclically symmetric lattice of loops
+      h: 0.048, k: 4.3, c: [0, 0, 0], swap: false,
+      f(x, y, z, o) { o[0] = Math.sin(y) - 0.19 * x; o[1] = Math.sin(z) - 0.19 * y; o[2] = Math.sin(x) - 0.19 * z; }
+    },
+    { // Halvorsen: three-armed propeller
+      h: 0.0023, k: 10.5, c: [-3.27, -3.27, -3.27], swap: false,
+      f(x, y, z, o) { o[0] = -1.89 * x - 4 * y - 4 * z - y * y; o[1] = -1.89 * y - 4 * z - 4 * x - z * z; o[2] = -1.89 * z - 4 * x - 4 * y - x * x; }
+    },
+    { // Dadras: twin interlocking scrolls
+      h: 0.0107, k: 17, c: [1.24, -1.25, -1.2], swap: false,
+      f(x, y, z, o) { o[0] = y - 3 * x + 2.7 * y * z; o[1] = 1.7 * y - x * z + z; o[2] = 2 * x * y - 9 * z; }
     }
-    if (fingerCount === 3) {
-      // Three fingers: an asymmetric crown crystal with a stable six-spire rim.
-      const spoke = 0.5 + 0.5 * Math.cos(theta * 6 + pt.latticePhase);
-      const radius = 0.36 + spoke * 0.60;
-      const y = pt.formY * 0.58 + (spoke - 0.5) * 0.48;
-      return { x: Math.cos(theta) * radius, y, z: Math.sin(theta) * radius };
-    }
-    if (fingerCount === 4) {
-      // Four fingers: a square obelisk-cage. Flat cardinal faces and a
-      // hollow core make this read completely differently from the crown.
-      const local = theta - Math.round(theta / (Math.PI / 2)) * (Math.PI / 2);
-      const radius = 0.90 / Math.max(0.62, Math.cos(local));
-      const y = pt.formY * 1.05 + Math.sin(theta * 4 + pt.latticePhase) * 0.12;
-      return { x: Math.cos(theta) * radius, y, z: Math.sin(theta) * radius };
-    }
-    if (fingerCount >= 5) {
-      // Five fingers: a five-point crystal star. The alternating long and
-      // short rays create a sharply cut, animated silhouette.
-      const spoke = 0.5 + 0.5 * Math.cos(theta * 5 + pt.latticePhase);
-      const radius = 0.28 + spoke * 0.82;
-      const y = pt.formY * 0.46 + Math.sin(theta * 5 + pt.latticePhase) * 0.32;
-      return { x: Math.cos(theta) * radius, y, z: Math.sin(theta) * radius };
-    }
-    // One finger: faceted hexagonal crystal. The fixed sphere sample decides
-    // whether a particle belongs on a cap or one of six side planes.
-    const slice = Math.PI / 3;
-    const local = theta - Math.round(theta / slice) * slice;
-    const cap = Math.abs(pt.formY) > 0.76;
-    if (cap) {
-      const r = 0.78 * Math.sqrt(Math.min(1, pt.formX * pt.formX + pt.formZ * pt.formZ));
-      return { x: Math.cos(theta) * r, y: Math.sign(pt.formY || 1), z: Math.sin(theta) * r };
-    }
-    const radial = 0.82 / Math.max(0.58, Math.cos(local));
-    return { x: Math.cos(theta) * radial, y: pt.formY * 0.92, z: Math.sin(theta) * radial };
+  ];
+  const ATTRACTOR_STEP = 0.008; // typical unit-space distance per 60 Hz frame — brightness rises above it
+  const _deriv = [0, 0, 0];
+  function attractorFromShape(sys, sx, sy, sz, pt) {
+    if (sys.swap) { pt.ax = sx * sys.k + sys.c[0]; pt.ay = sz * sys.k + sys.c[1]; pt.az = sy * sys.k + sys.c[2]; }
+    else { pt.ax = sx * sys.k + sys.c[0]; pt.ay = sy * sys.k + sys.c[1]; pt.az = sz * sys.k + sys.c[2]; }
+  }
+  function attractorSeed(pt, sysIndex) {
+    // Start from the particle's current spot in the volume when it has one,
+    // otherwise from a random point; either way it falls onto the attractor.
+    const sys = ATTRACTORS[sysIndex];
+    const sx = (pt.flowU * 2 - 1) * 0.6, sy = (pt.flowV * 2 - 1) * 0.6, sz = (pt.flowW * 2 - 1) * 0.6;
+    attractorFromShape(sys, sx, sy, sz, pt);
+    pt.aSys = sysIndex;
   }
 
-  function shapePointGyroscope(pt, fingerCount) {
-    // One finger holds a balanced three-ring mechanism; adding fingers starts
-    // a distinct precession sequence, so the form feels mechanically driven
-    // by the touch count rather than simply being the same sculpture faster.
-    let theta = Math.atan2(pt.formZ, pt.formX);
-    const radius = 0.80 + pt.formY * 0.11;
-    const thickness = pt.formY * 0.12;
-    if (fingerCount >= 2) theta += simTime * (0.020 + pt.gyroRing * 0.008);
-    if (fingerCount === 3) {
-      // Three fingers: a gentle shared precession.
-      const wobble = Math.sin(simTime * 0.032 + pt.latticePhase) * 0.24;
-      if (pt.gyroRing === 0) return { x: Math.cos(theta) * radius, y: Math.sin(theta) * radius * Math.cos(wobble), z: Math.sin(theta) * radius * Math.sin(wobble) + thickness };
-      if (pt.gyroRing === 1) return { x: Math.cos(theta) * radius * Math.cos(wobble) + thickness, y: Math.sin(theta) * radius, z: Math.cos(theta) * radius * Math.sin(wobble) };
-      return { x: Math.sin(theta) * radius * Math.sin(wobble) + thickness, y: Math.cos(theta) * radius, z: Math.sin(theta) * radius * Math.cos(wobble) };
+  // Shared per-frame values so the per-particle work is just arithmetic.
+  const F = { R: 130, tall: 1, T: 0, cs: 1, sn: 0, ct: 1, st: 0, dt: 1, sources: [], nSources: 0, jellies: 1 };
+  for (let i = 0; i < 16; i++) F.sources.push({ x: 0, z: 0, a: 0, ring: false, age: 0, phase: 0 });
+
+  // Screen point -> spot on the Ripple Pool's sheet (inverse of the view
+  // rotation, ignoring perspective, which is plenty for placing a wave source).
+  function screenToSheet(sx, sy, out) {
+    const ux = (sx - W / 2) / SPHERE_RADIUS, uy = (H / 2 - sy) / SPHERE_RADIUS;
+    const st = Math.abs(F.st) < 0.25 ? (F.st < 0 ? -0.25 : 0.25) : F.st;
+    const z1 = -uy / st;
+    out.x = ux * F.cs + z1 * F.sn;
+    out.z = -ux * F.sn + z1 * F.cs;
+    return out;
+  }
+  const _sheetPt = { x: 0, z: 0 };
+
+  function setFlowVariant(v) {
+    if (v === flowVariant) return;
+    flowVariant = v;
+    flowVariantSince = simTime / 60;
+    if (mode === 'Attractor') {
+      // carry every particle into the new system from where it is now
+      const sys = ATTRACTORS[v % ATTRACTORS.length];
+      for (let i = 0; i < particles.length; i++) {
+        const pt = particles[i];
+        attractorFromShape(sys, pt.fsx || 0, pt.fsy || 0, pt.fsz || 0, pt);
+        pt.aSys = v % ATTRACTORS.length;
+      }
     }
-    if (fingerCount === 4) {
-      // Four fingers: two opposing ring pairs lock into a stable, wide
-      // armillary frame. Their elliptical tilt makes a clear cross-form.
-      const wobble = Math.sin(simTime * 0.040 + pt.latticePhase) * 0.42;
-      const wide = radius * (pt.gyroRing === 0 ? 1.10 : 0.86);
-      if (pt.gyroRing === 0) return { x: Math.cos(theta) * wide, y: Math.sin(theta) * wide * Math.cos(wobble), z: thickness + Math.sin(theta) * wide * Math.sin(wobble) };
-      if (pt.gyroRing === 1) return { x: Math.cos(theta) * wide * Math.cos(wobble) + thickness, y: Math.sin(theta) * wide, z: Math.cos(theta) * wide * Math.sin(wobble) };
-      return { x: Math.sin(theta) * wide * Math.sin(wobble) + thickness, y: Math.cos(theta) * wide, z: Math.sin(theta) * wide * Math.cos(wobble) };
-    }
-    if (fingerCount >= 5) {
-      // Five fingers: a tightly nested, high-energy precession. Each ring
-      // gets its own phase and radius so it becomes a mechanical knot.
-      const phase = simTime * (0.050 + pt.gyroRing * 0.015) + pt.latticePhase;
-      const nested = radius * (0.62 + pt.gyroRing * 0.17);
-      const wobble = Math.sin(phase) * 0.58;
-      if (pt.gyroRing === 0) return { x: Math.cos(theta + phase) * nested, y: Math.sin(theta + phase) * nested * Math.cos(wobble), z: Math.sin(theta + phase) * nested * Math.sin(wobble) + thickness };
-      if (pt.gyroRing === 1) return { x: Math.cos(theta - phase) * nested * Math.cos(wobble) + thickness, y: Math.sin(theta - phase) * nested, z: Math.cos(theta - phase) * nested * Math.sin(wobble) };
-      return { x: Math.sin(theta + phase) * nested * Math.sin(wobble) + thickness, y: Math.cos(theta + phase) * nested, z: Math.sin(theta + phase) * nested * Math.cos(wobble) };
-    }
-    if (pt.gyroRing === 0) return { x: Math.cos(theta) * radius, y: Math.sin(theta) * radius, z: thickness };
-    if (pt.gyroRing === 1) return { x: Math.cos(theta) * radius, y: thickness, z: Math.sin(theta) * radius };
-    return { x: thickness, y: Math.cos(theta) * radius, z: Math.sin(theta) * radius };
   }
 
-  function shapePointTorusFlow(pt, fingerCount) {
-    const theta = Math.atan2(pt.formZ, pt.formX);
-    const phi = pt.formY * Math.PI;
-    const phase = simTime * 0.016;
-    if (fingerCount === 1) {
-      const r = 0.76 + Math.cos(phi) * 0.30;
-      return { x: Math.cos(theta + phase) * r, y: Math.sin(phi) * 0.30, z: Math.sin(theta + phase) * r };
+  function resetFlowMode() {
+    flowVariant = 0;
+    flowVariantSince = simTime / 60;
+    flowGestureMax = 0;
+    ripples.length = 0;
+    formSpin = 0.35; formTilt = 0; formSpinVel = 0; formTiltVel = 0;
+    for (let i = 0; i < particles.length; i++) {
+      const pt = particles[i];
+      pt.ox = pt.oy = pt.ovx = pt.ovy = 0;
+      pt.aSys = -1;
     }
-    if (fingerCount === 2) {
-      // Two linked toroidal streams, counter-rotating around the shared axis.
-      const offset = pt.flowChannel % 2 ? Math.PI : 0;
-      const a = theta + phase * (pt.flowChannel % 2 ? -1 : 1) + offset;
-      const r = 0.62 + Math.cos(phi) * 0.22;
-      return { x: Math.cos(a) * r, y: Math.sin(phi) * 0.28 + (pt.flowChannel % 2 ? 0.22 : -0.22), z: Math.sin(a) * r };
-    }
-    if (fingerCount === 3) {
-      // Three fingers braid the torus into a triple-strand vortex.
-      const strand = pt.flowChannel % 3;
-      const a = theta + strand * Math.PI * 2 / 3 + phase * 1.6;
-      const r = 0.58 + Math.cos(phi + strand) * 0.18;
-      return { x: Math.cos(a) * r, y: pt.formY * 0.42, z: Math.sin(a) * r };
-    }
-    if (fingerCount === 4) {
-      // Four fingers create a square orbital cage with a hollow center.
-      const a = theta + phase;
-      const local = a - Math.round(a / (Math.PI / 2)) * (Math.PI / 2);
-      const r = 0.80 / Math.max(0.64, Math.cos(local));
-      return { x: Math.cos(a) * r, y: Math.sin(phi) * 0.36, z: Math.sin(a) * r };
-    }
-    // Five fingers tighten all strands into a deep, spinning vortex tunnel.
-    const depth = (pt.formY + 1) * 0.5;
-    const a = theta + depth * Math.PI * 5 + phase * 2.2;
-    const r = 0.18 + (1 - depth) * 0.74;
-    return { x: Math.cos(a) * r, y: 1 - depth * 2, z: Math.sin(a) * r };
   }
 
-  function shapePointSingularity(pt, fingerCount) {
-    const theta = Math.atan2(pt.formZ, pt.formX);
-    const t = (pt.formY + 1) * 0.5;
-    const phase = simTime * 0.012;
-    if (fingerCount === 1) {
-      const r = 0.14 + t * 0.82;
-      return { x: Math.cos(theta + t * Math.PI * 3 + phase) * r, y: 1 - t * 2, z: Math.sin(theta + t * Math.PI * 3 + phase) * r };
-    }
-    if (fingerCount === 2) {
-      const waist = Math.abs(t - 0.5) * 2;
-      const r = 0.10 + waist * 0.86;
-      return { x: Math.cos(theta + phase) * r, y: 1 - t * 2, z: Math.sin(theta + phase) * r };
-    }
-    if (fingerCount === 3) {
-      const arm = pt.flowChannel % 3;
-      const r = 0.22 + t * 0.66;
-      const a = theta * 0.28 + arm * Math.PI * 2 / 3 + t * Math.PI * 2.6 + phase;
-      return { x: Math.cos(a) * r, y: (1 - t * 2) * 0.72, z: Math.sin(a) * r };
-    }
-    if (fingerCount === 4) {
-      const a = theta + phase;
-      const local = a - Math.round(a / (Math.PI / 2)) * (Math.PI / 2);
-      const r = 0.16 + 0.70 / Math.max(0.62, Math.cos(local));
-      return { x: Math.cos(a) * r, y: pt.formY * 0.64, z: Math.sin(a) * r };
-    }
-    const r = 0.14 + t * 0.74;
-    const a = theta + t * Math.PI * 7 + phase * 2.4;
-    return { x: Math.cos(a) * r, y: 1 - t * 2, z: Math.sin(a) * r };
+  function spawnRipple(sx, sy) {
+    if (mode !== 'Ripple Pool') return;
+    screenToSheet(sx, sy, _sheetPt);
+    ripples.push({ x: _sheetPt.x, z: _sheetPt.z, t0: simTime / 60 });
+    if (ripples.length > 10) ripples.shift();
   }
 
-  function shapePointMagnetar(pt, fingerCount) {
-    const theta = Math.atan2(pt.formZ, pt.formX);
-    const phase = simTime * 0.020 * pt.polarity;
-    const band = pt.formY;
-    if (fingerCount === 1) {
-      const r = 0.38 + Math.abs(band) * 0.56;
-      return { x: Math.cos(theta + phase) * r, y: band, z: Math.sin(theta + phase) * r };
+  function prepareFlowFrame(activePointers, dt) {
+    const T = simTime / 60;
+    F.T = T;
+    F.dt = dt;
+    // a little bigger than Sphere's radius: these forms have open space in them
+    F.R = SPHERE_RADIUS * 1.18;
+    // a lone jellyfish uses the extra height of a portrait screen
+    F.tall = 1 + 0.45 * Math.max(0, Math.min(1, H / Math.max(1, W) - 1));
+    const view = FLOW_VIEW[mode];
+    const tilt = view.tilt + formTilt;
+    F.cs = Math.cos(formSpin); F.sn = Math.sin(formSpin);
+    F.ct = Math.cos(tilt); F.st = Math.sin(tilt);
+
+    // Variant: the most fingers held together during a gesture, once that
+    // count has been steady for a moment — so lifting fingers one by one
+    // never steps back through the smaller counts.
+    const n = activePointers.length;
+    if (n === 0) flowGestureMax = 0;
+    else if (n > flowGestureMax) { flowGestureMax = n; flowGestureMaxSince = T; }
+    if (mode !== 'Ripple Pool') {
+      if (flowGestureMax >= 2 && T - flowGestureMaxSince > 0.18) setFlowVariant(Math.min(FLOW_VARIANTS - 1, flowGestureMax - 1));
+      else if (n === 0 && T - flowVariantSince > FLOW_AUTO_CYCLE_S) setFlowVariant((flowVariant + 1) % FLOW_VARIANTS);
     }
-    if (fingerCount === 2) {
-      const a = theta + (pt.polarity > 0 ? 0.55 : -0.55) + phase;
-      return { x: Math.cos(a) * 0.72, y: band * 0.72, z: Math.sin(a) * 0.72 + pt.polarity * 0.22 };
+
+    if (mode === 'Ripple Pool') {
+      // three slow wandering sources keep the surface alive, every finger
+      // adds its own, and taps leave expanding rings that fade out
+      let k = 0;
+      for (let i = 0; i < 3; i++, k++) {
+        const s = F.sources[k];
+        s.x = 0.62 * Math.sin(T * 0.21 + i * 2.1); s.z = 0.62 * Math.cos(T * 0.17 + i * 1.7);
+        s.a = 0.065; s.ring = false; s.phase = i * 2.1;
+      }
+      for (let i = 0; i < n && k < 8; i++, k++) {
+        const s = F.sources[k];
+        screenToSheet(activePointers[i].x, activePointers[i].y, s);
+        s.a = 0.11; s.ring = false; s.phase = 0;
+      }
+      for (let i = ripples.length - 1; i >= 0; i--) if (T - ripples[i].t0 > 4.5) ripples.splice(i, 1);
+      for (let i = 0; i < ripples.length && k < 16; i++, k++) {
+        const s = F.sources[k], r = ripples[i];
+        s.x = r.x; s.z = r.z; s.age = T - r.t0; s.ring = true; s.a = 0.16 * Math.exp(-s.age * 0.75);
+      }
+      F.nSources = k;
+    } else if (mode === 'Jellyfish') {
+      F.jellies = 1 + flowVariant;
     }
-    if (fingerCount === 3) {
-      const arm = pt.flowChannel % 3;
-      const a = theta * 0.36 + arm * Math.PI * 2 / 3 + phase;
-      const r = 0.26 + Math.abs(band) * 0.62;
-      return { x: Math.cos(a) * r, y: band * 0.62, z: Math.sin(a) * r };
-    }
-    if (fingerCount === 4) {
-      const a = theta + phase;
-      const r = 0.52 + Math.cos(theta * 4 + pt.latticePhase) * 0.26;
-      return { x: Math.cos(a) * r, y: band * 0.82, z: Math.sin(a) * r };
-    }
-    const a = theta + phase * 2;
-    const r = 0.34 + Math.cos(theta * 5 + pt.latticePhase) * 0.36;
-    return { x: Math.cos(a) * r, y: band * 0.52 + Math.sin(theta * 5) * 0.22, z: Math.sin(a) * r };
   }
 
-  function applyHybrid3DForces(pt, dt, touchSummary) {
-    const count = touchSummary.count;
-    // The touch centroid is prepared once per frame. Recomputing this five-item
-    // reduction for every particle was disproportionately costly in 3D modes.
-    const cx = touchSummary.cx, cy = touchSummary.cy;
-    const dx = pt.x - cx, dy = pt.y - cy;
-    const dist = Math.max(8, Math.hypot(dx, dy));
-    const nx = dx / dist, ny = dy / dist;
-    const falloff = 1 / (1 + (dist / 260) * (dist / 260));
-    const tangentX = -ny, tangentY = nx;
-
-    if (mode === 'Torus Flow') {
-      // A critically damped orbital current. The force only corrects a
-      // particle toward a broad stream and then gently accelerates it along
-      // that stream, producing a laminar torus rather than a noisy swirl.
-      const targetRadius = 82 + count * 9 + (pt.flowChannel % 2) * 14;
-      const radialError = Math.max(-85, Math.min(85, dist - targetRadius));
-      const streamSpeed = 0.34 + count * 0.045;
-      const direction = pt.flowChannel % 2 ? -1 : 1;
-      pt.vx -= nx * radialError * 0.018 * dt;
-      pt.vy -= ny * radialError * 0.018 * dt;
-      pt.vx += tangentX * direction * streamSpeed * falloff * dt;
-      pt.vy += tangentY * direction * streamSpeed * falloff * dt;
-    } else if (mode === 'Singularity') {
-      // A continuous accretion disk. A Gaussian core transitions smoothly
-      // from inward gravity to a soft outward jet; no hard distance threshold
-      // means no visible popping or sudden velocity changes.
-      const core = Math.exp(-(dist * dist) / 2400);
-      const gravity = (0.72 + count * 0.055) * falloff;
-      const jet = core * (1.15 + count * 0.08);
-      const orbit = (0.46 + count * 0.05) * falloff * (0.55 + core * 0.75);
-      pt.vx += nx * (jet - gravity) * dt + tangentX * orbit * dt;
-      pt.vy += ny * (jet - gravity) * dt + tangentY * orbit * dt;
-      if (core > 0.52) pt.glow = Math.min(2.2, pt.glow + (core - 0.52) * 0.035 * dt);
-    } else if (mode === 'Magnetar') {
-      // Field lines bend gradually around the shared touch center. Polarity
-      // determines whether a particle lies on an in-flowing or out-flowing
-      // arc, avoiding the harsh pointer-by-pointer polarity flips.
-      const wave = Math.sin(dist * 0.028 - simTime * 1.15 + pt.latticePhase);
-      const radial = pt.polarity * (0.24 + wave * 0.20) * falloff;
-      const curl = (0.34 + Math.abs(wave) * 0.22) * falloff * pt.polarity;
-      pt.vx += nx * radial * dt + tangentX * curl * dt;
-      pt.vy += ny * radial * dt + tangentY * curl * dt;
-      if (Math.abs(wave) > 0.78) pt.glow = Math.min(2.2, pt.glow + (Math.abs(wave) - 0.78) * 0.025 * dt);
+  // Writes the particle's un-rotated unit-space target into out (x, y, z)
+  // plus a brightness multiplier (l).
+  const FT = { x: 0, y: 0, z: 0, l: 1 };
+  const KNOTS = [[2, 3], [3, 4], [2, 5], [3, 5], [5, 8]];
+  const TAU = Math.PI * 2;
+  function flowTarget(pt, out) {
+    const T = F.T;
+    const u = pt.flowU, v = pt.flowV, w = pt.flowW;
+    if (mode === 'Ripple Pool') {
+      const r = Math.sqrt(u) * 1.02, a = v * TAU;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      let h = 0;
+      for (let i = 0; i < F.nSources; i++) {
+        const s = F.sources[i];
+        const dx = x - s.x, dz = z - s.z;
+        const d = Math.sqrt(dx * dx + dz * dz);
+        if (s.ring) {
+          const front = d - s.age * 0.62;
+          h += s.a * Math.exp(-front * front * 26) * Math.cos(front * 22);
+        } else {
+          h += s.a * Math.sin(d * 10 - T * 2.6 + s.phase) / (1 + d * 2.2);
+        }
+      }
+      out.x = x; out.y = h; out.z = z;
+      out.l = Math.max(0.25, Math.min(1.9, 0.72 + h * 7));
+      return;
     }
+    if (mode === 'Jellyfish') {
+      const n = F.jellies;
+      const j = n > 1 ? Math.min(n - 1, (pt.flowJ * n) | 0) : 0;
+      const sc = n > 1 ? (0.6 - n * 0.035) * (0.85 + F.tall * 0.15) : F.tall;
+      let cx = 0, cy = 0, cz = 0;
+      if (n > 1) {
+        const ang = j / n * TAU + T * 0.13;
+        const ring = 0.58;
+        cx = Math.cos(ang) * ring; cz = Math.sin(ang) * ring;
+        cy = Math.sin(T * 0.45 + j * 1.9) * 0.3;
+      }
+      // contraction 0..1 — a quick squeeze and a slower relax, like a real bell
+      const ph = T * (TAU / 2.6) + j * 1.7;
+      const c = Math.pow(0.5 + 0.5 * Math.sin(ph), 2.2);
+      cy += (n > 1 ? 0 : Math.sin(T * 0.3) * 0.08) + c * 0.07;
+      const role = pt.flowR * 100;
+      let x, y, z, l;
+      const phiMax = 1.78;
+      const bellR = 0.42;
+      if (role < 46) {
+        // bell: uniform over the cap, scalloped, flared rim
+        const cosPhi = 1 - v * (1 - Math.cos(phiMax));
+        const phi = Math.acos(cosPhi);
+        const theta = w * TAU;
+        const edge = phi / phiMax;
+        let rh = bellR * Math.sin(phi) * (1 - 0.24 * c) * (1 + 0.16 * edge * edge * edge * (1 - c));
+        rh *= 1 + 0.045 * Math.sin(theta * 8) * edge * edge;
+        x = Math.cos(theta) * rh; z = Math.sin(theta) * rh;
+        y = bellR * cosPhi * (0.78 + 0.18 * c) + 0.2;
+        l = 0.7 + edge * 0.55 + c * 0.25;
+      } else if (role < 56) {
+        // four frilly oral arms under the bell
+        const arm = pt.flowK % 4;
+        const s = v;
+        const ang = arm * Math.PI / 2 + Math.sin(s * 5 - T * 1.4) * 0.35 + T * 0.2;
+        const r = 0.05 + 0.06 * s + 0.035 * Math.sin(s * 15 - T * 3 + w * 6);
+        x = Math.cos(ang) * r; z = Math.sin(ang) * r;
+        y = 0.2 - s * 0.62 * (1 - 0.12 * c);
+        l = 1.25 - s * 0.5;
+      } else {
+        // trailing tentacles hanging from the rim, waves rolling down them
+        const kTent = ((pt.flowK / 7) | 0) % 12;
+        const theta = kTent / 12 * TAU + 0.13;
+        const s = v;
+        const rimR = bellR * Math.sin(phiMax) * (1 - 0.24 * c) * 1.12;
+        const rimY = bellR * Math.cos(phiMax) * (0.78 + 0.18 * c) + 0.2;
+        const len = 1.05 * (1 - 0.1 * c);
+        const rr = rimR * (1 - 0.45 * s) * (1 - 0.2 * c * (1 - s));
+        const sway = s * 0.11;
+        x = Math.cos(theta) * rr + Math.sin(s * 5.2 - T * 2.1 + kTent) * sway + (w - 0.5) * 0.015;
+        z = Math.sin(theta) * rr + Math.cos(s * 4.4 - T * 1.8 + kTent * 1.7) * sway;
+        y = rimY - s * len;
+        l = 0.95 * (1 - s * 0.72) + 0.1;
+      }
+      out.x = cx + x * sc; out.y = cy + y * sc; out.z = cz + z * sc;
+      out.l = l;
+      return;
+    }
+    if (mode === 'Knot Flow') {
+      const knot = KNOTS[flowVariant % KNOTS.length];
+      const p = knot[0], q = knot[1];
+      // every particle rides the knot, so the whole thing streams along itself
+      const s = u + T * 0.028;
+      const phi = s * TAU;
+      const R = 0.6, r = 0.29 + 0.04 * Math.sin(T * 0.7);
+      const rr = R + r * Math.cos(q * phi);
+      let x = rr * Math.cos(p * phi), y = rr * Math.sin(p * phi), z = r * Math.sin(q * phi);
+      // fuzzy, slowly twisting tube around the line
+      const beta = w * TAU + T * 1.3 + s * 18;
+      const tr = 0.025 + 0.07 * v * v;
+      const g = pt.latticePhase;
+      x += Math.cos(beta) * tr; y += Math.sin(beta) * Math.cos(g) * tr; z += Math.sin(beta) * Math.sin(g) * tr;
+      out.x = x; out.y = z; out.z = y; // lay the knot flat, the view tilt shows it from above
+      // bright packets travel with the stream
+      const pulse = Math.max(0, Math.cos(TAU * (u * 11 + T * 0.05)));
+      out.l = 0.42 + 1.35 * pulse * pulse * pulse * pulse * (1 - v * 0.5);
+      return;
+    }
+    if (mode === 'Attractor') {
+      const si = flowVariant % ATTRACTORS.length;
+      const sys = ATTRACTORS[si];
+      if (pt.aSys !== si || !(Math.abs(pt.ax) < 1e3 && Math.abs(pt.ay) < 1e3 && Math.abs(pt.az) < 1e3)) attractorSeed(pt, si);
+      // fixed-size Euler steps; more of them on long frames so the path
+      // (and its speed) is identical at any refresh rate
+      const steps = Math.max(1, Math.ceil(F.dt * 2));
+      const h = sys.h * F.dt / steps;
+      let moved = 0;
+      for (let k = 0; k < steps; k++) {
+        sys.f(pt.ax, pt.ay, pt.az, _deriv);
+        const dx = _deriv[0] * h, dy = _deriv[1] * h, dz = _deriv[2] * h;
+        pt.ax += dx; pt.ay += dy; pt.az += dz;
+        moved += Math.sqrt(dx * dx + dy * dy + dz * dz);
+      }
+      const k = sys.k;
+      out.x = (pt.ax - sys.c[0]) / k;
+      if (sys.swap) { out.y = (pt.az - sys.c[2]) / k; out.z = (pt.ay - sys.c[1]) / k; }
+      else { out.y = (pt.ay - sys.c[1]) / k; out.z = (pt.az - sys.c[2]) / k; }
+      const speed = moved / k / Math.max(0.05, F.dt);
+      out.l = Math.max(0.3, Math.min(1.9, 0.35 + speed / ATTRACTOR_STEP * 0.75));
+      return;
+    }
+    // Aurora: curtains of light whose folds roll along them and whose rays
+    // shimmer sideways; brightest at the hem, fading upward
+    const variant = flowVariant;
+    const counts = [3, 1, 1, 5, 2];
+    const nc = counts[variant];
+    const kc = pt.flowK % nc;
+    const s = u * 2 - 1;
+    const hgt = Math.pow(v, 1.7);
+    const fold = (0.15 * Math.sin(3.1 * s + T * 0.55 + kc * 1.9) + 0.07 * Math.sin(7.3 * s - T * 1.05 + kc * 2.7)) * (1 + 0.35 * hgt);
+    const top = 0.85 + 0.18 * Math.sin(4 * s + T * 0.8 + kc);
+    let x, z;
+    if (variant === 0) {        // three parallel curtains
+      x = s * 1.05; z = (kc - 1) * 0.42 + fold;
+    } else if (variant === 1) { // a crown of light all the way round
+      const a = u * TAU + T * 0.05;
+      const r = 0.78 + fold * 0.9;
+      x = Math.cos(a) * r; z = Math.sin(a) * r;
+    } else if (variant === 2) { // one curtain wound into a spiral
+      const a = u * TAU * 1.6 + T * 0.04;
+      const r = 0.18 + u * 0.78 + fold * 0.5;
+      x = Math.cos(a) * r; z = Math.sin(a) * r;
+    } else if (variant === 3) { // five curtains fanned like spokes
+      const a = kc / nc * Math.PI + T * 0.03;
+      const along = s * 0.95;
+      x = Math.cos(a) * along - Math.sin(a) * fold * 0.7;
+      z = Math.sin(a) * along + Math.cos(a) * fold * 0.7;
+    } else {                    // two big S-folded sheets crossing
+      const dir = kc ? 1 : -1;
+      x = s * 1.05; z = dir * (0.32 * Math.sin(s * 2.4 + T * 0.4 * dir) + fold * 0.6);
+    }
+    out.x = x;
+    out.y = -0.62 + hgt * top * 1.15;
+    out.z = z;
+    const rays = 0.5 + 0.5 * Math.sin(s * 19 - T * 2.2 + kc * 3);
+    out.l = (0.25 + 1.25 * Math.pow(1 - hgt, 1.6)) * (0.55 + 0.75 * rays * rays);
+  }
+
+  // One particle, one frame: aim at the moving form, add the touch wake,
+  // glide there. Replaces the generic velocity physics for flow modes.
+  function flowStep(pt, dt, activePointers, halfW, halfH, kick) {
+    flowTarget(pt, FT);
+    pt.fsx = FT.x; pt.fsy = FT.y; pt.fsz = FT.z;
+    // spin around the form's own vertical axis, then the view tilt
+    const x1 = FT.x * F.cs - FT.z * F.sn;
+    const z1 = FT.x * F.sn + FT.z * F.cs;
+    const y2 = FT.y * F.ct - z1 * F.st;
+    const z2 = FT.y * F.st + z1 * F.ct;
+    const R = F.R;
+    const tx = halfW + x1 * R, ty = halfH - y2 * R, tz = z2 * R;
+
+    // wake: fingers push nearby light along their drag and a little outward
+    const wake = FLOW_VIEW[mode].wake;
+    const reach = R * 0.42, reach2 = reach * reach;
+    for (let i = 0; i < activePointers.length; i++) {
+      const p = activePointers[i];
+      const dx = pt.x - p.x, dy = pt.y - p.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > reach2 * 6) continue;
+      const fall = Math.exp(-d2 / reach2);
+      const d = Math.sqrt(Math.max(36, d2));
+      pt.ovx += (p.vx * 0.22 + dx / d * 0.9) * fall * wake * dt;
+      pt.ovy += (p.vy * 0.22 + dy / d * 0.9) * fall * wake * dt;
+    }
+    if (kick > 0) {
+      const dx = pt.x - halfW, dy = pt.y - halfH;
+      const d = Math.sqrt(Math.max(36, dx * dx + dy * dy));
+      pt.ovx += dx / d * kick * dt; pt.ovy += dy / d * kick * dt;
+    }
+    // the wake springs back (slightly underdamped, so it wobbles like jelly)
+    const damp = Math.pow(0.9, dt);
+    pt.ovx = (pt.ovx - pt.ox * 0.03 * dt) * damp;
+    pt.ovy = (pt.ovy - pt.oy * 0.03 * dt) * damp;
+    pt.ox = Math.max(-R, Math.min(R, pt.ox + pt.ovx * dt));
+    pt.oy = Math.max(-R, Math.min(R, pt.oy + pt.ovy * dt));
+
+    const follow = 1 - Math.pow(0.84, dt);
+    pt.x += (tx + pt.ox - pt.x) * follow;
+    pt.y += (ty + pt.oy - pt.y) * follow;
+    pt.z += (tz - pt.z) * follow;
+    pt.vx = 0; pt.vy = 0;
+    pt.flowLight += (FT.l - pt.flowLight) * follow;
   }
 
   function shapePointFor(mode, fingerCount, pt) {
-    if (mode === 'Torus Flow') return shapePointTorusFlow(pt, fingerCount);
-    if (mode === 'Singularity') return shapePointSingularity(pt, fingerCount);
-    if (mode === 'Magnetar') return shapePointMagnetar(pt, fingerCount);
-    if (mode === 'Prism') return shapePointPrism(pt, fingerCount);
-    if (mode === 'Gyroscope') return shapePointGyroscope(pt, fingerCount);
     if (mode === 'Cosmos') {
       const fn = COSMOS_SHAPE_BY_FINGERS[Math.min(5, fingerCount)] || shapePointGalaxy;
       return fn(pt);
@@ -2112,22 +2279,13 @@ import * as THREE from 'three';
         const rz = raw.x * sn + tz * cs;
         const targetX = cx + rx * SPHERE_RADIUS;
         const targetY = cy + ty * SPHERE_RADIUS;
-        // Hybrid modes need a slightly firmer positional spring and extra
-        // damping so their live forces create motion on a coherent surface.
-        const formSpring = HYBRID_3D_MODES.has(mode) ? 0.105 : SPHERE_SPRING;
-        pt.vx += (targetX - pt.x) * formSpring * dt;
-        pt.vy += (targetY - pt.y) * formSpring * dt;
-        if (HYBRID_3D_MODES.has(mode)) {
-          const hybridDamping = Math.pow(0.94, dt);
-          pt.vx *= hybridDamping;
-          pt.vy *= hybridDamping;
-        }
+        pt.vx += (targetX - pt.x) * SPHERE_SPRING * dt;
+        pt.vy += (targetY - pt.y) * SPHERE_SPRING * dt;
         // z isn't velocity-driven — it's set directly in the depth block
         // further down the frame loop, which reads this target whenever
         // formActive is true for the frame
         pt.formTargetZ = rz * SPHERE_RADIUS;
         pt.formActive = true;
-        if (HYBRID_3D_MODES.has(mode)) applyHybrid3DForces(pt, dt, touchSummary);
       }
       return;
     }
@@ -3002,6 +3160,8 @@ import * as THREE from 'three';
   // DOM text updates can trigger style work. Four updates a second still feels
   // live while avoiding a needless main-thread write on every animation frame.
   let lastHudUpdate = 0;
+  const fpsEl = document.getElementById('fps');
+  let fpsFrames = 0, fpsWindowStart = performance.now(), fpsShown = -1;
   const HUD_UPDATE_INTERVAL = 250;
 
   const MAX_SPEED = 32;
@@ -3062,7 +3222,7 @@ import * as THREE from 'three';
     }
     // When the user selects a 60fps cap, keep active gestures responsive by
     // allowing a presentation frame through instead of adding touch latency.
-    if (fpsCap && pointers.size === 0 && now - lastRender < 16.67) {
+    if (fpsCap && pointers.size === 0 && now - lastRender < 14) {
       // display can render faster than 60fps — skip this tick entirely so
       // we don't advance the sim or repaint, effectively capping at 60fps
       rafHandle = requestAnimationFrame(frame);
@@ -3081,6 +3241,17 @@ import * as THREE from 'three';
     simTime += dt;
     fpsSmooth += ((1000 / Math.max(1, now - (frame._prev || now))) - fpsSmooth) * 0.05;
     frame._prev = now;
+    // FPS counter: frames actually presented over the last half second.
+    fpsFrames++;
+    if (now - fpsWindowStart >= 500) {
+      const shown = Math.round(fpsFrames * 1000 / (now - fpsWindowStart));
+      if (fpsEl && shown !== fpsShown) { fpsEl.textContent = shown + ' FPS'; fpsShown = shown; }
+      fpsFrames = 0; fpsWindowStart = now;
+    }
+    // Real elapsed time in 60 Hz frames (not scaled by Speed) — anything that
+    // happens once per presented frame (trail fade) scales by this so it looks
+    // the same at 60 and 120 Hz.
+    const frameScale = Math.min(4, Math.max(0.25, rawFrameMs / 16.67)) || 1;
 
     reconcilePopulation();
 
@@ -3119,6 +3290,13 @@ import * as THREE from 'three';
       const targetTiltVel = -dvy * FORM_DRAG_TO_SPIN;
       formSpinVel += (targetSpinVel - formSpinVel) * Math.min(1, FORM_SPIN_EASE * dt);
       formTiltVel += (targetTiltVel - formTiltVel) * Math.min(1, FORM_SPIN_EASE * dt);
+    } else if (FLOW_3D_MODES.has(mode)) {
+      // flow modes keep turning on their own: a fling coasts down to the
+      // mode's idle spin, and the tilt drifts back to its best viewing angle
+      const idleSpin = FLOW_VIEW[mode].spin;
+      formSpinVel += (idleSpin - formSpinVel) * Math.min(1, 0.022 * dt);
+      formTiltVel += (0 - formTiltVel) * Math.min(1, 0.03 * dt);
+      formTilt = Math.atan2(Math.sin(formTilt), Math.cos(formTilt)) * Math.pow(0.992, dt);
     } else {
       formSpinVel += (0 - formSpinVel) * Math.min(1, FORM_SPIN_EASE * dt);
       formTiltVel += (0 - formTiltVel) * Math.min(1, FORM_SPIN_EASE * dt);
@@ -3140,7 +3318,10 @@ import * as THREE from 'three';
     // moving quickly. It only lowers the fade alpha, so the user's Trail value
     // remains the base length and turning the feature off restores it exactly.
     const velocityTrailFadeBoost = velocityTrails ? velocityTrailEnergy * 0.32 : 0;
-    const fadeAlpha = Math.max(0.02, 1 - trailAmt / 100 * 0.9 - audioEnergy.high * visualizer.trail - velocityTrailFadeBoost);
+    const fadeAlpha60 = Math.max(0.02, 1 - trailAmt / 100 * 0.9 - audioEnergy.high * visualizer.trail - velocityTrailFadeBoost);
+    // fadeAlpha60 is tuned per 60 Hz frame; at 120 Hz the fade runs twice as
+    // often, so each pass keeps sqrt of the light — same trail length in time.
+    const fadeAlpha = frameScale === 1 ? fadeAlpha60 : 1 - Math.pow(1 - Math.min(1, fadeAlpha60), frameScale);
 
     const src = fbos[pingpong];
     const dst = fbos[1 - pingpong];
@@ -3162,6 +3343,9 @@ import * as THREE from 'three';
     // writes and the GPU transfer until the palette or population changes.
     const updateColorBuffer = particleColorDirty;
     const is3DMode = MODES_3D.has(mode);
+    const isFlowMode = FLOW_3D_MODES.has(mode);
+    if (isFlowMode) prepareFlowFrame(activePointers, reactiveDt);
+    const flowKick = isFlowMode ? audioEnergy.kick * 2.2 * visualizer.kickForce : 0;
     const hasActivePointers = activePointers.length > 0;
     const hasKickForce = audioEnergy.kick > 0.015;
     const hasSnareForce = audioEnergy.snare > 0.02;
@@ -3178,119 +3362,124 @@ import * as THREE from 'three';
       const sparkleActive = pt.sparkle && sparkleEnabled;
       pt.formActive = false;
 
-      // gentle ambient drift so the field is always alive, even untouched —
-      // skipped in every 3D mode, where it just fights the shape spring and
-      // blurs the surface instead of reading as life
-      if (!is3DMode) {
-        pt.wobble += 0.02 * dt;
-        // Ambient Drift controls the field's baseline, untethered movement.
-        pt.vx += Math.cos(pt.wobble) * 0.008 * ambientDrift * dt;
-        pt.vy += Math.sin(pt.wobble * 0.8) * 0.008 * ambientDrift * dt;
-        // Turbulence uses stable position- and phase-derived noise rather than
-        // per-frame randomness, giving the field flowing eddies instead of flicker.
-        if (turbulenceStrength > 0) {
-          const turbulencePhase = pt.x * 0.018 + pt.y * 0.014 + pt.wobble * 2.7;
-          const turbulenceForce = turbulenceStrength * 0.035;
-          pt.vx += Math.cos(turbulencePhase) * turbulenceForce * dt;
-          pt.vy += Math.sin(turbulencePhase * 1.23) * turbulenceForce * dt;
+      if (isFlowMode) {
+        flowStep(pt, reactiveDt, activePointers, halfW, halfH, flowKick);
+      } else {
+        // gentle ambient drift so the field is always alive, even untouched —
+        // skipped in every 3D mode, where it just fights the shape spring and
+        // blurs the surface instead of reading as life
+        if (!is3DMode) {
+          pt.wobble += 0.02 * dt;
+          // Ambient Drift controls the field's baseline, untethered movement.
+          pt.vx += Math.cos(pt.wobble) * 0.008 * ambientDrift * dt;
+          pt.vy += Math.sin(pt.wobble * 0.8) * 0.008 * ambientDrift * dt;
+          // Turbulence uses stable position- and phase-derived noise rather than
+          // per-frame randomness, giving the field flowing eddies instead of flicker.
+          if (turbulenceStrength > 0) {
+            const turbulencePhase = pt.x * 0.018 + pt.y * 0.014 + pt.wobble * 2.7;
+            const turbulenceForce = turbulenceStrength * 0.035;
+            pt.vx += Math.cos(turbulencePhase) * turbulenceForce * dt;
+            pt.vy += Math.sin(turbulencePhase * 1.23) * turbulenceForce * dt;
+          }
         }
-      }
 
-      // For flat modes with no active touch, the interaction routine would
-      // only iterate an empty pointer list, so avoid the call entirely.
-      if (hasActivePointers && (touchForceStride === 1 || i % touchForceStride === touchForcePhase)) {
-        applyTouchForces(pt, touchForceDt, activePointers, polygon, touchSummary);
-      }
-
-      // Center Vortex is a continuous global curl. It layers under touch
-      // modes so a gesture can shape the field while the wider flow keeps turning.
-      if (!is3DMode && vortexStrength > 0) {
-        const vortexDx = pt.x - halfW;
-        const vortexDy = pt.y - halfH;
-        const vortexDist = Math.sqrt(Math.max(36, vortexDx * vortexDx + vortexDy * vortexDy));
-        const vortexFalloff = Math.min(1, vortexDist / Math.max(1, Math.min(halfW, halfH)));
-        const vortexForce = vortexStrength * 0.012 * vortexFalloff;
-        pt.vx += (-vortexDy / vortexDist) * vortexForce * dt;
-        pt.vy += (vortexDx / vortexDist) * vortexForce * dt;
-      }
-
-      // Kick drums shove the whole field outward from wherever the shockwave
-      // is centered — same falloff shape as Repel, just sourced from the
-      // beat detector instead of a finger, and only live while a kick is
-      // still ringing out (pulse decays to ~0 within a few frames).
-      if (hasKickForce) {
-        const kdx = pt.x, kdy = pt.y;
-        const kdist = Math.max(6, Math.hypot(kdx, kdy));
-        const kreach = Math.max(W, H) * 0.55;
-        const kfalloff = kreach / (kreach + kdist);
-        pt.vx += (kdx / kdist) * kfalloff * audioEnergy.kick * 6 * visualizer.kickForce * dt;
-        pt.vy += (kdy / kdist) * kfalloff * audioEnergy.kick * 6 * visualizer.kickForce * dt;
-      }
-
-      // Snares/claps give every particle its own tiny random-direction
-      // jolt rather than one shared shockwave — reads as a scatter/crackle
-      // through the whole field instead of a directional push, which is
-      // the right feel for a sharper, less bass-heavy hit.
-      if (hasSnareForce) {
-        const sa = pt.wobble * 7.3 + pt.x * 0.013 + pt.y * 0.017; // cheap per-particle pseudo-random angle, no Math.random() per particle per frame
-        pt.vx += Math.cos(sa) * audioEnergy.snare * 3.2 * visualizer.snareForce * dt;
-        pt.vy += Math.sin(sa) * audioEnergy.snare * 3.2 * visualizer.snareForce * dt;
-      }
-
-      // Edge Return gently redirects particles away from the boundary before
-      // integration, keeping the field dense without changing wrap behavior.
-      if (!is3DMode && edgeReturnStrength > 0) {
-        const edgeMargin = Math.max(24, Math.min(W, H) * 0.16);
-        const edgeForce = edgeReturnStrength * 0.008 * dt;
-        if (pt.x < edgeMargin) pt.vx += ((edgeMargin - pt.x) / edgeMargin) * edgeForce;
-        else if (pt.x > W - edgeMargin) pt.vx -= ((pt.x - (W - edgeMargin)) / edgeMargin) * edgeForce;
-        if (pt.y < edgeMargin) pt.vy += ((edgeMargin - pt.y) / edgeMargin) * edgeForce;
-        else if (pt.y > H - edgeMargin) pt.vy -= ((pt.y - (H - edgeMargin)) / edgeMargin) * edgeForce;
-      }
-
-      // Speed Limit caps momentum after every optional motion force is applied.
-      const speedSquared = pt.vx * pt.vx + pt.vy * pt.vy;
-      const maxSpeedSquared = maxParticleSpeed * maxParticleSpeed;
-      if (speedSquared > maxSpeedSquared) {
-        const speedScale = maxParticleSpeed / Math.sqrt(speedSquared);
-        pt.vx *= speedScale;
-        pt.vy *= speedScale;
-      }
-
-      pt.vx *= frameDrag;
-      pt.vy *= frameDrag;
-      if (velocityTrails) {
-        // Squared speed avoids an extra square root in this hot loop while
-        // still mapping faster particles to a stronger trail extension.
-        const postDragSpeedSquared = pt.vx * pt.vx + pt.vy * pt.vy;
-        totalVelocityActivity += Math.min(1, postDragSpeedSquared / maxSpeedSquared);
-      }
-      pt.x += pt.vx * dt * MOTION_SCALE;
-      pt.y += pt.vy * dt * MOTION_SCALE;
-
-      // Particles are permanent — they never leave the field. While a
-      // finger is down, anything that drifts off-screen reappears next
-      // to that finger so it's immediately back in play. With no active
-      // touch, it just wraps to the opposite edge like a normal scroller.
-      // Wind always uses that same wrap-around scroll, even mid-touch,
-      // since particles are meant to blow across and off the field rather
-      // than recycle back around the finger.
-      const offscreen = pt.x < -10 || pt.x > W + 10 || pt.y < -10 || pt.y > H + 10;
-      if (offscreen) {
-        if (activePointers.length > 0 && mode !== 'Wind') {
-          const anchor = activePointers[(Math.random() * activePointers.length) | 0];
-          const a = rand(0, Math.PI * 2);
-          const r = rand(14, 46);
-          pt.x = anchor.x + Math.cos(a) * r;
-          pt.y = anchor.y + Math.sin(a) * r;
-          pt.vx = Math.cos(a) * rand(0.4, 1.2);
-          pt.vy = Math.sin(a) * rand(0.4, 1.2);
-        } else {
-          if (pt.x < -10) pt.x = W + 10;
-          if (pt.x > W + 10) pt.x = -10;
-          if (pt.y < -10) pt.y = H + 10;
-          if (pt.y > H + 10) pt.y = -10;
+        // For flat modes with no active touch, the interaction routine would
+        // only iterate an empty pointer list, so avoid the call entirely.
+        if (hasActivePointers && (touchForceStride === 1 || i % touchForceStride === touchForcePhase)) {
+          applyTouchForces(pt, touchForceDt, activePointers, polygon, touchSummary);
         }
+
+        // Center Vortex is a continuous global curl. It layers under touch
+        // modes so a gesture can shape the field while the wider flow keeps turning.
+        if (!is3DMode && vortexStrength > 0) {
+          const vortexDx = pt.x - halfW;
+          const vortexDy = pt.y - halfH;
+          const vortexDist = Math.sqrt(Math.max(36, vortexDx * vortexDx + vortexDy * vortexDy));
+          const vortexFalloff = Math.min(1, vortexDist / Math.max(1, Math.min(halfW, halfH)));
+          const vortexForce = vortexStrength * 0.012 * vortexFalloff;
+          pt.vx += (-vortexDy / vortexDist) * vortexForce * dt;
+          pt.vy += (vortexDx / vortexDist) * vortexForce * dt;
+        }
+
+        // Kick drums shove the whole field outward from wherever the shockwave
+        // is centered — same falloff shape as Repel, just sourced from the
+        // beat detector instead of a finger, and only live while a kick is
+        // still ringing out (pulse decays to ~0 within a few frames).
+        if (hasKickForce) {
+          const kdx = pt.x, kdy = pt.y;
+          const kdist = Math.max(6, Math.hypot(kdx, kdy));
+          const kreach = Math.max(W, H) * 0.55;
+          const kfalloff = kreach / (kreach + kdist);
+          pt.vx += (kdx / kdist) * kfalloff * audioEnergy.kick * 6 * visualizer.kickForce * dt;
+          pt.vy += (kdy / kdist) * kfalloff * audioEnergy.kick * 6 * visualizer.kickForce * dt;
+        }
+
+        // Snares/claps give every particle its own tiny random-direction
+        // jolt rather than one shared shockwave — reads as a scatter/crackle
+        // through the whole field instead of a directional push, which is
+        // the right feel for a sharper, less bass-heavy hit.
+        if (hasSnareForce) {
+          const sa = pt.wobble * 7.3 + pt.x * 0.013 + pt.y * 0.017; // cheap per-particle pseudo-random angle, no Math.random() per particle per frame
+          pt.vx += Math.cos(sa) * audioEnergy.snare * 3.2 * visualizer.snareForce * dt;
+          pt.vy += Math.sin(sa) * audioEnergy.snare * 3.2 * visualizer.snareForce * dt;
+        }
+
+        // Edge Return gently redirects particles away from the boundary before
+        // integration, keeping the field dense without changing wrap behavior.
+        if (!is3DMode && edgeReturnStrength > 0) {
+          const edgeMargin = Math.max(24, Math.min(W, H) * 0.16);
+          const edgeForce = edgeReturnStrength * 0.008 * dt;
+          if (pt.x < edgeMargin) pt.vx += ((edgeMargin - pt.x) / edgeMargin) * edgeForce;
+          else if (pt.x > W - edgeMargin) pt.vx -= ((pt.x - (W - edgeMargin)) / edgeMargin) * edgeForce;
+          if (pt.y < edgeMargin) pt.vy += ((edgeMargin - pt.y) / edgeMargin) * edgeForce;
+          else if (pt.y > H - edgeMargin) pt.vy -= ((pt.y - (H - edgeMargin)) / edgeMargin) * edgeForce;
+        }
+
+        // Speed Limit caps momentum after every optional motion force is applied.
+        const speedSquared = pt.vx * pt.vx + pt.vy * pt.vy;
+        const maxSpeedSquared = maxParticleSpeed * maxParticleSpeed;
+        if (speedSquared > maxSpeedSquared) {
+          const speedScale = maxParticleSpeed / Math.sqrt(speedSquared);
+          pt.vx *= speedScale;
+          pt.vy *= speedScale;
+        }
+
+        pt.vx *= frameDrag;
+        pt.vy *= frameDrag;
+        if (velocityTrails) {
+          // Squared speed avoids an extra square root in this hot loop while
+          // still mapping faster particles to a stronger trail extension.
+          const postDragSpeedSquared = pt.vx * pt.vx + pt.vy * pt.vy;
+          totalVelocityActivity += Math.min(1, postDragSpeedSquared / maxSpeedSquared);
+        }
+        pt.x += pt.vx * dt * MOTION_SCALE;
+        pt.y += pt.vy * dt * MOTION_SCALE;
+
+        // Particles are permanent — they never leave the field. While a
+        // finger is down, anything that drifts off-screen reappears next
+        // to that finger so it's immediately back in play. With no active
+        // touch, it just wraps to the opposite edge like a normal scroller.
+        // Wind always uses that same wrap-around scroll, even mid-touch,
+        // since particles are meant to blow across and off the field rather
+        // than recycle back around the finger.
+        const offscreen = pt.x < -10 || pt.x > W + 10 || pt.y < -10 || pt.y > H + 10;
+        if (offscreen) {
+          if (activePointers.length > 0 && mode !== 'Wind') {
+            const anchor = activePointers[(Math.random() * activePointers.length) | 0];
+            const a = rand(0, Math.PI * 2);
+            const r = rand(14, 46);
+            pt.x = anchor.x + Math.cos(a) * r;
+            pt.y = anchor.y + Math.sin(a) * r;
+            pt.vx = Math.cos(a) * rand(0.4, 1.2);
+            pt.vy = Math.sin(a) * rand(0.4, 1.2);
+          } else {
+            if (pt.x < -10) pt.x = W + 10;
+            if (pt.x > W + 10) pt.x = -10;
+            if (pt.y < -10) pt.y = H + 10;
+            if (pt.y > H + 10) pt.y = -10;
+          }
+        }
+
       }
 
       // Sparkles flicker on a sharper, faster cycle that dips low between
@@ -3317,7 +3506,9 @@ import * as THREE from 'three';
       // particle zBase/zWobble breathing ran in every mode regardless,
       // which visually spread the field into a cylinder even though the
       // camera sits straight-on and nothing else about those modes is 3D.
-      if (is3DMode) {
+      if (isFlowMode) {
+        // z already glides with the form inside flowStep
+      } else if (is3DMode) {
         pt.zWobble += 0.012 * dt;
         if (pt.formActive) {
           // Being actively pulled onto this frame's 3D shape — ease toward
@@ -3355,12 +3546,15 @@ import * as THREE from 'three';
       // Hybrid forms receive subtle depth cueing: particles closer to the
       // camera become slightly larger and brighter, making the flowing forms
       // read as volume rather than a flat cloud of unrelated points.
-      const hybridDepth = HYBRID_3D_MODES.has(mode) ? Math.max(0.82, Math.min(1.18, 1 + pt.z / Math.max(1, SPHERE_RADIUS) * 0.18)) : 1;
-      sizeArr[i] = pt.size * basePointSize * sparkleSizeBoost * hybridDepth;
+      // Flow forms get depth cueing (nearer = a touch bigger and brighter) and
+      // their own per-particle light, so crests, pulses and hems glow.
+      const flowDepth = isFlowMode ? Math.max(0.78, Math.min(1.22, 1 + pt.z / Math.max(1, SPHERE_RADIUS) * 0.2)) : 1;
+      const flowSize = isFlowMode ? flowDepth * (0.8 + Math.min(1.6, pt.flowLight) * 0.2) : 1;
+      sizeArr[i] = pt.size * basePointSize * sparkleSizeBoost * flowSize;
       // Sparkles are allowed to overdrive slightly past 1 so their flares
       // reliably clear the bloom brightness threshold instead of just
       // sitting at the same ceiling as every other particle.
-      alphaArr[i] = Math.min(sparkleActive ? 1.3 : 1, alpha * (HYBRID_3D_MODES.has(mode) ? (0.58 + hybridDepth * 0.14) : 1));
+      alphaArr[i] = Math.min(sparkleActive ? 1.3 : 1, alpha * (isFlowMode ? pt.flowLight * (0.55 + flowDepth * 0.25) : 1));
     }
 
     // Smooth the measured field activity for the next frame's fade pass.
@@ -3459,12 +3653,7 @@ import * as THREE from 'three';
       // Give each hybrid volume a clean three-quarter presentation angle on
       // entry. This avoids a previous mode's accidental edge-on orientation
       // making a torus or field volume appear as an unconvincing bright bar.
-      if (HYBRID_3D_MODES.has(mode)) {
-        formSpin = 0.42;
-        formTilt = -0.28;
-        formSpinVel = 0;
-        formTiltVel = 0;
-      }
+      if (FLOW_3D_MODES.has(mode)) resetFlowMode();
       [...modeRow.children].forEach(c => c.classList.remove('active'));
       chip.classList.add('active');
       saveSettings();
