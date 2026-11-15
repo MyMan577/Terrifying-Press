@@ -83,72 +83,215 @@
       + '  oc = vec4(y, y, y, 1.0);\n'
       + '}\n';
 
-    const FS_ME = 'uniform sampler2D uCur; uniform sampler2D uPrev; uniform ivec2 uSize; uniform float uLambda;\n'
-      + 'float sad(ivec2 c, ivec2 d){\n'
+    // Motion vectors are in analysis pixels, stored companded in .rg (sqrt curve, +-128 px): fine steps for slow
+    // motion, coarse only for very fast motion. Works at 8-bit (RGBA8) as well as half float. .b = trust 0..1;
+    // it never shortens a vector.
+    const MV = 'const float MVR = 128.0;\n'
+      + 'vec2 mvDec(vec2 e){ vec2 s = e * 2.0 - 1.0; return s * abs(s) * MVR; }\n'
+      + 'vec4 mvEnc(vec2 v, float conf){ vec2 s = clamp(v / MVR, -1.0, 1.0); return vec4(0.5 + 0.5 * sign(s) * sqrt(abs(s)), conf, 1.0); }\n';
+    // Shared by the field passes (ME, REF, MED). Needs uCur, uPrev, uSize, uPrior, uHasPrior. uHasPrior: 0 = no
+    // previous field, +1 = it points the same way as this one, -1 = the opposite way (negated when read).
+    const MVL = MV
+      + 'float lc(ivec2 p){ return texelFetch(uCur, clamp(p, ivec2(0), uSize - 1), 0).r; }\n'
+      + 'float lp(ivec2 p){ return texelFetch(uPrev, clamp(p, ivec2(0), uSize - 1), 0).r; }\n'
+      + 'vec2 priorAt(ivec2 p){\n'
+      + '  ivec2 n = textureSize(uPrior, 0);\n'
+      + '  ivec2 q = clamp((p * n) / uSize, ivec2(0), n - 1);\n'
+      + '  return mvDec(texelFetch(uPrior, q, 0).rg) * uHasPrior;\n'
+      + '}\n'
+      + 'float sadW(ivec2 c, ivec2 d, int st){\n'
       + '  float s = 0.0;\n'
-      + '  for (int j = -8; j < 8; j += 2){\n'
-      + '    for (int i = -8; i < 8; i += 2){\n'
-      + '      ivec2 p = c + ivec2(i, j);\n'
-      + '      float a = texelFetch(uCur, clamp(p, ivec2(0), uSize - 1), 0).r;\n'
-      + '      float b = texelFetch(uPrev, clamp(p + d, ivec2(0), uSize - 1), 0).r;\n'
-      + '      s += abs(a - b);\n'
-      + '    }\n'
-      + '  }\n'
+      + '  for (int j = -4; j < 4; j++){ for (int i = -4; i < 4; i++){\n'
+      + '    ivec2 p = c + ivec2(i, j) * st;\n'
+      + '    s += abs(lc(p) - lp(p + d));\n'
+      + '  } }\n'
+      + '  return s * (1.0 / 64.0);\n'
+      + '}\n'
+      // x = SAD with no motion, y = texture (mean 1-px luma gradient) of the block.
+      + 'vec2 zeroAct(ivec2 c, int st){\n'
+      + '  float s = 0.0, g = 0.0;\n'
+      + '  for (int j = -4; j < 4; j++){ for (int i = -4; i < 4; i++){\n'
+      + '    ivec2 p = c + ivec2(i, j) * st;\n'
+      + '    float a = lc(p);\n'
+      + '    s += abs(a - lp(p));\n'
+      + '    g += abs(a - lc(p + ivec2(1, 0))) + abs(a - lc(p + ivec2(0, 1)));\n'
+      + '  } }\n'
+      + '  return vec2(s * (1.0 / 64.0), g * (1.0 / 128.0));\n'
+      + '}\n'
+      // How much better than "no motion" a moving vector must match: a share of the no-motion error, capped by the
+      // texture. Busy areas that barely change keep zero motion; anything that really moves clears it easily.
+      + 'float zbias(vec2 za){ return min(0.35 * za.x, 0.004 + 0.15 * za.y); }\n'
+      // Trust: the match is good for this much texture, or (motion blur, changing shapes) it is clearly better
+      // than no motion while still being a plausible match. A block with no real match (just uncovered) stays low.
+      + 'float trust(float sb, vec2 za, bool moving){\n'
+      + '  float r = sb / (0.006 + 0.5 * za.y);\n'
+      + '  float m = 1.0 - smoothstep(1.2, 2.8, r);\n'
+      + '  float g = moving ? smoothstep(0.05, 0.4, (za.x - sb) / (za.x + 0.002)) * (1.0 - smoothstep(2.5, 5.0, r)) : 0.0;\n'
+      + '  return max(m, g);\n'
+      + '}\n'
+      + 'float lenPen(vec2 d){ return 0.0006 * min(length(d), 8.0); }\n';
+
+    // Coarse field, one vector per 8px block, pointing from uCur into uPrev. Candidates: no motion, the previous
+    // field (followed along its own track, plus 4 neighbours); where those do not already match well, a coarse
+    // search on the quarter-size luma (mip 2, 32px window: an 11x11 grid 20px apart, then +-8/4px; reaches
+    // +-112px); then +-4/2/1 px refinement around the best and a sub-pixel fit.
+    const FS_ME = 'uniform sampler2D uCur; uniform sampler2D uPrev; uniform ivec2 uSize; uniform float uLambda;\n'
+      + 'uniform sampler2D uPrior; uniform float uHasPrior;\n'
+      + MVL
+      + 'void tryV(ivec2 c, ivec2 d, float zb, inout ivec2 best, inout float bestCost, inout float bestSad){\n'
+      + '  float s = sadW(c, d, 2);\n'
+      + '  float cost = s + (d == ivec2(0) ? 0.0 : zb) + uLambda * min(length(vec2(d)), 8.0);\n'
+      + '  if (cost < bestCost){ bestCost = cost; best = d; bestSad = s; }\n'
+      + '}\n'
+      // SAD of a 32px window on the quarter-size copy of the luma (mip 2), 8x8 taps.
+      + 'float sad2(ivec2 c2, ivec2 d2){\n'
+      + '  ivec2 n2 = uSize >> 2;\n'
+      + '  float s = 0.0;\n'
+      + '  for (int j = -4; j < 4; j++){ for (int i = -4; i < 4; i++){\n'
+      + '    ivec2 p = c2 + ivec2(i, j);\n'
+      + '    s += abs(texelFetch(uCur, clamp(p, ivec2(0), n2 - 1), 2).r - texelFetch(uPrev, clamp(p + d2, ivec2(0), n2 - 1), 2).r);\n'
+      + '  } }\n'
       + '  return s * (1.0 / 64.0);\n'
       + '}\n'
       + 'void main(){\n'
       + '  ivec2 c = ivec2(gl_FragCoord.xy) * 8 + 4;\n'
-      + '  ivec2 best = ivec2(0);\n'
-      + '  float s0 = sad(c, best);\n'
-      + '  float bestCost = s0;\n'
-      + '  float bestSad = s0;\n'
-      + '  int stp = 32;\n'
-      + '  for (int l = 0; l < 6; l++){\n'
-      + '    ivec2 ctr = best;\n'
-      + '    for (int j = -1; j <= 1; j++){\n'
-      + '      for (int i = -1; i <= 1; i++){\n'
+      + '  vec2 za = zeroAct(c, 2);\n'
+      + '  float zb = zbias(za);\n'
+      + '  ivec2 best = ivec2(0); float bestCost = za.x; float bestSad = za.x;\n'
+      + '  if (uHasPrior != 0.0){\n'
+      + '    ivec2 v = ivec2(round(priorAt(c)));\n'
+      + '    tryV(c, v, zb, best, bestCost, bestSad);\n'
+      + '    if (uHasPrior > 0.0) tryV(c, ivec2(round(priorAt(c + v))), zb, best, bestCost, bestSad);\n'
+      + '    tryV(c, ivec2(round(priorAt(c + ivec2(16, 0)))), zb, best, bestCost, bestSad);\n'
+      + '    tryV(c, ivec2(round(priorAt(c - ivec2(16, 0)))), zb, best, bestCost, bestSad);\n'
+      + '    tryV(c, ivec2(round(priorAt(c + ivec2(0, 16)))), zb, best, bestCost, bestSad);\n'
+      + '    tryV(c, ivec2(round(priorAt(c - ivec2(0, 16)))), zb, best, bestCost, bestSad);\n'
+      + '  }\n'
+      // The wide search only where no motion and the previous track do not already match well for this texture:
+      // new, fast or changing motion gets the effort; still areas and steady tracks stay cheap.
+      + '  int stp;\n'
+      + '  if (bestSad > 0.4 * (0.006 + 0.5 * za.y)){\n'
+      + '    ivec2 c2 = c >> 2; ivec2 cb = ivec2(0); float cc = sad2(c2, cb);\n'
+      + '    for (int j = -5; j <= 5; j++){ for (int i = -5; i <= 5; i++){\n'
+      + '      if (i == 0 && j == 0) continue;\n'
+      + '      ivec2 d = ivec2(i, j) * 5;\n'
+      + '      float s = sad2(c2, d) + 0.0015 + uLambda * min(4.0 * length(vec2(d)), 8.0);\n'
+      + '      if (s < cc){ cc = s; cb = d; }\n'
+      + '    } }\n'
+      + '    stp = 2;\n'
+      + '    for (int l = 0; l < 2; l++){\n'
+      + '      ivec2 ctr = cb;\n'
+      + '      for (int j = -1; j <= 1; j++){ for (int i = -1; i <= 1; i++){\n'
       + '        if (i == 0 && j == 0) continue;\n'
       + '        ivec2 d = ctr + ivec2(i, j) * stp;\n'
-      + '        float s = sad(c, d);\n'
-      + '        float cost = s + uLambda * length(vec2(d));\n'
-      + '        if (cost < bestCost){ bestCost = cost; best = d; bestSad = s; }\n'
-      + '      }\n'
+      + '        float s = sad2(c2, d) + 0.0015 + uLambda * min(4.0 * length(vec2(d)), 8.0);\n'
+      + '        if (s < cc){ cc = s; cb = d; }\n'
+      + '      } }\n'
+      + '      stp = stp / 2;\n'
       + '    }\n'
+      + '    tryV(c, cb * 4, zb, best, bestCost, bestSad);\n'
+      + '  }\n'
+      + '  stp = 4;\n'
+      + '  for (int l = 0; l < 3; l++){\n'
+      + '    ivec2 ctr = best;\n'
+      + '    for (int j = -1; j <= 1; j++){ for (int i = -1; i <= 1; i++){\n'
+      + '      if (i == 0 && j == 0) continue;\n'
+      + '      tryV(c, ctr + ivec2(i, j) * stp, zb, best, bestCost, bestSad);\n'
+      + '    } }\n'
       + '    stp = stp / 2;\n'
       + '  }\n'
-      + '  if (bestSad > s0 * 0.9 - 0.004){ best = ivec2(0); bestSad = s0; }\n'
-      + '  float conf = 1.0 - smoothstep(0.05, 0.16, bestSad);\n'
-      + '  vec2 dv = clamp(vec2(best), -63.0, 63.0);\n'
-      + '  oc = vec4((dv + 64.0) / 128.0, conf, 1.0);\n'
+      + '  vec2 sub = vec2(0.0);\n'
+      + '  bool moving = best != ivec2(0);\n'
+      + '  if (moving){\n'
+      + '    float xm = sadW(c, best + ivec2(-1, 0), 2); float xp = sadW(c, best + ivec2(1, 0), 2);\n'
+      + '    float ym = sadW(c, best + ivec2(0, -1), 2); float yp = sadW(c, best + ivec2(0, 1), 2);\n'
+      + '    float dx = xm - 2.0 * bestSad + xp; float dy = ym - 2.0 * bestSad + yp;\n'
+      + '    if (dx > 1e-5) sub.x = clamp(0.5 * (xm - xp) / dx, -0.5, 0.5);\n'
+      + '    if (dy > 1e-5) sub.y = clamp(0.5 * (ym - yp) / dy, -0.5, 0.5);\n'
+      + '  }\n'
+      // flat blocks say little about motion: weak say when MED weighs neighbours
+      + '  float cf = trust(bestSad, za, moving) * (0.25 + 0.75 * smoothstep(0.004, 0.03, za.y));\n'
+      + '  oc = mvEnc(vec2(best) + sub, cf);\n'
       + '}\n';
 
+    // Vector clean-up (replaces a plain 3x3 vote). Each block re-tests its 3x3 neighbours' vectors, no motion and
+    // the previous field's vector on ITS OWN pixels, and keeps the cheapest: match error + no-motion bias + a
+    // pull toward trusted neighbours and the previous track. A small fast object keeps its vector because only that
+    // vector matches its pixels; noisy vectors in busy still areas lose to no motion; flat blocks (no evidence either
+    // way) follow their neighbours instead of defaulting to no motion. Then a steady track is eased
+    // toward the previous field (less sub-pixel jitter). Block size = uSize / uGrid (8 Advanced, 4 Ultra).
+    // Output .b = trust for drawing.
     const FS_MED = 'uniform sampler2D uRaw; uniform ivec2 uGrid;\n'
-      + 'vec3 fetchMv(ivec2 p){\n'
-      + '  vec4 t = texelFetch(uRaw, clamp(p, ivec2(0), uGrid - 1), 0);\n'
-      + '  return vec3(t.rg * 128.0 - 64.0, t.b);\n'
-      + '}\n'
+      + 'uniform sampler2D uCur; uniform sampler2D uPrev; uniform ivec2 uSize; uniform sampler2D uPrior; uniform float uHasPrior;\n'
+      + MVL
       + 'void main(){\n'
-      + '  ivec2 p = ivec2(gl_FragCoord.xy);\n'
-      + '  vec3 v[9];\n'
-      + '  for (int j = 0; j < 3; j++){\n'
-      + '    for (int i = 0; i < 3; i++){\n'
-      + '      v[j * 3 + i] = fetchMv(p + ivec2(i - 1, j - 1));\n'
-      + '    }\n'
+      + '  ivec2 g = ivec2(gl_FragCoord.xy);\n'
+      + '  int bs = uSize.x / uGrid.x; int st = max(bs / 4, 1);\n'
+      + '  ivec2 c = g * bs + bs / 2;\n'
+      + '  vec2 v[9]; float w[9];\n'
+      + '  for (int j = 0; j < 3; j++){ for (int i = 0; i < 3; i++){\n'
+      + '    vec4 t = texelFetch(uRaw, clamp(g + ivec2(i - 1, j - 1), ivec2(0), uGrid - 1), 0);\n'
+      + '    v[j * 3 + i] = mvDec(t.rg); w[j * 3 + i] = 0.1 + t.b;\n'
+      + '  } }\n'
+      + '  vec2 za = zeroAct(c, st);\n'
+      + '  float zb = zbias(za);\n'
+      + '  float lam = 0.003 + 0.2 * za.y;\n'
+      + '  float tex = smoothstep(0.004, 0.03, za.y);\n'
+      + '  bool hp = uHasPrior != 0.0;\n'
+      + '  vec2 pv = hp ? priorAt(uHasPrior > 0.0 ? c + ivec2(round(v[4])) : c) : vec2(0.0);\n'
+      + '  vec2 bestV = vec2(0.0); float bestCost = 1e9; float bestSad = za.x;\n'
+      + '  for (int k = 0; k < 11; k++){\n'
+      + '    if (k == 10 && !hp) continue;\n'
+      + '    vec2 cand = k < 9 ? v[k] : (k == 9 ? vec2(0.0) : pv);\n'
+      + '    ivec2 d = ivec2(round(cand));\n'
+      + '    bool z = d == ivec2(0);\n'
+      + '    float s = z ? za.x : sadW(c, d, st);\n'
+      + '    float sm = 0.0, ws = 0.0;\n'
+      + '    for (int n = 0; n < 9; n++){ if (n == 4) continue; sm += w[n] * min(length(cand - v[n]), 6.0); ws += w[n]; }\n'
+      + '    float tp = hp ? 0.25 * min(length(cand - pv), 6.0) : 0.0;\n'
+      + '    float cost = s + (z ? 0.0 : zb) + lam * (0.5 * sm / ws + tp) + tex * (lenPen(cand) + (k == 4 ? 0.0 : 0.0005));\n'
+      + '    if (cost < bestCost){ bestCost = cost; bestV = cand; bestSad = s; }\n'
       + '  }\n'
-      + '  float bestS = 1e9;\n'
-      + '  int bi = 4;\n'
-      + '  for (int a = 0; a < 9; a++){\n'
-      + '    float s = 0.0;\n'
-      + '    for (int b = 0; b < 9; b++) s += length(v[a].xy - v[b].xy);\n'
-      + '    if (a == 4) s -= 0.75;\n'
-      + '    if (s < bestS){ bestS = s; bi = a; }\n'
-      + '  }\n'
-      + '  vec3 m = v[bi];\n'
-      + '  oc = vec4((m.xy + 64.0) / 128.0, m.z, 1.0);\n'
+      + '  if (hp && length(bestV - pv) < 1.0) bestV = mix(bestV, pv, 0.3);\n'
+      + '  oc = mvEnc(bestV, trust(bestSad, za, length(bestV) >= 0.5));\n'
       + '}\n';
 
     // Compares two frames on an 8x8 grid of cells (16x16 samples each). R = mean diff (x32),
     // G = count of clearly-changed samples, B = coarse mean diff (x2, for hard-cut detection).
+    // Fast-object candidates, once per field: for each block, the fastest trusted vector (over 3 px) whose path
+    // between the two frames passes this block. Searched every 8 px out to +-128 px. The draw pass tries it as a
+    // second track, so a small fast object is found at any point between the frames (following the field from the
+    // pixel alone lands on background once the object has moved more than its own size).
+    const FS_DIL = 'uniform sampler2D uMv; uniform ivec2 uGrid; uniform ivec2 uSize;\n'
+      + MV
+      + 'void main(){\n'
+      + '  ivec2 g = ivec2(gl_FragCoord.xy);\n'
+      + '  int bs = uSize.x / uGrid.x; int st = max(8 / bs, 1);\n'
+      + '  vec2 p = (vec2(g) + 0.5) * float(bs);\n'
+      + '  float reach = 0.75 * float(bs * st) + float(bs);\n'
+      + '  vec2 best = vec2(0.0); float bm = 3.0; float btr = 0.0;\n'
+      + '  for (int j = -16; j <= 16; j++){ for (int i = -16; i <= 16; i++){\n'
+      + '    ivec2 q = g + ivec2(i, j) * st;\n'
+      + '    if (q.x < 0 || q.y < 0 || q.x >= uGrid.x || q.y >= uGrid.y) continue;\n'
+      + '    vec4 t = texelFetch(uMv, q, 0);\n'
+      + '    vec2 v = mvDec(t.rg); float L = length(v);\n'
+      + '    if (L <= bm || t.b < 0.5) continue;\n'
+      + '    vec2 o = p - (vec2(q) + 0.5) * float(bs);\n'
+      + '    float h = clamp(dot(o, v) / (L * L), 0.0, 1.0);\n'
+      + '    if (length(o - v * h) > reach) continue;\n'
+      // a lone vector (or a pair) is more likely a stray match than an object: need 2 neighbours moving the same way
+      + '    float tl = 0.2 * L + 1.0; int sup = 0;\n'
+      + '    for (int n = 0; n < 9; n++){\n'
+      + '      if (n == 4) continue;\n'
+      + '      ivec2 o2 = ivec2(n % 3 - 1, n / 3 - 1);\n'
+      + '      if (length(mvDec(texelFetch(uMv, clamp(q + o2, ivec2(0), uGrid - 1), 0).rg) - v) < tl) sup++;\n'
+      + '    }\n'
+      + '    if (sup < 2) continue;\n'
+      + '    bm = L; best = v; btr = t.b;\n'
+      + '  } }\n'
+      + '  oc = mvEnc(best, btr);\n'
+      + '}\n';
+
     const FS_DUP = 'uniform sampler2D uA; uniform sampler2D uB;\n'
       + 'void main(){\n'
       + '  vec2 cell = floor(gl_FragCoord.xy);\n'
@@ -329,127 +472,147 @@
       + '  oc = vec4(clamp(o, 0.0, 1.0), 1.0);\n'
       + '}\n';
 
-    // Ultra: refine the 8px vectors to 4px blocks (8x8 window). Candidates: the parent's and its
-    // neighbours' vectors, the previous frame's vector at the same spot (temporal prior), then a
-    // local +-1 search and a parabolic sub-pixel fit.
+    // Ultra: refine the 8px vectors to 4px blocks (8x8 window). Candidates: no motion, the parent's and its
+    // neighbours' vectors, the previous field's vector (followed along its track), then a local +-1 search and a
+    // parabolic sub-pixel fit. Same no-motion bias and trust as FS_ME.
     const FS_REF = 'uniform sampler2D uCur; uniform sampler2D uPrev; uniform sampler2D uRaw; uniform sampler2D uPrior; uniform float uHasPrior; uniform ivec2 uSize; uniform ivec2 uGrid;\n'
-      + 'float sad4(ivec2 c, ivec2 d){\n'
-      + '  float s = 0.0;\n'
-      + '  for (int j = -4; j < 4; j++){ for (int i = -4; i < 4; i++){\n'
-      + '    ivec2 p = c + ivec2(i, j);\n'
-      + '    s += abs(texelFetch(uCur, clamp(p, ivec2(0), uSize - 1), 0).r - texelFetch(uPrev, clamp(p + d, ivec2(0), uSize - 1), 0).r);\n'
-      + '  } }\n'
-      + '  return s * (1.0 / 64.0);\n'
+      + MVL
+      + 'void tryV(ivec2 c, ivec2 d, float zb, float extra, inout ivec2 best, inout float bestCost, inout float bestSad){\n'
+      + '  float s = sadW(c, d, 1);\n'
+      + '  float cost = s + (d == ivec2(0) ? 0.0 : zb) + lenPen(vec2(d)) + extra;\n'
+      + '  if (cost < bestCost){ bestCost = cost; best = d; bestSad = s; }\n'
       + '}\n'
       + 'void main(){\n'
       + '  ivec2 f = ivec2(gl_FragCoord.xy);\n'
       + '  ivec2 c = f * 4 + 2;\n'
       + '  ivec2 par = f / 2;\n'
-      + '  float s0 = sad4(c, ivec2(0));\n'
-      + '  ivec2 best = ivec2(0); float bestCost = s0 + 0.0015; float bestSad = s0;\n'
+      + '  vec2 za = zeroAct(c, 1);\n'
+      + '  float zb = zbias(za);\n'
+      + '  ivec2 best = ivec2(0); float bestCost = za.x; float bestSad = za.x;\n'
       + '  for (int j = -1; j <= 1; j++){ for (int i = -1; i <= 1; i++){\n'
       + '    vec4 t = texelFetch(uRaw, clamp(par + ivec2(i, j), ivec2(0), uGrid - 1), 0);\n'
-      + '    ivec2 d = ivec2(round(t.rg * 128.0 - 64.0));\n'
-      + '    float s = sad4(c, d);\n'
-      + '    float cost = s + 0.0006 * length(vec2(d)) + ((i != 0 || j != 0) ? 0.002 : 0.0);\n'
-      + '    if (cost < bestCost){ bestCost = cost; best = d; bestSad = s; }\n'
+      + '    tryV(c, ivec2(round(mvDec(t.rg))), zb, (i != 0 || j != 0) ? 0.002 : 0.0, best, bestCost, bestSad);\n'
       + '  } }\n'
-      + '  if (uHasPrior > 0.5){\n'
-      + '    vec4 t = texelFetch(uPrior, f, 0);\n'
-      + '    ivec2 d = ivec2(round(t.rg * 128.0 - 64.0));\n'
-      + '    float s = sad4(c, d);\n'
-      + '    float cost = s + 0.0006 * length(vec2(d)) + 0.0005;\n'
-      + '    if (cost < bestCost){ bestCost = cost; best = d; bestSad = s; }\n'
+      + '  if (uHasPrior != 0.0){\n'
+      + '    ivec2 v = ivec2(round(priorAt(c)));\n'
+      + '    tryV(c, v, zb, 0.0, best, bestCost, bestSad);\n'
+      + '    if (uHasPrior > 0.0) tryV(c, ivec2(round(priorAt(c + v))), zb, 0.0, best, bestCost, bestSad);\n'
       + '  }\n'
       + '  for (int l = 0; l < 2; l++){\n'
       + '    ivec2 ctr = best;\n'
       + '    for (int j = -1; j <= 1; j++){ for (int i = -1; i <= 1; i++){\n'
       + '      if (i == 0 && j == 0) continue;\n'
-      + '      ivec2 d = ctr + ivec2(i, j);\n'
-      + '      float s = sad4(c, d);\n'
-      + '      float cost = s + 0.0006 * length(vec2(d));\n'
-      + '      if (cost < bestCost){ bestCost = cost; best = d; bestSad = s; }\n'
+      + '      tryV(c, ctr + ivec2(i, j), zb, 0.0, best, bestCost, bestSad);\n'
       + '    } }\n'
       + '  }\n'
-      + '  if (bestSad > s0 * 0.9 - 0.004){ best = ivec2(0); bestSad = s0; }\n'
       + '  vec2 sub = vec2(0.0);\n'
-      + '  float xm = sad4(c, best + ivec2(-1, 0)); float xp = sad4(c, best + ivec2(1, 0));\n'
-      + '  float ym = sad4(c, best + ivec2(0, -1)); float yp = sad4(c, best + ivec2(0, 1));\n'
-      + '  float dx = xm - 2.0 * bestSad + xp; float dy = ym - 2.0 * bestSad + yp;\n'
-      + '  if (dx > 1e-5) sub.x = clamp(0.5 * (xm - xp) / dx, -0.5, 0.5);\n'
-      + '  if (dy > 1e-5) sub.y = clamp(0.5 * (ym - yp) / dy, -0.5, 0.5);\n'
-      + '  float conf = 1.0 - smoothstep(0.05, 0.16, bestSad);\n'
-      + '  vec2 dv = clamp(vec2(best) + sub, -63.0, 63.0);\n'
-      + '  oc = vec4((dv + 64.0) / 128.0, conf, 1.0);\n'
+      + '  bool moving = best != ivec2(0);\n'
+      + '  if (moving){\n'
+      + '    float xm = sadW(c, best + ivec2(-1, 0), 1); float xp = sadW(c, best + ivec2(1, 0), 1);\n'
+      + '    float ym = sadW(c, best + ivec2(0, -1), 1); float yp = sadW(c, best + ivec2(0, 1), 1);\n'
+      + '    float dx = xm - 2.0 * bestSad + xp; float dy = ym - 2.0 * bestSad + yp;\n'
+      + '    if (dx > 1e-5) sub.x = clamp(0.5 * (xm - xp) / dx, -0.5, 0.5);\n'
+      + '    if (dy > 1e-5) sub.y = clamp(0.5 * (ym - yp) / dy, -0.5, 0.5);\n'
+      + '  }\n'
+      + '  float cf = trust(bestSad, za, moving) * (0.25 + 0.75 * smoothstep(0.004, 0.03, za.y));\n'
+      + '  oc = mvEnc(vec2(best) + sub, cf);\n'
       + '}\n';
 
     const FS_BLEND = SAMP + 'uniform sampler2D uF0; uniform sampler2D uF1; uniform float uA;\n'
       + 'void main(){ oc = vec4(mix(samp(uF0, vUv), samp(uF1, vUv), uA), 1.0); }\n';
 
-    const FS_MC = SAMP + 'uniform sampler2D uF0; uniform sampler2D uF1; uniform sampler2D uMv;\n'
-      + 'uniform float uA; uniform vec2 uInvAna; uniform vec2 uFall;\n'
-      + 'void main(){\n'
-      + '  vec4 t = texture(uMv, vUv);\n'
-      + '  vec2 d = (t.rg * 128.0 - 64.0) * t.b;\n'
-      + '  for (int k = 0; k < 2; k++){\n'
-      + '    vec4 t2 = texture(uMv, clamp(vUv - d * uInvAna * (1.0 - uA), 0.0, 1.0));\n'
-      + '    d = (t2.rg * 128.0 - 64.0) * t2.b;\n'
+    // Draw-side helpers. track(): the vector of the motion passing this pixel at time uA. Follows the field from
+    // the pixel (back = how far to step back along it: 1-uA for a field on the later frame, uA for one on the
+    // earlier frame), then tries the fast-object candidate (FS_DIL) and takes it where the field confirms it: the
+    // point it lands on in that frame moves the same way. A faster confirmed track wins (it passes in front).
+    // near(): 1 when two vectors agree (tolerance grows with speed), 0 when they clearly differ.
+    const MVT = MV
+      + 'vec2 dec(sampler2D t, vec2 uv){ return mvDec(texture(t, clamp(uv, 0.0, 1.0)).rg); }\n'
+      + 'float near(vec2 a, vec2 b, float tol){ float t = tol * (1.0 + 0.05 * length(a)); return 1.0 - smoothstep(t, 3.0 * t, length(a - b)); }\n'
+      // Fallback picture: the two real frames, weighted to the nearer one in time (no snap), and away from a frame
+      // where a fast object covers this point (h0, h1: object present in frame 0 / frame 1).
+      + 'vec3 fallback(vec3 s0, vec3 s1, float a, float h0, float h1){\n'
+      + '  float t = a * a * (3.0 - 2.0 * a);\n'
+      + '  float w0 = (1.0 - t) * (1.0 - h0) + 1e-3, w1 = t * (1.0 - h1) + 1e-3;\n'
+      + '  return (w0 * s0 + w1 * s1) / (w0 + w1);\n'
+      + '}\n'
+      + 'vec2 track(sampler2D mv, sampler2D dil, vec2 uv, vec2 inv, float back, int iters){\n'
+      + '  vec2 d = dec(mv, uv);\n'
+      + '  for (int i = 0; i < iters; i++) d = dec(mv, uv - d * inv * back);\n'
+      + '  vec2 c = dec(dil, uv); float L = length(c);\n'
+      + '  if (L > length(d) + 2.0){\n'
+      + '    vec2 c1 = dec(mv, uv - c * inv * back);\n'
+      + '    d = mix(d, c1, 1.0 - smoothstep(0.2 * L + 1.0, 0.4 * L + 2.0, length(c1 - c)));\n'
       + '  }\n'
-      + '  vec2 duv = d * uInvAna;\n'
-      + '  vec3 c0 = samp(uF0, vUv + duv * uA);\n'
-      + '  vec3 c1 = samp(uF1, vUv - duv * (1.0 - uA));\n'
-      + '  vec3 s0 = samp(uF0, vUv);\n'
-      + '  vec3 s1 = samp(uF1, vUv);\n'
-      + '  vec3 still = mix(s0, s1, uA);\n'
-      + '  vec3 moved = mix(c0, c1, uA);\n'
-      + '  vec3 dm = abs(c0 - c1);\n'
-      + '  vec3 ds = abs(s0 - s1);\n'
-      + '  float em = max(dm.r, max(dm.g, dm.b));\n'
-      + '  float es = max(ds.r, max(ds.g, ds.b));\n'
-      + '  bool useMoved = em + 0.03 < es;\n'
-      + '  vec3 m = useMoved ? moved : still;\n'
-      + '  float err = useMoved ? em : es;\n'
-      + '  float bad = smoothstep(uFall.x, uFall.y, err);\n'
-      + '  oc = vec4(mix(m, still, bad), 1.0);\n'
+      + '  return d;\n'
       + '}\n';
 
-    // Ultra: uses BOTH the forward field (at the later frame) and the backward field (at the
-    // earlier frame). Each candidate is checked for forward/backward consistency (following a
-    // vector and then the opposite field should land back where it started); where neither is
-    // consistent the pixel is occluded or uncovered and the nearest real frame is shown.
-    const FS_MC2 = SAMP + 'uniform sampler2D uF0; uniform sampler2D uF1; uniform sampler2D uMvF; uniform sampler2D uMvB;\n'
+    // Advanced: warp both frames along the full vector (trust never shortens it). Near a fast object the
+    // background takes its colour only from the frame where the object does not cover it. Where the field is not
+    // trusted (its block did not match), ease toward a soft cross-fade weighted to the nearer frame. Trust is read
+    // from the bilinear field, so the change is spatially smooth: no per-pixel switching. uFall carries Strength.
+    const FS_MC = SAMP + MVT + 'uniform sampler2D uF0; uniform sampler2D uF1; uniform sampler2D uMv; uniform sampler2D uMvD;\n'
       + 'uniform float uA; uniform vec2 uInvAna; uniform vec2 uFall;\n'
-      + 'vec2 dec(vec4 t){ return (t.rg * 128.0 - 64.0) * t.b; }\n'
+      + 'void main(){\n'
+      + '  vec2 inv = uInvAna; float a = uA, wa = 1.0 - uA;\n'
+      + '  float k = clamp((uFall.x - 0.06) / 0.24, 0.0, 1.0);\n'
+      + '  vec2 d = track(uMv, uMv, vUv, inv, wa, 2);\n'
+      + '  vec2 c = dec(uMvD, vUv); float L = length(c);\n'
+      + '  float wfg = 0.0, h0 = 0.0, h1 = 0.0; vec2 cf = c;\n'
+      + '  if (L > length(d) + 2.0){\n'
+      + '    cf = dec(uMv, vUv - c * inv * wa);\n'
+      + '    wfg = near(c, cf, 0.2 * L / (1.0 + 0.05 * L) + 1.0);\n'
+      + '    h0 = near(c, dec(uMv, vUv + d * inv * a - c * inv), 1.0);\n'
+      + '    h1 = near(c, dec(uMv, vUv - d * inv * wa), 1.0);\n'
+      + '  }\n'
+      + '  vec2 p1 = clamp(vUv - d * inv * wa, 0.0, 1.0);\n'
+      + '  float w0 = wa * (1.0 - h0) + 1e-3, w1 = a * (1.0 - h1) + 1e-3;\n'
+      + '  vec3 bg = (w0 * samp(uF0, vUv + d * inv * a) + w1 * samp(uF1, p1)) / (w0 + w1);\n'
+      + '  vec3 fg = mix(samp(uF0, vUv + cf * inv * a), samp(uF1, vUv - cf * inv * wa), a);\n'
+      + '  vec3 moved = mix(bg, fg, wfg);\n'
+      + '  float tr = mix(texture(uMv, p1).b, 1.0, wfg);\n'
+      + '  vec3 fb = fallback(samp(uF0, vUv), samp(uF1, vUv), a, h0, h1);\n'
+      + '  float ok = smoothstep(mix(0.12, 0.0, k), mix(0.45, 0.25, k), tr);\n'
+      + '  oc = vec4(mix(fb, moved, ok), 1.0);\n'
+      + '}\n';
+
+    // Ultra: uses BOTH the forward field (at the later frame) and the backward field (at the earlier frame), each
+    // giving a track through this pixel (with the fast-object candidate). A track holds if its vector matches the
+    // field where it starts. The forward/backward check then says whether the track's point is also visible in the
+    // other frame: if not (covered or uncovered area) it takes its colour from its own frame alone, still moving
+    // along its vector. The tracks are weighed softly (holds, visibility, trust, how well their ends match). Only
+    // where NEITHER track holds (typically the edge of an area just covered or uncovered, where the field has no
+    // real match) does it ease toward fallback(): the real frames weighted to the nearer one, and away from the
+    // frame where a fast object covers the point. Fast motion is never a reason to fall back. The tolerances grow
+    // with uFall (Strength).
+    const FS_MC2 = SAMP + MVT + 'uniform sampler2D uF0; uniform sampler2D uF1; uniform sampler2D uMvF; uniform sampler2D uMvB;\n'
+      + 'uniform sampler2D uMvDF; uniform sampler2D uMvDB; uniform float uA; uniform vec2 uInvAna; uniform vec2 uFall;\n'
       + 'float mx(vec3 v){ return max(v.r, max(v.g, v.b)); }\n'
       + 'void main(){\n'
-      + '  vec2 inv = uInvAna;\n'
-      + '  vec2 d = dec(texture(uMvF, vUv));\n'
-      + '  vec2 e = dec(texture(uMvB, vUv));\n'
-      + '  for (int k = 0; k < 2; k++){\n'
-      + '    d = dec(texture(uMvF, clamp(vUv - d * inv * (1.0 - uA), 0.0, 1.0)));\n'
-      + '    e = dec(texture(uMvB, clamp(vUv - e * inv * uA, 0.0, 1.0)));\n'
-      + '  }\n'
-      + '  vec2 p1f = clamp(vUv - d * inv * (1.0 - uA), 0.0, 1.0);\n'
-      + '  vec2 q0b = clamp(vUv - e * inv * uA, 0.0, 1.0);\n'
-      + '  float rF = length(d + dec(texture(uMvB, clamp(p1f + d * inv, 0.0, 1.0))));\n'
-      + '  float rB = length(e + dec(texture(uMvF, clamp(q0b + e * inv, 0.0, 1.0))));\n'
-      + '  vec3 fa0 = samp(uF0, vUv + d * inv * uA);\n'
-      + '  vec3 fa1 = samp(uF1, vUv - d * inv * (1.0 - uA));\n'
-      + '  vec3 ba0 = samp(uF0, vUv - e * inv * uA);\n'
-      + '  vec3 ba1 = samp(uF1, vUv + e * inv * (1.0 - uA));\n'
-      + '  vec3 s0 = samp(uF0, vUv); vec3 s1 = samp(uF1, vUv);\n'
-      + '  float ef = mx(abs(fa0 - fa1)); float eb = mx(abs(ba0 - ba1)); float es = mx(abs(s0 - s1));\n'
-      + '  bool useF = (ef + 0.02 * min(rF, 4.0)) <= (eb + 0.02 * min(rB, 4.0));\n'
-      + '  vec3 c0 = useF ? fa0 : ba0; vec3 c1 = useF ? fa1 : ba1;\n'
-      + '  float em = useF ? ef : eb;\n'
-      + '  float rr = useF ? rF : rB;\n'
-      + '  vec3 still = mix(s0, s1, uA);\n'
-      + '  bool useMoved = em + 0.03 < es;\n'
-      + '  vec3 m = useMoved ? mix(c0, c1, uA) : still;\n'
-      + '  float err = useMoved ? em : es;\n'
-      + '  float bad = max(smoothstep(uFall.x, uFall.y, err), useMoved ? smoothstep(1.5, 4.0, rr) : 0.0);\n'
-      + '  vec3 nearest = mix(s0, s1, smoothstep(0.35, 0.65, uA));\n'
-      + '  oc = vec4(mix(m, nearest, bad), 1.0);\n'
+      + '  vec2 inv = uInvAna; float a = uA, wa = 1.0 - uA;\n'
+      + '  float k = clamp((uFall.x - 0.06) / 0.24, 0.0, 1.0);\n'
+      + '  float tol = mix(0.6, 1.4, k);\n'
+      + '  vec2 d = track(uMvF, uMvDF, vUv, inv, wa, 3), e = track(uMvB, uMvDB, vUv, inv, a, 3);\n'
+      + '  vec2 p1 = clamp(vUv - d * inv * wa, 0.0, 1.0);\n'
+      + '  vec2 q0 = clamp(vUv - e * inv * a, 0.0, 1.0);\n'
+      + '  vec4 tF = texture(uMvF, p1), tB = texture(uMvB, q0);\n'
+      + '  float sF = near(d, mvDec(tF.rg), tol), sB = near(e, mvDec(tB.rg), tol);\n'
+      + '  float cF = near(d, -dec(uMvB, p1 + d * inv), tol);\n'
+      + '  float cB = near(e, -dec(uMvF, q0 + e * inv), tol);\n'
+      + '  vec3 fa0 = samp(uF0, vUv + d * inv * a), fa1 = samp(uF1, p1);\n'
+      + '  vec3 ba0 = samp(uF0, q0), ba1 = samp(uF1, vUv + e * inv * wa);\n'
+      + '  float vF = wa * cF + a, vB = wa + a * cB;\n'
+      + '  vec3 colF = (wa * cF * fa0 + a * fa1) / max(vF, 1e-4);\n'
+      + '  vec3 colB = (wa * ba0 + a * cB * ba1) / max(vB, 1e-4);\n'
+      + '  float ef = mx(abs(fa0 - fa1)) * cF, eb = mx(abs(ba0 - ba1)) * cB;\n'
+      + '  float sig = mix(0.06, 0.14, k), em = min(ef, eb);\n'
+      + '  float wF = sF * vF * (0.3 + 0.7 * tF.b) * exp(-(ef - em) / sig);\n'
+      + '  float wB = sB * vB * (0.3 + 0.7 * tB.b) * exp(-(eb - em) / sig);\n'
+      + '  vec2 c = dec(uMvDF, vUv); float h0 = 0.0, h1 = 0.0;\n'
+      + '  if (length(c) > 2.0){ h0 = near(c, dec(uMvF, vUv - c * inv), 1.0); h1 = near(c, dec(uMvF, vUv), 1.0); }\n'
+      + '  vec3 fb = fallback(samp(uF0, vUv), samp(uF1, vUv), a, h0, h1);\n'
+      + '  vec3 moved = (wF * colF + wB * colB + 1e-6 * fb) / (wF + wB + 1e-6);\n'
+      + '  oc = vec4(mix(fb, moved, max(sF, sB)), 1.0);\n'
       + '}\n';
 
     const compile = (type, src) => {
@@ -479,12 +642,13 @@
         copy:  mk(FS_COPY,  ['uTex']),
         luma:  mk(FS_LUMA,  ['uTex', 'uOff']),
         dup:   mk(FS_DUP,   ['uA', 'uB']),
-        me:    mk(FS_ME,    ['uCur', 'uPrev', 'uSize', 'uLambda']),
-        med:   mk(FS_MED,   ['uRaw', 'uGrid']),
+        me:    mk(FS_ME,    ['uCur', 'uPrev', 'uSize', 'uLambda', 'uPrior', 'uHasPrior']),
+        med:   mk(FS_MED,   ['uRaw', 'uGrid', 'uCur', 'uPrev', 'uSize', 'uPrior', 'uHasPrior']),
         blend: mk(FS_BLEND, ['uF0', 'uF1', 'uA', 'uUp']),
-        mc:    mk(FS_MC,    ['uF0', 'uF1', 'uMv', 'uA', 'uInvAna', 'uFall', 'uUp']),
+        mc:    mk(FS_MC,    ['uF0', 'uF1', 'uMv', 'uMvD', 'uA', 'uInvAna', 'uFall', 'uUp']),
+        dil:   mk(FS_DIL,   ['uMv', 'uGrid', 'uSize']),
         ref:   mk(FS_REF,   ['uCur', 'uPrev', 'uRaw', 'uPrior', 'uHasPrior', 'uSize', 'uGrid']),
-        mc2:   mk(FS_MC2,   ['uF0', 'uF1', 'uMvF', 'uMvB', 'uA', 'uInvAna', 'uFall', 'uUp']),
+        mc2:   mk(FS_MC2,   ['uF0', 'uF1', 'uMvF', 'uMvB', 'uMvDF', 'uMvDB', 'uA', 'uInvAna', 'uFall', 'uUp']),
         enhPre: mk(FS_ENH_PRE, ['uTex', 'uSize', 'uDeblock', 'uDeband', 'uAnime', 'uBlock', 'uRad', 'uSeed', 'uFlipY']),
         enhUp:  mk(FS_ENH_UP,  ['uTex', 'uSrc']),
         enhFin: mk(FS_ENH_FIN, ['uTex', 'uBefore', 'uCon', 'uSplit'])
@@ -520,12 +684,13 @@
     return true;
   }
 
-  function memcMakeTex(w, h, filter, fmt){
+  // levels > 1: a mip chain (sampled with texelFetch at a chosen level; filled by generateMipmap).
+  function memcMakeTex(w, h, filter, fmt, levels){
     const gl = memcGL;
     const t = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, t);
-    gl.texStorage2D(gl.TEXTURE_2D, 1, fmt || gl.RGBA8, w, h);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.texStorage2D(gl.TEXTURE_2D, levels || 1, fmt || gl.RGBA8, w, h);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, (levels || 1) > 1 ? gl.NEAREST_MIPMAP_NEAREST : filter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -549,9 +714,13 @@
       const mw = fine ? memcAna.fw : memcAna.gw, mh = fine ? memcAna.fh : memcAna.gh;
       slot.mvTex = memcMakeTex(mw, mh, gl.LINEAR, fine ? memcVecFmt() : undefined);
       slot.mvFbo = memcMakeFbo(slot.mvTex);
+      slot.mvTexD = memcMakeTex(mw, mh, gl.NEAREST, fine ? memcVecFmt() : undefined);   // fast-object candidates (FS_DIL)
+      slot.mvFboD = memcMakeFbo(slot.mvTexD);
       if (fine){
         slot.mvTexB = memcMakeTex(mw, mh, gl.LINEAR, fine ? memcVecFmt() : undefined);
         slot.mvFboB = memcMakeFbo(slot.mvTexB);
+        slot.mvTexDB = memcMakeTex(mw, mh, gl.NEAREST, memcVecFmt());
+        slot.mvFboDB = memcMakeFbo(slot.mvTexDB);
       }
     }
     return slot;
@@ -567,6 +736,10 @@
         if (s.mvTex) gl.deleteTexture(s.mvTex);
         if (s.mvFboB) gl.deleteFramebuffer(s.mvFboB);
         if (s.mvTexB) gl.deleteTexture(s.mvTexB);
+        if (s.mvFboD) gl.deleteFramebuffer(s.mvFboD);
+        if (s.mvTexD) gl.deleteTexture(s.mvTexD);
+        if (s.mvFboDB) gl.deleteFramebuffer(s.mvFboDB);
+        if (s.mvTexDB) gl.deleteTexture(s.mvTexDB);
       });
       memcLuma.forEach(l => { gl.deleteFramebuffer(l.fbo); gl.deleteTexture(l.tex); });
       if (memcMvRaw){ gl.deleteFramebuffer(memcMvRaw.fbo); gl.deleteTexture(memcMvRaw.tex); }
@@ -676,7 +849,7 @@
       const ha = Math.max(24, Math.round(wa * rh / rw / 8) * 8);
       memcAna = { w: wa, h: ha, gw: wa / 8, gh: ha / 8 };
       for (let i = 0; i < 2; i++){
-        const tex = memcMakeTex(wa, ha, gl.NEAREST);
+        const tex = memcMakeTex(wa, ha, gl.NEAREST, gl.RGBA8, 3);   // mip 2: the coarse search level
         memcLuma.push({ tex, fbo: memcMakeFbo(tex) });
       }
       const rawTex = memcMakeTex(memcAna.gw, memcAna.gh, gl.NEAREST);
@@ -808,26 +981,13 @@
       gl.uniform1i(memcProgs.luma.u.uTex, 0);
       gl.uniform2f(memcProgs.luma.u.uOff, 0.25 / A.w, 0.25 / A.h);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
+      memcBind(0, memcLuma[cur].tex);
+      gl.generateMipmap(gl.TEXTURE_2D);
 
       if (memcPrevLumaValid && !disc && memcMode !== 'ultra'){
-        gl.bindFramebuffer(gl.FRAMEBUFFER, memcMvRaw.fbo);
-        gl.viewport(0, 0, A.gw, A.gh);
-        gl.useProgram(memcProgs.me.p);
-        memcBind(0, memcLuma[cur].tex);
-        memcBind(1, memcLuma[prev].tex);
-        gl.uniform1i(memcProgs.me.u.uCur, 0);
-        gl.uniform1i(memcProgs.me.u.uPrev, 1);
-        gl.uniform2i(memcProgs.me.u.uSize, A.w, A.h);
-        gl.uniform1f(memcProgs.me.u.uLambda, 0.0006);
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-
-        gl.bindFramebuffer(gl.FRAMEBUFFER, slot.mvFbo);
-        gl.viewport(0, 0, A.gw, A.gh);
-        gl.useProgram(memcProgs.med.p);
-        memcBind(0, memcMvRaw.tex);
-        gl.uniform1i(memcProgs.med.u.uRaw, 0);
-        gl.uniform2i(memcProgs.med.u.uGrid, A.gw, A.gh);
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        // The previous unique frame's field seeds the search and steadies the track (not across a cut or gap).
+        const prior = (puSlot && puSlot.hasMv && puSlot.mvTex && puSlot.seq === slot.prevSeq) ? puSlot.mvTex : null;
+        memcMeVec(memcLuma[cur], memcLuma[prev], slot.mvFbo, A.gw, A.gh, memcMvRaw.tex, prior, 1, slot.mvTex, slot.mvFboD);
         slot.hasMv = true;
       } else if (memcPrevLumaValid && !disc && memcMvRef){
         memcUltraMv(slot, cur, prev, puSlot);
@@ -866,45 +1026,66 @@
   function memcVecFmt(){ return memcFloatOk ? memcGL.RGBA16F : memcGL.RGBA8; }
   function memcIsMotion(){ return memcMode === 'motion' || memcMode === 'ultra'; }
 
-  // Ultra motion field: coarse 8px search -> 4px refinement (+temporal prior, sub-pixel) -> median,
-  // run both ways. slot.mvTex: at this frame's positions, pointing into the previous unique frame.
-  // slot.mvTexB: at the previous frame's positions, pointing into this one.
-  // pu: previous unique slot; its fields seed the search (motion is usually continuous).
-  function memcUltraMv(slot, cur, prev, pu){
+  // One motion field: ME (8px blocks, into memcMvRaw) -> [Ultra: REF to 4px blocks, into memcMvRef] -> MED (clean-up,
+  // into outFbo, gw x gh or fw x fh). la/lb: luma of the frame the field sits on / the frame it points into.
+  // prior: the previous unique frame's forward field (or null); sgn: +1 if this field points the same way, -1 if
+  // it points the other way (the backward field), so it is negated when read.
+  function memcMeVec(la, lb, outFbo, ow, oh, medIn, prior, sgn, outTex, dilFbo){
     const gl = memcGL, A = memcAna, M = memcProgs;
-    const havePrior = !!(pu && pu.hasMv && pu.mvTex && pu.mvTexB && pu.seq === slot.prevSeq);
-    const run = (la, lb, outFbo, priorTex) => {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, memcMvRaw.fbo);
-      gl.viewport(0, 0, A.gw, A.gh);
-      gl.useProgram(M.me.p);
-      memcBind(0, la.tex); memcBind(1, lb.tex);
-      gl.uniform1i(M.me.u.uCur, 0); gl.uniform1i(M.me.u.uPrev, 1);
-      gl.uniform2i(M.me.u.uSize, A.w, A.h);
-      gl.uniform1f(M.me.u.uLambda, 0.0006);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    const hp = prior ? sgn : 0;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, memcMvRaw.fbo);
+    gl.viewport(0, 0, A.gw, A.gh);
+    gl.useProgram(M.me.p);
+    memcBind(0, la.tex); memcBind(1, lb.tex); memcBind(2, prior || la.tex);
+    gl.uniform1i(M.me.u.uCur, 0); gl.uniform1i(M.me.u.uPrev, 1); gl.uniform1i(M.me.u.uPrior, 2);
+    gl.uniform1f(M.me.u.uHasPrior, hp);
+    gl.uniform2i(M.me.u.uSize, A.w, A.h);
+    gl.uniform1f(M.me.u.uLambda, 0.0006);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
 
+    if (memcMvRef && medIn === memcMvRef.tex){
       gl.bindFramebuffer(gl.FRAMEBUFFER, memcMvRef.fbo);
       gl.viewport(0, 0, A.fw, A.fh);
       gl.useProgram(M.ref.p);
       memcBind(0, la.tex); memcBind(1, lb.tex); memcBind(2, memcMvRaw.tex);
-      memcBind(3, priorTex || memcMvRaw.tex);
+      memcBind(3, prior || memcMvRaw.tex);
       gl.uniform1i(M.ref.u.uCur, 0); gl.uniform1i(M.ref.u.uPrev, 1); gl.uniform1i(M.ref.u.uRaw, 2);
-      gl.uniform1i(M.ref.u.uPrior, 3); gl.uniform1f(M.ref.u.uHasPrior, priorTex ? 1 : 0);
+      gl.uniform1i(M.ref.u.uPrior, 3); gl.uniform1f(M.ref.u.uHasPrior, hp);
       gl.uniform2i(M.ref.u.uSize, A.w, A.h);
       gl.uniform2i(M.ref.u.uGrid, A.gw, A.gh);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
-      memcBind(2, null); memcBind(3, null);
+    }
 
-      gl.bindFramebuffer(gl.FRAMEBUFFER, outFbo);
-      gl.viewport(0, 0, A.fw, A.fh);
-      gl.useProgram(M.med.p);
-      memcBind(0, memcMvRef.tex);
-      gl.uniform1i(M.med.u.uRaw, 0);
-      gl.uniform2i(M.med.u.uGrid, A.fw, A.fh);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
-    };
-    run(memcLuma[cur], memcLuma[prev], slot.mvFbo, havePrior ? pu.mvTex : null);
-    run(memcLuma[prev], memcLuma[cur], slot.mvFboB, havePrior ? pu.mvTexB : null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, outFbo);
+    gl.viewport(0, 0, ow, oh);
+    gl.useProgram(M.med.p);
+    memcBind(0, medIn); memcBind(1, la.tex); memcBind(2, lb.tex); memcBind(3, prior || medIn);
+    gl.uniform1i(M.med.u.uRaw, 0); gl.uniform1i(M.med.u.uCur, 1); gl.uniform1i(M.med.u.uPrev, 2);
+    gl.uniform1i(M.med.u.uPrior, 3); gl.uniform1f(M.med.u.uHasPrior, hp);
+    gl.uniform2i(M.med.u.uGrid, ow, oh);
+    gl.uniform2i(M.med.u.uSize, A.w, A.h);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    memcBind(1, null); memcBind(2, null); memcBind(3, null);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, dilFbo);
+    gl.useProgram(M.dil.p);
+    memcBind(0, outTex);
+    gl.uniform1i(M.dil.u.uMv, 0);
+    gl.uniform2i(M.dil.u.uGrid, ow, oh);
+    gl.uniform2i(M.dil.u.uSize, A.w, A.h);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  // Ultra motion field: coarse 8px search -> 4px refinement (+temporal prior, sub-pixel) -> clean-up, run both ways.
+  // slot.mvTex: at this frame's positions, pointing into the previous unique frame.
+  // slot.mvTexB: at the previous frame's positions, pointing into this one.
+  // pu: previous unique slot. Its forward field seeds both searches (negated for the backward one: at the previous
+  // frame's own positions it is exactly the opposite of the backward field when motion is steady).
+  function memcUltraMv(slot, cur, prev, pu){
+    const A = memcAna;
+    const prior = (pu && pu.hasMv && pu.mvTex && pu.seq === slot.prevSeq) ? pu.mvTex : null;
+    memcMeVec(memcLuma[cur], memcLuma[prev], slot.mvFbo, A.fw, A.fh, memcMvRef.tex, prior, 1, slot.mvTex, slot.mvFboD);
+    memcMeVec(memcLuma[prev], memcLuma[cur], slot.mvFboB, A.fw, A.fh, memcMvRef.tex, prior, -1, slot.mvTexB, slot.mvFboDB);
     slot.hasMv = true;
   }
 
@@ -935,8 +1116,10 @@
       gl.useProgram(P.p);
       memcBind(0, f0.tex); memcBind(1, f1.tex); memcBind(2, f1.mvTex);
       gl.uniform1i(P.u.uF0, 0); gl.uniform1i(P.u.uF1, 1);
-      if (ultra){ memcBind(3, f1.mvTexB); gl.uniform1i(P.u.uMvF, 2); gl.uniform1i(P.u.uMvB, 3); }
-      else gl.uniform1i(P.u.uMv, 2);
+      if (ultra){
+        memcBind(3, f1.mvTexB); memcBind(4, f1.mvTexD); memcBind(5, f1.mvTexDB);
+        gl.uniform1i(P.u.uMvF, 2); gl.uniform1i(P.u.uMvB, 3); gl.uniform1i(P.u.uMvDF, 4); gl.uniform1i(P.u.uMvDB, 5);
+      } else { memcBind(3, f1.mvTexD); gl.uniform1i(P.u.uMv, 2); gl.uniform1i(P.u.uMvD, 3); }
       gl.uniform1f(P.u.uA, a);
       gl.uniform2f(P.u.uInvAna, 1 / memcAna.w, 1 / memcAna.h);
       gl.uniform1f(P.u.uUp, up);
