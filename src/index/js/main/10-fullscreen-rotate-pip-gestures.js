@@ -25,7 +25,16 @@
   let orientAuto = false;       // fullscreen matched the screen to the video
   // Tries, in order: the Capacitor Screen Orientation plugin (the Android app's WebView has no web lock),
   // then the browser's screen.orientation.lock (which needs fullscreen).
-  const capOrient = () => { try { return (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.ScreenOrientation) || null; } catch(e){ return null; } };
+  // The app's own player plugin (PPPlayer.lockOrientation) does the same job when that plugin is not installed.
+  const capOrient = () => {
+    try {
+      const P = window.Capacitor && Capacitor.Plugins;
+      if (!P) return null;
+      if (P.ScreenOrientation) return P.ScreenOrientation;
+      if (P.PPPlayer && typeof P.PPPlayer.lockOrientation === 'function') return { lock: o => P.PPPlayer.lockOrientation(o), unlock: () => P.PPPlayer.unlockOrientation() };
+    } catch(e){}
+    return null;
+  };
   async function lockOrientation(target){
     const cap = capOrient();
     if (cap && typeof cap.lock === 'function'){ await cap.lock({ orientation: target }); return; }

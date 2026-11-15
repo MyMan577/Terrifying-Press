@@ -3,6 +3,7 @@ package com.pressplay.media
 import android.Manifest
 import android.app.PictureInPictureParams
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
@@ -13,12 +14,17 @@ import android.util.Rational
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.webkit.WebChromeClient
+import androidx.activity.OnBackPressedCallback
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.util.UnstableApi
 import com.getcapacitor.BridgeActivity
+import com.getcapacitor.BridgeWebChromeClient
 
 /**
  * Hosts the WebView UI on top of a native video surface. The video is decoded by MediaCodec and
@@ -66,6 +72,7 @@ class MainActivity : BridgeActivity() {
         nativeVideo = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("native", false)
         installVideoLayer()
         installKeyboardFit()
+        installFullscreen()
         handleIntent(intent)
         askPermissions()
     }
@@ -180,6 +187,77 @@ class MainActivity : BridgeActivity() {
         runOnUiThread {
             if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
+    // ---------- Fullscreen (the page's requestFullscreen) ----------
+    /**
+     * Capacitor's own WebChromeClient answers every fullscreen request by cancelling it straight away and never showing the
+     * fullscreen view, so the page went into fullscreen with nothing on screen: a black screen. Here the WebView's fullscreen
+     * view is really shown over the whole window, with the status and navigation bars hidden (swipe from an edge to peek)
+     * and the camera cutout used too. Back leaves fullscreen. The page's exitFullscreen() comes back through onHideCustomView.
+     */
+    private var fsView: View? = null
+    private var fsCallback: WebChromeClient.CustomViewCallback? = null
+    private var fsCutoutBefore = 0
+    private val fsBack = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() { hideFullscreen(true) }
+    }
+
+    private fun installFullscreen() {
+        val b = bridge ?: return
+        val web = b.webView ?: return
+        web.setWebChromeClient(object : BridgeWebChromeClient(b) {
+            override fun onShowCustomView(view: View?, callback: WebChromeClient.CustomViewCallback?) {
+                if (view == null) { callback?.onCustomViewHidden(); return }
+                showFullscreen(view, callback)
+            }
+            override fun onHideCustomView() { hideFullscreen(false) }
+        })
+        onBackPressedDispatcher.addCallback(this, fsBack)
+    }
+
+    private fun showFullscreen(view: View, callback: WebChromeClient.CustomViewCallback?) {
+        if (fsView != null) hideFullscreen(true)
+        val decor = window.decorView as? ViewGroup ?: run { callback?.onCustomViewHidden(); return }
+        fsView = view; fsCallback = callback
+        // See-through only while the native video layer is showing: then the picture under the page must still show.
+        view.setBackgroundColor(if (seeThrough) Color.TRANSPARENT else Color.BLACK)
+        decor.addView(view, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        if (Build.VERSION.SDK_INT >= 28) {
+            val lp = window.attributes
+            fsCutoutBefore = lp.layoutInDisplayCutoutMode
+            lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            window.attributes = lp
+        }
+        val ctl = WindowCompat.getInsetsController(window, decor)
+        ctl.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        ctl.hide(WindowInsetsCompat.Type.systemBars())
+        fsBack.isEnabled = true
+    }
+
+    /** [tellPage]: the app ended it (Back, a second request), so the WebView is told to leave fullscreen too. */
+    private fun hideFullscreen(tellPage: Boolean) {
+        val v = fsView ?: return
+        val cb = fsCallback
+        fsView = null; fsCallback = null
+        fsBack.isEnabled = false
+        (v.parent as? ViewGroup)?.removeView(v)
+        if (Build.VERSION.SDK_INT >= 28) {
+            val lp = window.attributes
+            lp.layoutInDisplayCutoutMode = fsCutoutBefore
+            window.attributes = lp
+        }
+        WindowCompat.getInsetsController(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
+        if (tellPage) try { cb?.onCustomViewHidden() } catch (_: Exception) {}
+    }
+
+    /** Screen orientation for the page ("landscape", "portrait", or anything else to follow the sensor again). */
+    fun lockOrientation(o: String) {
+        requestedOrientation = when (o) {
+            "landscape" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            "portrait" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
 
