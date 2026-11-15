@@ -56,9 +56,19 @@
 
   let quickBarItems = loadQuickBarConfig();
 
-  // Pills actually shown right now: the saved list capped to the current mode's limit
-  // (extras beyond 6 are kept in the saved list and reappear in media layout mode).
-  function shownQuickBarItems(){ return quickBarItems.slice(0, quickBarMax()); }
+  // How many buttons each item puts on the bar: Frame step is two (back, forward) and fit & zoom three (Fit, Zoom, Reset),
+  // so they count as that many towards the cap instead of one.
+  const QUICKBAR_WEIGHT = { framestep: 2, viewmode: 3 };
+  const qbWeight = name => QUICKBAR_WEIGHT[name] || 1;
+  const qbUsed = list => list.reduce((n, x) => n + qbWeight(x), 0);
+  // Pills actually shown right now: the saved list, in order, as far as the current mode's limit allows
+  // (extras are kept in the saved list and reappear in media layout mode).
+  function shownQuickBarItems(){
+    const max = quickBarMax(), out = [];
+    let used = 0;
+    for (const x of quickBarItems){ if (used + qbWeight(x) > max) break; out.push(x); used += qbWeight(x); }
+    return out;
+  }
   function renderQuickBar(){
     const shown = shownQuickBarItems();
     QUICKBAR_ORDER.forEach(name => {
@@ -71,13 +81,13 @@
         if (slot) slot.appendChild(wrapper);
       }
     });
-    const atCap = shown.length >= quickBarMax();
+    const room = quickBarMax() - qbUsed(shown);
     document.querySelectorAll('.qb-checkbox').forEach(cb => {
       const checked = shown.includes(cb.dataset.qb);
       cb.checked = checked;
-      // Only disable the boxes that would grow the quick bar past the cap;
+      // Only disable the boxes that would grow the quick bar past the cap (a two-button item needs two free places);
       // checked ones stay clickable so the user can still uncheck to make room.
-      cb.disabled = atCap && !checked;
+      cb.disabled = !checked && qbWeight(cb.dataset.qb) > room;
       cb.closest('.qb-toggle').classList.toggle('qb-toggle-disabled', cb.disabled);
     });
   }
@@ -87,11 +97,11 @@
       const name = cb.dataset.qb;
       if (cb.checked){
         quickBarItems = shownQuickBarItems();   // drop any hidden extras so the cap counts what's visible
-        if (quickBarItems.length >= quickBarMax()){
+        if (qbUsed(quickBarItems) + qbWeight(name) > quickBarMax()){
           // Shouldn't normally happen since the box is disabled at the cap,
           // but guard anyway (e.g. programmatic toggles) by reverting it.
           cb.checked = false;
-          if (typeof showToast === 'function') showToast('Quick bar can only hold ' + quickBarMax() + ' pills at once.');
+          if (typeof showToast === 'function') showToast('Quick bar can only hold ' + quickBarMax() + ' buttons at once' + (qbWeight(name) > 1 ? ' (this one takes ' + qbWeight(name) + ').' : '.'));
           return;
         }
         if (!quickBarItems.includes(name)) quickBarItems.push(name);
@@ -110,6 +120,8 @@
     .observe(document.body, { attributes:true, attributeFilter:['class'] });
   document.getElementById('frame-back-btn').addEventListener('click', () => stepFrame(-1));
   document.getElementById('frame-fwd-btn').addEventListener('click', () => stepFrame(1));
+  holdToStep(document.getElementById('frame-back-btn'), -1);
+  holdToStep(document.getElementById('frame-fwd-btn'), 1);
   document.getElementById('view-fit-btn').addEventListener('click', () => cycleViewFit());
   document.getElementById('view-zoom-btn').addEventListener('click', () => cycleViewZoom());
 
