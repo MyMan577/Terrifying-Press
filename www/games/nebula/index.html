@@ -741,6 +741,7 @@
       <div class="slider-group" id="grp-field"></div>
       <div class="section-head"><div class="label">Touch</div></div>
       <div class="slider-group" id="grp-touch"></div>
+      <div class="toggle-list" id="tog-touch"></div>
     </section>
 
     <section class="menu-section" data-menu-panel="effects">
@@ -1354,6 +1355,7 @@ import * as THREE from 'three';
   let brightnessMult = 1;     // Brightness slider: scales every particle's opacity
   let touchStrength = 1;      // Touch strength slider: scales every touch force
   let releaseStrength = 1;    // Release burst slider: scales the kick when a finger lifts
+  let forceWrap = false;      // Forced scroll: every mode wraps off-screen particles to the other side
   let flowIdleSpinMult = 1;   // 3D physics modes: how fast the volume turns (View turn)
   let glowThreshold = 0.35;   // bloom bright-pass floor (lower = more of the field glows)
 
@@ -3458,12 +3460,13 @@ import * as THREE from 'three';
         // finger is down, anything that drifts off-screen reappears next
         // to that finger so it's immediately back in play. With no active
         // touch, it just wraps to the opposite edge like a normal scroller.
-        // Wind always uses that same wrap-around scroll, even mid-touch,
-        // since particles are meant to blow across and off the field rather
-        // than recycle back around the finger.
+        // Wind and Lattice always use that same wrap-around scroll, even
+        // mid-touch, since particles are meant to blow across and off the
+        // field rather than recycle back around the finger. Forced scroll
+        // (Motion settings) makes every mode wrap that way.
         const offscreen = pt.x < -10 || pt.x > W + 10 || pt.y < -10 || pt.y > H + 10;
         if (offscreen) {
-          if (activePointers.length > 0 && mode !== 'Wind') {
+          if (activePointers.length > 0 && mode !== 'Wind' && mode !== 'Lattice' && !forceWrap) {
             const anchor = activePointers[(Math.random() * activePointers.length) | 0];
             const a = rand(0, Math.PI * 2);
             const r = rand(14, 46);
@@ -3676,6 +3679,7 @@ import * as THREE from 'three';
     { group: 'tog-look', key: 'velocityTrails', label: 'Motion trails', hint: 'Trails stretch while the field moves fast', def: false, apply: (on) => { velocityTrails = on; } },
     { group: 'tog-look', key: 'sparkleEnabled', label: 'Sparkles', hint: 'A few lights twinkle brighter', def: true, apply: (on) => { sparkleEnabled = on; } },
     { group: 'tog-glow', key: 'hotCoreEnabled', label: 'Hot core', hint: 'White-hot centre in each light', def: true, apply: (on) => { hotCoreEnabled = on; particleMaterial.uniforms.uCoreMix.value = on ? 1 : 0; } },
+    { group: 'tog-touch', key: 'forceWrap', label: 'Forced scroll', hint: 'Particles leaving the screen wrap to the other side in every mode, like Wind', def: false, apply: (on) => { forceWrap = on; } },
     { group: 'tog-display', key: 'sharpRender', label: 'Sharp', hint: 'Full resolution (off is softer, lighter on battery)', def: true, apply: (on) => { if (sharpRender !== on) { sharpRender = on; resize(); } } },
     { group: 'tog-display', key: 'fpsCap', label: '60 FPS cap', hint: 'Saves battery on 120 Hz screens', def: false, apply: (on) => { fpsCap = on; } },
     { group: 'tog-display', key: 'showFps', label: 'Show FPS', def: true, apply: (on) => { const el = document.getElementById('fps'); if (el) el.classList.toggle('off', !on); } }
