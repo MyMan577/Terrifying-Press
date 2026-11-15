@@ -29,8 +29,10 @@ import java.io.File
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.Callable
-import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 /**
  * Library access through the Storage Access Framework: the app keeps *references* to the user's
@@ -51,9 +53,12 @@ class LibraryPlugin : Plugin() {
         fun queueSearch(q: String) { pendingQuery = q }
     }
 
-    private val pool = Executors.newFixedThreadPool(3)
+    // Pools whose threads end by themselves when idle, so they never need shutting down: shutting them down in
+    // handleOnDestroy made any late call (a scan finishing, a media-change event) fail with "Task ... rejected".
+    private fun idlePool(n: Int) = ThreadPoolExecutor(n, n, 30, TimeUnit.SECONDS, LinkedBlockingQueue()).apply { allowCoreThreadTimeOut(true) }
+    private val pool = idlePool(3)
 
-    private val detailPool = Executors.newSingleThreadExecutor()
+    private val detailPool = idlePool(1)
     private var observer: ContentObserver? = null
 
     override fun load() {
@@ -72,7 +77,7 @@ class LibraryPlugin : Plugin() {
     override fun handleOnDestroy() {
         observer?.let { try { context.contentResolver.unregisterContentObserver(it) } catch (_: Exception) {} }
         observer = null
-        pool.shutdownNow(); detailPool.shutdownNow(); instance = null
+        if (instance === this) instance = null
     }
 
     // ---------- pickers ----------

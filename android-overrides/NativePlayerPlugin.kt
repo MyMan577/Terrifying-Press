@@ -80,7 +80,24 @@ class NativePlayerPlugin : Plugin() {
 
     override fun load() { instance = this }
     fun emitPip(on: Boolean) { notifyListeners("pip", JSObject().put("on", on)) }
-    override fun handleOnDestroy() { PlaybackService.instance?.clearMirror(); main.removeCallbacksAndMessages(null); bg.shutdownNow(); instance = null }
+    // The pool is NOT shut down here: the playback service (and its player) outlives this plugin, and a callback that was
+    // already on its way (a track change, a load finishing) would then hit a dead pool ("Task ... rejected from
+    // ThreadPoolExecutor[Terminated]"). A cached pool's idle threads end by themselves after a minute.
+    // What must stop is this plugin hearing the player: a newer page/activity attaches its own plugin instead.
+    override fun handleOnDestroy() {
+        PlaybackService.instance?.clearMirror(); main.removeCallbacksAndMessages(null)
+        svc?.let { s ->
+            try { s.player.removeListener(listener) } catch (_: Exception) {}
+            if (s.onCommand === onCmd) s.onCommand = null
+        }
+        svc = null
+        if (instance === this) instance = null
+    }
+    private val onCmd: (String) -> Unit = { c -> notifyListeners("cmd", JSObject().put("name", c)) }
+    /** Run off the main thread; never throws, even while the plugin is being torn down. */
+    private fun runBg(task: () -> Unit) {
+        try { bg.execute(task) } catch (_: java.util.concurrent.RejectedExecutionException) { Thread(task, "pp-player-bg").start() }
+    }
 
     // ---------- plumbing ----------
     private fun withSvc(call: PluginCall?, block: (PlaybackService) -> Unit) {
@@ -94,7 +111,7 @@ class NativePlayerPlugin : Plugin() {
         if (svc === s) return
         svc = s
         s.player.addListener(listener)
-        s.onCommand = { c -> notifyListeners("cmd", JSObject().put("name", c)) }
+        s.onCommand = onCmd
         MainActivity.playerView?.player = s.player
     }
 
@@ -108,7 +125,7 @@ class NativePlayerPlugin : Plugin() {
     private fun probeAsync(orig: String?, src: String? = orig) {
         probedDurMs = -1L
         if (orig == null || src == null) return
-        bg.execute {
+        runBg {
             val d = SourceResolver.probeDurationMs(context, src)
             if (srcOrig == orig) {
                 probedDurMs = d
@@ -285,7 +302,7 @@ class NativePlayerPlugin : Plugin() {
         val gen = ++loadGen
         nextGen++                                   // any queued "next" belongs to the previous track
         srcOrig = orig; probedDurMs = -1L
-        bg.execute {
+        runBg {
             // Off the main thread: verify the source can be seeked (copy it locally if it can't).
             // The length probe is NOT done here: parsing a whole video with MediaMetadataRetriever can take seconds,
             // and ExoPlayer reports the duration itself. It runs after the item is handed over (probeAsync below).
@@ -346,7 +363,7 @@ class NativePlayerPlugin : Plugin() {
         if (orig == null || cur == null) { s.player.seekTo(ms); return }
         val gen = loadGen
         val resume = s.player.playWhenReady
-        bg.execute {
+        runBg {
             val play = try { SourceResolver.localCopy(context, orig) } catch (e: Exception) { null }
             main.post {
                 val p = svc?.player ?: return@post
@@ -387,7 +404,7 @@ class NativePlayerPlugin : Plugin() {
         val orig = call.getString("uri")
         val gen = ++nextGen
         if (orig.isNullOrEmpty()) { withSvc(call) { s -> clearNext(s); call.resolve() }; return }
-        bg.execute {
+        runBg {
             val play = try { SourceResolver.playable(context, orig) } catch (e: Exception) { orig }
             main.post {
                 if (gen != nextGen) { call.resolve(); return@post }
