@@ -189,7 +189,10 @@
       + '      } }\n'
       + '      stp = stp / 2;\n'
       + '    }\n'
+      // a far guess from the wide search must clearly beat what is already there (repeating patterns fool it)
+      + '    float bc0 = bestCost; ivec2 b0 = best; float bs0 = bestSad;\n'
       + '    tryV(c, cb * 4, zb, best, bestCost, bestSad);\n'
+      + '    if (best != b0 && bestCost > bc0 * 0.85 - 0.003){ best = b0; bestCost = bc0; bestSad = bs0; }\n'
       + '  }\n'
       + '  stp = 4;\n'
       + '  for (int l = 0; l < 3; l++){\n'
@@ -275,18 +278,18 @@
       + '    if (q.x < 0 || q.y < 0 || q.x >= uGrid.x || q.y >= uGrid.y) continue;\n'
       + '    vec4 t = texelFetch(uMv, q, 0);\n'
       + '    vec2 v = mvDec(t.rg); float L = length(v);\n'
-      + '    if (L <= bm || t.b < 0.5) continue;\n'
+      + '    if (L <= bm || t.b < 0.7) continue;\n'
       + '    vec2 o = p - (vec2(q) + 0.5) * float(bs);\n'
       + '    float h = clamp(dot(o, v) / (L * L), 0.0, 1.0);\n'
       + '    if (length(o - v * h) > reach) continue;\n'
-      // a lone vector (or a pair) is more likely a stray match than an object: need 2 neighbours moving the same way
+      // a lone vector (or a small group) is more likely a stray match than an object: need 3 neighbours moving the same way
       + '    float tl = 0.2 * L + 1.0; int sup = 0;\n'
       + '    for (int n = 0; n < 9; n++){\n'
       + '      if (n == 4) continue;\n'
       + '      ivec2 o2 = ivec2(n % 3 - 1, n / 3 - 1);\n'
       + '      if (length(mvDec(texelFetch(uMv, clamp(q + o2, ivec2(0), uGrid - 1), 0).rg) - v) < tl) sup++;\n'
       + '    }\n'
-      + '    if (sup < 2) continue;\n'
+      + '    if (sup < 3) continue;\n'
       + '    bm = L; best = v; btr = t.b;\n'
       + '  } }\n'
       + '  oc = mvEnc(best, btr);\n'
@@ -529,6 +532,9 @@
     const MVT = MV
       + 'vec2 dec(sampler2D t, vec2 uv){ return mvDec(texture(t, clamp(uv, 0.0, 1.0)).rg); }\n'
       + 'float near(vec2 a, vec2 b, float tol){ float t = tol * (1.0 + 0.05 * length(a)); return 1.0 - smoothstep(t, 3.0 * t, length(a - b)); }\n'
+      // Safety: 1 where the warped pair agrees at least about as well as the plain frames do, easing to 0 where it
+      // agrees clearly worse (a wrong vector). A soft ramp, so no hard per-pixel switching.
+      + 'float safeW(float em, float es){ return 1.0 - smoothstep(0.02, 0.08, em - es); }\n'
       // Fallback picture: the two real frames, weighted to the nearer one in time (no snap), and away from a frame
       // where a fast object covers this point (h0, h1: object present in frame 0 / frame 1).
       + 'vec3 fallback(vec3 s0, vec3 s1, float a, float h0, float h1){\n'
@@ -567,12 +573,16 @@
       + '  }\n'
       + '  vec2 p1 = clamp(vUv - d * inv * wa, 0.0, 1.0);\n'
       + '  float w0 = wa * (1.0 - h0) + 1e-3, w1 = a * (1.0 - h1) + 1e-3;\n'
-      + '  vec3 bg = (w0 * samp(uF0, vUv + d * inv * a) + w1 * samp(uF1, p1)) / (w0 + w1);\n'
-      + '  vec3 fg = mix(samp(uF0, vUv + cf * inv * a), samp(uF1, vUv - cf * inv * wa), a);\n'
-      + '  vec3 moved = mix(bg, fg, wfg);\n'
+      + '  vec3 b0 = samp(uF0, vUv + d * inv * a), b1 = samp(uF1, p1);\n'
+      + '  vec3 bg = (w0 * b0 + w1 * b1) / (w0 + w1);\n'
+      + '  vec3 g0 = samp(uF0, vUv + cf * inv * a), g1 = samp(uF1, vUv - cf * inv * wa);\n'
+      + '  vec3 moved = mix(bg, mix(g0, g1, a), wfg);\n'
       + '  float tr = mix(texture(uMv, p1).b, 1.0, wfg);\n'
-      + '  vec3 fb = fallback(samp(uF0, vUv), samp(uF1, vUv), a, h0, h1);\n'
-      + '  float ok = smoothstep(mix(0.12, 0.0, k), mix(0.45, 0.25, k), tr);\n'
+      + '  vec3 s0 = samp(uF0, vUv), s1 = samp(uF1, vUv);\n'
+      + '  vec3 fb = fallback(s0, s1, a, h0, h1);\n'
+      + '  vec3 db = abs(b0 - b1), dg = abs(g0 - g1), ds = abs(s0 - s1);\n'
+      + '  float em = mix(max(db.r, max(db.g, db.b)) * (1.0 - max(h0, h1)), max(dg.r, max(dg.g, dg.b)), wfg);\n'
+      + '  float ok = smoothstep(mix(0.12, 0.0, k), mix(0.45, 0.25, k), tr) * safeW(em, max(ds.r, max(ds.g, ds.b)));\n'
       + '  oc = vec4(mix(fb, moved, ok), 1.0);\n'
       + '}\n';
 
@@ -612,7 +622,9 @@
       + '  if (length(c) > 2.0){ h0 = near(c, dec(uMvF, vUv - c * inv), 1.0); h1 = near(c, dec(uMvF, vUv), 1.0); }\n'
       + '  vec3 fb = fallback(samp(uF0, vUv), samp(uF1, vUv), a, h0, h1);\n'
       + '  vec3 moved = (wF * colF + wB * colB + 1e-6 * fb) / (wF + wB + 1e-6);\n'
-      + '  oc = vec4(mix(fb, moved, max(sF, sB)), 1.0);\n'
+      + '  vec3 s0 = samp(uF0, vUv), s1 = samp(uF1, vUv);\n'
+      + '  float emT = (wF * ef + wB * eb) / (wF + wB + 1e-6);\n'
+      + '  oc = vec4(mix(fb, moved, max(sF, sB) * safeW(emT, mx(abs(s0 - s1)))), 1.0);\n'
       + '}\n';
 
     const compile = (type, src) => {
