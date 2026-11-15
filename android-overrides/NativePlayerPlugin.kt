@@ -586,6 +586,20 @@ class NativePlayerPlugin : Plugin() {
     }
 
     /** The "Native video player (beta)" setting: installs or removes the native video layer and remembers it. */
+    /** Turns the screen for fullscreen video: the Android WebView has no screen.orientation.lock of its own. */
+    @PluginMethod
+    fun lockOrientation(call: PluginCall) {
+        val o = call.getString("orientation") ?: "any"
+        main.post {
+            val a = MainActivity.instance
+            if (a == null) call.reject("no activity") else { a.lockOrientation(o); call.resolve() }
+        }
+    }
+    @PluginMethod
+    fun unlockOrientation(call: PluginCall) {
+        main.post { MainActivity.instance?.lockOrientation("any"); call.resolve() }
+    }
+
     @PluginMethod
     fun setNativeVideo(call: PluginCall) {
         val on = call.getBoolean("on", false) ?: false
