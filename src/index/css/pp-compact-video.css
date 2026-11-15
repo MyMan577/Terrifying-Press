@@ -107,6 +107,11 @@
   }
   body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport .pill-btn svg{ width:21px; height:21px; }
   body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport .pill-btn > span{ display:none; }
+  /* Groups of buttons (Frame back + forward; Fit, Zoom, Reset): each button is its own slot in the row or rail, like any
+     single button, instead of the group squeezing into one slot (stacked upright, side by side on the rail). The fit list
+     is the menu's direct picker; here the Fit button cycles through the same choices. */
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport > :is([data-item-wrapper="framestep"], [data-item-wrapper="viewmode"]){ display:contents !important; }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport #view-fit-select{ display:none; }
   /* speed shows its number instead of the clock, like "1x" */
   body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #speed-btn svg{ display:none; }
   body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #speed-btn > #speed-label{ display:block; font-size:15px; font-weight:700; }

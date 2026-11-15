@@ -1425,6 +1425,7 @@
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
+  let memcShownT = null;   // media time of the frame last drawn
   // hold=true: paused/seeking - show the exact frame for (time - latency), no interpolation.
   function memcPresent(mediaNow, hold){
     if (!memcGL || memcRing.length === 0) return;
@@ -1489,8 +1490,16 @@
     if (key === memcLastKey) return;
     memcLastKey = key;
     memcLastDrawMs = nowMs;
+    memcShownT = a > 0.5 && f1 ? f1.t : f0.t;
     memcDraw(f0, f1, a);
   }
+  // The media time of the frame on screen (frame step counts from it). Only while paused, when the picture holds still.
+  // A seek while paused (frame step, dragging the seek bar) shows the frame it lands on. The ring would otherwise still hold
+  // the older frames and the held picture is (position - latency), so frame step got stuck showing a frame from before.
+  videoEl.addEventListener('seeking', () => { if (memcActive && videoEl.paused) try { memcResetStream(); } catch (e){} });
+  // ...and draws it once the seek is done: the per-frame callback does not always fire for a seek while paused.
+  videoEl.addEventListener('seeked', () => { if (memcActive && videoEl.paused) memcCaptureNow(); });
+  window.__ppShownFrameT = () => (memcActive && videoEl.paused && memcShownT != null && memcRing.length) ? memcShownT : null;
 
   function memcFailHard(e){
     console.warn('[motion smoothing]', e);

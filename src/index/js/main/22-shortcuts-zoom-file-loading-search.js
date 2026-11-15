@@ -29,20 +29,58 @@
     const cb = (now, meta) => {
       if (lastMT !== null && meta.mediaTime > lastMT){
         const d = (meta.mediaTime - lastMT) / Math.max(1, (meta.presentedFrames - (cb.pf || 0)) || 1);
-        if (d > 1/240 && d < 1/5 && videoEl.playbackRate > 0) frameDur = frameDur * 0.8 + d * 0.2;
+        if (d > 1/240 && d < 1/5 && videoEl.playbackRate > 0 && !videoEl.paused && !videoEl.seeking) frameDur = frameDur * 0.8 + d * 0.2;
       }
       cb.pf = meta.presentedFrames; lastMT = meta.mediaTime;
       videoEl.requestVideoFrameCallback(cb);
     };
     videoEl.requestVideoFrameCallback(cb);
   })();
+  // One frame at a time, counted from the frame you can SEE: with motion smoothing / video delay on, the paused picture is
+  // the frame from (position - latency), which used to make the first step jump several frames ahead. Seeks go to the
+  // middle of the target frame so rounding can never land on the frame next to it, and quick taps add up while a seek
+  // is still running instead of each starting from the old spot.
+  let stepTarget = null, stepToastTimer = 0;
   function stepFrame(dir){
     const m = media();
-    if (!m || !isFinite(m.duration)) return;
+    if (!m || !isFinite(m.duration) || !(m.duration > 0)) return;
     if (!m.paused) m.pause();
-    const nfps = (m === videoEl && window.PPNative && PPNative.videoFps) ? PPNative.videoFps() : 0;   // native video: the stream's real rate
-    const fd = (m === videoEl) ? (nfps > 0 ? 1 / nfps : frameDur) : 1/30;
-    m.currentTime = Math.min(m.duration, Math.max(0, m.currentTime + dir * fd));
+    const isVid = m === videoEl;
+    const nfps = (isVid && window.PPNative && PPNative.videoFps) ? PPNative.videoFps() : 0;   // native video: the stream's real rate
+    const fd = isVid ? (nfps > 0 ? 1 / nfps : frameDur) : 1/30;
+    let base = null;
+    if (stepTarget != null && m.seeking) base = stepTarget;
+    else if (isVid && typeof window.__ppShownFrameT === 'function'){ try { base = window.__ppShownFrameT(); } catch(e){ base = null; } }
+    if (base == null || !isFinite(base)) base = m.currentTime;
+    const idx = Math.max(0, Math.floor(base / fd + 1e-3) + dir);
+    const t = Math.min(Math.max(0, m.duration - fd * 0.5), (idx + 0.5) * fd);
+    stepTarget = t;
+    m.currentTime = t;
+    if (isVid){
+      // the frame number and time, briefly, on the picture
+      const toast = document.getElementById('video-gesture-toast');
+      if (toast){
+        const mm = Math.floor(t / 60), ss = (t - mm * 60).toFixed(2).padStart(5, '0');
+        toast.innerHTML = '<span>Frame ' + idx + ' \u00b7 ' + mm + ':' + ss + '</span>';
+        toast.classList.add('show');
+        clearTimeout(stepToastTimer);
+        stepToastTimer = setTimeout(() => toast.classList.remove('show'), 700);
+      }
+    }
+  }
+  // Press and hold a frame button to keep stepping (a short tap is still one frame).
+  function holdToStep(btn, dir){
+    if (!btn) return;
+    let delay = 0, rep = 0, held = false;
+    const stop = () => { clearTimeout(delay); clearInterval(rep); delay = rep = 0; };
+    btn.addEventListener('pointerdown', (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
+      held = false; stop();
+      delay = setTimeout(() => { held = true; stepFrame(dir); rep = setInterval(() => stepFrame(dir), 90); }, 420);
+    });
+    ['pointerup', 'pointercancel', 'pointerleave', 'blur'].forEach(ev => btn.addEventListener(ev, stop));
+    // the click that ends a hold must not add one more frame
+    btn.addEventListener('click', (e) => { if (held){ held = false; e.stopImmediatePropagation(); } }, true);
   }
   // The first three are the classic fit modes; entries with a third value force an aspect ratio. The Fit pill and the A key cycle through all of them.
   const VIEW_FITS = [['contain','Fit'],['cover','Fill (crop)'],['fill','Stretch'],
