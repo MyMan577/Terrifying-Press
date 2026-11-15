@@ -108,18 +108,41 @@ public class OnnxSeparatorPlugin extends Plugin {
                 } catch (FastDownload.NoRanges nr) {
                     tmp.delete();
                 }
-                HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+                plainDownload(id, url, tmp);
+                if (!tmp.renameTo(out)) throw new IOException("Could not save the model file");
+                call.resolve();
+            } catch (Exception e) {
+                tmp.delete();
+                call.reject(e.getMessage() != null ? e.getMessage() : e.toString());
+            }
+        }).start();
+    }
+
+    /**
+     * One connection, for servers without ranges or small files. A stall ("Read timed out") or a dropped connection is
+     * retried a few times, carrying on from the bytes already saved when the server allows it; a 4xx answer is final.
+     */
+    private void plainDownload(String id, String url, File tmp) throws IOException {
+        final int tries = 4;
+        long got = 0, total = -1;
+        int last = -1;
+        byte[] buf = new byte[1 << 16];
+        for (int attempt = 1; ; attempt++) {
+            HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+            try {
                 c.setInstanceFollowRedirects(true);
                 c.setConnectTimeout(20000);
-                c.setReadTimeout(60000);
+                c.setReadTimeout(45000);
+                c.setRequestProperty("Accept-Encoding", "identity");
+                if (got > 0) c.setRequestProperty("Range", "bytes=" + got + "-");
                 c.connect();
                 int code = c.getResponseCode();
+                if (code == 416) { got = 0; throw new IOException("Download failed (HTTP 416)"); }   // resume refused: start over
+                if (code / 100 == 4) throw new FastDownload.HttpError(code);
                 if (code / 100 != 2) throw new IOException("Download failed (HTTP " + code + ")");
-                long total = c.getContentLength();
-                long got = 0;
-                int last = -1;
-                byte[] buf = new byte[1 << 16];
-                try (InputStream in = c.getInputStream(); OutputStream o = new FileOutputStream(tmp)) {
+                boolean resume = got > 0 && code == 206;
+                if (!resume) { got = 0; long n = c.getContentLengthLong(); total = n > 0 ? n : -1; }
+                try (InputStream in = c.getInputStream(); OutputStream o = new FileOutputStream(tmp, resume)) {
                     int r;
                     while ((r = in.read(buf)) > 0) {
                         o.write(buf, 0, r);
@@ -136,13 +159,15 @@ public class OnnxSeparatorPlugin extends Plugin {
                         }
                     }
                 }
-                if (!tmp.renameTo(out)) throw new IOException("Could not save the model file");
-                call.resolve();
-            } catch (Exception e) {
-                tmp.delete();
-                call.reject(e.getMessage() != null ? e.getMessage() : e.toString());
-            }
-        }).start();
+                if (total > 0 && got < total) throw new IOException("Download incomplete");
+                return;
+            } catch (FastDownload.HttpError e) {
+                throw e;
+            } catch (IOException e) {
+                if (attempt >= tries) throw e;
+                FastDownload.pause(attempt);
+            } finally { c.disconnect(); }
+        }
     }
 
     private final WhisperNative whisper = new WhisperNative();

@@ -19,6 +19,14 @@ import java.util.concurrent.atomic.AtomicLong;
 final class FastDownload {
     interface Progress { void on(long got, long total); }
     static final class NoRanges extends IOException { NoRanges() { super("ranges not supported"); } }
+    /** The server answered with a client error (404 and the like): retrying will not help. */
+    static final class HttpError extends IOException {
+        final int code;
+        HttpError(int code) { super("Download failed (HTTP " + code + ")"); this.code = code; }
+    }
+    static void pause(int attempt) throws IOException {
+        try { Thread.sleep(700L * attempt); } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IOException("Download cancelled"); }
+    }
 
     private static final int CONNS = 6, PIECE = 4 << 20, MIN_PARALLEL = 8 << 20, TRIES = 4;
 
@@ -34,17 +42,28 @@ final class FastDownload {
 
     static void fetch(String url, File out, Progress prog) throws IOException {
         URL u0 = new URL(url);
-        HttpURLConnection probe = open(u0, 0, 0);
         long total = -1;
-        URL resolved;
-        try {
-            probe.connect();
-            if (probe.getResponseCode() != 206) throw new NoRanges();
-            String cr = probe.getHeaderField("Content-Range");               // "bytes 0-0/123456"
-            int i = cr == null ? -1 : cr.lastIndexOf('/');
-            if (i > 0) { try { total = Long.parseLong(cr.substring(i + 1).trim()); } catch (NumberFormatException ignored) { } }
-            resolved = probe.getURL();                                       // the CDN address after the redirect
-        } finally { probe.disconnect(); }
+        URL resolved = null;
+        // The first request used to get one try: a slow first reply ("Read timed out") failed the whole download.
+        for (int attempt = 1; ; attempt++) {
+            HttpURLConnection probe = open(u0, 0, 0);
+            try {
+                probe.connect();
+                int code = probe.getResponseCode();
+                if (code / 100 == 4) throw new HttpError(code);                   // missing file: no point asking again
+                if (code != 206) throw new NoRanges();
+                String cr = probe.getHeaderField("Content-Range");               // "bytes 0-0/123456"
+                int i = cr == null ? -1 : cr.lastIndexOf('/');
+                if (i > 0) { try { total = Long.parseLong(cr.substring(i + 1).trim()); } catch (NumberFormatException ignored) { } }
+                resolved = probe.getURL();                                       // the CDN address after the redirect
+                break;
+            } catch (NoRanges | HttpError e) {
+                throw e;
+            } catch (IOException e) {
+                if (attempt >= TRIES) throw e;
+                pause(attempt);
+            } finally { probe.disconnect(); }
+        }
         if (total < MIN_PARALLEL) throw new NoRanges();
 
         final long size = total;
