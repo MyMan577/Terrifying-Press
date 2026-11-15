@@ -966,3 +966,13 @@
   try { const v = localStorage.getItem(KEY); if (v !== null) saved = v === '1'; } catch(e){}
   apply(saved);
 })();
+
+// Compact player: the upright video tools row sits just above the controls. The controls' height depends on how many
+// buttons the user shows (the button row can wrap onto a second line), so it is measured, not assumed.
+(function(){
+  const col = document.getElementById('controls-col');
+  if (!col || typeof ResizeObserver === 'undefined') return;
+  const set = () => document.body.style.setProperty('--cv-ctl-h', Math.ceil(col.getBoundingClientRect().height) + 'px');
+  new ResizeObserver(set).observe(col);
+  set();
+})();
