@@ -749,7 +749,6 @@
       <div class="toggle-list" id="tog-glow"></div>
       <div class="section-head"><div class="label">3D modes</div></div>
       <div class="slider-group" id="grp-3d"></div>
-      <div class="toggle-list" id="tog-3d"></div>
       <div class="section-head"><div class="label">Display</div></div>
       <div class="toggle-list" id="tog-display"></div>
       <button id="resetSettingsBtn" class="reset-btn">Reset all settings</button>
@@ -1275,7 +1274,7 @@ import * as THREE from 'three';
   // ---------- Interaction modes ----------
   // These describe HOW touch pushes the always-on field of particles around,
   // not spawn effects — the particle count never changes when you touch.
-  const MODES = ['Swirl', 'Repel', 'Attract', 'Orbit', 'Wind', 'Gravity Well', 'Comet', 'Sphere', 'Cosmos', 'Whirlpool', 'Pulse', 'Bloom', 'Lattice', 'Ripple Pool', 'Jellyfish', 'Knot Flow', 'Attractor', 'Aurora'];
+  const MODES = ['Swirl', 'Repel', 'Attract', 'Orbit', 'Wind', 'Gravity Well', 'Comet', 'Sphere', 'Cosmos', 'Whirlpool', 'Pulse', 'Bloom', 'Lattice', 'Orbit 3D', 'Tornado', 'Flock', 'Magnet', 'Fluid'];
   let mode = 'Swirl';
   // Every mode in this set gets the same real-depth treatment Sphere
   // pioneered: wider orbitRadius camera framing, a rotating formX/Y/Z
@@ -1285,9 +1284,9 @@ import * as THREE from 'three';
   // Cosmos is the same idea but with a whole ladder of shapes instead of
   // one — see COSMOS_SHAPE_BY_FINGERS — so it counts as a single 3D mode
   // even though what it actually renders changes with finger count.
-  // The flow modes (Ripple Pool .. Aurora, see FLOW_3D_MODES) are 3D too, but
-  // animate on their own instead of springing onto a still shape.
-  const MODES_3D = new Set(['Sphere', 'Cosmos', 'Ripple Pool', 'Jellyfish', 'Knot Flow', 'Attractor', 'Aurora']);
+  // The 3D physics modes (Orbit 3D .. Fluid, see FLOW_3D_MODES) share the
+  // 3D camera framing but run real 3D forces instead of shape springs.
+  const MODES_3D = new Set(['Sphere', 'Cosmos', 'Orbit 3D', 'Tornado', 'Flock', 'Magnet', 'Fluid']);
 
   // simTime (accumulated dt, not wall-clock time) — used by any mode whose
   // force depends on elapsed time rather than just current finger position,
@@ -1355,8 +1354,7 @@ import * as THREE from 'three';
   let brightnessMult = 1;     // Brightness slider: scales every particle's opacity
   let touchStrength = 1;      // Touch strength slider: scales every touch force
   let releaseStrength = 1;    // Release burst slider: scales the kick when a finger lifts
-  let flowAutoMorph = true;   // 3D flow modes change variant on their own when left alone
-  let flowIdleSpinMult = 1;   // 3D flow modes: idle spin speed multiplier
+  let flowIdleSpinMult = 1;   // 3D physics modes: how fast the volume turns (View turn)
   let glowThreshold = 0.35;   // bloom bright-pass floor (lower = more of the field glows)
 
   // ---------- Particle store (persistent field) ----------
@@ -1428,13 +1426,9 @@ import * as THREE from 'three';
       latticePhase: rand(0, Math.PI * 2),
       latticeBand: (Math.random() * 5) | 0,
       latticeOffset: rand(0.25, 1),
-      // flow 3D modes: fixed per-particle seeds that place it on the moving form
-      flowU: Math.random(), flowV: Math.random(), flowW: Math.random(),
-      flowR: Math.random(), flowJ: Math.random(), flowK: (Math.random() * 100000) | 0,
+      // 3D physics modes: position/velocity in the volume, seeded on entry
+      wx: 0, wy: 0, wz: 0, wvx: 0, wvy: 0, wvz: 0, oax: 0, oay: 1, oaz: 0, physEpoch: 0,
       flowLight: 1,
-      ox: 0, oy: 0, ovx: 0, ovy: 0, // touch wake offset (springs back to the form)
-      ax: 0, ay: 0, az: 0, aSys: -1, // Attractor: the particle's own state in its system
-      fsx: 0, fsy: 0, fsz: 0,         // last unit-space target, so a morph can carry it over
       saturnRing: rand(0, 1) < 0.38, // Saturn mode: fixed once — is this particle part of the tilted ring, or the core?
       // Sphere mode: a fixed point on a unit sphere, assigned once so the
       // same particle always sits at the same spot on the shape instead of
@@ -1483,7 +1477,6 @@ import * as THREE from 'three';
     if (!p) {
       p = { x, y, px: x, py: y, vx: 0, vy: 0, angle: rand(0, Math.PI * 2), t: 0, ts: performance.now() };
       pointers.set(id, p);
-      spawnRipple(x, y);
     } else {
       // Velocity is kept in "pixels per 60 Hz frame" whatever the display
       // runs at, so drag-to-spin and every drag-driven force feel the same
@@ -1543,6 +1536,7 @@ import * as THREE from 'three';
   function releaseBurst(id) {
     const p = pointers.get(id);
     if (!p) return;
+    if (FLOW_3D_MODES.has(mode)) { physRelease(p, RELEASE_STRENGTH * releaseStrength); return; }
 
     // center of the current field — used so Attract/Orbit bursts scatter
     // outward from where the particles actually are, not just the touch
@@ -1581,13 +1575,6 @@ import * as THREE from 'three';
         case 'Repel': {
           pt.vx += nx * kick;
           pt.vy += ny * kick;
-          break;
-        }
-        case 'Ripple Pool': case 'Jellyfish': case 'Knot Flow': case 'Attractor': case 'Aurora': {
-          // flow modes: shake the form loose around the finger; it wobbles
-          // back into shape on its own
-          pt.ovx += nx * kick * 0.9;
-          pt.ovy += ny * kick * 0.9;
           break;
         }
         case 'Sphere': case 'Cosmos': {
@@ -1890,381 +1877,352 @@ import * as THREE from 'three';
   // of the geometric one.
   const COSMOS_SHAPE_BY_FINGERS = { 1: shapePointGalaxy, 2: shapePointVortex, 3: shapePointSaturn, 4: shapePointNebula, 5: shapePointWormhole };
 
-  // ---------- Flow 3D modes (Ripple Pool, Jellyfish, Knot Flow, Attractor, Aurora) ----------
-  // Unlike Sphere/Cosmos, these never sit still: every particle's target is
-  // recomputed each frame from time, so the form itself swims, pulses, flows
-  // or folds whether or not a finger is down. Particles glide toward that
-  // moving target with frame-rate-independent easing (same feel at 60 or
-  // 120 Hz). Touch never breaks the form: a drag both turns it and leaves a
-  // soft wake (an offset that springs back), more fingers morph it into a
-  // new variant, and lifting off sends a ripple of scatter through it.
-  const FLOW_3D_MODES = new Set(['Ripple Pool', 'Jellyfish', 'Knot Flow', 'Attractor', 'Aurora']);
-  // Per mode: viewing tilt (radians, applied after the user's own spin) and the
-  // idle spin it drifts back to after a drag, in radians per 60 Hz frame.
-  const FLOW_VIEW = {
-    'Ripple Pool': { tilt: 0.92, spin: 0.0016, wake: 0.55 },
-    'Jellyfish':   { tilt: 0.16, spin: 0.0020, wake: 1.00 },
-    'Knot Flow':   { tilt: 0.62, spin: 0.0032, wake: 1.00 },
-    'Attractor':   { tilt: 0.10, spin: 0.0026, wake: 0.90 },
-    'Aurora':      { tilt: 0.22, spin: 0.0014, wake: 0.80 }
-  };
-  const FLOW_VARIANTS = 5;          // fingers 2..5 pick variants 1..4; variant 0 is the default
-  const FLOW_AUTO_CYCLE_S = 24;     // untouched for this long -> morph to the next variant on its own
-  let flowVariant = 0;
-  let flowVariantSince = 0;          // simTime (seconds) when the variant last changed
-  let flowGestureMax = 0;            // most fingers down at once during the current gesture
-  let flowGestureMaxSince = 0;       // when that count was reached (seconds)
-  const ripples = [];                // Ripple Pool drops: { x, z, t0 }
+  // ---------- 3D physics modes (Orbit 3D, Tornado, Flock, Magnet, Fluid) ----------
+  // These are the 3D cousins of Attract / Repel / Orbit: no target shapes at
+  // all. Every particle has a real position and velocity in a 3D volume
+  // (wx/wy/wz, wvx/wvy/wvz; pixels, origin at the centre, y up) and only
+  // forces move it — gravity wells, twisters, a self-steering flock, magnetic
+  // field lines, a swirling current. Whatever pattern shows up comes out of
+  // the motion. Fingers sit on the plane through the middle of the volume
+  // facing you. The whole volume turns slowly (View turn in Effects) so the
+  // depth reads; drawing just rotates world -> view each frame.
+  const TAU = Math.PI * 2;
+  const FLOW_3D_MODES = new Set(['Orbit 3D', 'Tornado', 'Flock', 'Magnet', 'Fluid']);
+  const PHYS_DRAG = { 'Orbit 3D': 0.996, 'Tornado': 0.982, 'Flock': 0.995, 'Magnet': 0.96, 'Fluid': 0.985 };
+  let viewYaw = 0.5;
+  const VIEW_PITCH = 0.2;
+  const VIEW_TURN = 0.0014; // radians per 60 Hz frame at View turn 100%
+  let physEpoch = 1;        // bumped on entering a 3D physics mode; particles re-seed lazily
+  const P = { cy: 1, sy: 0, cp: 1, sp: 0, T: 0, n: 0, fingers: [], rc: 200, hy: 300, hz: 200, flock: null };
+  for (let i = 0; i < 5; i++) P.fingers.push({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, s: 1 });
 
-  // Strange attractors. Step sizes are tuned so each one flows at roughly the
-  // same on-screen speed; toShape/fromShape map the system's own coordinates
-  // to the unit volume (and back, so a morph carries each particle across).
-  const ATTRACTORS = [
-    { // Lorenz butterfly
-      h: 0.00225, k: 26, c: [0, 0, 26], swap: true,
-      f(x, y, z, o) { o[0] = 10 * (y - x); o[1] = x * (28 - z) - y; o[2] = x * y - 8 / 3 * z; }
-    },
-    { // Aizawa: a spinning apple with a tube through its core
-      h: 0.0076, k: 1.45, c: [0, 0, 0.62], swap: true,
-      f(x, y, z, o) { const zb = z - 0.7; o[0] = zb * x - 3.5 * y; o[1] = 3.5 * x + zb * y; o[2] = 0.6 + 0.95 * z - z * z * z / 3 - (x * x + y * y) * (1 + 0.25 * z) + 0.1 * z * x * x * x; }
-    },
-    { // Thomas: cyclically symmetric lattice of loops
-      h: 0.048, k: 4.3, c: [0, 0, 0], swap: false,
-      f(x, y, z, o) { o[0] = Math.sin(y) - 0.19 * x; o[1] = Math.sin(z) - 0.19 * y; o[2] = Math.sin(x) - 0.19 * z; }
-    },
-    { // Halvorsen: three-armed propeller
-      h: 0.0023, k: 10.5, c: [-3.27, -3.27, -3.27], swap: false,
-      f(x, y, z, o) { o[0] = -1.89 * x - 4 * y - 4 * z - y * y; o[1] = -1.89 * y - 4 * z - 4 * x - z * z; o[2] = -1.89 * z - 4 * x - 4 * y - x * x; }
-    },
-    { // Dadras: twin interlocking scrolls
-      h: 0.0107, k: 17, c: [1.24, -1.25, -1.2], swap: false,
-      f(x, y, z, o) { o[0] = y - 3 * x + 2.7 * y * z; o[1] = 1.7 * y - x * z + z; o[2] = 2 * x * y - 9 * z; }
-    }
-  ];
-  const ATTRACTOR_STEP = 0.008; // typical unit-space distance per 60 Hz frame — brightness rises above it
-  const _deriv = [0, 0, 0];
-  function attractorFromShape(sys, sx, sy, sz, pt) {
-    if (sys.swap) { pt.ax = sx * sys.k + sys.c[0]; pt.ay = sz * sys.k + sys.c[1]; pt.az = sy * sys.k + sys.c[2]; }
-    else { pt.ax = sx * sys.k + sys.c[0]; pt.ay = sy * sys.k + sys.c[1]; pt.az = sz * sys.k + sys.c[2]; }
-  }
-  function attractorSeed(pt, sysIndex) {
-    // Start from the particle's current spot in the volume when it has one,
-    // otherwise from a random point; either way it falls onto the attractor.
-    const sys = ATTRACTORS[sysIndex];
-    const sx = (pt.flowU * 2 - 1) * 0.6, sy = (pt.flowV * 2 - 1) * 0.6, sz = (pt.flowW * 2 - 1) * 0.6;
-    attractorFromShape(sys, sx, sy, sz, pt);
-    pt.aSys = sysIndex;
-  }
-
-  // Shared per-frame values so the per-particle work is just arithmetic.
-  const F = { R: 130, tall: 1, T: 0, cs: 1, sn: 0, ct: 1, st: 0, dt: 1, sources: [], nSources: 0, jellies: 1 };
-  for (let i = 0; i < 16; i++) F.sources.push({ x: 0, z: 0, a: 0, ring: false, age: 0, phase: 0 });
-
-  // Screen point -> spot on the Ripple Pool's sheet (inverse of the view
-  // rotation, ignoring perspective, which is plenty for placing a wave source).
-  function screenToSheet(sx, sy, out) {
-    const ux = (sx - W / 2) / SPHERE_RADIUS, uy = (H / 2 - sy) / SPHERE_RADIUS;
-    const st = Math.abs(F.st) < 0.25 ? (F.st < 0 ? -0.25 : 0.25) : F.st;
-    const z1 = -uy / st;
-    out.x = ux * F.cs + z1 * F.sn;
-    out.z = -ux * F.sn + z1 * F.cs;
+  // view-space (x right, y up, z toward you) -> world, inverse of the draw rotation
+  function viewToWorld(vx, vy, vz, out) {
+    const y1 = vy * P.cp + vz * P.sp;
+    const z1 = -vy * P.sp + vz * P.cp;
+    out.x = vx * P.cy - z1 * P.sy;
+    out.y = y1;
+    out.z = vx * P.sy + z1 * P.cy;
     return out;
   }
-  const _sheetPt = { x: 0, z: 0 };
-
-  function setFlowVariant(v) {
-    if (v === flowVariant) return;
-    flowVariant = v;
-    flowVariantSince = simTime / 60;
-    if (mode === 'Attractor') {
-      // carry every particle into the new system from where it is now
-      const sys = ATTRACTORS[v % ATTRACTORS.length];
-      for (let i = 0; i < particles.length; i++) {
-        const pt = particles[i];
-        attractorFromShape(sys, pt.fsx || 0, pt.fsy || 0, pt.fsz || 0, pt);
-        pt.aSys = v % ATTRACTORS.length;
-      }
-    }
-  }
+  const _v = { x: 0, y: 0, z: 0 };
 
   function resetFlowMode() {
-    flowVariant = 0;
-    flowVariantSince = simTime / 60;
-    flowGestureMax = 0;
-    ripples.length = 0;
-    formSpin = 0.35; formTilt = 0; formSpinVel = 0; formTiltVel = 0;
+    physEpoch++;
+    if (P.flock) P.flock.dirty = true;
+  }
+
+  function seedPhys(pt, halfW, halfH) {
+    // start from where the particle is on screen, spread through the depth
+    viewToWorld(pt.x - halfW, halfH - pt.y, rand(-1, 1) * P.hz * 0.8, _v);
+    pt.wx = _v.x; pt.wy = _v.y; pt.wz = _v.z;
+    viewToWorld(pt.vx * 0.5, -pt.vy * 0.5, rand(-0.6, 0.6), _v);
+    pt.wvx = _v.x; pt.wvy = _v.y; pt.wvz = _v.z;
+    // each particle leans its orbits around its own axis (Orbit 3D)
+    pt.oax = pt.formX; pt.oay = pt.formY; pt.oaz = pt.formZ;
+    pt.physEpoch = physEpoch;
+  }
+
+  // ---- Flock: neighbourhood averages from a coarse 3D grid, O(particles) ----
+  const FLOCK_CELL = 70;
+  function flockGrid() {
+    const nx = Math.max(3, Math.ceil(P.rc * 2.6 / FLOCK_CELL) + 1);
+    const ny = Math.max(3, Math.ceil(P.hy * 2.6 / FLOCK_CELL) + 1);
+    const nz = nx;
+    let g = P.flock;
+    if (!g || g.nx !== nx || g.ny !== ny) {
+      const n = nx * ny * nz;
+      g = P.flock = { nx, ny, nz, n, raw: new Float32Array(n * 7), sum: new Float32Array(n * 7), tmp: new Float32Array(n * 7) };
+    }
+    return g;
+  }
+  function flockCell(g, x, y, z) {
+    const ix = Math.max(0, Math.min(g.nx - 1, ((x + P.rc * 1.3) / FLOCK_CELL) | 0));
+    const iy = Math.max(0, Math.min(g.ny - 1, ((y + P.hy * 1.3) / FLOCK_CELL) | 0));
+    const iz = Math.max(0, Math.min(g.nz - 1, ((z + P.rc * 1.3) / FLOCK_CELL) | 0));
+    return (iz * g.ny + iy) * g.nx + ix;
+  }
+  function flockCount(g, X, Y, Z, fallback) {
+    return (X < 0 || Y < 0 || Z < 0 || X >= g.nx || Y >= g.ny || Z >= g.nz) ? fallback : g.sum[((Z * g.ny + Y) * g.nx + X) * 7];
+  }
+  function buildFlock() {
+    const g = flockGrid();
+    g.raw.fill(0);
     for (let i = 0; i < particles.length; i++) {
       const pt = particles[i];
-      pt.ox = pt.oy = pt.ovx = pt.ovy = 0;
-      pt.aSys = -1;
+      if (pt.physEpoch !== physEpoch) continue;
+      const o = flockCell(g, pt.wx, pt.wy, pt.wz) * 7;
+      g.raw[o]++; g.raw[o + 1] += pt.wx; g.raw[o + 2] += pt.wy; g.raw[o + 3] += pt.wz;
+      g.raw[o + 4] += pt.wvx; g.raw[o + 5] += pt.wvy; g.raw[o + 6] += pt.wvz;
     }
-  }
-
-  function spawnRipple(sx, sy) {
-    if (mode !== 'Ripple Pool') return;
-    screenToSheet(sx, sy, _sheetPt);
-    ripples.push({ x: _sheetPt.x, z: _sheetPt.z, t0: simTime / 60 });
-    if (ripples.length > 10) ripples.shift();
-  }
-
-  function prepareFlowFrame(activePointers, dt) {
-    const T = simTime / 60;
-    F.T = T;
-    F.dt = dt;
-    // a little bigger than Sphere's radius: these forms have open space in them
-    F.R = SPHERE_RADIUS * 1.18;
-    // a lone jellyfish uses the extra height of a portrait screen
-    F.tall = 1 + 0.45 * Math.max(0, Math.min(1, H / Math.max(1, W) - 1));
-    const view = FLOW_VIEW[mode];
-    const tilt = view.tilt + formTilt;
-    F.cs = Math.cos(formSpin); F.sn = Math.sin(formSpin);
-    F.ct = Math.cos(tilt); F.st = Math.sin(tilt);
-
-    // Variant: the most fingers held together during a gesture, once that
-    // count has been steady for a moment — so lifting fingers one by one
-    // never steps back through the smaller counts.
-    const n = activePointers.length;
-    if (n === 0) flowGestureMax = 0;
-    else if (n > flowGestureMax) { flowGestureMax = n; flowGestureMaxSince = T; }
-    if (mode !== 'Ripple Pool') {
-      if (flowGestureMax >= 2 && T - flowGestureMaxSince > 0.18) setFlowVariant(Math.min(FLOW_VARIANTS - 1, flowGestureMax - 1));
-      else if (flowAutoMorph && n === 0 && T - flowVariantSince > FLOW_AUTO_CYCLE_S) setFlowVariant((flowVariant + 1) % FLOW_VARIANTS);
-    }
-
-    if (mode === 'Ripple Pool') {
-      // three slow wandering sources keep the surface alive, every finger
-      // adds its own, and taps leave expanding rings that fade out
-      let k = 0;
-      for (let i = 0; i < 3; i++, k++) {
-        const s = F.sources[k];
-        s.x = 0.62 * Math.sin(T * 0.21 + i * 2.1); s.z = 0.62 * Math.cos(T * 0.17 + i * 1.7);
-        s.a = 0.065; s.ring = false; s.phase = i * 2.1;
-      }
-      for (let i = 0; i < n && k < 8; i++, k++) {
-        const s = F.sources[k];
-        screenToSheet(activePointers[i].x, activePointers[i].y, s);
-        s.a = 0.11; s.ring = false; s.phase = 0;
-      }
-      for (let i = ripples.length - 1; i >= 0; i--) if (T - ripples[i].t0 > 4.5) ripples.splice(i, 1);
-      for (let i = 0; i < ripples.length && k < 16; i++, k++) {
-        const s = F.sources[k], r = ripples[i];
-        s.x = r.x; s.z = r.z; s.age = T - r.t0; s.ring = true; s.a = 0.16 * Math.exp(-s.age * 0.75);
-      }
-      F.nSources = k;
-    } else if (mode === 'Jellyfish') {
-      F.jellies = 1 + flowVariant;
-    }
-  }
-
-  // Writes the particle's un-rotated unit-space target into out (x, y, z)
-  // plus a brightness multiplier (l).
-  const FT = { x: 0, y: 0, z: 0, l: 1 };
-  const KNOTS = [[2, 3], [3, 4], [2, 5], [3, 5], [5, 8]];
-  const TAU = Math.PI * 2;
-  function flowTarget(pt, out) {
-    const T = F.T;
-    const u = pt.flowU, v = pt.flowV, w = pt.flowW;
-    if (mode === 'Ripple Pool') {
-      const r = Math.sqrt(u) * 1.02, a = v * TAU;
-      const x = Math.cos(a) * r, z = Math.sin(a) * r;
-      let h = 0;
-      for (let i = 0; i < F.nSources; i++) {
-        const s = F.sources[i];
-        const dx = x - s.x, dz = z - s.z;
-        const d = Math.sqrt(dx * dx + dz * dz);
-        if (s.ring) {
-          const front = d - s.age * 0.62;
-          h += s.a * Math.exp(-front * front * 26) * Math.cos(front * 22);
-        } else {
-          h += s.a * Math.sin(d * 10 - T * 2.6 + s.phase) / (1 + d * 2.2);
+    // 3x3x3 box sum, done as three separable passes
+    const { nx, ny, nz } = g;
+    const pass = (src, dst, sx, sy, sz) => {
+      for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
+        const o = ((z * ny + y) * nx + x) * 7;
+        for (let k = 0; k < 7; k++) dst[o + k] = src[o + k];
+        for (let d = -1; d <= 1; d += 2) {
+          const X = x + d * sx, Y = y + d * sy, Z = z + d * sz;
+          if (X < 0 || Y < 0 || Z < 0 || X >= nx || Y >= ny || Z >= nz) continue;
+          const q = ((Z * ny + Y) * nx + X) * 7;
+          for (let k = 0; k < 7; k++) dst[o + k] += src[q + k];
         }
       }
-      out.x = x; out.y = h; out.z = z;
-      out.l = Math.max(0.25, Math.min(1.9, 0.72 + h * 7));
-      return;
-    }
-    if (mode === 'Jellyfish') {
-      const n = F.jellies;
-      const j = n > 1 ? Math.min(n - 1, (pt.flowJ * n) | 0) : 0;
-      const sc = n > 1 ? (0.6 - n * 0.035) * (0.85 + F.tall * 0.15) : F.tall;
-      let cx = 0, cy = 0, cz = 0;
-      if (n > 1) {
-        const ang = j / n * TAU + T * 0.13;
-        const ring = 0.58;
-        cx = Math.cos(ang) * ring; cz = Math.sin(ang) * ring;
-        cy = Math.sin(T * 0.45 + j * 1.9) * 0.3;
-      }
-      // contraction 0..1 — a quick squeeze and a slower relax, like a real bell
-      const ph = T * (TAU / 2.6) + j * 1.7;
-      const c = Math.pow(0.5 + 0.5 * Math.sin(ph), 2.2);
-      cy += (n > 1 ? 0 : Math.sin(T * 0.3) * 0.08) + c * 0.07;
-      const role = pt.flowR * 100;
-      let x, y, z, l;
-      const phiMax = 1.78;
-      const bellR = 0.42;
-      if (role < 46) {
-        // bell: uniform over the cap, scalloped, flared rim
-        const cosPhi = 1 - v * (1 - Math.cos(phiMax));
-        const phi = Math.acos(cosPhi);
-        const theta = w * TAU;
-        const edge = phi / phiMax;
-        let rh = bellR * Math.sin(phi) * (1 - 0.24 * c) * (1 + 0.16 * edge * edge * edge * (1 - c));
-        rh *= 1 + 0.045 * Math.sin(theta * 8) * edge * edge;
-        x = Math.cos(theta) * rh; z = Math.sin(theta) * rh;
-        y = bellR * cosPhi * (0.78 + 0.18 * c) + 0.2;
-        l = 0.7 + edge * 0.55 + c * 0.25;
-      } else if (role < 56) {
-        // four frilly oral arms under the bell
-        const arm = pt.flowK % 4;
-        const s = v;
-        const ang = arm * Math.PI / 2 + Math.sin(s * 5 - T * 1.4) * 0.35 + T * 0.2;
-        const r = 0.05 + 0.06 * s + 0.035 * Math.sin(s * 15 - T * 3 + w * 6);
-        x = Math.cos(ang) * r; z = Math.sin(ang) * r;
-        y = 0.2 - s * 0.62 * (1 - 0.12 * c);
-        l = 1.25 - s * 0.5;
-      } else {
-        // trailing tentacles hanging from the rim, waves rolling down them
-        const kTent = ((pt.flowK / 7) | 0) % 12;
-        const theta = kTent / 12 * TAU + 0.13;
-        const s = v;
-        const rimR = bellR * Math.sin(phiMax) * (1 - 0.24 * c) * 1.12;
-        const rimY = bellR * Math.cos(phiMax) * (0.78 + 0.18 * c) + 0.2;
-        const len = 1.05 * (1 - 0.1 * c);
-        const rr = rimR * (1 - 0.45 * s) * (1 - 0.2 * c * (1 - s));
-        const sway = s * 0.11;
-        x = Math.cos(theta) * rr + Math.sin(s * 5.2 - T * 2.1 + kTent) * sway + (w - 0.5) * 0.015;
-        z = Math.sin(theta) * rr + Math.cos(s * 4.4 - T * 1.8 + kTent * 1.7) * sway;
-        y = rimY - s * len;
-        l = 0.95 * (1 - s * 0.72) + 0.1;
-      }
-      out.x = cx + x * sc; out.y = cy + y * sc; out.z = cz + z * sc;
-      out.l = l;
-      return;
-    }
-    if (mode === 'Knot Flow') {
-      const knot = KNOTS[flowVariant % KNOTS.length];
-      const p = knot[0], q = knot[1];
-      // every particle rides the knot, so the whole thing streams along itself
-      const s = u + T * 0.028;
-      const phi = s * TAU;
-      const R = 0.6, r = 0.29 + 0.04 * Math.sin(T * 0.7);
-      const rr = R + r * Math.cos(q * phi);
-      let x = rr * Math.cos(p * phi), y = rr * Math.sin(p * phi), z = r * Math.sin(q * phi);
-      // fuzzy, slowly twisting tube around the line
-      const beta = w * TAU + T * 1.3 + s * 18;
-      const tr = 0.025 + 0.07 * v * v;
-      const g = pt.latticePhase;
-      x += Math.cos(beta) * tr; y += Math.sin(beta) * Math.cos(g) * tr; z += Math.sin(beta) * Math.sin(g) * tr;
-      out.x = x; out.y = z; out.z = y; // lay the knot flat, the view tilt shows it from above
-      // bright packets travel with the stream
-      const pulse = Math.max(0, Math.cos(TAU * (u * 11 + T * 0.05)));
-      out.l = 0.42 + 1.35 * pulse * pulse * pulse * pulse * (1 - v * 0.5);
-      return;
-    }
-    if (mode === 'Attractor') {
-      const si = flowVariant % ATTRACTORS.length;
-      const sys = ATTRACTORS[si];
-      if (pt.aSys !== si || !(Math.abs(pt.ax) < 1e3 && Math.abs(pt.ay) < 1e3 && Math.abs(pt.az) < 1e3)) attractorSeed(pt, si);
-      // fixed-size Euler steps; more of them on long frames so the path
-      // (and its speed) is identical at any refresh rate
-      const steps = Math.max(1, Math.ceil(F.dt * 2));
-      const h = sys.h * F.dt / steps;
-      let moved = 0;
-      for (let k = 0; k < steps; k++) {
-        sys.f(pt.ax, pt.ay, pt.az, _deriv);
-        const dx = _deriv[0] * h, dy = _deriv[1] * h, dz = _deriv[2] * h;
-        pt.ax += dx; pt.ay += dy; pt.az += dz;
-        moved += Math.sqrt(dx * dx + dy * dy + dz * dz);
-      }
-      const k = sys.k;
-      out.x = (pt.ax - sys.c[0]) / k;
-      if (sys.swap) { out.y = (pt.az - sys.c[2]) / k; out.z = (pt.ay - sys.c[1]) / k; }
-      else { out.y = (pt.ay - sys.c[1]) / k; out.z = (pt.az - sys.c[2]) / k; }
-      const speed = moved / k / Math.max(0.05, F.dt);
-      out.l = Math.max(0.3, Math.min(1.9, 0.35 + speed / ATTRACTOR_STEP * 0.75));
-      return;
-    }
-    // Aurora: curtains of light whose folds roll along them and whose rays
-    // shimmer sideways; brightest at the hem, fading upward
-    const variant = flowVariant;
-    const counts = [3, 1, 1, 5, 2];
-    const nc = counts[variant];
-    const kc = pt.flowK % nc;
-    const s = u * 2 - 1;
-    const hgt = Math.pow(v, 1.7);
-    const fold = (0.15 * Math.sin(3.1 * s + T * 0.55 + kc * 1.9) + 0.07 * Math.sin(7.3 * s - T * 1.05 + kc * 2.7)) * (1 + 0.35 * hgt);
-    const top = 0.85 + 0.18 * Math.sin(4 * s + T * 0.8 + kc);
-    let x, z;
-    if (variant === 0) {        // three parallel curtains
-      x = s * 1.05; z = (kc - 1) * 0.42 + fold;
-    } else if (variant === 1) { // a crown of light all the way round
-      const a = u * TAU + T * 0.05;
-      const r = 0.78 + fold * 0.9;
-      x = Math.cos(a) * r; z = Math.sin(a) * r;
-    } else if (variant === 2) { // one curtain wound into a spiral
-      const a = u * TAU * 1.6 + T * 0.04;
-      const r = 0.18 + u * 0.78 + fold * 0.5;
-      x = Math.cos(a) * r; z = Math.sin(a) * r;
-    } else if (variant === 3) { // five curtains fanned like spokes
-      const a = kc / nc * Math.PI + T * 0.03;
-      const along = s * 0.95;
-      x = Math.cos(a) * along - Math.sin(a) * fold * 0.7;
-      z = Math.sin(a) * along + Math.cos(a) * fold * 0.7;
-    } else {                    // two big S-folded sheets crossing
-      const dir = kc ? 1 : -1;
-      x = s * 1.05; z = dir * (0.32 * Math.sin(s * 2.4 + T * 0.4 * dir) + fold * 0.6);
-    }
-    out.x = x;
-    out.y = -0.62 + hgt * top * 1.15;
-    out.z = z;
-    const rays = 0.5 + 0.5 * Math.sin(s * 19 - T * 2.2 + kc * 3);
-    out.l = (0.25 + 1.25 * Math.pow(1 - hgt, 1.6)) * (0.55 + 0.75 * rays * rays);
+    };
+    pass(g.raw, g.tmp, 1, 0, 0);
+    pass(g.tmp, g.sum, 0, 1, 0);
+    pass(g.sum, g.tmp, 0, 0, 1);
+    const t = g.sum; g.sum = g.tmp; g.tmp = t;
+    // whole-flock centre and heading, so it moves as one body
+    let n = 0, cx = 0, cy = 0, cz = 0, vx = 0, vy = 0, vz = 0;
+    for (let i = 0; i < g.n; i++) { const o = i * 7; n += g.raw[o]; cx += g.raw[o + 1]; cy += g.raw[o + 2]; cz += g.raw[o + 3]; vx += g.raw[o + 4]; vy += g.raw[o + 5]; vz += g.raw[o + 6]; }
+    n = Math.max(1, n);
+    g.cx = cx / n; g.cy = cy / n; g.cz = cz / n; g.vx = vx / n; g.vy = vy / n; g.vz = vz / n;
   }
 
-  // One particle, one frame: aim at the moving form, add the touch wake,
-  // glide there. Replaces the generic velocity physics for flow modes.
-  function flowStep(pt, dt, activePointers, halfW, halfH, kick) {
-    flowTarget(pt, FT);
-    pt.fsx = FT.x; pt.fsy = FT.y; pt.fsz = FT.z;
-    // spin around the form's own vertical axis, then the view tilt
-    const x1 = FT.x * F.cs - FT.z * F.sn;
-    const z1 = FT.x * F.sn + FT.z * F.cs;
-    const y2 = FT.y * F.ct - z1 * F.st;
-    const z2 = FT.y * F.st + z1 * F.ct;
-    const R = F.R;
-    const tx = halfW + x1 * R, ty = halfH - y2 * R, tz = z2 * R;
+  function prepareFlowFrame(activePointers, dt, halfW, halfH) {
+    P.T = simTime / 60;
+    viewYaw += VIEW_TURN * flowIdleSpinMult * dt;
+    P.cy = Math.cos(viewYaw); P.sy = Math.sin(viewYaw);
+    P.cp = Math.cos(VIEW_PITCH); P.sp = Math.sin(VIEW_PITCH);
+    // a cylinder around the vertical axis stays the same size as it turns
+    P.rc = Math.min(halfW, halfH) * 1.15;
+    P.hy = halfH * 1.05;
+    P.hz = DEPTH;
+    P.n = Math.min(5, activePointers.length);
+    for (let i = 0; i < P.n; i++) {
+      const p = activePointers[i], f = P.fingers[i];
+      viewToWorld(p.x - halfW, halfH - p.y, 0, _v);
+      f.x = _v.x; f.y = _v.y; f.z = _v.z;
+      viewToWorld(p.vx, -p.vy, 0, _v);
+      f.vx = _v.x; f.vy = _v.y; f.vz = _v.z;
+      f.s = 1; // Magnet: all poles point up, so field lines chain from finger to finger
+    }
+    if (mode === 'Flock') buildFlock();
+  }
 
-    // wake: fingers push nearby light along their drag and a little outward
-    const wake = FLOW_VIEW[mode].wake * touchStrength;
-    const reach = R * 0.42, reach2 = reach * reach;
-    for (let i = 0; i < activePointers.length; i++) {
-      const p = activePointers[i];
-      const dx = pt.x - p.x, dy = pt.y - p.y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 > reach2 * 6) continue;
-      const fall = Math.exp(-d2 / reach2);
-      const d = Math.sqrt(Math.max(36, d2));
-      pt.ovx += (p.vx * 0.22 + dx / d * 0.9) * fall * wake * dt;
-      pt.ovy += (p.vy * 0.22 + dy / d * 0.9) * fall * wake * dt;
+  // One particle, one frame of 3D physics, then project it for drawing.
+  function flowStep(pt, dt, activePointers, halfW, halfH, kick) {
+    if (pt.physEpoch !== physEpoch) seedPhys(pt, halfW, halfH);
+    const T = P.T, ts = touchStrength;
+    let ax = 0, ay = 0, az = 0;
+    const x = pt.wx, y = pt.wy, z = pt.wz;
+    let light = 0;
+
+    if (mode === 'Orbit 3D') {
+      // Softened gravity toward each finger plus a sideways pull around the
+      // particle's own tilted axis, so the swarm forms crossing orbits in every
+      // plane (an atom, not a disc). Two fingers trade particles back and forth.
+      const GM = 2600 * ts;
+      for (let i = 0; i < P.n; i++) {
+        const f = P.fingers[i];
+        const dx = f.x - x, dy = f.y - y, dz = f.z - z;
+        const r2 = dx * dx + dy * dy + dz * dz + 1225;
+        const r = Math.sqrt(r2);
+        const g = GM / (r2 * r);
+        ax += dx * g; ay += dy * g; az += dz * g;
+        // tangential: axis x (towards finger)
+        const s = g * r * 0.32 / r;
+        ax += (pt.oay * dz - pt.oaz * dy) * s;
+        ay += (pt.oaz * dx - pt.oax * dz) * s;
+        az += (pt.oax * dy - pt.oay * dx) * s;
+      }
+    } else if (mode === 'Tornado') {
+      // Each finger stands a twister on the floor of the volume through its
+      // point: suck in at the base, spin up the funnel, spill over the top,
+      // rain back down outside and get pulled in again.
+      for (let i = 0; i < P.n; i++) {
+        const f = P.fingers[i];
+        const dx = x - f.x, dz = z - f.z;
+        const r = Math.sqrt(dx * dx + dz * dz) + 0.5;
+        const ux = dx / r, uz = dz / r;
+        const h = y - f.y;
+        const rt = 16 + Math.max(0, h) * 0.34 + Math.max(0, -h) * 0.25;
+        const wall = (r - rt) / 60;
+        const near = Math.exp(-wall * wall);
+        const reach = 1 / (1 + (r / 280) * (r / 280));
+        // swirl: ease tangential speed toward a target
+        const vt = -pt.wvx * uz + pt.wvz * ux;
+        const want = (2.4 + 6.5 * near) * reach * ts;
+        const tk = (want - vt) * 0.07;
+        ax += -uz * tk; az += ux * tk;
+        // lift inside the funnel; at the top it lets go and throws particles
+        // outward, and outside the funnel they fall back down to the base
+        const top = Math.min(P.hy * 0.6, f.y + P.hy * 0.9);
+        const below = Math.max(0, Math.min(1, (top - y) / 120));
+        // pull onto the funnel wall (only below the top, so spilled ones fall away)
+        const pull = (-(r - rt) * 0.0035 - 0.05) * reach * ts * below;
+        ax += ux * pull; az += uz * pull;
+        // steer vertical speed: rise up the funnel wall, fall everywhere else
+        const lift = near * below;
+        const wantVy = (4.2 * lift - 2.6 * (1 - lift)) * ts;
+        ay += (wantVy - pt.wvy) * 0.05 * Math.max(reach, 1 - lift);
+        if (y > top - 40) { const o = 0.55 * Math.min(1, (y - top + 40) / 80); ax += ux * o; az += uz * o; }
+        light += near * reach;
+      }
+    } else if (mode === 'Flock') {
+      const g = P.flock;
+      const c = flockCell(g, x, y, z) * 7;
+      const s = g.sum, raw = g.raw;
+      const n = s[c];
+      if (n > 1) {
+        const inv = 1 / n;
+        // alignment and cohesion with the neighbourhood
+        ax += (s[c + 4] * inv - pt.wvx) * 0.1; ay += (s[c + 5] * inv - pt.wvy) * 0.1; az += (s[c + 6] * inv - pt.wvz) * 0.1;
+        ax += (s[c + 1] * inv - x) * 0.0012; ay += (s[c + 2] * inv - y) * 0.0012; az += (s[c + 3] * inv - z) * 0.0012;
+        // separation: move down the crowding gradient, so dense knots spread
+        // into sheets and ribbons instead of piling into balls
+        const ix = c / 7 % g.nx, iy = ((c / 7 / g.nx) | 0) % g.ny, iz = (c / 7 / (g.nx * g.ny)) | 0;
+        const at = (X, Y, Z) => flockCount(g, X, Y, Z, n);
+        const sep = 0.0005;
+        ax -= (at(ix + 1, iy, iz) - at(ix - 1, iy, iz)) * sep;
+        ay -= (at(ix, iy + 1, iz) - at(ix, iy - 1, iz)) * sep;
+        az -= (at(ix, iy, iz + 1) - at(ix, iy, iz - 1)) * sep;
+        // a little individual wobble so birds aren't in perfect lockstep
+        ax += Math.sin(T * 2.1 + pt.wobble * 7) * 0.008; ay += Math.sin(T * 1.7 + pt.wobble * 5) * 0.008; az += Math.cos(T * 1.9 + pt.wobble * 6) * 0.008;
+      }
+      // stay with the whole flock and share its heading
+      ax += (g.cx - x) * 0.0005 + (g.vx - pt.wvx) * 0.012;
+      ay += (g.cy - y) * 0.0005 + (g.vy - pt.wvy) * 0.012;
+      az += (g.cz - z) * 0.0005 + (g.vz - pt.wvz) * 0.012;
+      // the flock roams after a slowly wandering point, sweeping and turning
+      const lx = P.rc * 0.6 * Math.sin(T * 0.31), ly = P.hy * 0.5 * Math.sin(T * 0.23 + 1), lz = P.rc * 0.6 * Math.cos(T * 0.27);
+      ax += (lx - x) * 0.0011; ay += (ly - y) * 0.0011; az += (lz - z) * 0.0011;
+      // fingers are predators: a hard swerve away close in
+      for (let i = 0; i < P.n; i++) {
+        const f = P.fingers[i];
+        const dx = x - f.x, dy = y - f.y, dz = z - f.z;
+        const r = Math.sqrt(dx * dx + dy * dy + dz * dz) + 1;
+        const R = 230 * Math.sqrt(ts);
+        if (r < R) { const k = (1 - r / R); const a = k * k * 2.2 / r; ax += dx * a; ay += dy * a; az += dz * a; light += k; }
+      }
+      // birds hold a cruising speed
+      const sp = Math.sqrt(pt.wvx * pt.wvx + pt.wvy * pt.wvy + pt.wvz * pt.wvz) + 1e-3;
+      const cruise = (3.4 / sp - 1) * 0.06;
+      ax += pt.wvx * cruise; ay += pt.wvy * cruise; az += pt.wvz * cruise;
+    } else if (mode === 'Magnet') {
+      // Fingers are bar magnets (vertical, all north-up). Particles flow
+      // along the summed field: out of the north pole, round in a loop, into
+      // the south pole and straight up through the core again.
+      let bx = 0, by = 0, bz = 0, near = 0, inCore = -1;
+      for (let i = 0; i < P.n; i++) {
+        const f = P.fingers[i];
+        const dx = x - f.x, dy = y - f.y, dz = z - f.z;
+        const r2 = dx * dx + dy * dy + dz * dz;
+        if (r2 < 26 * 26) { inCore = i; break; }
+        const r = Math.sqrt(r2), inv = 1 / r;
+        const rx = dx * inv, ry = dy * inv, rz = dz * inv;
+        const md = ry * f.s; // m = (0, s, 0)
+        const k = 1 / (r2 * r) * 1.1e7;
+        bx += (3 * md * rx) * k; by += (3 * md * ry - f.s) * k; bz += (3 * md * rz) * k;
+        near = Math.max(near, 1 / (1 + r / 90));
+      }
+      if (P.n > 0) {
+        let tx, ty, tz, speed;
+        if (inCore >= 0) { tx = 0; ty = P.fingers[inCore].s; tz = 0; speed = 5; }
+        else {
+          const b = Math.sqrt(bx * bx + by * by + bz * bz) + 1e-6;
+          tx = bx / b; ty = by / b; tz = bz / b;
+          speed = Math.min(5.5, b) * ts;
+        }
+        ax += (tx * speed - pt.wvx) * 0.12; ay += (ty * speed - pt.wvy) * 0.12; az += (tz * speed - pt.wvz) * 0.12;
+        light += near;
+      }
+    } else { // Fluid
+      // a slowly shifting divergence-free current (ABC flow): every particle
+      // is always moving and neighbours swirl together like smoke in water
+      const k = TAU / (Math.min(halfW, halfH) * 2.2);
+      const p1 = T * 0.21, p2 = T * 0.17 + 1.3, p3 = T * 0.13 + 2.1;
+      const fx = Math.sin(k * z + p1) + 0.6 * Math.cos(k * y + p2);
+      const fy = 0.8 * Math.sin(k * x + p3) + Math.cos(k * z + p1);
+      const fz = 0.6 * Math.sin(k * y + p2) + 0.8 * Math.cos(k * x + p3);
+      ax += (fx * 1.7 - pt.wvx) * 0.03; ay += (fy * 1.7 - pt.wvy) * 0.03; az += (fz * 1.7 - pt.wvz) * 0.03;
+      // dragging stirs; holding still spins a whirlpool around the finger
+      for (let i = 0; i < P.n; i++) {
+        const f = P.fingers[i];
+        const dx = x - f.x, dy = y - f.y, dz = z - f.z;
+        const r2 = dx * dx + dy * dy + dz * dz;
+        const fall = Math.exp(-r2 / (170 * 170));
+        if (fall < 0.01) continue;
+        ax += f.vx * 0.09 * fall * ts; ay += f.vy * 0.09 * fall * ts; az += f.vz * 0.09 * fall * ts;
+        // whirl around the line of sight through the finger
+        viewToWorld(0, 0, 1, _v);
+        const s = 0.9 * fall * ts / (Math.sqrt(r2) + 30) * 30;
+        ax += (_v.y * dz - _v.z * dy) * s / 30; ay += (_v.z * dx - _v.x * dz) * s / 30; az += (_v.x * dy - _v.y * dx) * s / 30;
+        light += fall;
+      }
+    }
+
+    // shared extras: drift, turbulence and Spin from Motion settings
+    const amb = (P.n === 0 || mode === 'Fluid' ? 0.012 : 0.004) * ambientDrift;
+    if (mode !== 'Flock') {
+      ax += Math.sin(y * 0.011 + T * 0.7 + pt.wobble) * amb;
+      ay += Math.sin(z * 0.012 + T * 0.6 + pt.wobble) * amb;
+      az += Math.sin(x * 0.010 + T * 0.8 + pt.wobble) * amb;
+    }
+    if (turbulenceStrength > 0) {
+      const tq = turbulenceStrength * 0.05;
+      ax += Math.cos(y * 0.02 + z * 0.013 + T * 1.3) * tq;
+      ay += Math.cos(z * 0.02 + x * 0.017 + T * 1.1) * tq;
+      az += Math.cos(x * 0.02 + y * 0.015 + T * 1.7) * tq;
+    }
+    if (vortexStrength > 0) {
+      const rr = Math.sqrt(x * x + z * z) + 30;
+      ax += -z / rr * vortexStrength * 0.04; az += x / rr * vortexStrength * 0.04;
     }
     if (kick > 0) {
-      const dx = pt.x - halfW, dy = pt.y - halfH;
-      const d = Math.sqrt(Math.max(36, dx * dx + dy * dy));
-      pt.ovx += dx / d * kick * dt; pt.ovy += dy / d * kick * dt;
+      const r = Math.sqrt(x * x + y * y + z * z) + 30;
+      ax += x / r * kick; ay += y / r * kick; az += z / r * kick;
     }
-    // the wake springs back (slightly underdamped, so it wobbles like jelly)
-    const damp = Math.pow(0.9, dt);
-    pt.ovx = (pt.ovx - pt.ox * 0.03 * dt) * damp;
-    pt.ovy = (pt.ovy - pt.oy * 0.03 * dt) * damp;
-    pt.ox = Math.max(-R, Math.min(R, pt.ox + pt.ovx * dt));
-    pt.oy = Math.max(-R, Math.min(R, pt.oy + pt.ovy * dt));
+    // soft walls: a cylinder around the vertical axis, capped top and bottom
+    // (Fluid wraps around instead, further down, so the current never piles up)
+    const rxz = Math.sqrt(x * x + z * z);
+    if (mode === 'Fluid') { /* wraps below */ } else if (rxz > P.rc) { const w = (rxz - P.rc) * 0.004; ax -= x / rxz * w; az -= z / rxz * w; }
+    if (mode !== 'Fluid') { if (y > P.hy) ay -= (y - P.hy) * 0.004; else if (y < -P.hy) ay -= (y + P.hy) * 0.004; }
 
-    const follow = 1 - Math.pow(0.84, dt);
-    pt.x += (tx + pt.ox - pt.x) * follow;
-    pt.y += (ty + pt.oy - pt.y) * follow;
-    pt.z += (tz - pt.z) * follow;
+    // Glide (Motion) nudges the friction around each mode's own tuned value
+    const drag = Math.pow(Math.min(0.999, PHYS_DRAG[mode] * (1 + ((dragCoef - 0.9) / 0.099 - 0.66) * 0.03)), dt);
+    let vx = (pt.wvx + ax * dt) * drag, vy = (pt.wvy + ay * dt) * drag, vz = (pt.wvz + az * dt) * drag;
+    const cap = maxParticleSpeed * 0.4;
+    const sp2 = vx * vx + vy * vy + vz * vz;
+    if (sp2 > cap * cap) { const k = cap / Math.sqrt(sp2); vx *= k; vy *= k; vz *= k; }
+    pt.wvx = vx; pt.wvy = vy; pt.wvz = vz;
+    pt.wx = x + vx * dt; pt.wy = y + vy * dt; pt.wz = z + vz * dt;
+    if (mode === 'Fluid') {
+      const r2 = Math.sqrt(pt.wx * pt.wx + pt.wz * pt.wz);
+      if (r2 > P.rc) { const k = -(P.rc * 0.96) / r2; pt.wx *= k; pt.wz *= k; }
+      if (pt.wy > P.hy) pt.wy -= P.hy * 2; else if (pt.wy < -P.hy) pt.wy += P.hy * 2;
+    }
+    // hard stop far outside (e.g. after a huge burst), so nobody is lost
+    if (Math.abs(pt.wy) > P.hy * 2 || rxz > P.rc * 2.5) seedPhys(pt, halfW, halfH);
+
+    // world -> view for drawing
+    const x1 = pt.wx * P.cy + pt.wz * P.sy;
+    const z1 = -pt.wx * P.sy + pt.wz * P.cy;
+    const y2 = pt.wy * P.cp - z1 * P.sp;
+    const z2 = pt.wy * P.sp + z1 * P.cp;
+    pt.x = halfW + x1; pt.y = halfH - y2; pt.z = z2;
     pt.vx = 0; pt.vy = 0;
-    pt.flowLight += (FT.l - pt.flowLight) * follow;
+    // faster particles and ones in the action glow brighter; far ones dim (depth)
+    const speed = Math.sqrt(sp2);
+    const depth = 0.62 + 0.38 * Math.max(0, Math.min(1, (z2 / Math.max(1, P.hz) + 1) * 0.5));
+    const target = (0.55 + Math.min(0.85, speed / 7) + Math.min(0.5, light * 0.35)) * depth;
+    pt.flowLight += (target - pt.flowLight) * Math.min(1, 0.2 * dt);
+  }
+
+  // Lifting a finger in a 3D physics mode: an outward blast from that point.
+  function physRelease(p, strength) {
+    const halfW = W / 2, halfH = H / 2;
+    viewToWorld(p.x - halfW, halfH - p.y, 0, _v);
+    const fx = _v.x, fy = _v.y, fz = _v.z;
+    for (let i = 0; i < particles.length; i++) {
+      const pt = particles[i];
+      if (pt.physEpoch !== physEpoch) continue;
+      const dx = pt.wx - fx, dy = pt.wy - fy, dz = pt.wz - fz;
+      const r = Math.sqrt(dx * dx + dy * dy + dz * dz) + 20;
+      const k = strength * 0.55 * (FALLOFF_REACH / (FALLOFF_REACH + r)) / r;
+      pt.wvx += dx * k; pt.wvy += dy * k; pt.wvz += dz * k;
+    }
   }
 
   function shapePointFor(mode, fingerCount, pt) {
@@ -3332,7 +3290,7 @@ import * as THREE from 'three';
     // up — quick wobbles in the touch just barely nudge it instead of
     // making the shape jitter. With no touch down, it eases back to a
     // slow idle spin.
-    if (MODES_3D.has(mode) && activePointers.length > 0) {
+    if (MODES_3D.has(mode) && !FLOW_3D_MODES.has(mode) && activePointers.length > 0) {
       let dvx = 0, dvy = 0, bestSpeedSq = -1;
       for (let pi = 0; pi < activePointers.length; pi++) {
         const p = activePointers[pi];
@@ -3343,13 +3301,6 @@ import * as THREE from 'three';
       const targetTiltVel = -dvy * FORM_DRAG_TO_SPIN;
       formSpinVel += (targetSpinVel - formSpinVel) * Math.min(1, FORM_SPIN_EASE * dt);
       formTiltVel += (targetTiltVel - formTiltVel) * Math.min(1, FORM_SPIN_EASE * dt);
-    } else if (FLOW_3D_MODES.has(mode)) {
-      // flow modes keep turning on their own: a fling coasts down to the
-      // mode's idle spin, and the tilt drifts back to its best viewing angle
-      const idleSpin = FLOW_VIEW[mode].spin * flowIdleSpinMult;
-      formSpinVel += (idleSpin - formSpinVel) * Math.min(1, 0.022 * dt);
-      formTiltVel += (0 - formTiltVel) * Math.min(1, 0.03 * dt);
-      formTilt = Math.atan2(Math.sin(formTilt), Math.cos(formTilt)) * Math.pow(0.992, dt);
     } else {
       formSpinVel += (0 - formSpinVel) * Math.min(1, FORM_SPIN_EASE * dt);
       formTiltVel += (0 - formTiltVel) * Math.min(1, FORM_SPIN_EASE * dt);
@@ -3392,7 +3343,7 @@ import * as THREE from 'three';
     const updateColorBuffer = particleColorDirty;
     const is3DMode = MODES_3D.has(mode);
     const isFlowMode = FLOW_3D_MODES.has(mode);
-    if (isFlowMode) prepareFlowFrame(activePointers, reactiveDt);
+    if (isFlowMode) prepareFlowFrame(activePointers, reactiveDt, W * 0.5, H * 0.5);
     const flowKick = isFlowMode ? audioEnergy.kick * 2.2 * visualizer.kickForce : 0;
     const hasActivePointers = activePointers.length > 0;
     const hasKickForce = audioEnergy.kick > 0.015;
@@ -3555,7 +3506,7 @@ import * as THREE from 'three';
       // which visually spread the field into a cylinder even though the
       // camera sits straight-on and nothing else about those modes is 3D.
       if (isFlowMode) {
-        // z already glides with the form inside flowStep
+        // z comes from the 3D physics in flowStep
       } else if (is3DMode) {
         pt.zWobble += 0.012 * dt;
         if (pt.formActive) {
@@ -3596,13 +3547,13 @@ import * as THREE from 'three';
       // read as volume rather than a flat cloud of unrelated points.
       // Flow forms get depth cueing (nearer = a touch bigger and brighter) and
       // their own per-particle light, so crests, pulses and hems glow.
-      const flowDepth = isFlowMode ? Math.max(0.78, Math.min(1.22, 1 + pt.z / Math.max(1, SPHERE_RADIUS) * 0.2)) : 1;
-      const flowSize = isFlowMode ? flowDepth * (0.8 + Math.min(1.6, pt.flowLight) * 0.2) : 1;
+      // 3D physics: brightness tracks speed, action and depth (set in flowStep)
+      const flowSize = isFlowMode ? 0.85 + Math.min(1.6, pt.flowLight) * 0.15 : 1;
       sizeArr[i] = pt.size * basePointSize * sparkleSizeBoost * flowSize;
       // Sparkles are allowed to overdrive slightly past 1 so their flares
       // reliably clear the bloom brightness threshold instead of just
       // sitting at the same ceiling as every other particle.
-      alphaArr[i] = Math.min(sparkleActive ? 1.3 : 1, alpha * (isFlowMode ? pt.flowLight * (0.55 + flowDepth * 0.25) : 1));
+      alphaArr[i] = Math.min(sparkleActive ? 1.3 : 1, alpha * (isFlowMode ? pt.flowLight : 1));
     }
 
     // Smooth the measured field activity for the next frame's fade pass.
@@ -3719,13 +3670,12 @@ import * as THREE from 'three';
       fmt: (v) => { const hl = 1.6 * Math.pow(v / 100, 2.2); return v === 0 ? 'Off' : (hl < 1 ? Math.round(hl * 1000) + ' ms' : hl.toFixed(1) + ' s'); } },
     { group: 'grp-glow', key: 'glow', label: 'Glow', hint: '0 turns bloom off', min: 0, max: 200, step: 5, def: 100, apply: (v) => { bloomStrengthMult = v / 100; bloomEnabled = v > 0; }, fmt: (v) => v === 0 ? 'Off' : v + '%' },
     { group: 'grp-glow', key: 'glowReach', label: 'Glow reach', hint: 'Higher lets dimmer lights glow too', min: 0, max: 100, step: 1, def: 50, apply: (v) => { glowThreshold = 0.6 - v / 100 * 0.5; } },
-    { group: 'grp-3d', key: 'idleSpin', label: 'Idle spin', hint: 'How fast flow forms turn on their own', min: 0, max: 300, step: 10, def: 100, apply: (v) => { flowIdleSpinMult = v / 100; }, fmt: pct }
+    { group: 'grp-3d', key: 'idleSpin', label: 'View turn', hint: 'How fast the 3D volume turns so you see its depth', min: 0, max: 300, step: 10, def: 100, apply: (v) => { flowIdleSpinMult = v / 100; }, fmt: pct }
   ];
   const TOGGLES = [
     { group: 'tog-look', key: 'velocityTrails', label: 'Motion trails', hint: 'Trails stretch while the field moves fast', def: false, apply: (on) => { velocityTrails = on; } },
     { group: 'tog-look', key: 'sparkleEnabled', label: 'Sparkles', hint: 'A few lights twinkle brighter', def: true, apply: (on) => { sparkleEnabled = on; } },
     { group: 'tog-glow', key: 'hotCoreEnabled', label: 'Hot core', hint: 'White-hot centre in each light', def: true, apply: (on) => { hotCoreEnabled = on; particleMaterial.uniforms.uCoreMix.value = on ? 1 : 0; } },
-    { group: 'tog-3d', key: 'autoMorph', label: 'Auto morph', hint: 'Flow forms change shape when left alone', def: true, apply: (on) => { flowAutoMorph = on; flowVariantSince = simTime / 60; } },
     { group: 'tog-display', key: 'sharpRender', label: 'Sharp', hint: 'Full resolution (off is softer, lighter on battery)', def: true, apply: (on) => { if (sharpRender !== on) { sharpRender = on; resize(); } } },
     { group: 'tog-display', key: 'fpsCap', label: '60 FPS cap', hint: 'Saves battery on 120 Hz screens', def: false, apply: (on) => { fpsCap = on; } },
     { group: 'tog-display', key: 'showFps', label: 'Show FPS', def: true, apply: (on) => { const el = document.getElementById('fps'); if (el) el.classList.toggle('off', !on); } }
