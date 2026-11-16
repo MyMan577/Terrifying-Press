@@ -192,6 +192,14 @@
         (a.games ? ' data-pp-games' : ' data-pw-act="' + esc(o.action || 'shuffleall') + '"') + (o.page ? ' data-pw-page="' + esc(o.page) + '"' : '') + ' aria-label="' + esc(label) + '">' +
         svg(o.icon || a.icon) + (look === 'icon' ? '' : '<span>' + esc(label) + '</span>') + '</button>';
     } };
+  T.shortcuts = { name:'Shortcuts', icon:'grid', kind:'box', zones:['home','page','player'], w:'full', desc:'A row of up to four icon buttons',
+    fields:[['a1','First','action','shuffleall'],['a2','Second','action','random'],['a3','Third','action','resume'],['a4','Fourth','action','sleep'],
+            ['labels','Show names','toggle',true],['look','Look','seg',[['soft','Soft'],['accent','Accent'],['plain','Plain']]]],
+    render:function(o){
+      var acts = ['a1','a2','a3','a4'].map(function(k, i){ return o[k] != null ? o[k] : ['shuffleall','random','resume','sleep'][i]; }).filter(function(a){ return ACTIONS[a]; });
+      return '<div class="pw-shortcuts pw-sc-' + (o.look || 'soft') + '">' + acts.map(function(a){ var A = ACTIONS[a];
+        return '<button type="button"' + (A.games ? ' data-pp-games' : ' data-pw-act="' + a + '"') + ' aria-label="' + esc(A.label) + '"><i>' + svg(A.icon) + '</i>' + (o.labels === false ? '' : '<span>' + esc(A.label) + '</span>') + '</button>'; }).join('') + '</div>';
+    } };
   T.text = { name:'Text', icon:'text', kind:'box', zones:['home','page','player'], w:'full', desc:'A heading, a note, anything',
     fields:[['text','Text','textarea','Your text here'],['size','Size','seg',SIZES],['bold','Bold','toggle',false],['align','Align','seg',ALIGN],['color','Colour','color',''],['card','On a card','toggle',false]],
     render:function(o){
@@ -266,7 +274,7 @@
     } };
 
   var BUILTIN_ORDER = ['title','games','tagline','playground','tabs','hero','chips','videos','audio','history'];
-  var NEW_ORDER = ['nowplaying','action','clock','greeting','text','image','stats','recent','most','random','playlist','playlists','spacer','divider'];
+  var NEW_ORDER = ['nowplaying','action','shortcuts','clock','greeting','text','image','stats','recent','most','random','playlist','playlists','spacer','divider'];
 
   function subOf(t){ return t.kind === 'video' ? (t.height ? t.height + 'p' : (t.ext || '').toUpperCase()) : ((t.artist && t.artist !== 'Unknown artist') ? t.artist : (t.ext || '').toUpperCase()); }
   // Home hands its lists over; other zones work them out the same way.
@@ -322,7 +330,7 @@
             { id:uid(), type:'nowplaying', w:'full', o:{} }, { id:uid(), type:'random', o:{} }];
   }
   function zoneItems(zone, create){
-    if (!L.zones[zone] && create) L.zones[zone] = zone === 'home' ? homeDefault() : zone === 'player' ? [] : pageDefault('My page');
+    if (!L.zones[zone] && create) L.zones[zone] = zone === 'home' ? homeDefault() : (zone === 'player' || zone === 'playlists') ? [] : pageDefault('My page');
     return L.zones[zone] || null;
   }
 
@@ -338,7 +346,9 @@
       if (!html && !editing) return;
       if (!html) html = '<div class="pw-hidden-note">' + esc(def.name) + ' (shows only when there is something to show)</div>';
       var w = def.kind === 'block' ? 'full' : (it.w || def.w || 'full'), size = W_SIZE[w] || 1;
-      var boxHTML = '<div class="pw-box pw-w-' + w + ' pw-k-' + def.kind + (editing ? ' pw-ed' : '') + '" data-wid="' + it.id + '">' + html +
+      var o = it.o || {}, bx = o.bx ? ' pw-bx-' + o.bx : '', when = o.when ? ' pw-when-' + o.when : '';
+      var bst = o.bx === 'color' && o.bxc ? ' style="--pw-bxc:' + esc(o.bxc) + '"' : '';
+      var boxHTML = '<div class="pw-box pw-w-' + w + ' pw-k-' + def.kind + bx + when + (editing ? ' pw-ed' : '') + '" data-wid="' + it.id + '"' + bst + '>' + html +
         (editing ? '<div class="pw-shield" data-pw-edit="' + it.id + '"></div><div class="pw-tools">' +
           '<span class="pw-grip" data-pw-drag="' + it.id + '">' + svg('grip') + '</span><span class="pw-tname">' + esc(def.name) + '</span>' +
           '<button type="button" data-pw-edit="' + it.id + '" aria-label="Settings">' + svg('gear') + '</button>' +
@@ -439,13 +449,78 @@
     if (has){ startTick(); liveUpdate(); }
   }
 
-  // Hiding the player's own buttons.
-  var HIDEABLE = [['shuffle-btn','Shuffle'],['prev-btn','Previous'],['next-btn','Next'],['repeat-btn','Repeat'],['speed-btn','Speed'],
-                  ['extras-btn','Bookmarks & lyrics'],['ab-loop-btn','A-B loop'],['cutter-btn','Trim & clip'],['sleep-btn','Sleep timer'],['vol-row','Volume slider'],['now-playing','Title & artist']];
+  // ---------- arranging the app's own rows of buttons and sections ----------
+  // Each group is a row of existing elements. They are never moved in the page: CSS `order` puts them in the
+  // chosen order and `display:none` hides them, so every bit of code that finds them keeps working.
+  // Item: [key, label, selector, canHide]. Keys are also the ids older versions stored in L.hide.
+  var PL = 'body.player-layout[data-pl-player]:not(.pl-video) #controls-col > ';
+  var VT = function(id){ return '#video-tools > :is(#' + id + ', :has(#' + id + '))'; };
+  var SG = function(n){ return '#pp-sg-root > .pp-sg:nth-child(' + n + ')'; };
+  var GROUPS = [
+    { id:'rows', name:'Player rows', note:'The order of the rows on the music player page.', items:[
+      ['now-playing','Title & artist', PL + '#now-playing', true], ['pw-player-zone','Your widgets', PL + '#pw-player-zone', false],
+      ['seek-row','Seek bar', PL + '#seek-row', true], ['transport','Main buttons', PL + '#transport', false],
+      ['extra-transport','Tools row', PL + '#extra-transport', true], ['controls-footer','Volume row', PL + '#controls-footer', true]] },
+    { id:'transport', name:'Main buttons', note:'Play / pause always stays.', items:[
+      ['shuffle-btn','Shuffle','#transport > #shuffle-btn', true], ['prev-btn','Previous','#transport > #prev-btn', true],
+      ['play-btn','Play / pause','#transport > #play-btn', false], ['next-btn','Next','#transport > #next-btn', true],
+      ['repeat-btn','Repeat','#transport > #repeat-btn', true]] },
+    { id:'tools', name:'Tools row', note:'Hide tools here. To change their order or move them into the menu, use the player’s own menu (☰ > edit quick bar).', noOrder:true, items:[
+      ['speed-btn','Speed','#speed-btn', true], ['extras-btn','Bookmarks & lyrics','#extras-btn', true], ['ab-loop-btn','A-B loop','#ab-loop-btn', true],
+      ['cutter-btn','Trim & clip','#cutter-btn', true], ['sleep-btn','Sleep timer','#sleep-btn', true]] },
+    { id:'video', name:'Video buttons', note:'The buttons over a playing video.', items:[
+      ['subtitle-btn','Subtitles', VT('subtitle-btn'), true], ['filter-btn','Filters', VT('filter-btn'), true], ['pip-btn','Picture-in-picture', VT('pip-btn'), true],
+      ['to-audio-btn','Switch to audio', VT('to-audio-btn'), true], ['rotate-btn','Rotate', VT('rotate-btn'), true], ['fullscreen-btn','Fullscreen', VT('fullscreen-btn'), true]] },
+    { id:'mini', name:'Mini player', note:'The bar above the tabs while something plays.', items:[
+      ['pl-mini-art','Cover','#pl-mini > #pl-mini-art', true], ['pl-mini-text','Title','#pl-mini > #pl-mini-text', false],
+      ['pl-mini-prev','Previous','#pl-mini > #pl-mini-prev', true], ['pl-mini-play','Play / pause','#pl-mini > #pl-mini-play', false],
+      ['pl-mini-next','Next','#pl-mini > #pl-mini-next', true], ['pl-mini-prog','Progress line','#pl-mini > #pl-mini-prog', true]] },
+    { id:'seek', name:'Seek & volume', noOrder:true, items:[
+      ['cur-time','Time played','#cur-time', true], ['dur-time','Length','#dur-time', true], ['vol-row','Volume slider','body.player-layout #vol-row', true]] },
+    { id:'settings', name:'Settings sections', note:'Appearance always stays, so you can get back here.', items:[
+      ['sg-play','Playback', SG(1), true], ['sg-lib','Library & playlists', SG(2), true], ['sg-look','Appearance & layout', SG(3), false],
+      ['sg-data','Backup & storage', SG(4), true], ['sg-fun','Rewards & games', SG(5), true]] }
+  ];
+  function groupItems(g){
+    var saved = (L.order || {})[g.id] || [], byKey = {};
+    g.items.forEach(function(it){ byKey[it[0]] = it; });
+    var out = saved.filter(function(k){ return byKey[k]; }).map(function(k){ return byKey[k]; });
+    g.items.forEach(function(it){ if (out.indexOf(it) < 0) out.push(it); });
+    return out;
+  }
   var hideStyle = document.createElement('style'); hideStyle.id = 'pw-hide-css'; document.head.appendChild(hideStyle);
   function applyHide(){
-    hideStyle.textContent = (L.hide || []).filter(function(id){ return HIDEABLE.some(function(h){ return h[0] === id; }); })
-      .map(function(id){ return 'body.player-layout #' + id; }).join(',') + ((L.hide || []).length ? '{display:none!important}' : '');
+    var css = [], hide = L.hide || [];
+    GROUPS.forEach(function(g){
+      var items = groupItems(g), ordered = !g.noOrder && L.order && L.order[g.id];
+      items.forEach(function(it, i){
+        if (ordered) css.push(it[2] + '{order:' + (i + 1) + '!important}');
+        if (it[3] && hide.indexOf(it[0]) >= 0) css.push(it[2] + '{display:none!important}');
+      });
+      if (g.id === 'settings' && ordered) css.push('#pp-sg-root{display:flex;flex-direction:column}');
+    });
+    hideStyle.textContent = css.join('\n');
+  }
+  function arrangeSheet(gid){
+    var g = GROUPS.find(function(x){ return x.id === gid; }), hide = L.hide || [];
+    var list = groupItems(g);
+    openSheet(g.name, (g.note ? '<p class="pw-note">' + esc(g.note) + '</p>' : '') + '<div class="pw-tabs">' + list.map(function(it, i){
+      var shown = hide.indexOf(it[0]) < 0;
+      return '<div class="pw-tabrow pw-arr' + (shown ? '' : ' pw-off') + '"><span class="pw-arr-name">' + esc(it[1]) + '</span>' +
+        (g.noOrder ? '' : '<button type="button" class="pw-ic pw-v" data-mv="' + i + ':-1" aria-label="Move up">' + svg('up') + '</button><button type="button" class="pw-ic pw-v" data-mv="' + i + ':1" aria-label="Move down">' + svg('down') + '</button>') +
+        (it[3] ? '<button type="button" class="pw-ic' + (shown ? ' pw-on' : '') + '" data-tg="' + it[0] + '" aria-label="' + (shown ? 'Hide' : 'Show') + '">' + svg('eye') + '</button>' : '<span class="pw-ic pw-lock">' + svg('eye') + '</span>') +
+        '</div>';
+    }).join('') + '</div><div class="pw-sh-actions"><button type="button" class="pw-mini" data-arrreset="1">Back to normal</button></div>');
+    sheetBody.querySelectorAll('[data-mv]').forEach(function(b){ b.addEventListener('click', function(){
+      var a = b.dataset.mv.split(':'), i = +a[0], j = i + (+a[1]); if (j < 0 || j >= list.length) return;
+      remember(); L.order = L.order || {}; var keys = list.map(function(x){ return x[0]; }); var t = keys[i]; keys[i] = keys[j]; keys[j] = t;
+      L.order[g.id] = keys; save(); applyHide(); arrangeSheet(gid); }); });
+    sheetBody.querySelectorAll('[data-tg]').forEach(function(b){ b.addEventListener('click', function(){
+      var k = b.dataset.tg; remember(); L.hide = (L.hide || []).filter(function(x){ return x !== k; });
+      if (hide.indexOf(k) < 0) L.hide.push(k); save(); applyHide(); arrangeSheet(gid); }); });
+    sheetBody.querySelector('[data-arrreset]').addEventListener('click', function(){
+      remember(); if (L.order) delete L.order[g.id]; var keys = g.items.map(function(x){ return x[0]; });
+      L.hide = (L.hide || []).filter(function(k){ return keys.indexOf(k) < 0; }); save(); applyHide(); arrangeSheet(gid); });
   }
 
   // ---------- tab bar ----------
@@ -545,6 +620,7 @@
   }
   var dataTimer = null;
   function onData(){ clearTimeout(dataTimer); dataTimer = setTimeout(function(){ if (openPageId && !editing) renderPage(); if (!editing) renderPlayer(); }, 120); }
+  // Rows on the Playlists page need re-rendering when the library changes, like Home's.
 
   // ======================= edit mode =======================
   var edBar = document.createElement('div'); edBar.id = 'pw-edbar'; edBar.hidden = true;
@@ -559,13 +635,13 @@
   function closeSheet(){ sheet.hidden = true; sheetBody.innerHTML = ''; }
   sheet.addEventListener('click', function(e){ if (e.target === sheet || e.target.closest('.pw-sheet-x')) closeSheet(); });
 
-  function zoneName(z){ return z === 'home' ? 'Home' : z === 'player' ? 'Player' : ((pageById(z.slice(5)) || {}).name || 'Page'); }
-  function currentZoneOnScreen(){ return openPageId ? 'page:' + openPageId : body.hasAttribute('data-pl-player') ? 'player' : 'home'; }
+  function zoneName(z){ return z === 'home' ? 'Home' : z === 'player' ? 'Player' : z === 'playlists' ? 'Playlists' : ((pageById(z.slice(5)) || {}).name || 'Page'); }
+  function currentZoneOnScreen(){ var K = kit(); return openPageId ? 'page:' + openPageId : body.hasAttribute('data-pl-player') ? 'player' : K && K.view() === 'playlists' ? 'playlists' : 'home'; }
   function startEdit(zone){
     var K = kit();
     if (!K || !K.on()){ toast('Layout editing works in the media player layout (Settings).'); return; }
     var ov = document.getElementById('customize-modal-overlay'); if (ov) ov.classList.remove('open');
-    if (zone === 'home'){ closePage(); K.setView('home'); }
+    if (zone === 'home' || zone === 'playlists'){ closePage(); K.setView(zone); }
     else if (zone === 'player'){
       if (!K.hasTrack()){ toast('Play something first, then edit the player.'); return; }
       closePage(); K.openPlayer();
@@ -582,7 +658,7 @@
     refreshAll(); toast('Layout saved.');
   }
   function refreshZone(){
-    if (editing === 'home'){ var K = kit(); if (K) K.renderHome(true); }
+    if (editing === 'home' || editing === 'playlists'){ var K = kit(); if (K) K.renderHome(true); }
     else if (editing === 'player') renderPlayer();
     else if (editing) renderPage();
   }
@@ -671,7 +747,7 @@
   document.addEventListener('pointercancel', endDrag, true);
 
   // ---- add sheet ----
-  function zoneKind(z){ return z.indexOf('page:') === 0 ? 'page' : z; }
+  function zoneKind(z){ return z.indexOf('page:') === 0 || z === 'playlists' ? 'page' : z; }
   function addSheet(){
     var zk = zoneKind(editing), present = items().map(function(x){ return x.type; });
     var tile = function(type){ var d = T[type];
@@ -701,7 +777,7 @@
     if (type === 'text') return row('<input type="text" data-k="' + k + '" value="' + esc(v || '') + '" placeholder="' + esc(def || '') + '" maxlength="80">');
     if (type === 'textarea') return row('<textarea data-k="' + k + '" rows="3" maxlength="600">' + esc(v || '') + '</textarea>');
     if (type === 'toggle') return '<label class="pw-f pw-f-tog"><span>' + esc(label) + '</span><input type="checkbox" data-k="' + k + '"' + (v ? ' checked' : '') + '></label>';
-    if (type === 'seg') return row('<div class="pw-seg" data-k="' + k + '">' + def.map(function(x, i){ var on = v ? v === x[0] : i === 0 && k !== 'size'; return '<button type="button" data-v="' + x[0] + '"' + (on ? ' class="on"' : '') + '>' + esc(x[1]) + '</button>'; }).join('') + '</div>');
+    if (type === 'seg') return row('<div class="pw-seg" data-k="' + k + '">' + def.map(function(x, i){ var on = v ? v === x[0] : (x[0] === '' || (i === 0 && k !== 'size')); return '<button type="button" data-v="' + x[0] + '"' + (on ? ' class="on"' : '') + '>' + esc(x[1]) + '</button>'; }).join('') + '</div>');
     if (type === 'range'){ var r = def, val = v == null ? (r[3] === 'all' ? 0 : r[0] === 60 ? 160 : r[0] === 4 ? 24 : 12) : v;
       return row('<div class="pw-range"><input type="range" data-k="' + k + '" min="' + (r[3] === 'all' ? 0 : r[0]) + '" max="' + r[1] + '" step="' + r[2] + '" value="' + val + '"><output>' + (r[3] === 'all' && !+val ? 'All' : val + (r[3] && r[3] !== 'all' ? r[3] : '')) + '</output></div>'); }
     if (type === 'color') return row('<div class="pw-colrow"><input type="color" data-k="' + k + '" value="' + esc(v || '#6ee7d0') + '"' + (v ? '' : ' data-unset="1"') + '><button type="button" class="pw-mini" data-clear="' + k + '">' + (v ? 'Use theme colour' : 'Theme colour') + '</button></div>');
@@ -718,6 +794,12 @@
     var it = items()[i], def = T[it.type]; it.o = it.o || {};
     var widths = def.kind === 'box' ? '<div class="pw-f"><label>Width</label><div class="pw-seg pw-wseg">' + W.map(function(w){ return '<button type="button" data-w="' + w + '"' + ((it.w || def.w) === w ? ' class="on"' : '') + '>' + W_LABEL[w] + '</button>'; }).join('') + '</div></div>' : '';
     var fields = (def.fields || []).filter(function(f){ return !(f[2] === 'page' && it.o.action !== 'page'); }).map(function(f){ return fieldHTML(f, it.o); }).join('');
+    // Options every widget has: when it shows, and (for boxes) what sits behind it.
+    fields += '<div class="pw-sh-h">Every widget</div>' + fieldHTML(['when', 'Show it', 'seg', [['','Always'],['playing','While something plays'],['idle','When nothing plays']]], it.o);
+    if (def.kind === 'box'){
+      fields += fieldHTML(['bx', 'Behind it', 'seg', [['','Nothing'],['card','Card'],['accent','Accent'],['color','Colour']]], it.o);
+      if (it.o.bx === 'color') fields += fieldHTML(['bxc', 'Background colour', 'color', ''], it.o);
+    }
     openSheet(def.name,
       widths + fields +
       (def.builtin && !(def.fields || []).length && def.kind === 'block' ? '<p class="pw-note">A built-in part of the app. Move it, or remove it and put something else in its place.</p>' : '') +
@@ -738,9 +820,9 @@
       var tmr; inp.addEventListener('input', function(){ clearTimeout(tmr); tmr = setTimeout(function(){ set(inp.dataset.k, inp.value); }, 250); }); });
     sheetBody.querySelectorAll('input[type=checkbox][data-k]').forEach(function(inp){ inp.addEventListener('change', function(){ set(inp.dataset.k, inp.checked); }); });
     sheetBody.querySelectorAll('.pw-seg[data-k] button, .pw-icons button').forEach(function(b){ b.addEventListener('click', function(){
-      var g = b.parentNode; g.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); }); set(g.dataset.k, b.dataset.v); }); });
+      var g = b.parentNode; g.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); }); set(g.dataset.k, b.dataset.v, g.dataset.k === 'bx'); }); });
     sheetBody.querySelectorAll('input[type=range][data-k]').forEach(function(inp){
-      var out = inp.nextElementSibling, f = def.fields.find(function(x){ return x[0] === inp.dataset.k; }), unit = f[3][3];
+      var out = inp.nextElementSibling, f = (def.fields || []).find(function(x){ return x[0] === inp.dataset.k; }), unit = f[3][3];
       var tmr; inp.addEventListener('input', function(){ out.textContent = unit === 'all' && !+inp.value ? 'All' : inp.value + (unit && unit !== 'all' ? unit : ''); clearTimeout(tmr); tmr = setTimeout(function(){ set(inp.dataset.k, +inp.value); }, 120); }); });
     sheetBody.querySelectorAll('input[type=color][data-k]').forEach(function(inp){
       var tmr; inp.addEventListener('input', function(){ clearTimeout(tmr); tmr = setTimeout(function(){ set(inp.dataset.k, inp.value); }, 120); }); });
@@ -853,10 +935,12 @@
   function buildPanel(){
     var panel = document.getElementById('customize-layout-panel'); if (!panel) return;
     function draw(){
-      var hideRows = HIDEABLE.map(function(h){ return '<label class="pw-f pw-f-tog"><span>' + h[1] + '</span><input type="checkbox" data-hide="' + h[0] + '"' + ((L.hide || []).indexOf(h[0]) < 0 ? ' checked' : '') + '></label>'; }).join('');
+      var arrRows = GROUPS.map(function(g){ var n = g.items.filter(function(it){ return (L.hide || []).indexOf(it[0]) >= 0; }).length;
+        return '<div class="pw-lp-row"><div><b>' + esc(g.name) + '</b><small>' + (L.order && L.order[g.id] ? 'Your order' : 'Normal order') + (n ? ' \u00b7 ' + n + ' hidden' : '') + '</small></div><button type="button" class="settings-toggle-btn" data-lp="arr:' + g.id + '">Arrange</button></div>'; }).join('');
       panel.innerHTML =
         '<p class="pw-note">Move, resize and swap anything, or add new widgets. Changes save as you go; Undo is in the bar at the top while editing.</p>' +
         '<div class="pw-lp-row"><div><b>Home screen</b><small>' + (L.zones.home ? 'Your layout' : 'The app’s default') + '</small></div><button type="button" class="settings-toggle-btn" data-lp="edit:home">Edit</button>' + (L.zones.home ? '<button type="button" class="settings-toggle-btn" data-lp="reset:home">Reset</button>' : '') + '</div>' +
+        '<div class="pw-lp-row"><div><b>Playlists page</b><small>Widgets above your playlists</small></div><button type="button" class="settings-toggle-btn" data-lp="edit:playlists">Edit</button>' + (L.zones.playlists ? '<button type="button" class="settings-toggle-btn" data-lp="reset:playlists">Reset</button>' : '') + '</div>' +
         '<div class="pw-lp-row"><div><b>Tab bar</b><small>' + tabList().length + ' tabs</small></div><button type="button" class="settings-toggle-btn" data-lp="tabs">Edit</button></div>' +
         '<div class="pw-lp-row"><div><b>Player widgets</b><small>A strip above the song title (music player)</small></div><button type="button" class="settings-toggle-btn" data-lp="edit:player">Edit</button></div>' +
         '<div class="pw-sh-h">Your pages</div>' +
@@ -864,7 +948,7 @@
           '<button type="button" class="settings-toggle-btn" data-lp="edit:page:' + p.id + '">Edit</button><button type="button" class="settings-toggle-btn ppth-danger" data-lp="del:' + p.id + '">Delete</button></div>'; }).join('')
           : '<p class="pw-note">Pages are your own screens built from widgets, opened from a tab or a button.</p>') +
         '<div class="ppth-row"><button type="button" class="settings-toggle-btn" data-lp="newpage">New page</button></div>' +
-        '<div class="pw-sh-h">Player buttons</div>' + hideRows +
+        '<div class="pw-sh-h">Arrange the app\u2019s own parts</div>' + arrRows +
         '<div class="ppth-row ppth-io"><button type="button" class="settings-toggle-btn" data-lp="export">Export layout…</button><button type="button" class="settings-toggle-btn" data-lp="import">Import…</button>' +
           '<input type="file" accept="application/json,.json" hidden data-lp-file></div>' +
         '<div class="ppth-row"><button type="button" class="settings-toggle-btn ppth-danger" data-lp="resetall">Reset every layout</button></div>';
@@ -874,6 +958,8 @@
       var b = e.target.closest('[data-lp]'); if (!b) return;
       var k = b.dataset.lp;
       if (k.indexOf('edit:') === 0) startEdit(k.slice(5));
+      else if (k.indexOf('arr:') === 0){ var ov2 = document.getElementById('customize-modal-overlay'); if (ov2) ov2.classList.remove('open'); arrangeSheet(k.slice(4)); }
+      else if (k === 'reset:playlists'){ remember(); delete L.zones.playlists; save(); refreshAll(); draw(); }
       else if (k === 'reset:home'){ remember(); delete L.zones.home; save(); refreshAll(); draw(); toast('Home is back to the default.'); }
       else if (k === 'tabs'){ var ov = document.getElementById('customize-modal-overlay'); if (ov) ov.classList.remove('open'); tabsSheet(); }
       else if (k === 'newpage'){ var p = newPage(); remember(); L.tabs = L.tabs || tabsDefault(); L.tabs.splice(L.tabs.length - 1, 0, { id:uid(), type:'page', page:p.id }); save(); applyTabs(); startEdit('page:' + p.id); }
@@ -889,8 +975,6 @@
       }
     });
     panel.addEventListener('change', function(e){
-      var h = e.target.dataset && e.target.dataset.hide;
-      if (h){ remember(); L.hide = (L.hide || []).filter(function(x){ return x !== h; }); if (!e.target.checked) L.hide.push(h); save(); applyHide(); }
       if (e.target.dataset && e.target.dataset.lpFile != null && e.target.files[0]){ importLayout(e.target.files[0], draw); e.target.value = ''; }
     });
     panel.addEventListener('input', function(e){
@@ -922,6 +1006,7 @@
     has: function(z){ return !!L.zones[z]; },
     sig: function(){ return sigN + ':' + (editing || ''); },
     renderHome: renderHome,
+    renderZone: function(z){ startTick(); setTimeout(liveUpdate, 0); return renderZone(z, null); },
     onData: onData,
     edit: startEdit,
     editTabs: tabsSheet,
