@@ -231,9 +231,21 @@
     });
     updateSelectBar();
     // Measure after layout so scrollWidth is accurate.
-    requestAnimationFrame(() => {
-      playlistEl.querySelectorAll('.marquee').forEach(setupMarquee);
-    });
+    // One pass at most is ever waiting. Frames do not run while the app is in the background, and the list is rebuilt
+    // on every track change there, so these passes used to pile up (one per rebuild) and all ran at once on coming
+    // back: the app looked frozen for a while after music had played with the screen off.
+    if (!marqueePassQueued){
+      marqueePassQueued = true;
+      requestAnimationFrame(() => { marqueePassQueued = false; setupMarquees(playlistEl.querySelectorAll('.marquee')); });
+    }
+  }
+  var marqueePassQueued = false;   // var: the list can be drawn before this line is reached
+  // Measures every row first and only then changes them: measuring and changing row by row made the page lay itself
+  // out again for each row.
+  function setupMarquees(list){
+    const jobs = [];
+    list.forEach(c => { const tr = c.querySelector('.marquee-track'); if (tr) jobs.push([c, tr.scrollWidth - c.clientWidth]); });
+    jobs.forEach(j => applyMarquee(j[0], j[1]));
   }
 
   // ---------- Shared marquee helper ----------
@@ -242,7 +254,9 @@
   function setupMarquee(container){
     const track = container.querySelector('.marquee-track');
     if (!track) return;
-    const overflow = track.scrollWidth - container.clientWidth;
+    applyMarquee(container, track.scrollWidth - container.clientWidth);
+  }
+  function applyMarquee(container, overflow){
     if (overflow > 2){
       const distance = overflow + 4; // small buffer past the edge
       const duration = Math.max(4, distance / 22); // ~22px/sec, floor for short overflows

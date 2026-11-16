@@ -891,7 +891,7 @@
   }
   window.addEventListener('resize', resizeCanvas);
   window.addEventListener('resize', () => {
-    document.querySelectorAll('.marquee').forEach(setupMarquee);
+    setupMarquees(document.querySelectorAll('.marquee'));
   });
   resizeCanvas();
 

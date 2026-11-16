@@ -435,7 +435,7 @@
       sortPoolEl.appendChild(wrap);
     });
     requestAnimationFrame(() => {
-      sortPoolEl.querySelectorAll('.marquee').forEach(setupMarquee);
+      setupMarquees(sortPoolEl.querySelectorAll('.marquee'));
     });
   }
 
@@ -471,7 +471,7 @@
     });
     sortApplyBtn.disabled = sortOrder.length !== sortModalTrackIndices.length;
     requestAnimationFrame(() => {
-      sortResultEl.querySelectorAll('.marquee').forEach(setupMarquee);
+      setupMarquees(sortResultEl.querySelectorAll('.marquee'));
     });
   }
 
