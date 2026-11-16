@@ -269,6 +269,18 @@
       11: { name: 'control', what: 'the player', run: arg => { const a = String(arg || '').toLowerCase().replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim(); return LK_CTRL.test(a) ? lkAct(a) : 'ACTION NOT DONE: unsupported control "' + a + '"'; } },
       12: { name: 'make_playlist', what: 'the playlist maker', run: arg => arg ? lkAct('make a playlist of ' + arg) : 'ACTION NOT DONE: no description of the playlist was given' },
       13: { name: 'tag_song', what: 'the tagger', run: () => lkAct('tag this song') },
+      // What songs mean and how they connect: saved summaries and lyrics of the named songs, the current one, or its album (same reader as Song Talk).
+      15: { name: 'song_meaning', what: 'the summaries and lyrics', cap: () => ctxOf() >= 4096 ? 2400 : 700, run: (arg, text) => {
+        const A = window.__ppApi, tr = A.tracks(), list = [], push = x => { if (x && !x.stem && !list.includes(x)) list.push(x); }, both = (arg || '') + ' ' + text;
+        String(arg || '').split(/\s*(?:,|;|&|\band\b|\bvs\.?|\bversus\b)\s*/i).forEach(a => { a = a.replace(/\b(?:the )?album\b/i, '').trim(); if (a.length < 2) return; try { const i = blFindSong(a); if (i >= 0) push(tr[i]); } catch (e) {} });
+        try { blNamed(text).forEach(i => push(tr[i])); } catch (e) {}
+        const cur = A.currentIndex() >= 0 ? tr[A.currentIndex()] : null;
+        if (cur && (!list.length || /\b(this|current|playing)\b/i.test(text))) { const k = list.indexOf(cur); if (k >= 0) list.splice(k, 1); list.unshift(cur); }
+        if (!list.length) return 'no song found and nothing is playing';
+        const alb = /\b(albums?|ep|lp|mixtape|soundtrack)\b/i.test(both);
+        if (alb) { const al = ctxAlbum(list[0]); ctxCandidates(list[0]).filter(x => al.includes(x)).slice(0, 3).forEach(push); }
+        const use = list.slice(0, 4), al0 = alb ? ctxAlbum(use[0]) : [];
+        return (al0.length > 1 ? 'album "' + use[0].album + '" track order: ' + al0.slice(0, 14).map(x => x.title).join(', ') + '\n' : '') + ctxBriefs(use.slice().reverse(), null, Math.floor(LK[15].cap() / 3) - (al0.length > 1 ? 70 : 0)).replace(/\n\n/g, '\n'); } },
       14: { name: 'undo', what: 'the undo history', run: arg => { const a = String(arg || 'undo').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim(); return /^undo( all| everything| \d{1,2})?$/.test(a) ? lkAct(a) : lkAct('undo'); } }
     };
     // Which lookup does a message need? Plain keyword rules, no AI call: nothing to wait for, nothing for a small model to get wrong.
@@ -276,7 +288,11 @@
     const lkKeywords = text => {
       const t = String(text), low = t.toLowerCase(), plans = [], add = (id, arg) => { if (!plans.some(p => p.id === id)) plans.push({ id, arg: String(arg || '').trim().slice(0, 60) }); };
       const after = re => { const m = t.match(re); return m ? m[1].replace(/^["'“‘]+|["'”’.!?]+$/g, '').trim() : ''; };
-      if (/\b(lyrics?|words to|what (are|were) they (saying|singing)|what('?s| is| was) (this|it|the) (song|track|one) about)\b/.test(low)) add(4, after(/\blyrics (?:of |for )(.+)$/i));
+      // Meaning and links between songs: the saved summary plus lyrics, for the songs named, the current one, or its album.
+      { let nm = 0; try { nm = (blNamed(t) || []).length; } catch (e) {}
+        const here = /\b(this|that|it|current|playing) ?(song|track|one|album)?\b/.test(low), mean = /\b(about|mean(s|t|ing)?|story|theme|message|summar\w+|interpret\w*|explain)\b/.test(low), link = /\b(relate[sd]?|related|connect\w*|compar\w+|sequel|prequel|differen\w+|in common|versus|vs|fit(s)? (in|into)|same story)\b/.test(low), alb = /\b(albums?|ep|lp|mixtape|soundtrack)\b/.test(low);
+        if (/\bwhat('?s| is| was) (this|it|the) (song|track|one) about\b/.test(low) || (mean && nm >= 1 && !/\blyrics?\b/.test(low)) || (link && (nm >= 2 || (nm >= 1 && here))) || (alb && (mean || link) && (here || nm >= 1))) add(15, alb ? 'album' : ''); }
+      if (/\b(lyrics?|words to|what (are|were) they (saying|singing))\b/.test(low)) add(4, after(/\blyrics (?:of |for )(.+)$/i));
       if (/\b(which|what) playlists?\b.*\b(this|that|it)\b|\b(is|in) (this|that) (song|track|one)\b.*\bplaylist|\bplaylists? (is|has) (this|that)\b/.test(low)) add(9, '');
       if (/\bplaylists?\b/.test(low) && !plans.some(p => p.id === 9)) add(8, after(/\b(?:in|on|from|of|called|named) (?:my |the )?(.{2,40}?) playlist\b/i) || after(/\bplaylist (?:called|named) (.+)$/i));
       if (/\b(most played|listen(ed)? (to )?(the )?most|top (songs?|tracks?|artists?)|favou?rite (songs?|tracks?|artists?)|play counts?|how (often|many times)|play history|my stats)\b/.test(low)) add(6, /artist/.test(low) ? 'artist' : 'song');
@@ -287,8 +303,8 @@
       return plans;
     };
     const LK_MENU = 'You decide whether a music player assistant must look something up or do something in the player before replying. Reply with ONLY a number, or a number, a colon and a short search text. Menu:\n' +
-      '0 = no lookup needed (small talk, general chat)\n1 = the user asks you to find something and names what: keywords like lyrics, playlist, most played, how many songs, a mood, a title (the app scans the message for them)\n2: <title or artist> = search the library\n3: <title> = details of a song: mood, genre, tempo, key (current song if no title)\n4: <title> = the lyrics of a song (current song if no title)\n5: <mood, genre, instrument or tempo> = songs that match\n6: <song or artist> = what the user plays most\n7 = library size, tagged count\n8: <playlist name> = what is in a playlist, or list all playlists if no name\n9: <title> = which playlists a song is in (current song if no title)\n10: <what to play> = PLAY a song, artist, playlist or mood now\n11: <pause, resume, next, previous, shuffle on, shuffle off, volume up, volume down> = control playback\n12: <description> = MAKE a new playlist, such as sad songs or songs like Hello\n13 = TAG (analyse) the current song\n14 = UNDO what was just done (undo, undo all, or undo 3)\n' +
-      'Examples:\nfind the lyrics for me -> 1\nI love this song -> 0\ndo I have anything by Drake -> 2: Drake\nwhat is this song about -> 4\nany sad songs? -> 5: sad\nwhat do I listen to most -> 6: song\nhow many songs do I have -> 7\nwhat is in my gym playlist -> 8: gym\nwhat playlists do I have -> 8\nis this song in a playlist -> 9\nplay Hello by Adele -> 10: Hello by Adele\nplay something chill -> 10: something chill\npause the music -> 11: pause\nturn it up -> 11: volume up\nmake me a playlist of sad songs -> 12: sad songs\ntag this song -> 13\nundo that -> 14: undo\nundo everything -> 14: undo all\nhow are you -> 0';
+      '0 = no lookup needed (small talk, general chat)\n1 = the user asks you to find something and names what: keywords like lyrics, playlist, most played, how many songs, a mood, a title (the app scans the message for them)\n2: <title or artist> = search the library\n3: <title> = details of a song: mood, genre, tempo, key (current song if no title)\n4: <title> = the lyrics of a song (current song if no title)\n5: <mood, genre, instrument or tempo> = songs that match\n6: <song or artist> = what the user plays most\n7 = library size, tagged count\n8: <playlist name> = what is in a playlist, or list all playlists if no name\n9: <title> = which playlists a song is in (current song if no title)\n10: <what to play> = PLAY a song, artist, playlist or mood now\n11: <pause, resume, next, previous, shuffle on, shuffle off, volume up, volume down> = control playback\n12: <description> = MAKE a new playlist, such as sad songs or songs like Hello\n13 = TAG (analyse) the current song\n14 = UNDO what was just done (undo, undo all, or undo 3)\n15: <title> = what a song is ABOUT or how songs CONNECT: its saved summary and lyrics (current song if no title; several titles separated by commas; add the word album for the rest of its album)\n' +
+      'Examples:\nfind the lyrics for me -> 1\nI love this song -> 0\ndo I have anything by Drake -> 2: Drake\nwhat is this song about -> 15\nwhat are the words to this -> 4\nhow does Hello connect to Skyfall -> 15: Hello, Skyfall\nhow does this fit in the album -> 15: album\nany sad songs? -> 5: sad\nwhat do I listen to most -> 6: song\nhow many songs do I have -> 7\nwhat is in my gym playlist -> 8: gym\nwhat playlists do I have -> 8\nis this song in a playlist -> 9\nplay Hello by Adele -> 10: Hello by Adele\nplay something chill -> 10: something chill\npause the music -> 11: pause\nturn it up -> 11: volume up\nmake me a playlist of sad songs -> 12: sad songs\ntag this song -> 13\nundo that -> 14: undo\nundo everything -> 14: undo all\nhow are you -> 0';
     const lkParse = r => { const m = String(r || '').match(/(\d{1,2})\s*(?:[:\-\u2013]\s*)?([^\n]*)/); if (!m) return null; return { id: +m[1], arg: m[2].replace(/->.*$/, '').replace(/^["'\u201c\u2018]+|["'\u201d\u2019.!?]+$/g, '').trim().slice(0, 60) }; };
     // Library / player words: only messages with one of these can need a lookup. Small talk skips the planner entirely.
     const LK_TOPIC = /\b(songs?|tracks?|music|playlists?|albums?|artists?|bands?|singers?|lyrics?|library|collection|listen\w*|play\w*|tagged|tags?|genre|mood|tempo|bpm|key|favou?rite|most|top|recent\w*|have i|do i have|got any|find|search|this one|it about)\b/i;
@@ -301,7 +317,7 @@
         const key = p.id + '|' + String(p.arg || '').toLowerCase(); if (seen.has(key)) continue; seen.add(key);
         status('Looking up ' + tool.what + '\u2026');
         let out = ''; try { out = String(tool.run(p.arg, text) || ''); } catch (e) { console.warn('lookup tool failed', e); out = 'the lookup failed'; }
-        done.push({ tool: tool.name + (p.arg ? '(' + p.arg + ')' : ''), out: out.slice(0, 600) });
+        done.push({ tool: tool.name + (p.arg ? '(' + p.arg + ')' : ''), out: out.slice(0, tool.cap ? tool.cap() : 600) });
       }
       if (done.length || !LK_TOPIC.test(text)) return done.map(d => d.tool + ': ' + d.out).join('\n');
       // 2) A library question the rules didn't catch: one short AI planning pass (it used to run on every message, up to twice).
@@ -316,7 +332,7 @@
         const key = plan.id + '|' + plan.arg.toLowerCase(); if (seen.has(key)) break; seen.add(key);
         const tool = LK[plan.id]; status('Looking up ' + tool.what + '\u2026');
         let out = ''; try { out = String(tool.run(plan.arg, text) || ''); } catch (e) { console.warn('lookup tool failed', e); out = 'the lookup failed'; }
-        done.push({ tool: tool.name + (plan.arg ? '(' + plan.arg + ')' : ''), out: out.slice(0, 600) });
+        done.push({ tool: tool.name + (plan.arg ? '(' + plan.arg + ')' : ''), out: out.slice(0, tool.cap ? tool.cap() : 600) });
       }
       return done.map(d => d.tool + ': ' + d.out).join('\n');
     }

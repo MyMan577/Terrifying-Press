@@ -121,6 +121,34 @@
     const scrollDown = () => { clist.scrollTop = clist.scrollHeight; };
     const add = (who, text) => { const d = document.createElement('div'); d.className = 'ch-m ' + who; d.textContent = text; clist.appendChild(d); scrollDown(); if (who === 'bot') { blReact(text); if (!aiOnly) blFollowUp(d, text); try { vSpeak(text); } catch (e) {} } return d; };
     const actions = btns => { const d = document.createElement('div'); d.className = 'ch-a'; btns.forEach(([t, fn]) => { const b = document.createElement('button'); b.textContent = t; b.onclick = () => { fn(b, d); }; d.appendChild(b); }); clist.appendChild(d); scrollDown(); return d; };
+    // ---------- Copy button on every chat message ----------
+    // Replies are streamed by setting textContent, which would wipe a button put in by hand, so one observer keeps a small
+    // icon-only button (no text of its own, so reading a message's textContent still gives just the message) on each bubble.
+    {
+      const st = document.createElement('style');
+      st.textContent = '#ppv-chat .ch-m{position:relative}#ppv-chat .ch-m .ch-cp{position:absolute;bottom:0;width:26px;height:26px;padding:0;border:0;background:transparent;color:#9a9ba6;display:flex;align-items:center;justify-content:center;border-radius:8px}' +
+        '#ppv-chat .ch-m.bot .ch-cp{right:-30px}#ppv-chat .ch-m.me .ch-cp{left:-30px}#ppv-chat .ch-m .ch-cp:active{background:#3a3b42}#ppv-chat .ch-m .ch-cp.ok{color:#5ad18a}#ppv-chat .ch-m .ch-cp svg{width:15px;height:15px;pointer-events:none}';
+      document.head.appendChild(st);
+      const ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
+        TICK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
+      const copyText = async txt => {
+        try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(txt); return true; } } catch (e) {}
+        try { const ta = document.createElement('textarea'); ta.value = txt; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0'; document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok; } catch (e) { return false; }
+      };
+      const dress = d => {
+        if (!d.classList || !d.classList.contains('ch-m') || d.classList.contains('lf-box') || d.querySelector(':scope > .ch-cp')) return;
+        const txt = d.textContent.trim(); if (!txt || txt === '…') return;               // nothing to copy yet (the "thinking" dots)
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'ch-cp'; b.title = 'Copy message'; b.setAttribute('aria-label', 'Copy message'); b.innerHTML = ICON; d.appendChild(b);
+      };
+      new MutationObserver(recs => { for (const r of recs) { if (r.target === clist) r.addedNodes.forEach(n => { if (n.nodeType === 1) dress(n); }); else if (r.target.parentNode === clist) dress(r.target); } }).observe(clist, { childList: true, subtree: true });
+      clist.addEventListener('click', async e => {
+        const b = e.target.closest && e.target.closest('.ch-cp'); if (!b) return;
+        e.stopPropagation();
+        const ok = await copyText(b.parentNode.textContent.trim());
+        b.innerHTML = ok ? TICK : ICON; b.classList.toggle('ok', ok); b.title = ok ? 'Copied' : 'Could not copy. Press and hold the text to select it.';
+        clearTimeout(b._t); b._t = setTimeout(() => { b.innerHTML = ICON; b.classList.remove('ok'); b.title = 'Copy message'; }, 1400);
+      });
+    }
     // ---------- Voice and meaning (all optional, all on-device, all off until ticked) ----------
     // MiniLM (~25 MB): loose wording finds the right command, and songs are found by meaning ("something for a rainy drive").
     // Kokoro (82M, ~90 MB): Bloopy's voice. Moonshine tiny (~50 MB): speech to text. openWakeWord: three tiny ONNX files on onnxruntime-web.

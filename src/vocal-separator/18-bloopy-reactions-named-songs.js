@@ -102,6 +102,9 @@
     function blNamedTalk(text) {
       const x = String(text).trim().replace(/[?!.]+$/, '');
       if (!/^(?:what|which|is|are|how|tell|describe|does|do|whats)\b/i.test(x) && !/\b(of|for|about)\b/i.test(x)) return false;
+      if (/\b(talk|chat|discuss|summar\w+|lyrics?)\b/i.test(x)) return false;                               // Song Talk, summaries and lyrics have their own commands
+      // What a song means or how songs connect is a question for the AI (it reads their summaries and lyrics), not for the tags.
+      if (brainOn() && /\b(about|mean(s|t|ing)?|story|theme|message|interpret\w*|explain|relate[sd]?|related|connect\w*|compar\w+|sequel|prequel|differen\w+|in common|versus|vs|albums?)\b/i.test(x) && !/\b(bpm|tempo|key|genre|mood)\b/i.test(x)) return false;
       const hits = blNamed(x); if (!hits.length) return false;
       const A = window.__ppApi, t = A.tracks()[hits[0]], tgc = loadTags()[t.dbId], label = t.title + (t.artist ? ' by ' + t.artist : '');
       if (!tgc) return blSay(label + ' is not tagged yet, so I do not know its tags. Tag it first and I will tell you.');
