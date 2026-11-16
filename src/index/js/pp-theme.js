@@ -220,14 +220,15 @@
     var bgPanel = el('div', 'ppth-panel'); bgPanel.id = 'customize-bg-panel';
     while (body.firstChild) bgPanel.appendChild(body.firstChild);
     var switcher = el('div', 'ppth-switch',
-      '<button type="button" data-p="theme" class="active">Theme</button><button type="button" data-p="bg">Backgrounds</button>');
+      '<button type="button" data-p="theme" class="active">Theme</button><button type="button" data-p="layout">Layout</button><button type="button" data-p="bg">Backgrounds</button>');
     var panel = el('div', 'ppth-panel'); panel.id = 'customize-theme-panel';
-    body.appendChild(switcher); body.appendChild(panel); body.appendChild(bgPanel);
+    var layoutPanel = el('div', 'ppth-panel'); layoutPanel.id = 'customize-layout-panel';   // filled by pp-widgets.js
+    body.appendChild(switcher); body.appendChild(panel); body.appendChild(layoutPanel); body.appendChild(bgPanel);
     bgPanel.hidden = true;
-    if (header) header.textContent = 'Colours, corners and font for the whole app, plus backgrounds for each area';
+    if (header) header.textContent = 'Colours and fonts, where everything goes, and backgrounds';
     function show(p){
       switcher.querySelectorAll('button').forEach(function(b){ b.classList.toggle('active', b.dataset.p === p); });
-      panel.hidden = p !== 'theme'; bgPanel.hidden = p !== 'bg';
+      panel.hidden = p !== 'theme'; bgPanel.hidden = p !== 'bg'; layoutPanel.hidden = p !== 'layout';
       if (footerReset) footerReset.style.display = p === 'bg' ? '' : 'none';
     }
     switcher.addEventListener('click', function(e){ var b = e.target.closest('button'); if (b) show(b.dataset.p); });
