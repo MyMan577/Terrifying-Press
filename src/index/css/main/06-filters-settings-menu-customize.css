@@ -107,6 +107,8 @@
   body.immersive #main{ padding:0; height:100vh; height:100dvh; }
   body.immersive #controls-col{ display:none; }
   body.immersive #video-tools{ opacity:0; transition:opacity .2s; }
+  /* retro layout: the video fills the screen, so its toolbar drops below the Menu / Immersive buttons instead of under them */
+  body.immersive:not(.player-layout) #video-tools{ top:max(58px, calc(env(safe-area-inset-top, 0px) + 48px)); }
   body.immersive #video-wrap:hover #video-tools,
   body.immersive #video-wrap:focus-within #video-tools,
   body.immersive #video-tools:has([id$="-dropdown"].open){ opacity:1; }

@@ -101,7 +101,7 @@
       if (/^half volume$|^volume half$/i.test(t)) return setVol(50);
       // fullscreen / immersive / picture in picture / rotate / zoom / fit / filter / frames (video things)
       if ((m = t.match(/^(?:(?:go|enter|turn on|switch to|put it in|make it) )?full ?screen(?: mode)?(?: on)?$|^(exit|leave|close|turn off|get out of|quit|stop) full ?screen(?: mode)?$/i))) {
-        const inFs = !!document.fullscreenElement, out = !!m[1];
+        const inFs = document.body.classList.contains('immersive'), out = !!m[1];
         if (out && !inFs) return say('It is not in fullscreen.'); if (!out && inFs) return say('Already in fullscreen.');
         if (!out && !isVid()) return say('Fullscreen is for videos, and the current track is audio.');
         GA('fullscreen'); return done(out ? 'Left fullscreen.' : 'Fullscreen.');

@@ -2,10 +2,7 @@
   document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT') return;
     if (e.code === 'Escape'){
-      if (document.body.classList.contains('immersive')){
-        document.body.classList.remove('immersive');
-        applyImmersiveBackground();
-      }
+      if (document.body.classList.contains('immersive')) setImmersive(false);
       return;
     }
     if (e.code === 'Space'){

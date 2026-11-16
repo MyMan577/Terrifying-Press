@@ -94,7 +94,7 @@
     if (history.state && history.state.ppPlayer){ history.back(); } // popstate hides it
     else hidePlayer();
   }
-  window.addEventListener('popstate', hidePlayer);
+  window.addEventListener('popstate', () => { if (!(history.state && history.state.ppPlayer)) hidePlayer(); });   // Back out of immersive stays on the player
   backBtn.addEventListener('click', closePlayer);
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && body.hasAttribute('data-pl-player') && !document.querySelector('.modal-open, [aria-modal="true"]:not([hidden])')) closePlayer();
