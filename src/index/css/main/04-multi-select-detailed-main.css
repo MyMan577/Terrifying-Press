@@ -415,41 +415,42 @@
      what was left (often nothing). Now the list gets a fixed share of the screen (draggable as before), the player
      fills the rest, compacted to fit it, and scrolls inside itself if it ever has to, instead of pushing anything off.
      None of it applies while a video is fullscreen (body.pp-fs): the scrolling, paint-contained #main around the video
-     box left the fullscreen video black on the phone. */
+     box left the fullscreen video black on the phone. Nor in immersive mode (body.immersive): these out-rank the
+     immersive rules, so the video sat in the top corner, padded, capped in height and running off the right edge. */
   @media (max-width: 720px){
-    body:not(.player-layout):not(.pp-fs) #app{ height:100dvh; grid-template-rows:auto minmax(0, 1fr); }
-    body:not(.player-layout):not(.pp-fs) #sidebar{ height:50dvh; max-height:none; min-height:200px; }
-    body:not(.player-layout):not(.pp-fs) #sidebar-header{ padding-top:10px; padding-bottom:6px; }
-    body:not(.player-layout):not(.pp-fs) .sidebar-pane{ overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #app{ height:100dvh; grid-template-rows:auto minmax(0, 1fr); }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #sidebar{ height:50dvh; max-height:none; min-height:200px; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #sidebar-header{ padding-top:10px; padding-bottom:6px; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) .sidebar-pane{ overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
     /* songs first: the tagging tools (AI tagging, Tagged tracks) move below the list instead of filling the top half */
-    body:not(.player-layout):not(.pp-fs) #sidebar-pane-playlist > #ppv-libhost,
-    body:not(.player-layout):not(.pp-fs) #sidebar-pane-playlist > #ppv-savedhost{ order:2; }
-    body:not(.player-layout):not(.pp-fs) #sidebar-pane-playlist > #select-bar{ order:3; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #sidebar-pane-playlist > #ppv-libhost,
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #sidebar-pane-playlist > #ppv-savedhost{ order:2; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #sidebar-pane-playlist > #select-bar{ order:3; }
     /* tighter toolbar rows and track rows, so several songs show at once */
-    body:not(.player-layout):not(.pp-fs) #action-row{ margin:8px 14px 6px 14px; gap:6px; }
-    body:not(.player-layout):not(.pp-fs) #action-row button{ padding-top:6px; padding-bottom:6px; }
-    body:not(.player-layout):not(.pp-fs) #search-row{ padding:0 14px 6px 14px; }
-    body:not(.player-layout):not(.pp-fs) #track-search{ padding-top:7px; padding-bottom:7px; }
-    body:not(.player-layout):not(.pp-fs) #playlist-view-row{ padding:0 14px 6px 14px; }
-    body:not(.player-layout):not(.pp-fs) #playlist-view-select{ padding:6px 10px; }
-    body:not(.player-layout):not(.pp-fs) #browse-row{ padding:0 14px 6px 14px; }
-    body:not(.player-layout):not(.pp-fs) #browse-row button{ padding-top:4px; padding-bottom:4px; }
-    body:not(.player-layout):not(.pp-fs) #playlist{ padding:2px 6px 10px 6px; }
-    body:not(.player-layout):not(.pp-fs) .track{ padding:6px 8px; gap:8px; }
-    body:not(.player-layout):not(.pp-fs) .track-thumb{ width:40px; height:40px; flex:0 0 40px; }
-    body:not(.player-layout):not(.pp-fs) #main{
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #action-row{ margin:8px 14px 6px 14px; gap:6px; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #action-row button{ padding-top:6px; padding-bottom:6px; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #search-row{ padding:0 14px 6px 14px; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #track-search{ padding-top:7px; padding-bottom:7px; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #playlist-view-row{ padding:0 14px 6px 14px; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #playlist-view-select{ padding:6px 10px; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #browse-row{ padding:0 14px 6px 14px; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #browse-row button{ padding-top:4px; padding-bottom:4px; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #playlist{ padding:2px 6px 10px 6px; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) .track{ padding:6px 8px; gap:8px; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) .track-thumb{ width:40px; height:40px; flex:0 0 40px; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #main{
       min-height:0; overflow-y:auto; overscroll-behavior:contain;
       justify-content:flex-start; padding:14px 16px 12px 16px;
       contain:layout paint;
     }
     /* the player shrinks to the room it has: disc and video take what is left after the controls (~250 px) */
-    body:not(.player-layout):not(.pp-fs) #viz-wrap{ width:min(62vw, calc(50dvh - 280px), 300px); height:min(62vw, calc(50dvh - 280px), 300px); min-width:120px; min-height:120px; margin:6px auto 10px auto; flex:0 0 auto; }
-    body:not(.player-layout):not(.pp-fs) #video-wrap{ max-height:max(150px, calc(50dvh - 230px)); margin:0 auto 10px auto; flex:0 0 auto; }
-    body:not(.player-layout):not(.pp-fs) #video-el{ max-height:max(150px, calc(50dvh - 230px)); }
-    body:not(.player-layout):not(.pp-fs) #now-playing{ margin:0 auto 10px auto; }
-    body:not(.player-layout):not(.pp-fs) #np-title{ font-size:16px; margin-bottom:2px; }
-    body:not(.player-layout):not(.pp-fs) #transport{ gap:16px; margin-bottom:10px; }
-    body:not(.player-layout):not(.pp-fs) #extra-transport{ justify-content:center; margin-bottom:8px; }
-    body:not(.player-layout):not(.pp-fs) #controls-footer{ margin-top:2px; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #viz-wrap{ width:min(62vw, calc(50dvh - 280px), 300px); height:min(62vw, calc(50dvh - 280px), 300px); min-width:120px; min-height:120px; margin:6px auto 10px auto; flex:0 0 auto; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #video-wrap{ max-height:max(150px, calc(50dvh - 230px)); margin:0 auto 10px auto; flex:0 0 auto; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #video-el{ max-height:max(150px, calc(50dvh - 230px)); }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #now-playing{ margin:0 auto 10px auto; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #np-title{ font-size:16px; margin-bottom:2px; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #transport{ gap:16px; margin-bottom:10px; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #extra-transport{ justify-content:center; margin-bottom:8px; }
+    body:not(.player-layout):not(.pp-fs):not(.immersive) #controls-footer{ margin-top:2px; }
   }
 

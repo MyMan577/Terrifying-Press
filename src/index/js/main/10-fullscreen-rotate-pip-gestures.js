@@ -1,28 +1,51 @@
-  // ---------- Fullscreen ----------
+  // ---------- Fullscreen = immersive mode ----------
+  // The real Fullscreen API stopped working in the Android app (the WebView's fullscreen view never showed the native
+  // video layer), so the Fullscreen button, the fullscreen gesture, F and Bloopy all turn on immersive mode instead:
+  // the page itself fills the screen, which works with the native video layer.
+  function setImmersive(on){
+    if (on === document.body.classList.contains('immersive')) return;
+    document.body.classList.toggle('immersive', on);
+    applyImmersiveBackground();
+  }
   fullscreenBtn.addEventListener('click', () => {
-    if (document.fullscreenElement){
-      document.exitFullscreen();
-    } else {
-      videoWrap.requestFullscreen().catch(()=>{});
-    }
+    if (document.fullscreenElement){ document.exitFullscreen(); return; }   // a leftover real fullscreen: leave it
+    setImmersive(!document.body.classList.contains('immersive'));
   });
-  document.addEventListener('fullscreenchange', () => {
-    fullscreenBtn.classList.toggle('toggled', !!document.fullscreenElement);
-    document.body.classList.toggle('pp-fs', !!document.fullscreenElement);   // turns off the retro phone layout's sizing around the video
-    if (!document.fullscreenElement){ releaseRotation(); return; }
-    // Entering fullscreen on a video turns the screen to match it (landscape video -> landscape), like any video app.
+  // Immersive is turned on and off from many places (its own button, gestures, Escape, Bloopy), so follow the class.
+  let wasImmersive = document.body.classList.contains('immersive');
+  new MutationObserver(() => {
+    const im = document.body.classList.contains('immersive');
+    if (im === wasImmersive) return;
+    wasImmersive = im;
+    fullscreenBtn.classList.toggle('toggled', im);
+    // The phone's Back button leaves immersive first: entering it adds a history step (keeping the page's own
+    // flags, so the player / folder / game handlers see no change when that step is popped).
+    try {
+      const st = history.state || {};
+      if (im && !st.ppImm) history.pushState(Object.assign({}, st, { ppImm: 1 }), '');
+      else if (!im && st.ppImm) history.back();
+    } catch(e){}
+    if (!im){ releaseRotation(); return; }
+    // Entering immersive on a video turns the screen to match it (landscape video -> landscape), like fullscreen did.
     // The Rotate button's own choice wins if it is already in charge.
-    if (!rotationLocked && document.fullscreenElement === videoWrap && currentIndex !== -1 && tracks[currentIndex] && tracks[currentIndex].kind === 'video'){
+    if (!rotationLocked && currentIndex !== -1 && tracks[currentIndex] && tracks[currentIndex].kind === 'video'){
       lockOrientation(videoOrientation()).then(() => { orientAuto = true; }).catch(() => {});
     }
+  }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  window.addEventListener('popstate', () => {
+    if (document.body.classList.contains('immersive') && !(history.state && history.state.ppImm)) setImmersive(false);
+  });
+  document.addEventListener('fullscreenchange', () => {
+    document.body.classList.toggle('pp-fs', !!document.fullscreenElement);   // turns off the retro phone layout's sizing around the video
+    if (!document.fullscreenElement && !document.body.classList.contains('immersive')) releaseRotation();
   });
 
   // ---------- Force rotate ----------
-  // Flips the phone between landscape and portrait. Browsers only allow an orientation
-  // lock while fullscreen, so this enters fullscreen first. Not available on iOS Safari.
+  // Flips the phone between landscape and portrait, in immersive mode. In the app the native lock needs no
+  // fullscreen; only a plain browser (no plugin) still needs real fullscreen for screen.orientation.lock.
   const rotateBtn = document.getElementById('rotate-btn');
   let rotationLocked = false;   // the Rotate button forced an orientation
-  let orientAuto = false;       // fullscreen matched the screen to the video
+  let orientAuto = false;       // immersive matched the screen to the video
   // Tries, in order: the Capacitor Screen Orientation plugin (the Android app's WebView has no web lock),
   // then the browser's screen.orientation.lock (which needs fullscreen).
   // The app's own player plugin (PPPlayer.lockOrientation) does the same job when that plugin is not installed.
@@ -58,16 +81,17 @@
   rotateBtn.addEventListener('click', async () => {
     const cur = (screen.orientation && screen.orientation.type) || (window.innerWidth > window.innerHeight ? 'landscape' : 'portrait');
     const target = /^landscape/.test(cur) ? 'portrait' : 'landscape';
-    const hadLock = rotationLocked, hadAuto = orientAuto;
-    rotationLocked = true;   // so the fullscreen auto-lock does not fight this choice
+    const hadLock = rotationLocked, hadAuto = orientAuto, hadImm = document.body.classList.contains('immersive');
+    rotationLocked = true;   // so the immersive auto-lock does not fight this choice
     try {
-      try { if (!document.fullscreenElement) await videoWrap.requestFullscreen(); }
-      catch(e){ if (!capOrient()) throw e; }   // the plugin does not need fullscreen
+      if (capOrient()) setImmersive(true);
+      else if (!document.fullscreenElement) await videoWrap.requestFullscreen();
       await lockOrientation(target);
       orientAuto = false;
       rotateBtn.classList.add('toggled');
     } catch(e){
       rotationLocked = hadLock; orientAuto = hadAuto;
+      if (!hadImm) setImmersive(false);
       showToast(e && e.message === 'unsupported'
         ? 'This phone can\u2019t lock the screen. Turn on auto-rotate and turn your phone.'
         : 'Couldn\u2019t rotate the screen here.', 'error');
@@ -76,10 +100,7 @@
 
   // ---------- Picture-in-Picture ----------
   const immersiveBtn = document.getElementById('immersive-btn');
-  immersiveBtn.addEventListener('click', () => {
-    document.body.classList.toggle('immersive');
-    applyImmersiveBackground();
-  });
+  immersiveBtn.addEventListener('click', () => setImmersive(!document.body.classList.contains('immersive')));
 
   // ---------- Gesture / tap controls ----------
   // Tap zones split each surface (disc / video) into left / center / right
@@ -99,11 +120,8 @@
     volUp:         { label: 'Volume +10%', run: () => { volume.value = Math.min(100, parseFloat(volume.value) + 10); volume.dispatchEvent(new Event('input')); saveSettings(); } },
     volDown:       { label: 'Volume -10%', run: () => { volume.value = Math.max(0, parseFloat(volume.value) - 10); volume.dispatchEvent(new Event('input')); saveSettings(); } },
     mute:          { label: 'Mute / unmute', run: () => { const m = media(); m.muted = !m.muted; updateVolIcon(); } },
-    fullscreen:    { label: 'Toggle fullscreen', run: () => {
-        if (document.fullscreenElement) document.exitFullscreen();
-        else if (currentIndex !== -1 && tracks[currentIndex] && tracks[currentIndex].kind === 'video') videoWrap.requestFullscreen().catch(()=>{});
-      } },
-    immersive:     { label: 'Toggle immersive', run: () => { document.body.classList.toggle('immersive'); applyImmersiveBackground(); } },
+    fullscreen:    { label: 'Toggle fullscreen (immersive)', run: () => fullscreenBtn.click() },
+    immersive:     { label: 'Toggle immersive', run: () => setImmersive(!document.body.classList.contains('immersive')) },
     nextFilter:    { label: 'Next video filter', run: () => {
         const names = Object.keys(VIDEO_FILTERS);
         const idx = (names.indexOf(activeFilter) + 1) % names.length;
