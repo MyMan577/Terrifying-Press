@@ -313,9 +313,9 @@ class NativePlayerPlugin : Plugin() {
                     val item = buildItem(orig, play, call.data)
                     currentItem = item; nextUri = null
                     probeAsync(orig, play)
-                    s.player.setAudioAttributes(
+                    s.setMediaAudio(                       // audio focus is handled, except during a call (see syncFocus)
                         AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
-                            .setContentType(if (kind == "video") C.AUDIO_CONTENT_TYPE_MOVIE else C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
+                            .setContentType(if (kind == "video") C.AUDIO_CONTENT_TYPE_MOVIE else C.AUDIO_CONTENT_TYPE_MUSIC).build())
                     applyVideoTrack(s.player)
                     s.player.setMediaItem(item, startMs)
                     s.player.prepare()
@@ -341,7 +341,7 @@ class NativePlayerPlugin : Plugin() {
         return MediaItem.Builder().setMediaId(if (id.isNotEmpty()) id else orig).setUri(Uri.parse(play)).setMediaMetadata(md.build()).build()
     }
 
-    @PluginMethod fun play(call: PluginCall) = withSvc(call) { it.player.play(); call.resolve() }
+    @PluginMethod fun play(call: PluginCall) = withSvc(call) { it.syncFocus(); it.player.play(); call.resolve() }
     @PluginMethod fun pause(call: PluginCall) = withSvc(call) { it.player.pause(); call.resolve() }
     @PluginMethod fun seek(call: PluginCall) {
         val ms = call.data.optLong("ms", 0L).coerceAtLeast(0)         // see loadMedia: getLong("ms") was always null here, so every seek went to 0

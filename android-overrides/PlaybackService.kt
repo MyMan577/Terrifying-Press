@@ -6,8 +6,11 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.media.AudioManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.ForwardingPlayer
@@ -148,6 +151,12 @@ class PlaybackService : MediaLibraryService() {
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .build()
+        syncFocus()
+        if (Build.VERSION.SDK_INT >= 31) {
+            val l = AudioManager.OnModeChangedListener { syncFocus() }
+            audioManager.addOnModeChangedListener(java.util.concurrent.Executor { main.post(it) }, l)
+            modeListener = l
+        }
         player.addAnalyticsListener(object : AnalyticsListener {
             override fun onAudioDecoderInitialized(
                 eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long
@@ -192,8 +201,37 @@ class PlaybackService : MediaLibraryService() {
         if (!player.playWhenReady || player.mediaItemCount == 0) stopSelf()
     }
 
+    // ---------- Audio focus vs. phone calls ----------
+    // With Media3's audio-focus handling on, a phone or VoIP call (or the phone ringing) holds the focus, so the player
+    // was held paused and Play did nothing until the call ended. While a call is on, the player stops asking for focus
+    // and simply plays; when the call ends it goes back to the normal behaviour (other apps pause it, it pauses them).
+    private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    private var mediaAttrs: AudioAttributes = AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
+        .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build()
+    private var focusHandled: Boolean? = null
+    private var modeListener: Any? = null   // an AudioManager.OnModeChangedListener (Android 12+ only)
+
+    private fun inCall(): Boolean = when (audioManager.mode) {
+        AudioManager.MODE_IN_CALL, AudioManager.MODE_IN_COMMUNICATION, AudioManager.MODE_RINGTONE -> true
+        else -> Build.VERSION.SDK_INT >= 30 && audioManager.mode == AudioManager.MODE_CALL_SCREENING
+    }
+
+    /** The audio attributes for what is loaded (music or a movie soundtrack); focus is handled per [syncFocus]. */
+    fun setMediaAudio(attrs: AudioAttributes) { mediaAttrs = attrs; focusHandled = null; syncFocus() }
+
+    /** Follows the call state. Also run before Play, for phones older than Android 12 (no mode-change listener). */
+    fun syncFocus() {
+        if (!::player.isInitialized) return
+        val handle = try { !inCall() } catch (_: Exception) { true }
+        if (handle == focusHandled) return
+        focusHandled = handle
+        player.setAudioAttributes(mediaAttrs, handle)
+    }
+
     override fun onDestroy() {
         instance = null
+        if (Build.VERSION.SDK_INT >= 31) (modeListener as? AudioManager.OnModeChangedListener)?.let { try { audioManager.removeOnModeChangedListener(it) } catch (_: Exception) {} }
+        modeListener = null
         clearMirror()   // so the session's player is ExoPlayer again when it is released below
         session?.run { player.release(); release() }
         session = null
