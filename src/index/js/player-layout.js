@@ -498,7 +498,8 @@
 
     const sig = JSON.stringify([
       tracks.map(t => [t.dbId, t.title, t.kind, t.duration, !!t.artUrl, thumbCache.has(t.dbId), t.playlistIds]),
-      pls, view, histAll.map(x => [x.h.id, x.h.at]), tracks.map(t => t.artist), cur, openSec, openPlId, (window.__ppEdition ? window.__ppEdition() : '')
+      pls, view, histAll.map(x => [x.h.id, x.h.at]), tracks.map(t => t.artist), cur, openSec, openPlId, (window.__ppEdition ? window.__ppEdition() : ''),
+      (window.PPWidgets ? window.PPWidgets.sig() : '')
     ]);
     if (!force && sig === lastSig) return;
     lastSig = sig;
@@ -591,7 +592,14 @@
       const head = '<div class="ph-title-row"><h1 class="ph-app-title">Press Play Media<span class="ed-slot"></span></h1>' +
         '<button type="button" class="pp-games-btn" data-pp-games aria-label="Games"><span class="pp-gi"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M7.6 6.5h8.8a5.2 5.2 0 0 1 5.1 4.2l.9 4.9a2.7 2.7 0 0 1-4.7 2.3l-2.1-2.4H8.4l-2.1 2.4a2.7 2.7 0 0 1-4.7-2.3l.9-4.9a5.2 5.2 0 0 1 5.1-4.2z"/><path fill="#5a3fc4" d="M6.6 9.3h1.6v1.6h1.6v1.6H8.2v1.6H6.6v-1.6H5v-1.6h1.6z"/><circle cx="16.2" cy="10.2" r="1.15" fill="#5a3fc4"/><circle cx="18" cy="12.3" r="1.15" fill="#5a3fc4"/></svg></span><span>Games</span></button></div>' +
         (ed ? '<div class="ph-tag">' + TAGLINES[ed] + '</div>' : '');
-      if (ed === 'lite'){
+      if (window.PPWidgets && window.PPWidgets.has('home')){
+        // Customize > Layout: the user's own arrangement. The built-in parts are handed over ready-made.
+        homeEl.innerHTML = window.PPWidgets.renderHome({ ed, head, hero, tabs, vidIdx, audIdx, histAll, cur, audSub,
+          chips: vidIdx.length ? '<div class="ph-chips"><button type="button" class="ph-chip" data-act="shuffle-all">' + IC_SHUF + 'Shuffle all</button>' +
+            (hist.length ? '<button type="button" class="ph-chip" data-act="resume">' + IC_PLAYSM + 'Resume</button>' : '') + '</div>' : '',
+          playground: ed === 'playground' && window.PPPlayground && window.PPPlayground.homeStrip ? window.PPPlayground.homeStrip() : '',
+          tagline: ed ? '<div class="ph-tag">' + TAGLINES[ed] + '</div>' : '', histBtn });
+      } else if (ed === 'lite'){
         const rows = vidIdx.map(i => listRowHTML(tracks[i], i, 'videos', tracks[i].height ? tracks[i].height + 'p' : (tracks[i].ext || '').toUpperCase(), i === cur));
         const aRows = audIdx.map(i => listRowHTML(tracks[i], i, 'audio', audSub(tracks[i]), i === cur));
         homeEl.innerHTML = head + tabs + hero +
@@ -622,7 +630,7 @@
   }
   function scheduleHome(){
     if (homeTimer) return;
-    homeTimer = setTimeout(() => { homeTimer = null; renderHome(false); renderStrip(false); }, 250);
+    homeTimer = setTimeout(() => { homeTimer = null; renderHome(false); renderStrip(false); if (window.PPWidgets) window.PPWidgets.onData(); }, 250);
   }
 
   function playFrom(i, queue){
@@ -655,7 +663,9 @@
     else if (act === 'play-video'){
       const i = +el.dataset.idx;
       let queue;
-      if (el.dataset.src === 'history'){
+      const qEl = el.closest('[data-pw-q]');   // a row from Customize > Layout carries its own queue
+      if (qEl) queue = qEl.dataset.pwQ.split(',').filter(Boolean).map(Number);
+      else if (el.dataset.src === 'history'){
         const byId = new Map(tracks.map((t, k) => [t.dbId, k]));
         queue = playHistory.map(h => byId.get(h.id)).filter(k => k != null);
       } else if (el.dataset.src === 'audio'){
@@ -796,6 +806,14 @@
     if (on && view === 'playlists') A.applyPlaylistStyle(homeEl); else A.clearStyle(homeEl);
   }
   window.__ppOnCustomize = syncHomeBg;
+  // Pieces of the Home screen that Customize > Layout (pp-widgets.js) builds its widgets from.
+  window.__ppHomeKit = {
+    cardHTML, listRowHTML, sectionHTML, thumbHTML, esc, relTime, fmtDur,
+    history: () => playHistory, playFrom, openPlayer, goTab: v => goTab(v), setView: v => setView(v),
+    view: () => view, on: () => on, renderHome: f => renderHome(f),
+    observe: el => { if (thumbObserver) el.querySelectorAll('.ph-thumb:not(.has-img)').forEach(t => thumbObserver.observe(t)); },
+    hasTrack: () => body.classList.contains('pl-has-track')
+  };
   window.__ppRenderHomeNow = () => { try { renderHome(true); } catch(e){} renderStrip(true); };
   window.__ppOnChange = scheduleHome;
   window.__ppOnPlay = t => {
