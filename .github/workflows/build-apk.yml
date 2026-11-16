@@ -271,6 +271,9 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
+          # The generated project's default heap (about 1.5 GB) ran out while packaging the APK's large assets.
+          # A later line in gradle.properties wins, so this raises it; the runners have 16 GB.
+          printf '\norg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8\n' >> gradle.properties
           ./gradlew assembleDebug --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/gradle-build.log"
 
       - name: Show which key signed the APK

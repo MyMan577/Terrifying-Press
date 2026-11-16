@@ -929,7 +929,32 @@
     layout: function(){ return clone(L); }
   };
   applyHide();
-  function boot(){ applyTabs(); renderPlayer(); buildPanel(); if (L.zones.home && kit()) kit().renderHome(true); }
+  // The Customize button lives in the player's \u2630 menu, which Home and Settings don't show. This card in
+  // Settings > Appearance & layout is the way in from anywhere.
+  function settingsEntry(){
+    var pane = document.getElementById('sidebar-pane-settings');
+    if (!pane || document.getElementById('pw-customize-section')) return;
+    var sec = document.createElement('div'); sec.className = 'settings-section'; sec.id = 'pw-customize-section';
+    sec.innerHTML = '<div class="settings-row"><div class="settings-row-text"><div class="settings-row-title">Customize</div>' +
+      '<div class="settings-row-sub">Colours, fonts and style, where everything goes, widgets, your own pages and backgrounds.</div></div></div>' +
+      '<div class="pw-cz-grid">' +
+        '<button type="button" class="pw-cz" data-cz="theme">' + svg('palette') + '<span>Theme</span></button>' +
+        '<button type="button" class="pw-cz" data-cz="layout">' + svg('grid') + '<span>Layout</span></button>' +
+        '<button type="button" class="pw-cz" data-cz="home">' + svg('home') + '<span>Edit Home</span></button>' +
+        '<button type="button" class="pw-cz" data-cz="tabs">' + svg('tabs') + '<span>Tab bar</span></button>' +
+      '</div>';
+    pane.appendChild(sec);
+    sec.addEventListener('click', function(e){
+      var b = e.target.closest('[data-cz]'); if (!b) return;
+      var k = b.dataset.cz;
+      if (k === 'home') return startEdit('home');
+      if (k === 'tabs') return tabsSheet();
+      var btn = document.getElementById('customize-btn'); if (!btn) return;
+      btn.click();
+      setTimeout(function(){ var t = document.querySelector('.ppth-switch button[data-p="' + k + '"]'); if (t) t.click(); }, 0);
+    });
+  }
+  function boot(){ settingsEntry(); applyTabs(); renderPlayer(); buildPanel(); if (L.zones.home && kit()) kit().renderHome(true); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
   // Back button leaves a page or edit mode first.
   window.addEventListener('keydown', function(e){ if (e.key === 'Escape'){ if (!sheet.hidden) closeSheet(); else if (editing) stopEdit(); } });
