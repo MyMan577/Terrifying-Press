@@ -189,8 +189,127 @@
       }
       return { lines: L, cues };
     }
+    // ---------- Other songs as context: a song often needs its album or a sister song to make sense ----------
+    // Bloopy can read the saved summary and lyrics of other songs in the library. In Song Talk they are attached when the user
+    // names one ("how does this link to Hello"), points at one ("the previous track", "the album", "their other songs"), or
+    // hints at a link without naming it ("is this a sequel?"): then the model picks from a numbered list of likely songs.
+    // Attached songs stay for the rest of the talk and show as chips under the title bar, where they can be removed or added by hand.
+    const CTX_MAX = 6;
+    const CTX_PART = /\b(?:pt|part)\.?\s*(?:\d+|[ivx]+|one|two|three)\b|\b(?:reprise|interlude|intro|outro|prelude|continued|revisited)\b|\s(?:ii|iii|iv|v|vi|[1-9])\s*$/i;
+    const CTX_HINT = /\b(sequel|prequel|part (?:two|one|2|1|ii|i)|continu\w+|follow[- ]?up|call ?backs?|refer\w* (?:to|back)|references?|connect\w*|tie[sd]? (?:in|into|to|together)|link(?:s|ed)?|relate[sd]? to|related|relation\w*|same (?:story|character|person|theme)|story ?line|narrative|recurring|motifs?|compar\w+|versus|vs|differen\w+ (?:from|to|than)|similar to|other songs?|another song|earlier (?:song|track)|context)\b/i;
+    const ctxReal = () => window.__ppApi.tracks().filter(x => x && !x.stem);
+    const ctxArtistOf = t => t.artist && !/^(unknown artist|video|stream)$/i.test(t.artist) ? t.artist : '';
+    // The album's songs in track order (the song itself included). Folder names that players report as an "album" are ignored.
+    const ctxAlbum = t => {
+      const k = blNrm(t.album || ''); if (!k || /^(unknown|unknownalbum|music|audio|downloads?|songs?|videos?|movies?|whatsappaudio|recordings?)$/.test(k)) return [];
+      const al = ctxReal().filter(x => blNrm(x.album || '') === k).sort((a, b) => (a.trackNo || 9999) - (b.trackNo || 9999));
+      return al.length > 40 ? [] : al;
+    };
+    const ctxArtist = t => { const k = blNrm(ctxArtistOf(t)); return k ? ctxReal().filter(x => x.dbId !== t.dbId && blNrm(x.artist || '') === k) : []; };
+    const ctxHas = t => !!((sumLoad()[t.dbId] || {}).t) || getTranscript(t.dbId).words >= 12;       // is there anything to read for this song?
+    // "Song (Part 2)", "Song - Reprise", "Song II": the same base title means the songs belong together.
+    const ctxBase = x => blNrm(String(x || '').replace(new RegExp(CTX_PART.source, 'gi'), ' '));
+    const ctxSiblings = t => { const b = ctxBase(t.title); return b.length < 3 ? [] : ctxReal().filter(x => x.dbId !== t.dbId && blNrm(x.title) !== blNrm(t.title) && ctxBase(x.title) === b && (CTX_PART.test(x.title) || CTX_PART.test(t.title))); };
+    // Songs worth offering for this one: sister parts first, then the album (nearest tracks first), then the same artist. Only songs with something to read.
+    function ctxCandidates(t, skip) {
+      const out = [], push = x => { if (x && x.dbId !== t.dbId && !out.includes(x) && !(skip || []).includes(x.dbId) && ctxHas(x)) out.push(x); };
+      ctxSiblings(t).forEach(push);
+      const al = ctxAlbum(t), at = al.findIndex(x => x.dbId === t.dbId);
+      for (let d = 1; at >= 0 && d < al.length; d++) { push(al[at - d]); push(al[at + d]); }
+      ctxArtist(t).forEach(push);
+      return out;
+    }
+    // One other song as prompt text: its saved summary first (dense), then as much of its lyrics as the budget allows.
+    function ctxBrief(x, cur, tok) {
+      const a = ctxArtistOf(x), sum = String((sumLoad()[x.dbId] || {}).t || '').replace(/\n*Sound:[^\n]*$/, '').replace(/\s*\n+\s*/g, ' ').trim(), tr = getTranscript(x.dbId);
+      const same = cur && x.album && blNrm(x.album) === blNrm(cur.album || '');
+      let out = '"' + x.title + '"' + (a ? ' by ' + a : '') + (same ? ' (same album' + (x.trackNo ? ', track ' + (x.trackNo % 1000) : '') + ')' : x.album && ctxAlbum(x).length ? ' (album: ' + x.album + ')' : '');
+      const clip = (q, n) => { if (q.length <= n) return q; const c = q.slice(0, Math.max(0, n)), e = c.lastIndexOf('. '); return (e > n * 0.5 ? c.slice(0, e + 1) : c.replace(/\s+\S*$/, '')) + ' …'; };
+      let chars = Math.max(0, (tok - Math.ceil(out.length / 3) - 8) * 3);
+      if (sum) { const q = clip(sum, tr.lines.length && tok >= 90 ? Math.floor(chars * 0.5) : chars); if (q.length > 12) { out += '\nSummary: ' + q; chars -= q.length + 10; } }
+      if (tr.lines.length && chars > 60 && !(sum && tok < 90)) {                          // tight budget: the summary alone says more than two lines of lyrics
+        const ly = []; let n = 0;
+        for (const q of tr.lines) { if (n + q.length + 3 > chars) break; ly.push(q); n += q.length + 3; }
+        if (ly.length) out += '\nLyrics' + (ly.length < tr.lines.length ? ' (the start)' : '') + ': ' + ly.join(' / ');
+      }
+      if (!sum && !tr.lines.length) { let tg = ''; try { tg = tagLine(x); } catch (e) {} out += '\n(No lyrics or summary are saved for this song' + (tg ? '; its sound: ' + tg : '') + '. Say that you have not read its words.)'; }
+      return out;
+    }
+    // Several songs inside one token budget. The most recently asked-for songs get the room; the rest are only named.
+    function ctxBriefs(list, cur, tok) {
+      if (!list.length || tok < 50) return '';
+      const fit = Math.max(1, Math.min(list.length, Math.floor(tok / 45))), use = list.slice(-fit), rest = list.slice(0, list.length - fit);
+      return use.map(x => ctxBrief(x, cur, Math.floor(tok / fit))).join('\n\n') + (rest.length ? '\n\n(Also asked for, but there was no room to show them: ' + rest.map(x => x.title).join(', ') + ')' : '');
+    }
+    const ctxList = st => { const tr = window.__ppApi.tracks(); return (st.ctx || []).map(id => tr.find(x => x && x.dbId === id)).filter(Boolean); };
+    const ctxAlbumLine = t => { const al = ctxAlbum(t); return al.length < 2 ? '' : '\nALBUM: "' + t.album + '". Track order: ' + al.slice(0, 18).map((x, i) => (i + 1) + '. ' + x.title + (x.dbId === t.dbId ? ' (this song)' : '')).join('; ') + (al.length > 18 ? '; …' : '') + '\n'; };
+    // Which other songs does this message ask for? list = songs to attach now, hint = it talks about a link but names nothing, note = something to tell the model.
+    function ctxWanted(st, text) {
+      const tr = window.__ppApi.tracks(), t = st.t, low = String(text).toLowerCase(), list = [], push = x => { if (x && !x.stem && x.dbId !== t.dbId && !list.includes(x)) list.push(x); };
+      let note = '';
+      try { blNamed(text).forEach(i => push(tr[i])); } catch (e) {}
+      (String(text).match(/["“][^"“”]{2,60}["”]/g) || []).forEach(q => { try { const i = blFindSong(q); if (i >= 0) push(tr[i]); } catch (e) {} });
+      const al = ctxAlbum(t), at = al.findIndex(x => x.dbId === t.dbId);
+      if (al.length > 1 && at >= 0) {
+        const closing = /\b(closing|final|last) (song|track) (on|of|in|from)\b|\bcloser\b/.test(low);
+        if (closing) push(al[al.length - 1]);
+        else if (/\b(previous|last|prior|preceding) (song|track|one)\b|\b(song|track|one) (before|preceding)\b/.test(low)) push(al[at - 1]);
+        if (/\bnext (song|track|one)\b|\b(song|track|one) (after|following)\b|\bfollowing (song|track)\b/.test(low)) push(al[at + 1]);
+        if (/\b(opening|first) (song|track)\b|\bopener\b/.test(low)) push(al[0]);
+        const m = low.match(/\b(?:track|song) (?:number |no\.? ?|#)?(\d{1,2})\b/); if (m) push(al.find(x => (x.trackNo || 0) % 1000 === +m[1]) || al[+m[1] - 1]);
+      }
+      if (/\b(albums?|ep|lp|mixtape|soundtrack|track ?list)\b|\b(rest of the|other) (songs|tracks) (on|from|in)\b/.test(low)) {
+        if (al.length > 1) {
+          const got = ctxCandidates(t).filter(x => al.includes(x)).slice(0, 4); got.forEach(push);
+          if (!got.length) note = 'None of the other songs on this album have lyrics or a summary saved, so you only know their titles. Tell the user that transcribing or summarising them lets you connect them.';
+        } else if (!list.length) note = 'This song has no album saved in its tags, so you cannot see its album. Tell the user they can name another song in their library instead.';
+      }
+      if (/\b(other|another|earlier|later|older|newer) (songs?|tracks?|work|music|stuff|albums?)\b|\bdiscography\b|\b(his|her|their) (songs|catalog(ue)?|work)\b/.test(low) && !list.length) ctxCandidates(t).filter(x => !ctxSiblings(t).includes(x)).slice(0, 3).forEach(push);
+      return { list: list.slice(0, 4), hint: !list.length && CTX_HINT.test(low), note };
+    }
+    // The message hints at a link but names no song: the model picks from a short numbered list (small models do that reliably).
+    async function ctxPlan(g, st, text, status) {
+      const c = ctxCandidates(st.t, st.ctx).slice(0, 10); if (!c.length) return [];
+      if (c.length <= 2) return c;                                           // nothing to choose between
+      status('Checking which other songs matter…');
+      const al = ctxAlbum(st.t), menu = c.map((x, i) => (i + 1) + ' = ' + x.title + (al.includes(x) ? ' (same album' + (x.trackNo ? ', track ' + (x.trackNo % 1000) : '') + ')' : ''));
+      try {
+        const o = await g([{ role: 'system', content: 'The user is asking about the song "' + st.title + '"' + (st.artist ? ' by ' + st.artist : '') + '. Decide which OTHER songs must be read to answer. Reply with ONLY the numbers of the songs needed, at most 3, separated by commas, or 0 if no other song is needed.\nSongs:\n' + menu.join('\n') },
+          { role: 'user', content: text }], { max_new_tokens: 12, do_sample: false, temperature: 0, top_k: 1, repetition_penalty: 1 });
+        let r = o && o[0] && o[0].generated_text; r = Array.isArray(r) ? (r[r.length - 1] || {}).content : r;
+        const nums = (String(r || '').match(/\d{1,2}/g) || []).map(Number);
+        if (nums.length && nums.every(n => n === 0)) return [];
+        const pick = [...new Set(nums.filter(n => n >= 1 && n <= c.length))].slice(0, 3).map(n => c[n - 1]);
+        if (pick.length) return pick;
+      } catch (e) { console.warn('song context plan failed', e); }
+      return c.slice(0, 2);                                                   // no usable answer: the two closest songs
+    }
+    function ctxAttach(st, list) {
+      list.forEach(x => { if (!x || x.dbId === st.t.dbId) return; const k = st.ctx.indexOf(x.dbId); if (k >= 0) st.ctx.splice(k, 1); st.ctx.push(x.dbId); });   // asked for again = moved to the front of the queue
+      st.ctx = st.ctx.slice(-CTX_MAX); ctxChips(st);
+    }
+    // Chips under the Song Talk bar: one per attached song (tap to remove) and a button to add more.
+    function ctxChips(st) {
+      if (!st.row) return; st.row.textContent = '';
+      const mk = (label, title, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.title = title; b.onclick = fn; st.row.appendChild(b); return b; };
+      ctxList(st).forEach(x => mk('📎 ' + (x.title.length > 22 ? x.title.slice(0, 21) + '…' : x.title) + ' ✕', 'Stop reading ' + x.title, () => { st.ctx = st.ctx.filter(id => id !== x.dbId); ctxChips(st); }));
+      mk('＋ Add a song', 'Read another song alongside this one', () => ctxPick(st));
+    }
+    function ctxPick(st) {
+      if (songTalk !== st) return;
+      clist.querySelectorAll('.ch-a.ctx-pick').forEach(r => r.remove());
+      const c = ctxCandidates(st.t, st.ctx), al = ctxAlbum(st.t), inAl = c.filter(x => al.includes(x));
+      add('bot', blTone(c.length ? 'Which song should I read alongside ' + st.title + '? Pick one, or just name any song in your library while we talk.' : 'Just name any song in your library while we talk and I will read its lyrics and summary too.' + (st.ctx.length ? '' : ' (Nothing else from this album or artist has lyrics or a summary saved yet.)')));
+      if (!c.length) return;
+      const row = c.slice(0, 6).map(x => ['📎 ' + x.title, (b, d) => { b.remove(); if (!d.children.length) d.remove(); if (songTalk === st) ctxAttach(st, [x]); }]);
+      if (inAl.length >= 2) row.unshift(['💿 The album (' + Math.min(4, inAl.length) + ')', (b, d) => { d.remove(); if (songTalk === st) ctxAttach(st, inAl.slice(0, 4).reverse()); }]);
+      actions(row).classList.add('ctx-pick');
+    }
     function songTalkSys(st, lyricTok) {
       const t = st.t, f = songTalkFacts(t), sum = (sumLoad()[t.dbId] || {}).t || '';
+      // Other songs take a share of the lyric budget (more when there are several); what they do not use goes back to this song's lyrics.
+      const others = ctxList(st), rel = others.length ? ctxBriefs(others, t, Math.floor(lyricTok * (others.length > 1 ? 0.5 : 0.38))) : '';
+      lyricTok = Math.max(120, lyricTok - Math.ceil(rel.length / 3));
       let lyr = f.cues.length ? f.cues.map(([at, q]) => '[' + mmssT(at) + '] ' + q) : getTranscript(t.dbId).lines;
       // collapse straight repeats so the budget goes to new lines
       lyr = lyr.filter((q, i) => i === 0 || q.replace(/^\[[^\]]*\] /, '') !== lyr[i - 1].replace(/^\[[^\]]*\] /, ''));
@@ -199,12 +318,16 @@
         'Cover what they ask about: the LITERAL meaning (what the words actually say happens), the METAPHORICAL meaning (images, symbols, double meanings and what they stand for), and the COMPOSITION (structure, how the music, tempo, key, instruments and vocals support the words). ' +
         'Use the lyrics and facts below. You may add what you reliably know about this song and artist; never invent facts, and say clearly when something is interpretation rather than fact. ' +
         'Quote at most a short line at a time. Answer the question directly ' + (CHAT_STYLES[chatStyleKey()].bul ? CHAT_LENS[chatLenKey()].bul : CHAT_LENS[chatLenKey()].talk) + ', then you may suggest one thing to explore next. ' + CHAT_STYLES[chatStyleKey()].talk + '\n' +
-        (sum ? '\nSAVED SUMMARY:\n' + sum.replace(/\n*Sound:[^\n]*$/, '') + '\n' : '') +
+        (rel ? 'The OTHER SONGS section holds the saved summaries and lyrics of other songs from the user\'s library. Use it when they ask how this song connects to those songs or to its album, and keep the focus on "' + t.title + '" otherwise. Never claim to have read a song whose words are not shown below. ' : '') +
+        (st.note ? st.note + ' ' : '') + '\n' +
+        (sum ? '\nSAVED SUMMARY:\n' + sum.replace(/\n*Sound:[^\n]*$/, '') + '\n' : '') + ctxAlbumLine(t) +
         (f.lines.length ? '\nCOMPOSITION FACTS (from the app\'s audio analysis):\n- ' + f.lines.join('\n- ') + '\n' : '') +
-        (lyr.length ? '\nLYRICS (automatic transcript, may contain mistakes' + (cut ? ', shortened' : '') + '):\n' + lyr.join('\n') : '\nNo lyrics are saved for this song.');
+        (lyr.length ? '\nLYRICS of "' + t.title + '" (automatic transcript, may contain mistakes' + (cut ? ', shortened' : '') + '):\n' + lyr.join('\n') : '\nNo lyrics are saved for this song.') +
+        (rel ? '\n\nOTHER SONGS (context only, shortened):\n' + rel : '');
     }
     function endSongTalk(msg) {
-      if (!songTalk) return; const lbl = songTalk.title; songTalk = null;
+      if (!songTalk) return; const lbl = songTalk.title; if (songTalk.row) songTalk.row.remove(); songTalk = null;
+      clist.querySelectorAll('.ch-a.ctx-pick').forEach(r => r.remove());
       if (stBar) { stBar.remove(); stBar = null; }
       cin.placeholder = musicMode ? 'Talk about your music' : 'Say something to Bloopy';
       if (msg !== false) add('bot', blTone('Done talking about ' + lbl + '. Back to normal chat.'));
@@ -213,7 +336,8 @@
       const A = window.__ppApi, t = A.tracks()[i]; if (!t) return;
       if (songTalk) endSongTalk(false);
       const artist = t.artist && !/^(unknown artist|video|stream)$/i.test(t.artist) ? t.artist : '';
-      songTalk = { t, idx: i, title: t.title, artist, hist: [] };
+      songTalk = { t, idx: i, title: t.title, artist, hist: [], ctx: [], note: '', row: null };
+      const st = songTalk;
       cbox.style.display = 'flex'; try { blAnchor(); } catch (e) {}
       stBar = document.createElement('div');
       stBar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid #2e2f36;font-size:12px;background:#22232a';
@@ -221,17 +345,25 @@
       lab.textContent = '\ud83d\udcac Talking about ' + t.title + (artist ? ' \u2013 ' + artist : '');
       const x = document.createElement('button'); x.textContent = '\u2715 End'; x.className = 'ch-c'; x.onclick = () => endSongTalk();
       stBar.append(lab, x); cbox.insertBefore(stBar, clist);
+      st.row = document.createElement('div'); st.row.className = 'ch-chips'; st.row.style.borderBottom = '1px solid #2e2f36'; cbox.insertBefore(st.row, clist);
+      // A sister part ("Pt. 2", "Reprise") obviously belongs with this song, so it is read from the start.
+      let sib = []; try { sib = ctxSiblings(t).filter(ctxHas).slice(0, 2); st.ctx = sib.map(x => x.dbId); } catch (e) { console.warn(e); }
+      ctxChips(st);
+      let albumN = 0; try { const al = ctxAlbum(t); albumN = ctxCandidates(t).filter(x => al.includes(x)).length; } catch (e) {}
       cin.placeholder = 'Ask about ' + t.title + '\u2026';
       const tr = getTranscript(t.dbId);
       add('bot', blTone('Let\'s talk about ' + t.title + (artist ? ' by ' + artist : '') + '. Ask me anything: what it literally says, what the images stand for, or how the music is built.' +
+        ' Name another song or say \u201cthe album\u201d and I will read that too.' +
+        (sib.length ? ' I am also reading ' + sib.map(x => x.title).join(' and ') + ', since ' + (sib.length > 1 ? 'they look' : 'it looks') + ' like part of the same piece.' : '') +
         (tr.words < 12 ? ' (I have no lyrics for it yet, so I can only go on what I know about it and its sound. Transcribing it first gives much better answers.)' : '')));
       actions([['Literal story', (b, d) => { d.remove(); send('What literally happens in this song, verse by verse?'); }],
                ['Metaphors', (b, d) => { d.remove(); send('What are the main metaphors and symbols, and what do they stand for?'); }],
                ['How it\'s built', (b, d) => { d.remove(); send('How is the song built musically, and how does that support the meaning?'); }],
-               ['\u270e Fix lyrics', (b, d) => { d.remove(); startLyFix(i); }]]);
+               ['\u270e Fix lyrics', (b, d) => { d.remove(); startLyFix(i); }]].concat(albumN ? [['\ud83d\udcbf In the album', (b, d) => { d.remove(); send('How does this song fit into the album and connect to the songs around it?'); }]] : []));
     }
     async function songTalkReply(text) {
       const st = songTalk; if (!st) return;
+      if (st.ctx.length && /^(?:(?:forget|drop|remove|clear|ignore|stop reading) (?:the |those |all )?(?:other |extra )?(?:songs?|tracks?|context|album)|(?:just|only) this (?:song|one))[.!]*$/i.test(text)) { st.ctx = []; ctxChips(st); add('bot', blTone('Okay, just ' + st.title + ' again.')); return; }
       if (heavyBusy()) { add('bot', "I'm busy with a heavy job (split, lyrics or tagging). Ask me again when it's done."); return; }
       chatBusy = true; holdModel = true; cm('work');
       const el = add('bot', '\u2026');
@@ -239,6 +371,13 @@
         const g = await ensureModel(x => { el.textContent = x; });
         const ctx = ctxOf(), mx = Math.max(90, Math.min(Math.floor(ctx * 0.3), Math.round(Math.max(160, Math.min(420, Math.floor(ctx * 0.18))) * CHAT_LENS[chatLenKey()].mul)));
         const lyricTok = Math.max(250, Math.floor(ctx * 0.85) - mx - 700 - Math.min(3, st.hist.length / 2) * 160);
+        // Other songs the message asks for (named, pointed at, or hinted at) are attached before answering.
+        st.note = '';
+        try {
+          const w = ctxWanted(st, text); let got = w.list; st.note = w.note;
+          if (!got.length && w.hint) got = await ctxPlan(g, st, text, x => { el.textContent = x; });
+          if (got.length && songTalk === st) { ctxAttach(st, got.slice().reverse()); el.textContent = 'Reading ' + got.map(x => x.title).join(', ') + '\u2026'; }
+        } catch (e) { console.warn('song context failed', e); }
         const uMsg = { role: 'user', content: text };
         let fit = fitMsgs([{ role: 'system', content: songTalkSys(st, lyricTok) }].concat(st.hist.slice(-8), [uMsg]), mx);
         if (fit.over) fit = fitMsgs([{ role: 'system', content: songTalkSys(st, Math.floor(lyricTok / 2)) }].concat(st.hist.slice(-4), [uMsg]), mx);
