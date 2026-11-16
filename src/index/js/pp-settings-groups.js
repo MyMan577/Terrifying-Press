@@ -29,7 +29,7 @@
     if(id==='extras-settings-section'||id==='playlists-manager-section'||sec.querySelector('#detailed-mode-toggle')||/^Keep MP3 conversions/.test(ft))return 'lib';
     if(id==='auto-scan-section')return 'lib';
     if(id==='storage-section'||id==='progress-section'||id==='update-section'||id==='errlog-section')return 'data';
-    if(/^Retro layout/.test(ft)||id==='pp-refined-section'||id==='ppxp-accent-section'||id==='pp-modes-section')return 'look';
+    if(id==='pw-customize-section'||/^Retro layout/.test(ft)||id==='pp-refined-section'||id==='ppxp-accent-section'||id==='pp-modes-section')return 'look';
     return 'fun';
   }
 
@@ -53,6 +53,8 @@
       var sm=document.createElement('summary'); sm.textContent='Backup speed'; d.appendChild(sm);
       bs.parentNode.insertBefore(d,bs); d.appendChild(bs);
     }
+    var cz=document.getElementById('pw-customize-section');   // Customize leads the Appearance card
+    if(cz&&cz.parentNode===cards.look&&cards.look.firstElementChild!==cz)cards.look.insertBefore(cz,cards.look.firstElementChild);
     GROUPS.forEach(function(g){ wraps[g[0]].hidden=!cards[g[0]].querySelector('.settings-section'); });
   }
 
