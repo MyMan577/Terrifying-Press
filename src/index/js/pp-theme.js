@@ -43,6 +43,68 @@
     ['danger',  'Warning',        'Delete and error colour']
   ];
 
+  // Style: the shape and feel of the bars, buttons and cards. '' or a missing key means the app's own look.
+  var STYLE = [
+    ['text',      'Size of Home and your pages', 'range', [85, 130, 5, 100, '%']],
+    ['space',     'Room between sections', 'range', [50, 170, 10, 100, '%']],
+    ['card',      'Thumbnails on Home', 'seg', [['','Auto'],['s','Small'],['m','Medium'],['l','Large'],['xl','Huge']]],
+    ['head',      'Headings', 'seg', [['','Auto'],['light','Light'],['bold','Bold'],['heavy','Heavy']]],
+    ['tabbar',    'Tab bar', 'seg', [['','Normal'],['icons','Icons only'],['labels','Words only'],['float','Floating']]],
+    ['mini',      'Mini player', 'seg', [['','Normal'],['compact','Compact'],['accent','Accent'],['float','Floating']]],
+    ['playShape', 'Play button shape', 'seg', [['','Circle'],['rounded','Rounded'],['square','Square']]],
+    ['playFill',  'Play button fill', 'seg', [['','Standard'],['accent','Accent'],['gradient','Gradient'],['outline','Outline']]],
+    ['accent2',   'Gradient’s second colour', 'color', '#b58cff'],
+    ['seek',      'Seek bar', 'seg', [['','Normal'],['thin','Thin'],['thick','Thick'],['nothumb','No knob']]],
+    ['glass',     'Bars at the bottom', 'seg', [['','Glass'],['off','Solid'],['strong','Extra blur']]],
+    ['depth',     'Shadows', 'seg', [['','Normal'],['flat','Flat'],['deep','Deep']]]
+  ];
+  function cleanStyle(x){
+    var out = {};
+    if (!x || typeof x !== 'object') return out;
+    STYLE.forEach(function(f){
+      var v = x[f[0]];
+      if (f[2] === 'range'){ v = +v; if (isFinite(v) && v !== f[3][3]) out[f[0]] = Math.max(f[3][0], Math.min(f[3][1], Math.round(v))); }
+      else if (f[2] === 'seg'){ if (v && f[3].some(function(o){ return o[0] === v; })) out[f[0]] = v; }
+      else if (f[2] === 'color'){ if (okHex(v)) out[f[0]] = v.toLowerCase(); }
+    });
+    return out;
+  }
+  function styleCss(st, c){
+    var P = 'html[data-pp-theme] body', css = [], r = 'var(--ui-round,1)';
+    if (st.text){ css.push(P + ' #pl-home > *,' + P + ' #pw-page > *{zoom:' + (st.text / 100) + '}'); }
+    if (st.space){ var k = st.space / 100;
+      css.push(P + ' #pl-home .ph-sec,' + P + ' #pw-page .ph-sec{margin-top:' + Math.round(22 * k) + 'px!important}',
+               P + ' .pw-row-box + .pw-row-box{margin-top:' + Math.round(12 * k) + 'px}',
+               P + ' #pl-home .ph-chips{padding-top:' + Math.round(14 * k) + 'px}'); }
+    if (st.card){ var w = { s:116, m:156, l:204, xl:256 }[st.card];
+      css.push(P + ' #pl-home .ph-row:not(.expanded) .ph-card,' + P + ' #pw-page .ph-row:not(.expanded) .ph-card{flex-basis:' + w + 'px!important;width:' + w + 'px}'); }
+    if (st.head){ var fw = { light:500, bold:700, heavy:850 }[st.head];
+      css.push(P + ' .ph-app-title,' + P + ' .ph-sec-head h2,' + P + ' .pw-title,' + P + ' .pp-sg-title{font-weight:' + fw + '!important}'); }
+    if (st.glass === 'off') css.push(P + ' #pl-tabbar,' + P + ' #pl-mini{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--bg-elev)!important}');
+    if (st.glass === 'strong') css.push(P + ' #pl-tabbar,' + P + ' #pl-mini{-webkit-backdrop-filter:blur(40px) saturate(1.9)!important;backdrop-filter:blur(40px) saturate(1.9)!important;background:color-mix(in srgb, var(--bg-elev) 50%, transparent)!important}');
+    if (st.tabbar === 'icons') css.push(P + ' #pl-tabbar button span{display:none!important}', P + ' #pl-tabbar button svg{width:26px!important;height:26px!important}');
+    if (st.tabbar === 'labels') css.push(P + ' #pl-tabbar button svg{display:none!important}', P + ' #pl-tabbar button{font-size:13.5px!important;font-weight:700!important}');
+    if (st.tabbar === 'float') css.push(P + '.player-layout #pl-tabbar{left:12px!important;right:12px!important;bottom:calc(env(safe-area-inset-bottom,0px) + 8px)!important;height:calc(var(--pl-bar) - 4px)!important;padding-bottom:0!important;' +
+      'border:1px solid var(--line)!important;border-radius:calc(22px*' + r + ')!important;box-shadow:0 12px 32px -10px rgba(0,0,0,.75)!important;overflow:hidden}');
+    if (st.mini === 'compact') css.push(P + '.player-layout.pl-has-track:not([data-pl-player]) #pl-mini{height:calc(var(--pl-mini) - 16px)!important}', P + ' #pl-mini-art{width:30px!important;height:30px!important}', P + ' #pl-mini-artist{display:none!important}');
+    if (st.mini === 'accent') css.push(P + '.player-layout #pl-mini{background:var(--accent)!important;border-color:transparent!important;color:var(--on-accent)!important}',
+      P + ' #pl-mini :is(#pl-mini-title,#pl-mini-artist,button){color:var(--on-accent)!important}', P + ' #pl-mini #pl-mini-artist{opacity:.75}', P + ' #pl-mini-prog i{background:var(--on-accent)!important}');
+    if (st.mini === 'float') css.push(P + '.player-layout.pl-has-track:not([data-pl-player]) #pl-mini{left:16px!important;right:16px!important;border-radius:calc(20px*' + r + ')!important;box-shadow:0 14px 34px -8px rgba(0,0,0,.8)!important;' +
+      'bottom:calc(var(--pl-bar) + env(safe-area-inset-bottom, 0px) + 10px)!important}');
+    var PB = P + ' #play-btn,' + P + ' .pw-np-pp';
+    if (st.playShape) css.push(PB + '{border-radius:' + (st.playShape === 'rounded' ? 'calc(22px*' + r + ')' : 'calc(8px*' + r + ')') + '!important}');
+    if (st.playFill === 'accent') css.push(PB + '{background:var(--accent)!important;color:var(--on-accent)!important}');
+    if (st.playFill === 'gradient') css.push(PB + '{background:linear-gradient(135deg,var(--accent),' + (st.accent2 || '#b58cff') + ')!important;color:var(--on-accent)!important}');
+    if (st.playFill === 'outline') css.push(PB + '{background:transparent!important;color:var(--accent)!important;box-shadow:0 0 0 2px var(--accent) inset!important}');
+    if (st.seek === 'thin') css.push(P + '.player-layout #seek{height:3px!important}');
+    if (st.seek === 'thick') css.push(P + '.player-layout #seek{height:10px!important;border-radius:calc(5px*' + r + ')!important}');
+    if (st.seek === 'nothumb') css.push(P + ' #seek::-webkit-slider-thumb{opacity:0!important}', P + '.player-layout #seek{height:6px!important}');
+    if (st.depth === 'flat') css.push(P + '{--r-shadow:none}', P + ' .ph-thumb,' + P + ' #play-btn,' + P + ' #pl-mini,' + P + ' .pw-np{box-shadow:none!important}');
+    if (st.depth === 'deep') css.push(P + '{--r-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 20px 44px -14px rgba(0,0,0,.95)}', P + ' .ph-thumb{box-shadow:0 0 0 1px rgba(255,255,255,.06) inset,0 16px 32px -10px rgba(0,0,0,.95)!important}',
+      P + ' .pw-np,' + P + ' .pw-btn,' + P + ' .pw-card{box-shadow:0 16px 34px -14px rgba(0,0,0,.9)}');
+    return css.join('\n');
+  }
+
   // ---------- colour helpers ----------
   function okHex(h){ return typeof h === 'string' && /^#[0-9a-f]{6}$/i.test(h); }
   function rgb(h){ var n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
@@ -74,11 +136,12 @@
     Object.keys(STOCK).forEach(function(k){ c[k] = okHex(t.c && t.c[k]) ? t.c[k].toLowerCase() : STOCK[k]; });
     var r = +t.round; if (!isFinite(r)) r = 1;
     return { v:1, name: typeof t.name === 'string' ? t.name.slice(0, 40) : '', preset: typeof t.preset === 'string' ? t.preset : null,
-             c:c, round: Math.max(0, Math.min(2, r)), font: FONTS[t.font] ? t.font : 'default' };
+             c:c, round: Math.max(0, Math.min(2, r)), font: FONTS[t.font] ? t.font : 'default', s: cleanStyle(t.s) };
   }
   function isStock(t){
-    return !t || (Object.keys(STOCK).every(function(k){ return t.c[k] === STOCK[k]; }) && t.round === 1 && t.font === 'default');
+    return !t || (stockColors(t) && t.round === 1 && t.font === 'default' && !Object.keys(t.s || {}).length);
   }
+  function stockColors(t){ return Object.keys(STOCK).every(function(k){ return t.c[k] === STOCK[k]; }); }
   function load(){ try { return clean(JSON.parse(localStorage.getItem(KEY))); } catch(e){ return null; } }
   function stockTheme(){ return clean({ c: STOCK }); }
 
@@ -107,7 +170,9 @@
     GREYS.forEach(function(g){ var m = map('#' + g); v.push('--g-' + g + ':' + m, '--g-' + g + '-rgb:' + rgb(m).join(',')); });
     var decl = v.join(';');
     // html[data-pp-theme] body beats body.pp-refined and the shop accent (set inline on <html>, inherited by body).
-    var css = 'html[data-pp-theme]{' + decl + ';background:' + c.bg + '}\n' +
+    // Stock colours with only corners / font / style changed: leave every colour as the app has it.
+    var css = stockColors(t) ? 'html[data-pp-theme] body{--ui-round:' + t.round + '}\n' :
+              'html[data-pp-theme]{' + decl + ';background:' + c.bg + '}\n' +
               'html[data-pp-theme] body{' + decl + '}\n' +
               'html[data-pp-theme] body.pp-refined{--line:' + map('#2b2d35') + '}\n';
     var f = FONTS[t.font] && FONTS[t.font].css;
@@ -115,7 +180,7 @@
       css += 'html[data-pp-theme] body,html[data-pp-theme] body.pp-refined{font-family:' + f + '}\n' +
              ':where(html[data-pp-theme]) :where(button,input,select,textarea){font-family:inherit}\n';
     }
-    return css;
+    return css + styleCss(t.s || {}, c);
   }
 
   var styleEl = null, pending = null, rafId = 0;
@@ -167,7 +232,7 @@
   function bgApi(){ return window.PPXpCustomization || null; }
   function exportTheme(withBackgrounds){
     var t = current || stockTheme();
-    var out = { kind:'press-play-theme', v:1, theme: { name: t.name, c: t.c, round: t.round, font: t.font } };
+    var out = { kind:'press-play-theme', v:1, theme: { name: t.name, c: t.c, round: t.round, font: t.font, s: t.s } };
     var api = bgApi();
     if (withBackgrounds && api) out.backgrounds = JSON.parse(JSON.stringify(api.uiCustomization));
     var blob = new Blob([JSON.stringify(out, null, 2)], { type:'application/json' });
@@ -244,6 +309,7 @@
       '<div class="ppth-h">Font</div>' +
       '<div class="customize-row"><select class="customize-select" id="ppth-font"></select>' +
       '<div class="ppth-font-sample" id="ppth-font-sample">The quick brown fox · 0:42 / 3:17</div></div>' +
+      '<div class="ppth-h">Style</div><div class="ppth-style"></div>' +
       '<div class="ppth-h">My themes</div>' +
       '<div class="ppth-row ppth-save"><input type="text" id="ppth-name" maxlength="40" placeholder="Name this theme"><button type="button" class="settings-toggle-btn" id="ppth-save">Save</button></div>' +
       '<div class="ppth-saved"></div>' +
@@ -262,7 +328,7 @@
       b.addEventListener('click', function(){
         if (p.id === 'default'){ setTheme(null, true); return; }
         var t = current || stockTheme();
-        setTheme({ name: p.name, preset: p.id, c: p.c, round: t.round, font: t.font }, true);
+        setTheme({ name: p.name, preset: p.id, c: p.c, round: t.round, font: t.font, s: t.s }, true);
       });
       presetsEl.appendChild(b);
     });
@@ -291,6 +357,26 @@
     Object.keys(FONTS).forEach(function(k){ var o = el('option', null, esc(FONTS[k].label)); o.value = k; font.appendChild(o); });
     font.addEventListener('change', function(){ var t = clean(current || stockTheme()); t.font = font.value; setTheme(t, true); });
 
+    var styleEl2 = panel.querySelector('.ppth-style'), styleInputs = {};
+    STYLE.forEach(function(f){
+      var k = f[0], row = el('div', 'customize-row ppth-st');
+      if (f[2] === 'range'){
+        row.innerHTML = '<label>' + f[1] + ' <span class="customize-range-value"></span></label><input type="range" class="customize-range" min="' + f[3][0] + '" max="' + f[3][1] + '" step="' + f[3][2] + '">';
+        var inp = row.querySelector('input'), val = row.querySelector('span');
+        inp.addEventListener('input', function(){ var t = clean(current || stockTheme()); t.s[k] = +inp.value; val.textContent = inp.value + '%'; setTheme(t); });
+        styleInputs[k] = function(st){ var v = st[k] || f[3][3]; inp.value = v; val.textContent = v + '%'; };
+      } else if (f[2] === 'seg'){
+        row.innerHTML = '<label>' + f[1] + '</label><div class="pw-seg">' + f[3].map(function(o){ return '<button type="button" data-v="' + o[0] + '">' + esc(o[1]) + '</button>'; }).join('') + '</div>';
+        row.querySelectorAll('button').forEach(function(b){ b.addEventListener('click', function(){ var t = clean(current || stockTheme()); if (b.dataset.v) t.s[k] = b.dataset.v; else delete t.s[k]; setTheme(t, true); }); });
+        styleInputs[k] = function(st){ row.querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', b.dataset.v === (st[k] || '')); }); };
+      } else {
+        row.innerHTML = '<label>' + f[1] + '</label><input type="color" class="customize-color-input">';
+        var ci = row.querySelector('input');
+        ci.addEventListener('input', function(){ var t = clean(current || stockTheme()); t.s[k] = ci.value; setTheme(t); });
+        styleInputs[k] = function(st){ row.hidden = st.playFill !== 'gradient'; if (document.activeElement !== ci) ci.value = st[k] || f[3]; };
+      }
+      styleEl2.appendChild(row);
+    });
     var nameIn = panel.querySelector('#ppth-name'), savedEl = panel.querySelector('.ppth-saved');
     panel.querySelector('#ppth-save').addEventListener('click', function(){
       var name = nameIn.value.trim() || ('Theme ' + (savedList().length + 1));
@@ -340,6 +426,7 @@
       roundV.textContent = t.round === 0 ? 'Square' : Math.round(t.round * 100) + '%';
       font.value = t.font;
       sample.style.fontFamily = FONTS[t.font].css || '';
+      Object.keys(styleInputs).forEach(function(k){ styleInputs[k](t.s || {}); });
       var active = !current || isStock(current) ? 'default' : current.preset;
       presetsEl.querySelectorAll('.ppth-preset').forEach(function(b){ b.classList.toggle('active', b.dataset.id === active); });
     }

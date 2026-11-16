@@ -210,3 +210,31 @@
   .pw-cz svg{ width:22px; height:22px; color:var(--accent); }
   .pw-cz span{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .pw-cz:active{ transform:scale(.96); }
+  /* every widget: what's behind it, and when it shows */
+  .pw-bx-card{ background:var(--r-card, var(--bg-elev)); border:1px solid var(--r-line-strong, var(--line)); border-radius:calc(16px*var(--ui-round,1)); padding:12px 14px; }
+  .pw-bx-accent{ background:var(--accent); color:var(--on-accent, #08110f); border-radius:calc(16px*var(--ui-round,1)); padding:12px 14px; }
+  .pw-bx-accent :is(.pw-clock-d, .pw-np-a, .pw-stat span){ color:inherit; opacity:.75; }
+  .pw-bx-color{ background:var(--pw-bxc); border-radius:calc(16px*var(--ui-round,1)); padding:12px 14px; }
+  body:not(.pl-has-track) .pw-zone:not(.pw-zone-ed) .pw-when-playing, body.pl-has-track .pw-zone:not(.pw-zone-ed) .pw-when-idle{ display:none; }
+  .pw-zone-ed .pw-when-playing::after, .pw-zone-ed .pw-when-idle::after{ content:'only while playing'; position:absolute; left:6px; bottom:-10px; z-index:6; font-size:10px; font-weight:700; padding:1px 6px; border-radius:6px; background:var(--bg-elev); color:var(--text-dim); border:1px solid var(--line); }
+  .pw-zone-ed .pw-when-idle::after{ content:'only when nothing plays'; }
+  .pw-pl-zone{ margin-top:16px; }
+
+  /* arranging the app's own rows */
+  .pw-arr{ padding:4px 0; }
+  .pw-arr-name{ flex:1; min-width:0; font-size:14px; font-weight:600; }
+  .pw-arr.pw-off .pw-arr-name{ color:var(--text-dim); text-decoration:line-through; }
+  .pw-ic.pw-v svg{ rotate:0deg !important; }
+  .pw-ic.pw-on{ color:var(--accent); border-color:var(--accent); }
+  .pw-arr.pw-off .pw-ic[data-tg]{ opacity:.5; }
+
+  /* Theme > Style */
+  .ppth-st .pw-seg button{ flex:1 1 auto; min-width:0; padding:0 8px; font-size:12.5px; }
+  .pw-shortcuts{ display:flex; gap:8px; }
+  .pw-shortcuts button{ flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center; gap:6px; padding:4px 0; border:0; background:transparent; color:var(--text); font:inherit; font-size:11.5px; font-weight:600; cursor:pointer; }
+  .pw-shortcuts i{ width:52px; height:52px; border-radius:calc(16px*var(--ui-round,1)); display:flex; align-items:center; justify-content:center; background:var(--accent-soft, #1a2422); color:var(--accent); }
+  .pw-shortcuts i svg{ width:22px; height:22px; }
+  .pw-shortcuts span{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pw-sc-accent i{ background:var(--accent); color:var(--on-accent, #08110f); }
+  .pw-sc-plain i{ background:transparent; border:1px solid var(--line); }
+  .pw-shortcuts button:active i{ transform:scale(.92); }

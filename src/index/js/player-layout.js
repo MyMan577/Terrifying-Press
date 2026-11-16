@@ -563,6 +563,7 @@
     if (view === 'playlists'){
       homeEl.innerHTML =
         (openPlId ? '' : '<h1 class="ph-app-title">Playlists</h1><div class="ph-chips" style="padding:0 var(--ph-r, 24px) 0 var(--ph-l, 24px);margin-top:10px;"><button type="button" class="ph-chip" data-act="pl-shufall">' + IC_SHUF + 'New shuffled playlist of everything</button></div>') +
+        (!openPlId && window.PPWidgets && window.PPWidgets.has('playlists') ? '<div class="pw-pl-zone">' + window.PPWidgets.renderZone('playlists') + '</div>' : '') +   // Customize > Layout
         '<section class="ph-sec" style="margin-top:' + (openPlId ? 0 : 14) + 'px;">' + plHTML + '</section>';
     } else if (openSec){
       // One section on its own page: every item in a grid
