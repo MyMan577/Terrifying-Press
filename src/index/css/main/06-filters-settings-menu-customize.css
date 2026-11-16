@@ -6,7 +6,7 @@
     right:0;
     background:var(--bg-elev);
     border:1px solid var(--line);
-    border-radius:10px;
+    border-radius:calc(10px*var(--ui-round,1));
     padding:8px;
     min-width:210px;
     max-height:min(420px, 70vh);
@@ -23,7 +23,7 @@
     right:0;
     background:var(--bg-elev);
     border:1px solid var(--line);
-    border-radius:10px;
+    border-radius:calc(10px*var(--ui-round,1));
     padding:8px;
     width:min(280px, calc(100vw - 24px));
     z-index:20;
@@ -40,9 +40,9 @@
   #pip-dd-start{
     display:block; width:calc(100% - 16px); margin:0 8px 2px; padding:9px 8px;
     background:var(--bg); border:1px solid var(--accent-dim); color:var(--accent);
-    border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;
+    border-radius:calc(8px*var(--ui-round,1)); font-size:12px; font-weight:600; cursor:pointer;
   }
-  #pip-dd-start:hover{ background:#1a2422; border-color:var(--accent); }
+  #pip-dd-start:hover{ background:var(--accent-soft,#1a2422); border-color:var(--accent); }
   .tool-dropdown-grid{
     display:grid;
     grid-template-columns:1fr 1fr 1fr;
@@ -54,12 +54,12 @@
     background:var(--bg);
     border:1px solid var(--line);
     color:var(--text-dim);
-    border-radius:6px;
+    border-radius:calc(6px*var(--ui-round,1));
     font-size:11px;
     cursor:pointer;
   }
   .tool-dropdown-grid button:hover{ border-color:var(--accent-dim); color:var(--text); }
-  .tool-dropdown-grid button.active{ border-color:var(--accent); color:var(--accent); background:#1a2422; }
+  .tool-dropdown-grid button.active{ border-color:var(--accent); color:var(--accent); background:var(--accent-soft,#1a2422); }
   #filter-dropdown #filter-intensity{
     display:block;
     width:calc(100% - 16px);
@@ -88,7 +88,7 @@
     display:flex; align-items:center; justify-content:center;
     background:rgba(0,0,0,0.5);
     border:1px solid var(--line);
-    border-radius:8px;
+    border-radius:calc(8px*var(--ui-round,1));
     color:var(--text);
     cursor:pointer;
     transition:background .15s, color .15s, opacity .2s;
@@ -150,7 +150,7 @@
     display:flex; align-items:center; justify-content:center;
     background:rgba(0,0,0,0.5);
     border:1px solid var(--line);
-    border-radius:8px;
+    border-radius:calc(8px*var(--ui-round,1));
     color:var(--text);
     cursor:pointer;
     transition:background .15s, color .15s, opacity .2s;
@@ -188,9 +188,9 @@
   #menu-close-btn{
     background:none; border:none; color:var(--text-dim);
     font-size:22px; line-height:1; cursor:pointer;
-    padding:2px 7px; border-radius:6px;
+    padding:2px 7px; border-radius:calc(6px*var(--ui-round,1));
   }
-  #menu-close-btn:hover{ color:var(--accent); background:#1d1e23; }
+  #menu-close-btn:hover{ color:var(--accent); background:var(--g-1d1e23,#1d1e23); }
   #menu-panel-body{ flex:1; overflow-y:auto; padding:4px 20px 26px 20px; }
 
   .menu-section-label{ font-size:11px; color:var(--text-dim); letter-spacing:0.3px; margin:16px 0 3px 0; }
@@ -220,7 +220,7 @@
   #menu-panel .pill-btn{
     width:100%;
     justify-content:flex-start;
-    border-radius:8px;
+    border-radius:calc(8px*var(--ui-round,1));
     padding:9px 12px;
     font-size:13px;
   }
@@ -257,7 +257,7 @@
   #customize-modal{
     background:var(--bg-elev);
     border:1px solid var(--line);
-    border-radius:14px;
+    border-radius:calc(14px*var(--ui-round,1));
     width:min(560px, 94vw);
     max-height:88vh;
     display:flex; flex-direction:column;
@@ -278,17 +278,17 @@
     background:transparent;
     border:1px solid var(--line);
     color:var(--text-dim);
-    border-radius:20px;
+    border-radius:calc(20px*var(--ui-round,1));
     font-size:11.5px;
     cursor:pointer;
     transition:border-color .12s, color .12s, background .12s;
   }
   .customize-tab:hover{ border-color:var(--accent-dim); color:var(--text); }
-  .customize-tab.active{ color:var(--accent); border-color:var(--accent-dim); background:rgba(110,231,208,0.08); }
+  .customize-tab.active{ color:var(--accent); border-color:var(--accent-dim); background:rgba(var(--accent-rgb,110,231,208),0.08); }
 
   #customize-preview{
     height:64px;
-    border-radius:10px;
+    border-radius:calc(10px*var(--ui-round,1));
     border:1px solid var(--line);
     margin-bottom:18px;
     background-color:var(--bg);
@@ -304,13 +304,13 @@
     background:transparent;
     border:1px solid var(--line);
     color:var(--text-dim);
-    border-radius:8px;
+    border-radius:calc(8px*var(--ui-round,1));
     font-size:12px;
     cursor:pointer;
     transition:border-color .12s, color .12s, background .12s;
   }
   .customize-type-btn:hover{ border-color:var(--accent-dim); color:var(--text); }
-  .customize-type-btn.active{ color:var(--accent); border-color:var(--accent-dim); background:rgba(110,231,208,0.08); }
+  .customize-type-btn.active{ color:var(--accent); border-color:var(--accent-dim); background:rgba(var(--accent-rgb,110,231,208),0.08); }
 
   .customize-group{ display:none; }
   .customize-group.show{ display:block; }
@@ -320,11 +320,11 @@
   .customize-color-input{
     -webkit-appearance:none; appearance:none;
     width:100%; height:36px;
-    padding:0; border:1px solid var(--line); border-radius:7px;
+    padding:0; border:1px solid var(--line); border-radius:calc(7px*var(--ui-round,1));
     background:none; cursor:pointer;
   }
   .customize-color-input::-webkit-color-swatch-wrapper{ padding:3px; }
-  .customize-color-input::-webkit-color-swatch{ border:none; border-radius:5px; }
+  .customize-color-input::-webkit-color-swatch{ border:none; border-radius:calc(5px*var(--ui-round,1)); }
 
   .customize-gradient-colors{ display:flex; gap:10px; }
   .customize-gradient-colors > div{ flex:1; }
@@ -336,14 +336,14 @@
     display:flex; align-items:center; justify-content:center; gap:6px;
     width:100%; padding:9px 12px;
     background:transparent; border:1px dashed var(--line); color:var(--text);
-    border-radius:8px; font-size:12px; cursor:pointer;
+    border-radius:calc(8px*var(--ui-round,1)); font-size:12px; cursor:pointer;
   }
   .customize-upload-btn:hover{ border-color:var(--accent-dim); color:var(--accent); }
   .customize-upload-btn svg{ width:14px; height:14px; }
 
   .customize-select{
     width:100%; background:var(--bg); border:1px solid var(--line); color:var(--text);
-    border-radius:7px; padding:7px 8px; font-size:12px;
+    border-radius:calc(7px*var(--ui-round,1)); padding:7px 8px; font-size:12px;
   }
 
   #customize-image-name{

@@ -214,12 +214,21 @@
       return '#' + [r, g, b].map(v => Math.max(0, Math.round(v * 0.45)).toString(16).padStart(2, '0')).join('');
     }
     function applyAccentColor(color){
+      // --accent-rgb / --accent-soft / --on-accent are the accent's see-through tints, hover fill and text-on-accent.
+      // (A theme from Customize > Theme sets all of these on <body>, so it wins over this while one is in use.)
+      const st = document.documentElement.style;
       if (color){
-        document.documentElement.style.setProperty('--accent', color);
-        document.documentElement.style.setProperty('--accent-dim', accentDarken(color));
+        const n = parseInt(color.replace('#','').padEnd(6, '0').slice(0, 6), 16);
+        const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+        const soft = '#' + [[12, r], [13, g], [16, b]].map(([bg, v]) => Math.round(bg + (v - bg) * 0.11).toString(16).padStart(2, '0')).join('');
+        const light = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.55;
+        st.setProperty('--accent', color);
+        st.setProperty('--accent-dim', accentDarken(color));
+        st.setProperty('--accent-rgb', r + ',' + g + ',' + b);
+        st.setProperty('--accent-soft', soft);
+        st.setProperty('--on-accent', light ? '#08110f' : '#ffffff');
       } else {
-        document.documentElement.style.removeProperty('--accent');
-        document.documentElement.style.removeProperty('--accent-dim');
+        ['--accent', '--accent-dim', '--accent-rgb', '--accent-soft', '--on-accent'].forEach(p => st.removeProperty(p));
       }
     }
     function ensureAccentColorSetting(){
