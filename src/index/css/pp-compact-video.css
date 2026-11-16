@@ -40,7 +40,7 @@
     order:1; flex:0 0 100%; width:100%; max-width:none; margin:0; gap:12px;
   }
   body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #seek-row :is(#cur-time, #dur-time){ font-size:12px; min-width:38px; }
-  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) :is(#seek, #volume){ height:4px; border-radius:2px; }
+  body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) :is(#seek, #volume){ height:4px; border-radius:calc(2px*var(--ui-round,1)); }
   body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) :is(#seek, #volume)::-webkit-slider-thumb{ width:14px; height:14px; }
 
   body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #transport{
@@ -103,7 +103,7 @@
   }
   body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport .pill-btn{
     width:38px; height:38px; min-width:0; padding:0; gap:0; justify-content:center;
-    background:transparent; border:none; border-radius:10px; position:relative;
+    background:transparent; border:none; border-radius:calc(10px*var(--ui-round,1)); position:relative;
   }
   body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport .pill-btn svg{ width:21px; height:21px; }
   body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport .pill-btn > span{ display:none; }
@@ -121,7 +121,7 @@
   /* the snapshot button shares the PiP button's wrapper: keep them side by side */
   body.player-layout.pl-video[data-pl-player] #video-tools > div:has(> #snap-btn){ display:flex; gap:2px; }
   body.player-layout.pl-video[data-pl-player] #video-tools .video-tool-btn{
-    width:36px; height:36px; background:transparent; border-color:transparent; border-radius:10px;
+    width:36px; height:36px; background:transparent; border-color:transparent; border-radius:calc(10px*var(--ui-round,1));
   }
   body.player-layout.pl-video[data-pl-player] #video-tools .video-tool-btn svg{ width:21px; height:21px; filter:drop-shadow(0 1px 3px rgba(0,0,0,.9)); }
   body.player-layout.pl-video[data-pl-player] #video-tools .video-tool-btn.toggled{ color:var(--accent); }
@@ -210,5 +210,5 @@
   }
 
   /* FPS readout: one short line by default ("60 fps · 120 Hz"); the full block is an option under the FPS counter setting. */
-  #fps-counter.compact{ font-size:11px; line-height:1; padding:4px 7px; border-radius:6px; background:rgba(0,0,0,.45); }
+  #fps-counter.compact{ font-size:11px; line-height:1; padding:4px 7px; border-radius:calc(6px*var(--ui-round,1)); background:rgba(0,0,0,.45); }
   #fps-counter.compact .fps-drop{ color:#ff8a80; }

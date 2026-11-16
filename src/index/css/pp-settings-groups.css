@@ -2,7 +2,7 @@
   .pp-sg{margin-top:14px}
   .pp-sg[hidden]{display:none}
   .pp-sg-title{font-size:13px;font-weight:600;color:var(--text);margin:0 4px 8px}
-  .pp-sg-card{background:#1a1b20;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .pp-sg-card{background:var(--g-1a1b20,#1a1b20);border:1px solid var(--line);border-radius:calc(12px*var(--ui-round,1));overflow:hidden}
   .pp-sg-card .settings-section,.pp-adv-body .settings-section{padding:14px 16px;border-bottom:1px solid var(--line)}
   .pp-sg-card > .settings-section:last-child{border-bottom:0}
   .pp-adv{border-top:1px solid var(--line)}

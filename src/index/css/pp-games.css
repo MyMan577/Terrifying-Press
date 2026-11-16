@@ -2,12 +2,12 @@
   .ph-title-row .ph-app-title{ padding-right:0; min-width:0; }
   .pp-games-btn{
     position:relative; flex:0 0 auto; display:inline-flex; align-items:center; gap:8px;
-    height:36px; padding:0 14px 0 4px; border-radius:999px; cursor:pointer;
+    height:36px; padding:0 14px 0 4px; border-radius:calc(999px*var(--ui-round,1)); cursor:pointer;
     font:600 14px/1 inherit; font-family:inherit; color:#fff; letter-spacing:.2px;
     border:1px solid transparent;
-    background:linear-gradient(180deg,#1c1e26,#131419) padding-box,
+    background:linear-gradient(180deg,var(--g-1c1e26,#1c1e26),var(--g-131419,#131419)) padding-box,
                linear-gradient(120deg,#6ee7d0,#8b5cff 70%,#ff5fd8) border-box;
-    box-shadow:0 0 0 1px rgba(0,0,0,.25), 0 6px 18px -6px rgba(110,231,208,.35), 0 6px 20px -8px rgba(139,92,255,.45);
+    box-shadow:0 0 0 1px rgba(0,0,0,.25), 0 6px 18px -6px rgba(var(--accent-rgb,110,231,208),.35), 0 6px 20px -8px rgba(139,92,255,.45);
     -webkit-tap-highlight-color:transparent; transition:transform .12s ease, box-shadow .2s ease;
   }
   .pp-games-btn:active{ transform:scale(.95); }
@@ -26,7 +26,7 @@
   /* Games page */
   #pp-games{
     position:fixed; inset:0; z-index:2147482000; display:none; flex-direction:column;
-    background:radial-gradient(120% 60% at 50% -10%, rgba(139,92,255,.16), transparent 60%), var(--bg, #0c0d10);
+    background:radial-gradient(120% 60% at 50% -10%, rgba(139,92,255,.16), transparent 60%), var(--bg, var(--g-0c0d10,#0c0d10));
     color:var(--text, #e8e9ec); padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0);
     opacity:0; transform:translateY(12px); transition:opacity .18s ease, transform .22s ease;
   }
@@ -52,28 +52,28 @@
   /* Press Play's own bar above the game: Exit lives here, so it can never sit on a game's buttons */
   #pp-game{ --ppg-bar:calc(env(safe-area-inset-top,0px) + 36px); }
   .ppg-topbar{ position:absolute; z-index:3; left:0; right:0; top:0; height:var(--ppg-bar); padding-top:env(safe-area-inset-top,0px); box-sizing:border-box;
-    display:flex; align-items:center; gap:10px; padding-left:8px; padding-right:12px; background:#0c0d10; border-bottom:1px solid rgba(255,255,255,.07); color:rgba(255,255,255,.9); }
+    display:flex; align-items:center; gap:10px; padding-left:8px; padding-right:12px; background:var(--g-0c0d10,#0c0d10); border-bottom:1px solid rgba(255,255,255,.07); color:rgba(255,255,255,.9); }
   #pp-game iframe{ position:absolute; left:0; right:0; bottom:0; top:var(--ppg-bar); width:100%; height:calc(100% - var(--ppg-bar)); border:0; background:#000; }
-  .ppg-exit{ height:26px; padding:0 11px 0 7px; border-radius:999px; display:flex; align-items:center; gap:4px; flex:0 0 auto;
+  .ppg-exit{ height:26px; padding:0 11px 0 7px; border-radius:calc(999px*var(--ui-round,1)); display:flex; align-items:center; gap:4px; flex:0 0 auto;
     border:1px solid rgba(255,255,255,.16); background:rgba(255,255,255,.06); color:rgba(255,255,255,.88);
     font:600 12px/1 inherit; font-family:inherit; cursor:pointer; }
   .ppg-exit:active{ background:rgba(255,255,255,.14); }
   .ppg-exit svg{ width:13px; height:13px; }
   /* in-game now-playing: a mini button on the right of the game's top bar opens a small card */
-  .ppg-mini{ position:absolute; right:10px; bottom:4px; width:30px; height:26px; border-radius:9px; border:1px solid rgba(255,255,255,.16);
+  .ppg-mini{ position:absolute; right:10px; bottom:4px; width:30px; height:26px; border-radius:calc(9px*var(--ui-round,1)); border:1px solid rgba(255,255,255,.16);
     background:rgba(255,255,255,.06); color:rgba(255,255,255,.9); display:grid; place-items:center; padding:0; cursor:pointer; -webkit-tap-highlight-color:transparent; }
   .ppg-mini.on{ background:color-mix(in srgb, var(--accent) 22%, transparent); border-color:color-mix(in srgb, var(--accent) 55%, transparent); }
   .ppg-mini .eq{ display:flex; align-items:flex-end; gap:2px; height:12px; }
-  .ppg-mini .eq i{ width:3px; border-radius:2px; background:currentColor; height:5px; }
+  .ppg-mini .eq i{ width:3px; border-radius:calc(2px*var(--ui-round,1)); background:currentColor; height:5px; }
   .ppg-mini.playing .eq i{ animation:ppgEq .9s ease-in-out infinite; }
   .ppg-mini.playing .eq i:nth-child(2){ animation-delay:-.3s; } .ppg-mini.playing .eq i:nth-child(3){ animation-delay:-.6s; }
   @keyframes ppgEq{ 0%,100%{ height:4px } 50%{ height:12px } }
   #ppg-np{ position:absolute; z-index:6; top:calc(var(--ppg-bar) + 6px); right:8px; width:min(318px, calc(100vw - 16px)); box-sizing:border-box; padding:12px;
-    border-radius:20px; background:rgba(20,21,27,.94); -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px); border:1px solid rgba(255,255,255,.09);
+    border-radius:calc(20px*var(--ui-round,1)); background:rgba(var(--g-14151b-rgb,20,21,27),.94); -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px); border:1px solid rgba(255,255,255,.09);
     box-shadow:0 16px 44px rgba(0,0,0,.6); color:#fff; font-family:inherit; transform-origin:top right; animation:ppgNpIn .16s ease-out; }
   @keyframes ppgNpIn{ from{ opacity:0; transform:scale(.94) translateY(-4px) } to{ opacity:1; transform:none } }
   #ppg-np .np-top{ display:flex; gap:12px; align-items:stretch; }
-  #ppg-np .np-art{ width:76px; height:76px; flex:none; border-radius:14px; background:#23242c center/cover no-repeat; display:grid; place-items:center; overflow:hidden;
+  #ppg-np .np-art{ width:76px; height:76px; flex:none; border-radius:calc(14px*var(--ui-round,1)); background:var(--g-23242c,#23242c) center/cover no-repeat; display:grid; place-items:center; overflow:hidden;
     box-shadow:inset 0 0 0 1px rgba(255,255,255,.06); color:rgba(255,255,255,.35); }
   #ppg-np .np-art svg{ width:34px; height:34px; }
   #ppg-np .np-main{ flex:1; min-width:0; display:flex; flex-direction:column; justify-content:space-between; }
@@ -81,7 +81,7 @@
   #ppg-np .np-a{ font-size:12px; color:rgba(255,255,255,.55); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
   #ppg-np .np-seek{ display:flex; align-items:center; gap:6px; font-size:10px; color:rgba(255,255,255,.5); font-variant-numeric:tabular-nums; margin-top:4px; }
   #ppg-np input[type=range]{ flex:1; min-width:0; height:16px; margin:0; background:transparent; -webkit-appearance:none; appearance:none; }
-  #ppg-np input[type=range]::-webkit-slider-runnable-track{ height:4px; border-radius:4px;
+  #ppg-np input[type=range]::-webkit-slider-runnable-track{ height:4px; border-radius:calc(4px*var(--ui-round,1));
     background:linear-gradient(90deg, var(--accent) var(--p,0%), rgba(255,255,255,.14) var(--p,0%)); }
   #ppg-np input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:12px; height:12px; margin-top:-4px; border-radius:50%; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.5); }
   #ppg-np .np-ctl{ display:flex; align-items:center; justify-content:center; gap:14px; margin-top:2px; }
@@ -93,33 +93,33 @@
   /* under the artwork: shuffle + repeat */
   #ppg-np .np-side{ display:flex; flex-direction:column; gap:6px; flex:none; }
   #ppg-np .np-nat{ display:flex; gap:6px; }
-  #ppg-np .np-nat button{ flex:1; height:24px; border-radius:8px; border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.05); color:rgba(255,255,255,.75);
+  #ppg-np .np-nat button{ flex:1; height:24px; border-radius:calc(8px*var(--ui-round,1)); border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.05); color:rgba(255,255,255,.75);
     display:grid; place-items:center; padding:0; cursor:pointer; position:relative; -webkit-tap-highlight-color:transparent; }
   #ppg-np .np-nat button svg{ width:13px; height:13px; }
   #ppg-np .np-nat button.on{ color:#fff; background:color-mix(in srgb, var(--accent) 22%, transparent); border-color:color-mix(in srgb, var(--accent) 60%, transparent); }
   #ppg-np .np-nat button .one{ position:absolute; right:3px; top:2px; font:800 7px/1 inherit; font-family:inherit; }
   /* your quick-bar pills, small */
   #ppg-np .np-pills{ display:flex; flex-wrap:wrap; gap:4px; margin-top:10px; padding-top:9px; border-top:1px solid rgba(255,255,255,.07); }
-  #ppg-np .np-pill{ height:22px; padding:0 8px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05);
+  #ppg-np .np-pill{ height:22px; padding:0 8px; border-radius:calc(999px*var(--ui-round,1)); border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.05);
     color:rgba(255,255,255,.82); font:600 10px/1 inherit; font-family:inherit; display:inline-flex; align-items:center; gap:4px; cursor:pointer;
     white-space:nowrap; max-width:46%; overflow:hidden; text-overflow:ellipsis; -webkit-tap-highlight-color:transparent; }
   #ppg-np .np-pill svg{ width:11px; height:11px; flex:none; }
   #ppg-np .np-pill.on, #ppg-np .np-pill.open{ background:color-mix(in srgb, var(--accent) 20%, transparent); border-color:color-mix(in srgb, var(--accent) 60%, transparent); color:#fff; }
   #ppg-np .np-pill:active{ transform:scale(.95); }
   /* a pill's menu, compact: just its controls */
-  #ppg-np .np-sub{ margin-top:8px; padding:8px; border-radius:12px; background:rgba(255,255,255,.04); max-height:min(220px, 40vh); overflow:auto; display:flex; flex-direction:column; gap:7px; }
+  #ppg-np .np-sub{ margin-top:8px; padding:8px; border-radius:calc(12px*var(--ui-round,1)); background:rgba(255,255,255,.04); max-height:min(220px, 40vh); overflow:auto; display:flex; flex-direction:column; gap:7px; }
   #ppg-np .np-sub:empty{ display:none; }
   #ppg-np .np-row{ display:flex; align-items:center; gap:6px; font-size:10px; color:rgba(255,255,255,.6); }
   #ppg-np .np-row > span:first-child{ flex:none; max-width:42%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #ppg-np .np-row .v{ flex:none; min-width:30px; text-align:right; color:#fff; font-variant-numeric:tabular-nums; }
   #ppg-np .np-chips{ display:flex; flex-wrap:wrap; gap:4px; }
-  #ppg-np .np-chip{ height:22px; padding:0 8px; border-radius:7px; border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.05); color:rgba(255,255,255,.85);
+  #ppg-np .np-chip{ height:22px; padding:0 8px; border-radius:calc(7px*var(--ui-round,1)); border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.05); color:rgba(255,255,255,.85);
     font:600 10px/1 inherit; font-family:inherit; cursor:pointer; white-space:nowrap; -webkit-tap-highlight-color:transparent; }
   #ppg-np .np-chip.on{ background:color-mix(in srgb, var(--accent) 24%, transparent); border-color:color-mix(in srgb, var(--accent) 60%, transparent); color:#fff; }
   #ppg-np .np-chip:disabled, #ppg-np .np-chip.lock{ opacity:.35; }
   #ppg-np .np-chip:active{ transform:scale(.95); }
-  #ppg-np .np-sub input[type=number]{ width:56px; height:22px; border-radius:7px; border:1px solid rgba(255,255,255,.14); background:rgba(0,0,0,.25); color:#fff; font:600 10px inherit; padding:0 6px; }
-  #ppg-back{ position:fixed; z-index:100001; left:50%; top:calc(env(safe-area-inset-top,0px) + 10px); transform:translateX(-50%); height:34px; padding:0 16px; border-radius:999px;
+  #ppg-np .np-sub input[type=number]{ width:56px; height:22px; border-radius:calc(7px*var(--ui-round,1)); border:1px solid rgba(255,255,255,.14); background:rgba(0,0,0,.25); color:#fff; font:600 10px inherit; padding:0 6px; }
+  #ppg-back{ position:fixed; z-index:100001; left:50%; top:calc(env(safe-area-inset-top,0px) + 10px); transform:translateX(-50%); height:34px; padding:0 16px; border-radius:calc(999px*var(--ui-round,1));
     border:0; background:var(--accent); color:#0c0d10; font:700 13px/1 inherit; font-family:inherit; box-shadow:0 6px 20px rgba(0,0,0,.5); cursor:pointer; }
   #ppg-np .np-empty{ font-size:13px; color:rgba(255,255,255,.6); padding:6px 2px; }
   .ppg-tname{ flex:1; min-width:0; text-align:center; font-size:13px; font-weight:600; color:rgba(255,255,255,.7); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-right:52px; }
@@ -138,8 +138,8 @@
   .ppg-mono::after{ content:''; position:absolute; inset:0; background:radial-gradient(120% 80% at 25% 15%, rgba(255,255,255,.35), transparent 55%); }
   .ppg-mono span{ position:relative; z-index:1; font-weight:800; font-size:34cqw; letter-spacing:1px; color:#fff; text-shadow:0 3px 10px rgba(0,0,0,.35); }
   .ppg-load .ppg-lname{ font-size:18px; font-weight:700; color:#fff; letter-spacing:.3px; }
-  .ppg-load .ppg-bar{ width:120px; height:3px; border-radius:3px; background:rgba(255,255,255,.12); overflow:hidden; }
-  .ppg-load .ppg-bar::after{ content:''; display:block; width:40%; height:100%; border-radius:3px; background:linear-gradient(90deg,#6ee7d0,#8b5cff); animation:ppgBar 1s ease-in-out infinite; }
+  .ppg-load .ppg-bar{ width:120px; height:3px; border-radius:calc(3px*var(--ui-round,1)); background:rgba(255,255,255,.12); overflow:hidden; }
+  .ppg-load .ppg-bar::after{ content:''; display:block; width:40%; height:100%; border-radius:calc(3px*var(--ui-round,1)); background:linear-gradient(90deg,#6ee7d0,#8b5cff); animation:ppgBar 1s ease-in-out infinite; }
   @keyframes ppgBar{ 0%{ transform:translateX(-100%); } 100%{ transform:translateX(250%); } }
   .ppg-load.done{ opacity:0; pointer-events:none; }
 

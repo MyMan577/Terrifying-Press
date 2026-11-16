@@ -191,7 +191,7 @@
     if (now - vizRgbAt < 1000) return vizRgb;
     vizRgbAt = now;
     try {
-      const m = /^#?([0-9a-f]{6})$/i.exec(getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());
+      const m = /^#?([0-9a-f]{6})$/i.exec(getComputedStyle(document.body).getPropertyValue('--accent').trim());   // body: a theme sets it there
       if (m){ const n = parseInt(m[1], 16); vizRgb = [n >> 16, (n >> 8) & 255, n & 255]; }
     } catch(e){}
     return vizRgb;
