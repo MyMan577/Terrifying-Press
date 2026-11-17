@@ -383,13 +383,7 @@
   .pw-bl button svg{ width:17px; height:17px; }
   .pw-cz{ font-size:11.5px; }
 
-  /* pages: Edit button, empty page, the Pages sheet, page name while editing */
-  .pw-page-bar{ position:sticky; top:0; z-index:4; display:flex; justify-content:flex-end; padding:0 var(--ph-r, 24px); height:0; }
-  .pw-page-edit{ display:flex; align-items:center; gap:6px; height:34px; padding:0 12px; margin-top:-4px; border-radius:999px; border:1px solid var(--line);
-    background:color-mix(in srgb, var(--bg-elev) 88%, transparent); -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px);
-    color:var(--text); font:inherit; font-size:12.5px; font-weight:650; cursor:pointer; box-shadow:0 6px 16px -8px rgba(0,0,0,.6); }
-  .pw-page-edit svg{ width:15px; height:15px; color:var(--accent); }
-  #pw-page .pw-zone > .pw-row:first-child .pw-title{ padding-right:120px; }
+  /* pages: empty page, the Pages sheet, page name while editing */
   .pw-page-empty{ display:flex; flex-direction:column; align-items:center; gap:6px; margin:60px var(--ph-r, 24px) 0 var(--ph-l, 24px); text-align:center; color:var(--text-dim); font-size:13px; }
   .pw-page-empty svg{ width:34px; height:34px; color:var(--accent); margin-bottom:4px; }
   .pw-page-empty b{ color:var(--text); font-size:15px; }
