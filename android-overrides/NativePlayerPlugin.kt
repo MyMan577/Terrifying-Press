@@ -254,10 +254,72 @@ class NativePlayerPlugin : Plugin() {
             if (v.width > 0 && v.height > 0) videoAspect = v.width * v.pixelWidthHeightRatio / v.height
             notifyListeners("state", snapshot("size"))
         }
-        override fun onTracksChanged(tracks: Tracks) { notifyListeners("tracks", JSObject()) }
+        override fun onTracksChanged(tracks: Tracks) {
+            notifyListeners("tracks", JSObject())
+            // A file can open fine and still carry a stream no decoder here can take (a DTS soundtrack, WMA audio,
+            // VC-1 video...). ExoPlayer then just leaves that stream out, so the film is silent or the song never
+            // makes a sound. Audio is handed to the VLC engine right here; for video the page is told, and opens
+            // the VLC player.
+            val groups = tracks.groups
+            fun bad(type: Int) = groups.any { it.type == type } && groups.none { it.type == type && it.isSupported }
+            val badA = bad(C.TRACK_TYPE_AUDIO)
+            val badV = bad(C.TRACK_TYPE_VIDEO)
+            if (!badA && !badV) return
+            val itemKind = svc?.player?.currentMediaItem?.mediaMetadata?.extras?.getString("kind") ?: kind
+            if (itemKind != "video" && badA && !badV && vlcRescue(null)) return
+            notifyListeners("unsupported", JSObject().put("audio", badA).put("video", badV).put("uri", srcOrig ?: ""))
+        }
         override fun onPlayerError(e: PlaybackException) {
+            if (vlcRescue(e)) return
             notifyListeners("error", JSObject().put("code", e.errorCodeName).put("message", e.message ?: "playback error"))
         }
+    }
+
+    // ---------- VLC engine fallback for audio ----------
+
+    private val rescueCodes = setOf(
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED, PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED, PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FAILED, PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED, PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED)
+    private val rescued = HashSet<String>()
+
+    /**
+     * Audio ExoPlayer cannot decode (APE, WMA, DTS, RealAudio, AC-3 on phones without a Dolby decoder...) is decoded
+     * once by the VLC engine into a WAV in the cache, then swapped in at the same spot, so it still plays with the EQ,
+     * effects, queue and notification. True when a conversion was started (the error is then not reported).
+     */
+    private fun vlcRescue(e: PlaybackException?): Boolean {
+        if (e != null && e.errorCode !in rescueCodes) return false
+        val p = svc?.player ?: return false
+        val item = p.currentMediaItem ?: return false
+        val itemKind = item.mediaMetadata.extras?.getString("kind") ?: kind
+        if (itemKind == "video") return false            // videos go to the full-screen VLC player (the page decides)
+        val src = item.localConfiguration?.uri?.toString() ?: return false
+        if (src.contains("/pp-vlc/c_") || !rescued.add(src)) return false     // already converted, or already tried
+        val pos = p.currentPosition
+        val wasPlaying = p.playWhenReady
+        p.pause()
+        notifyListeners("notice", JSObject().put("msg", "This format needs the VLC engine. Converting it once…"))
+        VlcEngine.convertAudio(context, src, null, object : VlcEngine.Done {
+            override fun ok(uri: String) {
+                val pl = svc?.player ?: return
+                val cur = pl.currentMediaItem
+                if (cur == null || cur.localConfiguration?.uri?.toString() != src) return    // moved on meanwhile
+                val swapped = cur.buildUpon().setUri(Uri.parse(uri)).build()
+                pl.replaceMediaItem(pl.currentMediaItemIndex, swapped)
+                if (currentItem?.localConfiguration?.uri?.toString() == src) currentItem = swapped
+                pl.seekTo(pl.currentMediaItemIndex, pos)
+                pl.prepare()
+                pl.playWhenReady = wasPlaying
+                notifyListeners("notice", JSObject().put("msg", "Playing through the VLC engine."))
+            }
+            override fun fail(message: String) {
+                notifyListeners("error", JSObject().put("code", e?.errorCodeName ?: "ERROR_CODE_DECODING_FORMAT_UNSUPPORTED")
+                    .put("message", (e?.message ?: "This format is not supported") + " (VLC engine: " + message + ")"))
+            }
+        })
+        return true
     }
 
     private val ticker = object : Runnable {
@@ -767,7 +829,8 @@ internal object SourceResolver {
 
     /** [uriStr] itself when it is seekable, otherwise a file:// copy of it. */
     fun playable(ctx: Context, uriStr: String): String =
-        if (randomAccess(ctx, Uri.parse(uriStr))) uriStr else localCopy(ctx, uriStr)
+        if (VlcEngine.needsVlcAccess(uriStr)) VlcEngine.fetchBlocking(ctx, uriStr)     // smb/ftp/sftp/nfs share: copy it first
+        else if (randomAccess(ctx, Uri.parse(uriStr))) uriStr else localCopy(ctx, uriStr)
 
     private fun hash(s: String) = MessageDigest.getInstance("SHA-1").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
 

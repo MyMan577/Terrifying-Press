@@ -67,6 +67,7 @@ class MainActivity : BridgeActivity() {
         registerPlugin(LibraryPlugin::class.java)
         registerPlugin(JobsPlugin::class.java)
         registerPlugin(GameModePlugin::class.java)   // games page: 120 Hz lock, screen awake, renderer priority
+        registerPlugin(VlcPlugin::class.java)        // VLC engine: formats nothing else plays, network shares
         super.onCreate(savedInstanceState)
         instance = this
         nativeVideo = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("native", false)
