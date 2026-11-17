@@ -27,7 +27,6 @@ Press Play has a lot of settings, and most of them are things other players leav
 **Controls**
 - Assign your own actions to taps, swipes, pinches and other gestures on the video or the disc.
 - Add custom keyboard shortcuts, which override the defaults.
-- Add skip back and skip forward buttons next to the speed control, with the jump lengths you choose.
 - Skip intros and outros automatically, with your own lengths, so long openings and endings do not get in the way.
 
 **Sound**

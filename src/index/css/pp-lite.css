@@ -4,7 +4,7 @@ body.pp-lite #ppxp-accent-section, body.pp-lite #ppp-entry-section,
 body.pp-lite #dc-widget,
 body.pp-lite .settings-section:has(#dc-sidebar-toggle),
 body.pp-lite .settings-section:has(#dc-background-earn-toggle),
-body.pp-lite .ppxp-eq-pro-btn, body.pp-lite #ppxp-eq-custom, body.pp-lite .ppxp-quick, body.pp-lite .ppxp-jump, body.pp-lite #ppxp-perks-section, body.pp-lite #ppxp-bg-presets,
+body.pp-lite .ppxp-eq-pro-btn, body.pp-lite #ppxp-eq-custom, body.pp-lite .ppxp-quick, body.pp-lite #ppxp-perks-section, body.pp-lite #ppxp-bg-presets,
 body.pp-lite #eq-preset-row button:not([data-eq-preset="flat"]):not([data-eq-preset="bass"]):not([data-eq-preset="treble"]):not([data-eq-preset="vocal"]):not([data-eq-preset="pop"]):not([data-eq-preset="rock"]),
 body.pp-lite #filter-grid button:not([data-filter="none"]):not([data-filter="bw"]):not([data-filter="warm"]):not([data-filter="cool"]):not([data-filter="sepia"]):not([data-filter="vibrant"])
 { display:none !important; }

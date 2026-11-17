@@ -25,9 +25,8 @@
       ['Which rank sits at Level 300?', "Press Play Media's Immortal", "Press Play Media's Eternal", 'Eternal Encore', 'Mythic Maestro', 'Immortal was the original summit.'],
       ['What unlocks at Level 320?', 'Custom EQ preset slots', 'Accent colors', 'Extra EQ bands', 'Animated gradients', 'Ascendant of the Airwaves can save its own EQ curves.'],
       ['How many custom EQ slots are available at Level 500?', '5', '12', '8', '3', 'Slots unlock one at a time from Lv 320 to Lv 500.'],
-      ['What unlocks at Level 360?', 'Skip intro and outro', 'Quick speed buttons', 'Jump buttons', 'Quick boost buttons', 'It lives under Settings > Level perks.'],
+      ['What unlocks at Level 360?', 'Skip intro and outro', 'Quick speed buttons', 'Crossfade', 'Quick boost buttons', 'It lives under Settings > Level perks.'],
       ['What does Press Play PLUS do?', 'Unlocks every level perk from the start and keeps levels', 'Removes levels and EXP', 'Doubles XP', 'Hides all backgrounds', 'PLUS keeps the leveling system.'],
-      ['What does the Level 380 perk add?', 'Skip back and forward buttons', 'Quick boost buttons', 'Skip intro and outro', 'Custom EQ slots', 'The choices are 5, 10, 15 or 30 seconds.'],
       ['What unlocks at Level 15?', 'Choosing a custom accent color', 'Animated gradients', 'The crown badge', 'Extra EQ bands', 'Pro Media Player unlocks app recoloring.'],
       ['What unlocks at Level 6?', 'Two extra EQ bands (500Hz and 6K)', 'Accent colors', 'The crown badge', 'Animated gradients', 'Level 6 also adds Symphonic and Basshead Pro presets.'],
       ['What unlocks at Level 28?', 'Slow animated gradient backgrounds', 'A gold badge glow', 'Accent colors', 'The crown', 'Press Play Elite unlocks animated gradients.'],
@@ -277,7 +276,6 @@
     setupEqCustom();
     setupQuickSpeed();
     setupQuickBoost();
-    setupJump();
     setupSkip();
     setupPerksSection();
     setupExpShopEntry();
