@@ -212,6 +212,8 @@
     if (b.classList.contains('player-layout') && !b.hasAttribute('data-pl-player')) return false;
     return !document.hidden && vizWrap.offsetParent !== null && vizWrap.style.display !== 'none';
   }
+  // The levels the ring draws (32 bands, 0..1) and the kick, for the Visualiser widget. Read only, never changed by it.
+  window.__ppVizLevels = () => ({ bands: vizLevel, pulse: Math.min(1, vizPulse * vizSensitivity) });
   let vizLast = 0, vizIdle = false, vizEverLive = false;
   function drawViz(ts){
     const vizLive = audioCtx && isPlaying && currentIndex !== -1;
@@ -219,7 +221,9 @@
     const vizShown = vizIsVisible();
     // Haptics follow the kick anywhere in the app, so the analysis keeps running (without drawing) while the
     // ring is off screen, as long as the app itself is on screen.
-    const hapticOnly = !vizShown && hapticBass > 0 && vizLive && !document.hidden;
+    // A Visualiser widget (pp-widgets.js) on Home or a page wants the levels too: it stamps __ppVizWant while it is on screen.
+    const widgetWants = (window.__ppVizWant || 0) > performance.now() - 700;
+    const hapticOnly = !vizShown && (hapticBass > 0 || widgetWants) && vizLive && !document.hidden;
     if ((!vizShown && !hapticOnly) || (vizIdle && !vizLive)){ vizLast = 0; setTimeout(() => requestAnimationFrame(drawViz), document.hidden ? 250 : 100); return; }
     requestAnimationFrame(drawViz);
     if (ts - vizLast < (hapticOnly ? 30 : 15)) return;   // 60 fps: smooth falls and peaks without paying for 120

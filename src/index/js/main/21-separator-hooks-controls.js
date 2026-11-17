@@ -55,6 +55,27 @@
       if (activePlaylistView === id) activePlaylistView = '__all__';
     },
     commitPlaylists: () => { savePlaylists(); saveLibraryMeta(); renderPlaylistsManager(); renderPlaylistViewSelect(); renderPlaylist(); },
+    // --- read by the widgets (pp-widgets.js): what plays next, the sleep timer, saved positions ---
+    w: {
+      upNext: n => {
+        const out = []; if (currentIndex < 0 || !tracks[currentIndex]) return out;
+        if (shuffleOn && !shuffleOrder.length) buildShuffleOrder();
+        const q = shuffleOn ? shuffleOrder : activeQueue(), p = q.indexOf(currentIndex); if (p < 0) return out;
+        for (let k = 1; k < q.length && out.length < n; k++){
+          if (!shuffleOn && repeatMode === 0 && p + k >= q.length) break;   // the queue ends here
+          out.push(q[(p + k) % q.length]);
+        }
+        return out;
+      },
+      jump: i => { if (i >= 0 && i < tracks.length) loadTrack(i, true); },
+      time: () => { const m = media(); return { t: (m && m.currentTime) || 0, d: (m && isFinite(m.duration) && m.duration) || 0 }; },
+      seek: s => { const m = media(); if (m && isFinite(s)) m.currentTime = Math.max(0, s); },
+      sleep: () => ({ mode: sleepTimer.mode, ms: sleepRemainingMs(), left: sleepTimer.left || 0 }),
+      sleepFor: min => startSleepTimer(min),
+      sleepEnd: () => startSleepAtEndOfTrack(),
+      sleepOff: () => clearSleepTimer(),
+      positions: () => loadPlaybackPositions()
+    },
     sel: {
       active: () => selectMode,
       has: t => selectedTracks.has(t),
