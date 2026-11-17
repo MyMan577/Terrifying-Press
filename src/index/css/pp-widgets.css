@@ -398,3 +398,91 @@
   .pw-pg-main{ border-color:var(--accent) !important; color:var(--accent) !important; }
   .pw-ed-title input{ width:100%; min-width:0; height:36px; padding:0 10px; border-radius:calc(9px*var(--ui-round,1)); border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; font-size:14px; font-weight:700; }
   #pw-edbar button[hidden]{ display:none; }
+
+  /* ===== Widgets fit their box, however narrow it is set =====
+     Each box is a size container, so a widget can switch to a compact look by its own width (not the screen's).
+     Long words break, one-line labels end in "…", and nothing is drawn outside the box. */
+  .pw-row-box > .pw-box:not(.pw-w-auto), .pw-stk-pg{ container-type:inline-size; }
+  .pw-row-box > .pw-w-auto{ max-width:100%; flex-shrink:1; min-width:0; overflow:hidden; }
+  .pw-row-box > .pw-w-auto > *{ max-width:100%; }
+  /* "Fit" only means something for widgets with a width of their own (a button, a game, the title). The rest share the row's free room. */
+  .pw-row-box > .pw-w-auto:not(.pw-t-action):not(.pw-t-games):not(.pw-t-game):not(.pw-t-title){ flex:1 1 0; container-type:inline-size; overflow:visible; }
+  .pw-box{ overflow-wrap:anywhere; }
+  .pw-cardwrap, .pw-card, .pw-np, .pw-btn, .pw-un, .pw-bm, .pw-sl, .pw-lvl, .pw-eq, .pw-shortcuts, .pw-stats, .pw-game, .pw-bl{ max-width:100%; min-width:0; }
+  .pw-title{ display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; white-space:normal; }
+  .pw-greet{ display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; }
+  .pw-btn span{ max-width:100%; }
+  .pw-btn-tile span, .pw-btn-big span{ white-space:normal; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+  .pw-wh-t{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pw-wh .ph-link{ flex:none; }
+  .pp-games-btn{ max-width:100%; min-width:0; }
+  .pp-games-btn > span:not(.pp-gi){ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pw-games-tile span, .pw-games-tile small{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pw-sl-h b, .pw-sl-h small{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pw-eq button, .pw-sl-b button{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pw-lvl-top > *{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pw-stat b{ font-size:min(20px, 9cqi); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  /* the clock shrinks to fit: the more it shows (seconds, AM/PM) the more it shrinks */
+  .pw-clock .pw-clock-t{ white-space:nowrap; font-size:min(var(--pw-cs, 38px), calc((100cqi - 30px) / 3.2)); }
+  .pw-clock:is([data-secs="1"], [data-h12="1"]) .pw-clock-t{ font-size:min(var(--pw-cs, 38px), calc((100cqi - 30px) / 5)); }
+  .pw-clock[data-secs="1"][data-h12="1"] .pw-clock-t{ font-size:min(var(--pw-cs, 38px), calc((100cqi - 30px) / 6.8)); }
+  .pw-clock.pw-ts-s{ --pw-cs:18px; } .pw-clock.pw-ts-m{ --pw-cs:26px; } .pw-clock.pw-ts-l{ --pw-cs:38px; } .pw-clock.pw-ts-xl{ --pw-cs:60px; }
+
+  @container (max-width: 340px){
+    .pw-stats{ grid-template-columns:repeat(2, 1fr); }
+    .pw-np-ctl button:not(.pw-np-pp){ display:none; }
+    .pw-eq-grid{ grid-template-columns:repeat(2, 1fr); }
+  }
+  @container (max-width: 240px){
+    .pw-card{ padding:10px; }
+    .pw-np{ flex-wrap:wrap; gap:8px; padding:8px; }
+    .pw-np-text{ order:2; flex:1 1 100%; }
+    .pw-np-ctl{ margin-left:auto; }
+    .pw-np-art{ width:44px; height:44px; }
+    .pw-np-big .pw-np-art{ width:56px; height:56px; }
+    .pw-np-big .pw-np-ctl{ width:auto; }
+    .pw-shortcuts{ flex-wrap:wrap; gap:6px; }
+    .pw-shortcuts button{ flex:1 1 40%; }
+    .pw-shortcuts i{ width:40px; height:40px; }
+    .pw-eq-grid{ grid-template-columns:1fr; }
+    .pw-eq button, .pw-sl-b button{ flex:1 1 40%; padding:0 6px; }
+    .pw-sl-h small{ flex-basis:100%; margin-left:26px; }
+    .pw-sl-h{ flex-wrap:wrap; }
+    .pw-game-wide small{ display:none; }
+  }
+  @container (max-width: 150px){
+    .pw-card{ padding:8px; }
+    .pw-stats{ grid-template-columns:1fr; }
+    .pw-stat{ padding:6px 4px; }
+    .pw-np-art{ display:none; }
+    .pw-np-t{ font-size:13px; }
+    .pw-np-ctl .pw-np-pp{ width:38px; height:38px; }
+    .pw-shortcuts button{ flex:1 1 100%; }
+    .pw-shortcuts i{ width:36px; height:36px; }
+    .pw-shortcuts i svg{ width:18px; height:18px; }
+    .pw-btn{ padding:8px 10px; gap:6px; font-size:13px; }
+    .pw-btn-tile{ min-height:64px; }
+    .pw-btn-big{ min-height:84px; font-size:14px; }
+    .pw-btn-big svg{ width:26px; height:26px; }
+    .pw-art{ display:none; }
+    .pw-li{ padding:4px 2px; }
+    .pw-wh .ph-link{ display:none; }
+    .pp-games-btn{ padding:0 4px; }
+    .pp-games-btn > span:not(.pp-gi){ display:none; }
+    .pw-games-tile{ padding:10px; }
+    .pw-games-tile small{ display:none; }
+    .pw-game-tile{ min-height:84px; }
+    .pw-game-tile img{ width:40px; height:40px; }
+    .pw-bl{ padding:4px 4px 4px 8px; }
+    .pw-bl-i{ display:none; }
+    .pw-lvl-top em{ margin-left:0; }
+    .pw-eq button, .pw-sl-b button{ flex:1 1 100%; }
+    .pw-bm .pw-li{ flex-wrap:wrap; gap:0; }
+    .pw-bm .pw-li-t{ flex-basis:100%; }
+    .pw-ts-l{ font-size:18px; } .pw-ts-xl{ font-size:22px; }
+  }
+  @container (max-width: 100px){
+    .pw-bl{ padding:3px 3px 3px 6px; gap:4px; }
+    .pw-bl button{ width:28px; height:28px; }
+    .pw-bl button svg{ width:14px; height:14px; }
+  }
