@@ -159,6 +159,45 @@ public class VlcPlugin extends Plugin {
         });
     }
 
+    /**
+     * What streams a file holds, read by the VLC engine: {audio, video, text, codecs: "h264, ac3, ..."}.
+     * The page asks when its own player shows no picture or plays no sound, to tell an unsupported stream from a
+     * file that simply has none.
+     */
+    @PluginMethod
+    public void probe(PluginCall call) {
+        String uri = call.getString("uri", "");
+        if (uri == null || uri.isEmpty()) { call.reject("uri required"); return; }
+        new Thread(() -> {
+            org.videolan.libvlc.LibVLC lib = VlcEngine.get(getContext());
+            if (lib == null) { call.reject("The VLC engine is not available on this phone"); return; }
+            VlcEngine.Opened o = null;
+            try {
+                o = VlcEngine.open(getContext(), lib, uri);
+                o.media.parse(org.videolan.libvlc.interfaces.IMedia.Parse.ParseLocal | org.videolan.libvlc.interfaces.IMedia.Parse.ParseNetwork);
+                int a = 0, v = 0, t = 0;
+                StringBuilder codecs = new StringBuilder();
+                for (int i = 0; i < o.media.getTrackCount(); i++) {
+                    org.videolan.libvlc.interfaces.IMedia.Track tr = o.media.getTrack(i);
+                    if (tr == null) continue;
+                    if (tr.type == org.videolan.libvlc.interfaces.IMedia.Track.Type.Audio) a++;
+                    else if (tr.type == org.videolan.libvlc.interfaces.IMedia.Track.Type.Video) v++;
+                    else if (tr.type == org.videolan.libvlc.interfaces.IMedia.Track.Type.Text) t++;
+                    if (tr.codec != null && !tr.codec.isEmpty()) { if (codecs.length() > 0) codecs.append(", "); codecs.append(tr.codec); }
+                }
+                JSObject r = new JSObject();
+                r.put("audio", a); r.put("video", v); r.put("text", t);
+                r.put("codecs", codecs.toString());
+                r.put("durMs", o.media.getDuration());
+                call.resolve(r);
+            } catch (Throwable e) {
+                call.reject(String.valueOf(e.getMessage()));
+            } finally {
+                if (o != null) { try { o.media.release(); } catch (Throwable ignored) {} o.closeFd(); }
+            }
+        }, "pp-vlc-probe").start();
+    }
+
     /** Saves the login for a share's host (empty user forgets it). Kept on the phone only. */
     @PluginMethod
     public void setLogin(PluginCall call) {

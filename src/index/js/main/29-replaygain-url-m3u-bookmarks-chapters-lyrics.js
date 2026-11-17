@@ -52,13 +52,19 @@
     // cross-origin media without it), so ask for it up front.
     if (t.remoteUrl) el.crossOrigin = 'anonymous'; else el.removeAttribute('crossorigin');
   }
-  function ppAddRemote(href, title){
+  // Web links, streams (HLS, DASH, RTSP, RTMP, MMS...) and network-share files (SMB, FTP, SFTP, NFS) all become
+  // "remote" tracks. ExoPlayer plays what it can; the VLC engine takes the rest (see 29b).
+  const PP_REMOTE_SCHEMES = /^(https?|rtsps?|rtmps?|mms|mmsh|smb|ftps?|sftp|nfs|udp|rtp|srt|upnp):$/i;
+  const PP_VIDEO_EXT = /^(mp4|webm|mov|m4v|ogv|mkv|avi|wmv|asf|flv|f4v|mpg|mpeg|m2v|ts|m2ts|mts|vob|3gp|3g2|rm|rmvb|divx|xvid|ogm|mxf|dv|wtv|iso|mpd|ism|m3u8)$/;
+  function ppAddRemote(href, title, kindHint){
     let u; try { u = new URL(href); } catch(e){ return -1; }
-    if (!/^https?:$/.test(u.protocol)) return -1;
+    if (!PP_REMOTE_SCHEMES.test(u.protocol)) return -1;
     let name = u.hostname;
     try { name = decodeURIComponent(u.pathname.split('/').filter(Boolean).pop() || u.hostname); } catch(e){}
+    if (/\/manifest$/i.test(u.pathname)) name = u.hostname + ' (Smooth Streaming)';
     const ext = ((name.match(/\.([a-z0-9]+)$/i) || [,''])[1] || '').toLowerCase();
-    const kind = /^(mp4|webm|mov|m4v|ogv)$/.test(ext) ? 'video' : 'audio';
+    // Live camera / TV protocols carry video; for a bare HLS/DASH link video is the better guess (it still plays sound).
+    const kind = kindHint || (PP_VIDEO_EXT.test(ext) || /^(rtsps?|rtmps?|mms|mmsh|udp|rtp|srt):$/i.test(u.protocol) ? 'video' : 'audio');
     const track = {
       dbId: 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9),
       url: u.href, remoteUrl: u.href, kind, ext: ext || (kind === 'video' ? 'mp4' : 'mp3'),
@@ -67,18 +73,19 @@
       playlistIds: userPlaylistViewId() ? [userPlaylistViewId()] : []
     };
     tracks.push(track);
-    if (kind === 'audio') probeAudioDuration(track).then(() => { saveLibraryMeta(); renderPlaylist(); }).catch(() => {});
+    if (kind === 'audio' && /^https?:$/.test(u.protocol)) probeAudioDuration(track).then(() => { saveLibraryMeta(); renderPlaylist(); }).catch(() => {});
     return tracks.length - 1;
   }
   function ppOpenUrl(){
-    const href = (prompt('Paste a direct link to an audio or video file (http/https):') || '').trim();
+    const href = (prompt('Paste a link to a file or stream: http(s), HLS (.m3u8), DASH (.mpd), rtsp, rtmp, mms, or a share (smb, ftp, sftp, nfs):') || '').trim();
     if (!href) return;
     const idx = ppAddRemote(href);
-    if (idx < 0){ ppToast("That doesn't look like a valid http(s) link."); return; }
+    if (idx < 0){ ppToast("That doesn't look like a link Press Play can open."); return; }
     saveLibraryMeta(); renderPlaylist(); renderPlaylistViewSelect(); renderPlaylistsManager();
     loadTrack(idx, true);
   }
   function ppStreamError(e){
+    if (ppVlcOnWebError(e)) return;          // the VLC engine is taking it over (29b)
     const t = tracks[currentIndex];
     if (t && t.remoteUrl && e.target === media())
       ppToast("Couldn't play this link. It may not be a direct media file, or the server doesn't allow cross-origin audio (needed for the EQ and effects).");

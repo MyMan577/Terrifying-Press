@@ -43,6 +43,11 @@ Press Play has a lot of settings, and most of them are things other players leav
 - Styled subtitle support for .ass and .ssa files, including colors, fonts and positions.
 - Sleep timer, A-B repeat, shuffle, and playlist import and export.
 
+**Plays nearly anything**
+- A built-in VLC engine (libVLC) takes over whenever a file or stream won't play in the normal player: WMV and WMA, RealMedia, APE, DTS and TrueHD soundtracks, VC-1, MPEG-2, odd AVIs, and more. Audio is converted once, on the phone, and keeps the EQ, effects, queue and notification. Video opens in a full-screen VLC player with audio and subtitle tracks, aspect ratio, delays, speed and chapters. You can turn the hand-over off under Settings, Video decoding. The VLC engine runs on 64-bit ARM phones.
+- Streams: HLS (.m3u8), DASH (.mpd), Smooth Streaming, RTSP and RTMP play in the normal player; MMS, UDP/RTP and SRT go through the VLC engine. Paste a link in Open URL, or open one with Press Play from another app.
+- Network shares: + Add, Network shares finds Windows/SMB shares, UPnP/DLNA media servers and NFS exports on your Wi-Fi, and you can connect to SMB, FTP, SFTP and NFS servers by address. Play a file straight from a share, or add a whole folder to your library.
+
 **Backup and moving phones**
 - Export your settings and progress, without your media files, and restore them on another phone.
 
@@ -65,6 +70,7 @@ The app does use the internet in a few specific situations, so you know exactly 
 - **Lyrics lookup (optional).** If you turn on background lyric fetching, song titles are sent to lrclib.net and lyrics.ovh to find lyrics, which are then saved so they work offline. This is a single toggle in the lyrics settings. Turn it off and nothing is sent. You can also generate lyrics yourself with the on-device transcriber, which never sends anything anywhere.
 - **Translation language packs.** About 30 MB per language, downloaded the first time you use that language. After that, translation runs offline.
 - **Checking for updates (optional).** Once a day the app asks GitHub whether a newer build has been released, and offers it if so. Only the public release list is read, and nothing about you or your library is sent. Switch it off under Settings, App updates.
+- **Network shares and streams (optional).** When you browse network shares, Press Play looks for servers on your own Wi-Fi and talks only to them, or to the server addresses and links you enter. Logins for shares are saved on the phone only.
 - **Playing a game together (optional).** Obby Builder, Weapon Ball, Bastion Brawl and Kitchen Rush can link two phones by scanning QR codes. The phones then talk to each other directly, and only game data (positions, moves, the course) goes between them. To find each other, the phones ask a public STUN server (stun.l.google.com) for their network addresses. Nothing about your library is sent.
 
 ## AI features, all on your device

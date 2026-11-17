@@ -23,6 +23,7 @@
             <button type="button" id="add-folder-btn">Folder…</button>
             <button type="button" id="add-device-btn" style="display:none">Scan phone…</button>
             <button type="button" id="add-url-btn">Open URL…</button>
+            <button type="button" id="add-net-btn">Network shares…</button>
             <button type="button" id="add-m3u-btn">Import M3U…</button>
           </div>
         </div>
@@ -124,6 +125,16 @@
           </div>
           <label class="settings-switch">
             <input type="checkbox" id="native-video-toggle">
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </label>
+        </div>
+        <div class="settings-row" id="vlc-auto-row" style="display:none;margin-bottom:12px;">
+          <div class="settings-row-text">
+            <div class="settings-row-title">Play anything with the VLC engine</div>
+            <div class="settings-row-sub" id="vlc-auto-sub">When a file or stream won't play here (WMV, RealMedia, DTS soundtracks, odd AVIs, RTSP/MMS streams, network shares), hand it to the built-in VLC engine instead. Audio is converted once and keeps the EQ and effects; video opens in a full-screen VLC player.</div>
+          </div>
+          <label class="settings-switch">
+            <input type="checkbox" id="vlc-auto-toggle">
             <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
           </label>
         </div>
