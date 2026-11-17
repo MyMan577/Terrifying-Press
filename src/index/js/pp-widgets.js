@@ -607,7 +607,15 @@
   }
   function zoneItems(zone, create){
     if (!L.zones[zone] && create) L.zones[zone] = zone === 'home' ? homeDefault() : zone.indexOf('page:') === 0 ? pageDefault('My page') : [];
-    return L.zones[zone] || null;
+    var z = L.zones[zone];
+    if (!z) return null;
+    // Drop any broken entries (an empty slot from an older drag bug) so they can't stop the layout drawing.
+    for (var i = z.length - 1; i >= 0; i--){
+      var it = z[i];
+      if (!it || typeof it !== 'object' || !it.type) z.splice(i, 1);
+      else if (it.kids){ if (!Array.isArray(it.kids)) it.kids = []; else it.kids = it.kids.filter(function(k){ return k && typeof k === 'object' && k.type; }); }
+    }
+    return z;
   }
 
   // ---------- rendering a zone ----------
@@ -1078,7 +1086,7 @@
     else if (editing) renderPage();
   }
   function items(){ return zoneItems(edZone || editing, true); }
-  function find(id){ var a = items(); for (var i = 0; i < a.length; i++) if (a[i].id === id) return i; return -1; }
+  function find(id){ var a = items(); for (var i = 0; i < a.length; i++) if (a[i] && a[i].id === id) return i; return -1; }
   function change(fn){ remember(); fn(); save(); refreshZone(); }
 
   edBar.addEventListener('click', function(e){
@@ -1153,10 +1161,11 @@
     if (!drag) return;
     var d = drag; drag = null; body.classList.remove('pw-drag-on');
     d.box.classList.remove('pw-dragging'); d.box.style.translate = '';
-    if (d.target && d.target !== d.id){
+    if (d.target && d.target !== d.id && find(d.id) >= 0 && find(d.target) >= 0){
       change(function(){
-        var a = items(), from = find(d.id); var it = a.splice(from, 1)[0];
-        var to = find(d.target); a.splice(d.after ? to + 1 : to, 0, it);
+        var a = items(), from = find(d.id); var it = a.splice(from, 1)[0]; if (!it) return;
+        var to = find(d.target); if (to < 0) to = a.length - 1;
+        a.splice(d.after ? to + 1 : to, 0, it);
       });
     } else refreshZone();
   }
