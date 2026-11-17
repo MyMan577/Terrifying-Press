@@ -68,7 +68,10 @@
     send:'<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2" fill="currentColor"/>',
     queue:'<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="11" y2="18"/><polyline points="17 15 21 18 17 21"/>',
     tag:'<path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor"/>',
-    film:'<rect x="2" y="3" width="20" height="18" rx="2"/><line x1="7" y1="3" x2="7" y2="21"/><line x1="17" y1="3" x2="17" y2="21"/><line x1="2" y1="12" x2="22" y2="12"/>'
+    film:'<rect x="2" y="3" width="20" height="18" rx="2"/><line x1="7" y1="3" x2="7" y2="21"/><line x1="17" y1="3" x2="17" y2="21"/><line x1="2" y1="12" x2="22" y2="12"/>',
+    vol:'<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/>',
+    mute:'<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"/><line x1="16" y1="9" x2="22" y2="15"/><line x1="22" y1="9" x2="16" y2="15"/>',
+    search:'<circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/>'
   };
   function svg(name){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (P[name] || P.star) + '</svg>'; }
   var ICON_CHOICES = ['star','heart','music','video','headphones','play','shuffle','dice','game','moon','sun','clock','bolt','fire','sparkle','grid','list','library','folder','page','chart','history','user','palette','sliders','home','wave','trophy','chat','bookmark','queue','tag','film','layers'];
@@ -574,8 +577,220 @@
       tr.scrollTo({ left: i * tr.clientWidth, behavior: 'smooth' });
     } };
 
+  // ===================== even more widgets =====================
+  function media2(){ var w = wapi(); return w && w.time ? w.time() : { t:0, d:0 }; }
+  function inputTo(id, v){ var e = document.getElementById(id); if (!e) return false; e.value = v; e.dispatchEvent(new Event('input', { bubbles:true })); e.dispatchEvent(new Event('change', { bubbles:true })); return true; }
+
+  // Progress bar you can drag, with the times.
+  T.seekbar = { name:'Progress bar', icon:'clock', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Where you are in the track, drag to move',
+    fields:[['times','Show the times','toggle',true],['left','Show time left','toggle',false],['title','Show the title','toggle',false],['card','On a card','toggle',false]],
+    render:function(o){
+      return card(o, '<div class="pw-sk" data-pw-live="seekbar" data-left="' + (o.left ? 1 : 0) + '">' + (o.title ? '<div class="pw-sk-n">Nothing playing</div>' : '') +
+        '<input type="range" min="0" max="1000" step="1" value="0" data-pw-range="seek" aria-label="Position">' +
+        (o.times === false ? '' : '<div class="pw-sk-t"><span>0:00</span><span>0:00</span></div>') + '</div>');
+    },
+    live:function(el, st){
+      var r = el.querySelector('input'), tm = st.has ? media2() : { t:0, d:0 };
+      if (!r._drag){ var v = tm.d ? Math.round(tm.t / tm.d * 1000) : 0; if (+r.value !== v) r.value = v; r.style.setProperty('--p', (v / 10) + '%'); }
+      r.disabled = !st.has || !tm.d;
+      var sp = el.querySelectorAll('.pw-sk-t span'), t = r._drag ? +r.value / 1000 * tm.d : tm.t;
+      if (sp.length){ setText(sp[0], fmtT(t)); setText(sp[1], el.dataset.left === '1' ? '-' + fmtT(tm.d - t) : fmtT(tm.d)); }
+      var n = el.querySelector('.pw-sk-n'); if (n) setText(n, st.has ? st.t.title : 'Nothing playing');
+    } };
+
+  // Volume slider, the same volume as the player's.
+  T.volume = { name:'Volume', icon:'headphones', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Turn it up or down, tap the speaker to mute',
+    fields:[['pct','Show the number','toggle',true],['card','On a card','toggle',false]],
+    render:function(o){
+      return card(o, '<div class="pw-vol" data-pw-live="volume"><button type="button" data-pw-act="mute" aria-label="Mute">' + svg('vol') + '</button>' +
+        '<input type="range" min="0" max="100" step="1" value="80" data-pw-range="vol" aria-label="Volume">' + (o.pct === false ? '' : '<b>80</b>') + '</div>');
+    },
+    live:function(el){
+      var src = document.getElementById('volume'), r = el.querySelector('input'); if (!src) return;
+      if (!r._drag && r.value !== src.value) r.value = src.value;
+      r.style.setProperty('--p', r.value + '%');
+      var b = el.querySelector('b'); if (b) setText(b, r.value);
+      var mb = el.querySelector('[data-pw-act="mute"]'), ic = +r.value === 0 ? 'mute' : 'vol';
+      if (mb && mb.dataset.ic !== ic){ mb.innerHTML = svg(ic); mb.dataset.ic = ic; mb.setAttribute('aria-label', ic === 'mute' ? 'Unmute' : 'Mute'); }
+    } };
+  var volBefore = 80;
+
+  // Playback speed in one tap.
+  var SPEEDS = ['0.5','0.75','1','1.25','1.5','2'];
+  T.speed = { name:'Speed', icon:'bolt', kind:'box', zones:['home','page','player','video'], w:'full', desc:'0.5× to 2×, one tap',
+    fields:[['look','Look','seg',[['chips','Chips'],['grid','Grid']]]],
+    render:function(o){
+      return '<div class="pw-eq pw-eq-' + (o.look || 'chips') + ' pw-spd" data-pw-live="speed">' + SPEEDS.map(function(s){ return '<button type="button" data-pw-act="speed" data-v="' + s + '">' + s + '×</button>'; }).join('') + '</div>';
+    },
+    live:function(el){
+      var sl = document.getElementById('speed-slider'), cur = sl ? parseFloat(sl.value) : 1;
+      el.querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', Math.abs(parseFloat(b.dataset.v) - cur) < 0.01); });
+    } };
+
+  // The cover of what's playing, big.
+  T.cover = { name:'Cover art', icon:'image', kind:'box', zones:['home','page','player','video'], w:'half', desc:'The cover of what is playing, tap to open the player',
+    fields:[['shape','Shape','seg',[['','Rounded'],['square','Square'],['circle','Circle']]],['spin','Spin while playing (circle)','toggle',false],['title','Title underneath','toggle',true]],
+    render:function(o){
+      return '<div class="pw-cov' + (o.shape ? ' pw-cov-' + o.shape : '') + (o.spin && o.shape === 'circle' ? ' pw-cov-spin' : '') + '" data-pw-live="cover">' +
+        '<button type="button" class="pw-cov-a" data-pw-act="player" aria-label="Open the player"><img alt=""><span>' + svg('music') + '</span></button>' +
+        (o.title === false ? '' : '<div class="pw-cov-t"><b>Nothing playing</b><small></small></div>') + '</div>';
+    },
+    live:function(el, st){
+      var img = el.querySelector('img'), src = st.has ? thumbOf(st.t) : null;
+      el.querySelector('.pw-cov-a').classList.toggle('has-art', !!src);
+      if (src && img.getAttribute('src') !== src) img.src = src;
+      el.classList.toggle('pw-cov-on', !!st.playing);
+      var b = el.querySelector('.pw-cov-t b'); if (b){ setText(b, st.has ? st.t.title : 'Nothing playing'); setText(el.querySelector('.pw-cov-t small'), st.has ? subOf(st.t) : ''); }
+    } };
+
+  // Details of the track.
+  T.trackinfo = { name:'Track details', icon:'tag', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Format, quality, length and place in the queue',
+    fields:[['title','Show the title','toggle',true],['card','On a card','toggle',true]],
+    render:function(o){ return card(cardOn(o), '<div class="pw-ti" data-pw-live="trackinfo" data-title="' + (o.title === false ? 0 : 1) + '"></div>'); },
+    live:function(el, st){
+      var tm = st.has ? media2() : { d:0 }, t = st.t, sig = st.has ? st.i + ':' + Math.round(tm.d) : 'none'; if (el._sig === sig) return; el._sig = sig;
+      if (!st.has){ el.innerHTML = '<div class="pw-empty">Play something to see its details.</div>'; return; }
+      var rows = [], add = function(k, v){ if (v) rows.push('<div><span>' + k + '</span><b>' + esc(v) + '</b></div>'); };
+      add('Type', t.kind === 'video' ? 'Video' : 'Audio'); add('Format', (t.ext || '').toUpperCase());
+      if (t.kind === 'video' && t.height) add('Quality', (t.width ? t.width + '×' : '') + t.height + 'p');
+      add('Length', tm.d ? fmtT(tm.d) : t.duration ? fmtT(t.duration) : '');
+      if (t.artist && t.artist !== 'Unknown artist') add('Artist', t.artist);
+      if (t.album) add('Album', t.album);
+      var A = st.A, n = A ? A.tracks().filter(function(x){ return !x.stem; }).length : 0; add('In library', n ? (st.i + 1) + ' of ' + n : '');
+      el.innerHTML = (el.dataset.title === '1' ? '<div class="pw-ti-n">' + esc(t.title) + '</div>' : '') + '<div class="pw-ti-g">' + rows.join('') + '</div>';
+    } };
+
+  // Search the library from anywhere.
+  T.search = { name:'Search', icon:'library', kind:'box', zones:['home','page','player'], w:'full', desc:'Type to search your library',
+    fields:[['ph','Hint text','text','Search songs and videos…']],
+    render:function(o){
+      return '<form class="pw-bl pw-srch" data-pw-search="1" autocomplete="off"><span class="pw-bl-i">' + svg('search') + '</span><input type="search" enterkeyhint="search" maxlength="80" placeholder="' + esc(o.ph || 'Search songs and videos…') + '">' +
+        '<button type="submit" aria-label="Search">' + svg('send') + '</button></form>';
+    } };
+
+  // Countdown to a date.
+  T.countdown = { name:'Countdown', icon:'clock', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Days and hours until something',
+    fields:[['label','What for','text','Until the weekend'],['date','Date','date',''],['time','Time','time',''],['secs','Show seconds','toggle',false],['size','Size','seg',SIZES],['align','Align','seg',ALIGN],['card','On a card','toggle',true]],
+    render:function(o){
+      return card(cardOn(o), '<div class="pw-cd pw-ts-' + (o.size || 'm') + '" data-pw-live="countdown" data-at="' + esc((o.date || '') + (o.date ? 'T' + (o.time || '00:00') : '')) + '" data-secs="' + (o.secs ? 1 : 0) + '">' +
+        '<div class="pw-cd-l">' + esc(o.label || 'Until the weekend') + '</div><div class="pw-cd-v"></div></div>');
+    },
+    live:function(el, st){
+      var at = el.dataset.at ? new Date(el.dataset.at) : null;
+      if (!at || isNaN(at)){ var d = new Date(st.now); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7)); at = d; }   // next Saturday
+      var ms = at - st.now, v = el.querySelector('.pw-cd-v');
+      if (ms <= 0){ setText(v, 'Now!'); return; }
+      var s = Math.floor(ms / 1000), dd = Math.floor(s / 86400), hh = Math.floor(s % 86400 / 3600), mm = Math.floor(s % 3600 / 60);
+      setText(v, (dd ? dd + 'd ' : '') + hh + 'h ' + pad(mm) + 'm' + (el.dataset.secs === '1' ? ' ' + pad(s % 60) + 's' : ''));
+    } };
+
+  // This month's calendar.
+  T.calendar = { name:'Calendar', icon:'grid', kind:'box', zones:['home','page'], w:'full', desc:'This month, with today marked',
+    fields:[['mon','Weeks start on Monday','toggle',true],['card','On a card','toggle',true]],
+    render:function(o){ return card(cardOn(o), '<div class="pw-cal" data-pw-live="calendar" data-mon="' + (o.mon === false ? 0 : 1) + '"></div>'); },
+    live:function(el, st){
+      var now = st.now, sig = now.toDateString(); if (el._sig === sig) return; el._sig = sig;
+      var mon = el.dataset.mon === '1', y = now.getFullYear(), m = now.getMonth(), first = new Date(y, m, 1), days = new Date(y, m + 1, 0).getDate();
+      var lead = (first.getDay() - (mon ? 1 : 0) + 7) % 7, names = [];
+      for (var k = 0; k < 7; k++) names.push(new Date(2024, 0, (mon ? 1 : 7) + k).toLocaleDateString(undefined, { weekday:'narrow' }));
+      var cells = names.map(function(n){ return '<i>' + esc(n) + '</i>'; }).join('');
+      for (k = 0; k < lead; k++) cells += '<span></span>';
+      for (k = 1; k <= days; k++) cells += '<span' + (k === now.getDate() ? ' class="on"' : '') + '>' + k + '</span>';
+      el.innerHTML = '<div class="pw-cal-h">' + esc(now.toLocaleDateString(undefined, { month:'long', year:'numeric' })) + '</div><div class="pw-cal-g">' + cells + '</div>';
+    } };
+
+  // How far through the day / week / month / year.
+  T.dayprog = { name:'Time progress', icon:'chart', kind:'box', zones:['home','page','player','video'], w:'full', desc:'How much of the day, week, month or year has gone',
+    fields:[['of','Of the','seg',[['day','Day'],['week','Week'],['month','Month'],['year','Year']]],['card','On a card','toggle',true]],
+    render:function(o){ return card(cardOn(o), '<div class="pw-dp" data-pw-live="dayprog" data-of="' + esc(o.of || 'day') + '"><div class="pw-dp-h"><b></b><span></span></div><div class="pw-lvl-bar"><i></i></div></div>'); },
+    live:function(el, st){
+      var n = st.now, of = el.dataset.of, a, b;
+      if (of === 'year'){ a = new Date(n.getFullYear(), 0, 1); b = new Date(n.getFullYear() + 1, 0, 1); }
+      else if (of === 'month'){ a = new Date(n.getFullYear(), n.getMonth(), 1); b = new Date(n.getFullYear(), n.getMonth() + 1, 1); }
+      else if (of === 'week'){ a = new Date(n); a.setHours(0, 0, 0, 0); a.setDate(a.getDate() - (a.getDay() + 6) % 7); b = new Date(a); b.setDate(b.getDate() + 7); }
+      else { a = new Date(n); a.setHours(0, 0, 0, 0); b = new Date(a); b.setDate(b.getDate() + 1); }
+      var p = Math.max(0, Math.min(1, (n - a) / (b - a)));
+      setText(el.querySelector('b'), { day:'Today', week:'This week', month:'This month', year:'This year' }[of] || 'Today');
+      setText(el.querySelector('.pw-dp-h span'), (p * 100).toFixed(of === 'year' ? 1 : 0) + '%');
+      el.querySelector('i').style.width = (p * 100).toFixed(2) + '%';
+    } };
+
+  // Stopwatch. Keeps running (and keeps its time) when you leave the app.
+  var SW_KEY = 'ppStopwatchV1';
+  function swAll(){ try { return JSON.parse(localStorage.getItem(SW_KEY)) || {}; } catch(e){ return {}; } }
+  function swSave(a){ try { localStorage.setItem(SW_KEY, JSON.stringify(a)); } catch(e){} }
+  T.stopwatch = { name:'Stopwatch', icon:'clock', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Start, pause, reset',
+    fields:[['tenths','Show tenths','toggle',false],['size','Size','seg',SIZES],['card','On a card','toggle',true]],
+    render:function(o, c, ctx, it){
+      var id = it ? it.id : 'x';
+      return card(cardOn(o), '<div class="pw-sw pw-ts-' + (o.size || 'l') + '" data-pw-live="stopwatch" data-id="' + esc(id) + '" data-tenths="' + (o.tenths ? 1 : 0) + '"><div class="pw-sw-t">0:00</div><div class="pw-sw-b">' +
+        '<button type="button" data-pw-act="sw" data-op="go" data-id="' + esc(id) + '">Start</button><button type="button" data-pw-act="sw" data-op="reset" data-id="' + esc(id) + '">Reset</button></div></div>');
+    },
+    live:function(el, st){
+      var s = swAll()[el.dataset.id] || {}, ms = (s.acc || 0) + (s.run ? Date.now() - s.start : 0), sec = ms / 1000;
+      var h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), x = Math.floor(sec % 60);
+      setText(el.querySelector('.pw-sw-t'), (h ? h + ':' + pad(m) : m) + ':' + pad(x) + (el.dataset.tenths === '1' ? '.' + Math.floor(ms % 1000 / 100) : ''));
+      fitText(el.querySelector('.pw-sw-t'));
+      var go = el.querySelector('[data-op="go"]'); setText(go, s.run ? 'Pause' : ms ? 'Go on' : 'Start'); go.classList.toggle('on', !!s.run);
+    } };
+
+  // Battery (the phone's).
+  var batt = null;
+  if (navigator.getBattery) try { navigator.getBattery().then(function(b){ batt = b; ['levelchange','chargingchange'].forEach(function(ev){ b.addEventListener(ev, liveSoon); }); liveSoon(); }).catch(function(){}); } catch(e){}
+  T.battery = { name:'Battery', icon:'bolt', kind:'box', zones:['home','page','player','video'], w:'half', desc:'How much charge the phone has',
+    fields:[['look','Look','seg',[['bar','Bar'],['ring','Ring'],['text','Just the number']]],['card','On a card','toggle',true]],
+    render:function(o){ return card(cardOn(o), '<div class="pw-bat pw-bat-' + esc(o.look || 'bar') + '" data-pw-live="battery"><div class="pw-bat-v"></div><div class="pw-bat-bar"><i></i></div></div>'); },
+    live:function(el){
+      var v = el.querySelector('.pw-bat-v');
+      if (!batt){ setText(v, navigator.getBattery ? '…' : 'Not available'); return; }
+      var p = Math.round(batt.level * 100);
+      setText(v, p + '%' + (batt.charging ? ' ⚡' : ''));
+      el.style.setProperty('--p', p + '%'); el.classList.toggle('pw-bat-low', p <= 15 && !batt.charging); el.classList.toggle('pw-bat-chg', !!batt.charging);
+    } };
+
+  // A drawing made only of CSS shapes: decoration that moves with the music.
+  var DRAWINGS = [['vinyl','Record'],['cassette','Cassette'],['bars','Equalizer'],['speaker','Speaker'],['sunset','Retro sunset'],['night','Night sky'],['waves','Waves'],['lava','Lava lamp'],['mountains','Mountains']];
+  var DRAW_HTML = {
+    vinyl:'<div class="pw-dr-vinyl"><i></i></div>',
+    cassette:'<div class="pw-dr-cass"><div class="pw-dr-cass-win"><i></i><i></i></div><b></b></div>',
+    bars:'<div class="pw-dr-bars">' + '<i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>' + '</div>',
+    speaker:'<div class="pw-dr-spk"><i></i><i></i></div>',
+    sunset:'<div class="pw-dr-sun"><i></i><b></b></div>',
+    night:'<div class="pw-dr-night"><i></i><b></b><b></b></div>',
+    waves:'<div class="pw-dr-waves"><i></i><i></i><i></i></div>',
+    lava:'<div class="pw-dr-lava"><i></i><i></i><i></i></div>',
+    mountains:'<div class="pw-dr-mtn"><i></i><i></i><i></i><b></b></div>'
+  };
+  T.drawing = { name:'Drawing', icon:'palette', kind:'box', zones:['home','page','player','video'], w:'half', desc:'A record, cassette, sunset, night sky and more, drawn in your colours',
+    fields:[['pic','Drawing','select',DRAWINGS],['h','Height','range',[60, 320, 10, 'px', 140]],['color','Colour','color',''],['move','Moves','seg',[['','While music plays'],['always','All the time'],['never','Never']]]],
+    render:function(o){
+      var pic = DRAW_HTML[o.pic] ? o.pic : 'vinyl', col = okCol(o.color), hh = Math.max(60, Math.min(320, +o.h || 140));
+      return '<div class="pw-dr pw-dr-' + pic + (o.move === 'always' ? ' pw-dr-always' : o.move === 'never' ? ' pw-dr-never' : '') + '" data-pw-live="drawing" style="height:' + hh + 'px;--h:' + hh + 'px' + (col ? ';--dc:' + col : '') + '">' + DRAW_HTML[pic] + '</div>';
+    },
+    live:function(el, st){ el.classList.toggle('pw-dr-on', !!st.playing); } };
+
+  // A line of your own, a different one each day (or each time, or every few seconds).
+  T.rotate = { name:'Changing text', icon:'sparkle', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Your own lines, a different one each day or each visit',
+    fields:[['lines','Lines (one per line)','textarea','Turn it up.\nOne more song.\nPress play on a good day.\nNew favourite incoming.'],['every','Change','seg',[['day','Each day'],['open','Each visit'],['10','Every 10 s'],['30','Every 30 s']]],
+            ['size','Size','seg',SIZES],['italic','Italic','toggle',false],['align','Align','seg',ALIGN],['card','On a card','toggle',false]],
+    render:function(o){
+      var lines = String(o.lines == null ? 'Turn it up.\nOne more song.\nPress play on a good day.\nNew favourite incoming.' : o.lines).split('\n').map(function(x){ return x.trim(); }).filter(Boolean);
+      if (!lines.length) return '<div class="pw-empty">Write some lines in this box’s settings.</div>';
+      return card(o, '<div class="pw-text pw-rot pw-ts-' + (o.size || 'm') + (o.italic ? ' pw-italic' : '') + '" data-pw-live="rotate" data-every="' + esc(o.every || 'day') + '" data-lines="' + esc(JSON.stringify(lines)) + '"></div>');
+    },
+    live:function(el, st){
+      var lines = []; try { lines = JSON.parse(el.dataset.lines); } catch(e){}
+      if (!lines.length) return;
+      var ev = el.dataset.every, i;
+      if (ev === 'day'){ var d = st.now; i = (d.getFullYear() * 372 + d.getMonth() * 31 + d.getDate()) % lines.length; }
+      else if (ev === 'open'){ if (el._pick == null) el._pick = Math.floor(Math.random() * lines.length); i = el._pick; }
+      else { i = Math.floor(Date.now() / (+ev * 1000)) % lines.length; }
+      if (el._i !== i){ el._i = i; el.classList.remove('pw-rot-in'); void el.offsetWidth; el.classList.add('pw-rot-in'); setText(el, lines[i]); }
+    } };
+
   var BUILTIN_ORDER = ['title','games','tagline','playground','tabs','hero','chips','videos','audio','history'];
-  var NEW_ORDER = ['nowplaying','upnext','lyrics','viz','stack','action','shortcuts','eq','sleeper','bookmarks','level','bloopy','game','clock','greeting','text','image','stats',
+  var NEW_ORDER = ['nowplaying','cover','seekbar','upnext','lyrics','viz','volume','speed','trackinfo','stack','action','shortcuts','search','eq','sleeper','bookmarks','level','bloopy','game',
+                   'clock','greeting','countdown','calendar','dayprog','stopwatch','battery','text','rotate','drawing','image','stats',
                    'recent','most','random','cont','genre','playlist','playlists','spacer','divider'];
 
   function subOf(t){ return t.kind === 'video' ? (t.height ? t.height + 'p' : (t.ext || '').toUpperCase()) : ((t.artist && t.artist !== 'Unknown artist') ? t.artist : (t.ext || '').toUpperCase()); }
@@ -1027,7 +1242,34 @@
       if (m === 'off') runAction('sleepoff'); else if (m === 'end') runAction('sleepend'); else { w.sleepFor(+m); toast('Sleep timer: ' + (m === '60' ? '1 hour' : m + ' minutes') + '.'); liveSoon(); }
       return; }
     if (act === 'game'){ if (window.__ppGames) window.__ppGames.open(el.dataset.g); return; }
+    if (act === 'mute'){ var vo = document.getElementById('volume'); if (!vo) return; if (+vo.value > 0){ volBefore = +vo.value; inputTo('volume', 0); } else inputTo('volume', volBefore || 80); liveSoon(); return; }
+    if (act === 'speed'){ if (inputTo('speed-slider', el.dataset.v)) toast('Speed: ' + el.dataset.v + '×'); liveSoon(); return; }
+    if (act === 'sw'){ var all = swAll(), s = all[el.dataset.id] || {};
+      if (el.dataset.op === 'reset') s = {};
+      else if (s.run){ s.acc = (s.acc || 0) + Date.now() - s.start; s.run = false; }
+      else { s.start = Date.now(); s.run = true; }
+      all[el.dataset.id] = s; swSave(all); startTick(); liveSoon(); return; }
     runAction(act, { page: el.dataset.pwPage });
+  });
+  // Sliders in widgets: the progress bar and the volume.
+  document.addEventListener('input', function(e){
+    var r = e.target; if (!r.dataset || !r.dataset.pwRange || editing) return;
+    r._drag = true; r.style.setProperty('--p', (r.dataset.pwRange === 'seek' ? +r.value / 10 : +r.value) + '%');
+    if (r.dataset.pwRange === 'vol'){ var v = document.getElementById('volume'); if (v){ v.value = r.value; v.dispatchEvent(new Event('input', { bubbles:true })); } }
+    liveSoon();
+  });
+  document.addEventListener('change', function(e){
+    var r = e.target; if (!r.dataset || !r.dataset.pwRange || editing) return;
+    if (r.dataset.pwRange === 'seek'){ var w = wapi(), tm = media2(); if (w && tm.d) w.seek(+r.value / 1000 * tm.d); }
+    else { var v = document.getElementById('volume'); if (v) v.dispatchEvent(new Event('change', { bubbles:true })); }
+    setTimeout(function(){ r._drag = false; liveSoon(); }, 250);
+  });
+  document.addEventListener('submit', function(e){
+    var f = e.target; if (!f.matches || !f.matches('[data-pw-search]')) return;
+    e.preventDefault(); if (editing) return;
+    var q = f.querySelector('input').value.trim();
+    goView('library');
+    setTimeout(function(){ var s = document.getElementById('track-search'); if (!s) return; s.value = q; s.dispatchEvent(new Event('input', { bubbles:true })); s.scrollIntoView({ block:'center' }); }, 120);
   });
   // "Ask Bloopy" boxes send what was typed into Bloopy's own chat.
   document.addEventListener('submit', function(e){
@@ -1262,6 +1504,8 @@
     var k = f[0], label = f[1], type = f[2], def = f[3], v = o[k] != null ? o[k] : (type === 'range' ? null : def);
     var row = function(inner){ return '<div class="pw-f"><label>' + esc(label) + '</label>' + inner + '</div>'; };
     if (type === 'text') return row('<input type="text" data-k="' + k + '" value="' + esc(v || '') + '" placeholder="' + esc(def || '') + '" maxlength="80">');
+    if (type === 'select') return row('<select data-k="' + k + '">' + def.map(function(x, i){ return '<option value="' + esc(x[0]) + '"' + ((o[k] ? o[k] === x[0] : i === 0) ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; }).join('') + '</select>');
+    if (type === 'date' || type === 'time') return row('<input type="' + type + '" data-k="' + k + '" value="' + esc(v || '') + '">');
     if (type === 'textarea') return row('<textarea data-k="' + k + '" rows="3" maxlength="600">' + esc(v || '') + '</textarea>');
     if (type === 'toggle') return '<label class="pw-f pw-f-tog"><span>' + esc(label) + '</span><input type="checkbox" data-k="' + k + '"' + (v ? ' checked' : '') + '></label>';
     if (type === 'seg'){ var blank = def.some(function(x){ return x[0] === ''; }), sv = o[k];
@@ -1378,6 +1622,7 @@
       remember(); it.w = b.dataset.w; save(); refreshZone(); }); });
     sheetBody.querySelectorAll('input[type=text][data-k], textarea[data-k]').forEach(function(inp){
       var tmr; inp.addEventListener('input', function(){ clearTimeout(tmr); tmr = setTimeout(function(){ set(inp.dataset.k, inp.value); }, 250); }); });
+    sheetBody.querySelectorAll('input[type=date][data-k], input[type=time][data-k]').forEach(function(inp){ inp.addEventListener('change', function(){ set(inp.dataset.k, inp.value); }); });
     sheetBody.querySelectorAll('input[type=checkbox][data-k]').forEach(function(inp){ inp.addEventListener('change', function(){ set(inp.dataset.k, inp.checked); }); });
     sheetBody.querySelectorAll('.pw-seg[data-k] button, .pw-icons button').forEach(function(b){ b.addEventListener('click', function(){
       var g = b.parentNode; g.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); }); set(g.dataset.k, b.dataset.v, RERENDER.indexOf(g.dataset.k) >= 0); }); });
