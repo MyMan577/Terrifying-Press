@@ -12,16 +12,6 @@ PART 1. CREDITS
 ###########################################################################
 
 ===========================================================================
-Made with
-===========================================================================
-
-* Claude Code
-    By: Anthropic
-    Why: An AI coding assistant that wrote much of Press Play's code together with its author.
-    Licence: Tool used to build the app; no code of its own ships in it.
-    https://claude.com/claude-code
-
-===========================================================================
 The app itself
 ===========================================================================
 
