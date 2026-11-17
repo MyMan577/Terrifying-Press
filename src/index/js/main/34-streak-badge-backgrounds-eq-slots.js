@@ -53,6 +53,7 @@
       recordCompletion,
       recordWatchTime,
       getLevel: currentLevel,
+      levelInfo: () => levelInfo(state.xp),
       getStreak: () => ({ days: state.streak.count, best: state.streak.best, multiplier: streakMultiplier() }),
       getRank: () => rankForLevel(currentLevel()),
       isUnlocked,
