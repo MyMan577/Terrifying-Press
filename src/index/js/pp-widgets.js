@@ -117,6 +117,10 @@
     customize: { label:'Customize', icon:'palette', run:function(){ click('customize-btn'); } },
     editlayout:{ label:'Edit this layout', icon:'grid', run:function(){ startEdit(currentZoneOnScreen()); } },
     page:      { label:'Open a page', icon:'page', run:function(o){ if (o && o.page) openPage(o.page); else toast('Pick a page in this button’s settings.'); } },
+    shufpl:    { label:'New shuffled playlist of everything', icon:'shuffle', run:function(){
+      var A = api(); if (!A || !A.makeShuffledPlaylist) return;
+      var pl = A.makeShuffledPlaylist(null); if (!pl) return;
+      goView('playlists'); setTimeout(function(){ if (window.__ppOpenPlaylist) window.__ppOpenPlaylist(pl.id); }, 50); } },
     mute:      { label:'Mute / unmute', icon:'mute', run:function(){ var vo = document.getElementById('volume'); if (!vo) return; if (+vo.value > 0){ volBefore = +vo.value; inputTo('volume', 0); } else inputTo('volume', volBefore || 80); liveSoon(); } },
     volup:     { label:'Volume up', icon:'vol', run:function(){ var vo = document.getElementById('volume'); if (vo) inputTo('volume', Math.min(100, +vo.value + 10)); liveSoon(); } },
     voldown:   { label:'Volume down', icon:'vol', run:function(){ var vo = document.getElementById('volume'); if (vo) inputTo('volume', Math.max(0, +vo.value - 10)); liveSoon(); } },
@@ -366,6 +370,15 @@
   // ===================== more widgets =====================
   function thumbOf(t){ try { return t && window.__ppThumbSrc ? window.__ppThumbSrc(t) : null; } catch(e){ return null; } }
   function artHTML(t, icon){ var s = thumbOf(t); return '<span class="pw-art">' + (s ? '<img alt="" src="' + esc(s) + '">' : svg(icon || (t && t.kind === 'video' ? 'video' : 'music'))) + '</span>'; }
+
+  // Makes a new playlist of everything in a random order and opens it (this used to sit on the Playlists page by itself).
+  T.shufpl = { name:'Shuffled playlist', icon:'shuffle', kind:'box', zones:['home','page','player'], w:'full', desc:'A button that makes a new playlist of everything in a random order',
+    fields:[['label','Label','text','New shuffled playlist of everything'],['look','Look','seg',[['','Chip'],['pill','Button'],['tile','Tile']]]],
+    render:function(o){
+      var label = esc(o.label || 'New shuffled playlist of everything');
+      if (o.look === 'pill' || o.look === 'tile') return '<button type="button" class="pw-btn pw-btn-' + o.look + '" data-pw-act="shufpl" aria-label="' + label + '">' + svg('shuffle') + '<span>' + label + '</span></button>';
+      return '<div class="ph-chips pw-shufpl"><button type="button" class="ph-chip" data-pw-act="shufpl">' + svg('shuffle') + label + '</button></div>';
+    } };
 
   // Visualiser: the same levels the player's ring uses, drawn into the widget's own canvas.
   T.viz = { name:'Visualiser', icon:'wave', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Bars that move with the music',
