@@ -266,7 +266,7 @@ class NativePlayerPlugin : Plugin() {
             val badV = bad(C.TRACK_TYPE_VIDEO)
             if (!badA && !badV) return
             val itemKind = svc?.player?.currentMediaItem?.mediaMetadata?.extras?.getString("kind") ?: kind
-            if (itemKind != "video" && badA && !badV && vlcRescue(null)) return
+            if (itemKind != "video" && badA && vlcRescue(null)) return      // (a "video" here is just cover art)
             notifyListeners("unsupported", JSObject().put("audio", badA).put("video", badV).put("uri", srcOrig ?: ""))
         }
         override fun onPlayerError(e: PlaybackException) {
