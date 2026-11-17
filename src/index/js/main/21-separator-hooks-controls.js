@@ -153,14 +153,16 @@
     applySpeed();
     syncAudioLoop();
 
+    // Formats and links the in-app players cannot open at all go straight to the VLC engine (29b).
+    const toVlc = ppVlcWants(t);
     if (t.kind === 'video'){
       showVideoView();
       ppApplyCors(videoEl, t);
-      PPNative.setSrc(videoEl, t);
+      if (toVlc) ppVlcPark(videoEl, t, autoplay); else PPNative.setSrc(videoEl, t);
     } else {
       showAudioView();
       ppApplyCors(audioEl, t);
-      PPNative.setSrc(audioEl, t);
+      if (toVlc) ppVlcPark(audioEl, t, autoplay); else PPNative.setSrc(audioEl, t);
       if (t.artUrl){
         artImg.src = t.artUrl;
         artImg.style.display = 'block';
@@ -210,7 +212,8 @@
 
     if (autoplay){
       if (window.PPPortfolioApi) window.PPPortfolioApi.recordTrackPlay(t);
-      if (t.kind === 'video' && (document.hidden || bgAudioManual)){
+      if (toVlc){ /* ppVlcPark has opened it in the VLC engine */ }
+      else if (t.kind === 'video' && (document.hidden || bgAudioManual)){
         enterBackgroundAudioMode().then(()=>{ isPlaying = true; updatePlayIcon(); updateMediaSession(); });
       } else {
         resumeAudioCtx().then(() => media().play()).then(()=>{ isPlaying = true; updatePlayIcon(); updateMediaSession(); }).catch(()=>{});
@@ -245,6 +248,8 @@
         updatePlayIcon();
         updateMediaSession();
       });
+    } else if (ppVlcWants(tracks[currentIndex])){
+      ppVlcOpen(tracks[currentIndex]);                 // this one only plays in the VLC engine
     } else {
       resumeAudioCtx().then(() => media().play()).then(() => {
         isPlaying = true;

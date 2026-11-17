@@ -19,6 +19,8 @@
 
   var N = { available: !!(isAndroid && Player && Lib), enabled: enabled, hooks: {} };
   window.PPNative = N;
+  // The VLC engine (formats nothing else plays, network shares). Present even with the native engine switched off.
+  N.vlc = (isAndroid && Plug.PPVlc) || null;
   if (!N.available) {            // plain browser: expose inert helpers so patched call sites stay one-liners
     N.wrapMedia = function (el) { return el; };
     N.setSrc = function (el, t) { el.src = t.url; return Promise.resolve(); };
@@ -463,6 +465,12 @@
       if (N.hooks.syncTo && s.uri) N.hooks.syncTo(s.uri);
     });
     Player.addListener('diag', function (d) { if (N.hooks.toast) N.hooks.toast(d.msg, 'error'); });
+    Player.addListener('notice', function (d) { if (N.hooks.toast) N.hooks.toast(d.msg); });
+    // The file opened, but a stream in it has no decoder here (e.g. a DTS soundtrack): the page may hand it to VLC.
+    Player.addListener('unsupported', function (d) {
+      var S = cur; if (!S || !S.active) return;
+      if (N.hooks.unsupported) N.hooks.unsupported(S.track, d);
+    });
     Player.addListener('cmd', function (c) {
       if (N.hooks.command) N.hooks.command(c.name, c);
     });
