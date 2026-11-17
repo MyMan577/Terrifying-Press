@@ -65,6 +65,7 @@
       ['Which is NOT applied by ASS subtitle styling?', 'Karaoke effects', 'Colors', 'Bold and italic', 'Fade in/out', 'Karaoke, rotation, drawings and moving text are not applied.'],
       ['What happens if "Remember playback position" is off?', 'Every track starts from the beginning', 'Playback never stops', 'Tracks loop', 'Saved spots are kept', 'It controls resume behavior.'],
       ['What does "Audio lead" do?', 'Plays sound slightly ahead instead of delaying the picture', 'Raises volume', 'Mutes video', 'Adds subtitles', 'The video is never processed, so no frames drop.'],
+      ['How much delay does Decode compensation add?', '300 ms', '30 ms', '1 second', '3 seconds', 'It covers browser decoding lag.'],
       ['Which gestures does tap and gesture control support?', 'Tap, double-tap, swipe and long-press', 'Pinch only', 'Shake only', 'Voice commands', 'They work on the video or disc area.'],
       ['What does Simple playlist mode remove?', 'Thumbnails, size, length and multiple playlists', 'Cloud sync', 'Lyrics', 'Online radio', 'It is a settings toggle.'],
       ['Where is every rank and its rewards shown?', 'View rank & rewards in Settings', 'The equalizer', 'The sleep timer', 'The playlist', 'It lists all ranks and what each unlocks.']

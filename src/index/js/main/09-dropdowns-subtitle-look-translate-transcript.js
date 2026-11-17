@@ -226,7 +226,7 @@
     });
     row.addEventListener('click', (e) => e.stopPropagation());
     o.after.parentNode.insertBefore(row, o.after.nextSibling);
-    paint(); setInterval(() => { if (!document.hidden && row.offsetParent) paint(); }, 600);   // the value also changes from the other buttons
+    paint(); setInterval(() => { if (row.offsetParent) paint(); }, 600);   // the value also changes from the other buttons
     return { paint };
   };
   ppPresetRow({ after: subtitleOffsetRow, key: 'ppPresetSubSync', unit: 's', def: 0.5, min: -60, max: 60, step: 0.1,

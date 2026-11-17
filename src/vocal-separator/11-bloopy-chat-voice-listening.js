@@ -160,7 +160,7 @@
     const VOICE = { fr: 1280, vad: 0.02, quiet: 13, wait: 75, max: 150, speed: 1.04 };             // 80 ms frames: stop after ~1 s of quiet, give up after ~6 s of nothing, cap ~12 s
     const VOICES = [['af_heart', 'Heart (warm)'], ['af_nicole', 'Nicole (calm)'], ['af_bella', 'Bella (brighter)'], ['af_sarah', 'Sarah'], ['am_michael', 'Michael'], ['bf_emma', 'Emma (British)'], ['bm_george', 'George (British)']];
     const vFlag = k => lsGet(k) === '1';
-    const miniOn = () => vFlag('ppvMini'), speakOn = () => vFlag('ppvVoice'), micOn = () => vFlag('ppvMic'), wakeOn = () => vFlag('ppvWake') && micOn() && chatOn && !window.ppFocus;   // Focus mode keeps the mic off
+    const miniOn = () => vFlag('ppvMini'), speakOn = () => vFlag('ppvVoice'), micOn = () => vFlag('ppvMic'), wakeOn = () => vFlag('ppvWake') && micOn() && chatOn;
     const vCat = (a, b) => { const o = new Float32Array(a.length + b.length); o.set(a); o.set(b, a.length); return o; };
     const vDot = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; };
     const vHash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return h >>> 0; };

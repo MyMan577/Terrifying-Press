@@ -126,13 +126,15 @@
   document.getElementById('view-zoom-btn').addEventListener('click', () => cycleViewZoom());
 
   // PiP menu: native PiP can only show the real <video>, so a delayed picture isn't possible there.
-  // Audio lead is what keeps the sound in sync there, so the menu nudges it on.
+  // Audio lead + decode compensation are what keep the sound in sync, so the menu nudges both on.
   const pipDropdown = document.getElementById('pip-dropdown');
   const pipDdAL = document.getElementById('pip-audio-lead-toggle');
+  const pipDdDC = document.getElementById('pip-decode-comp-toggle');
   const pipDdStatus = document.getElementById('pip-dd-status');
   const pipDdStart = document.getElementById('pip-dd-start');
   function refreshPipMenu(){
     pipDdAL.checked = audioLeadOn;
+    pipDdDC.checked = decodeComp;
     const ms = netLatencyMs();
     if (audioLeadOn && ms > 0){
       pipDdStatus.classList.remove('warn');
@@ -143,7 +145,7 @@
       pipDdStatus.textContent = !audioLeadOn
         ? 'Audio lead is off, so the sound will lag the picture in PiP.'
         : 'Latency is 0 ms, so there is nothing for audio lead to do.';
-      pipDdStart.textContent = audioLeadOn ? 'Start Picture-in-picture' : 'Turn on audio lead and start';
+      pipDdStart.textContent = audioLeadOn ? 'Start Picture-in-picture' : 'Turn on both and start';
     }
   }
   // Drive the real settings switches so their existing handlers do the work and everything stays in sync.
@@ -154,12 +156,14 @@
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
   pipDdAL.addEventListener('change', () => { setSettingToggle('audio-lead-toggle', pipDdAL.checked); refreshPipMenu(); });
+  pipDdDC.addEventListener('change', () => { setSettingToggle('decode-comp-toggle', pipDdDC.checked); refreshPipMenu(); });
   async function startPip(){
     try { await videoEl.requestPictureInPicture(); } catch(e){ /* PiP unsupported or blocked, ignore */ }
   }
   pipDdStart.addEventListener('click', async () => {
     if (!audioLeadOn){
       setSettingToggle('audio-lead-toggle', true);
+      setSettingToggle('decode-comp-toggle', true);
     }
     pipDropdown.classList.remove('open');
     pipBtn.setAttribute('aria-expanded', 'false');

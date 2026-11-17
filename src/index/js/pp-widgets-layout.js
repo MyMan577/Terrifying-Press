@@ -47,7 +47,7 @@
     if (ed) order.push('tagline');
     if (ed === 'playground') order.push('playground');
     order.push('tabs');
-    if (ed === 'lite' || ed === 'premium' || ed === 'focus') order.push('hero');
+    if (ed === 'lite' || ed === 'premium') order.push('hero');
     if (ed === 'plus') order.push('chips');
     order.push('videos','audio');
     if (ed !== 'lite') order.push('history');

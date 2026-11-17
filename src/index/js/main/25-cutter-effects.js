@@ -29,6 +29,8 @@
       crush: bitcrushAmount, echo: echoMix, trem: tremoloAmount,
       speed: playbackSpeed,
       latency: subtitleLatencyMs,
+      // Hidden decode compensation (the Settings toggle): same +300 ms playback adds to videos.
+      comp: (decodeComp && cutterState && tracks[cutterState.trackIndex] && tracks[cutterState.trackIndex].kind === 'video') ? DECODE_COMP_MS : 0,
       look: buildVideoFilterString()
     };
   }
@@ -58,10 +60,11 @@
     if (live.trem > 0) names.push('Tremolo ' + pct(live.trem));
     items.push({ id: 'fx', label: 'DJ effects', active: names.length > 0, detail: names.length ? names.join(', ') : 'all off' });
     items.push({ id: 'speed', label: 'Speed', active: Math.abs(live.speed - 1) > 0.001, detail: (+live.speed.toFixed(2)) + 'x, pitch kept' });
-    const lat = Math.round(live.latency);
+    const comp = (videoOut && fmt !== 'fast') ? (live.comp || 0) : 0;   // Fast copy can't carry a delay, so it never includes it
+    const lat = Math.round(live.latency + comp);
     let latActive = false, latDetail = '0 ms';
     if (lat > 0){
-      if (videoOut){ latActive = true; latDetail = 'picture ' + lat + ' ms behind sound'; }
+      if (videoOut){ latActive = true; latDetail = 'picture ' + lat + ' ms behind sound' + (comp ? ' (incl. ' + comp + ' ms decode comp.)' : ''); }
       else latDetail = lat + ' ms (picture only)';
     } else if (lat < 0){ latActive = true; latDetail = 'sound ' + (-lat) + ' ms behind picture'; }
     items.push({ id: 'latency', label: 'Latency', active: latActive, detail: latDetail });
@@ -85,7 +88,7 @@
     const items = cutterFxItems(live, track.kind, fmt);
     const on = id => { const it = items.find(i => i.id === id); return !!(it && it.active && cutterFxPick[id]); };
     const videoOut = track.kind === 'video' && (fmt === 'video' || fmt === 'fast' || fmt === 'encode');
-    const lat = Math.round(live.latency);   // the latency slider
+    const lat = Math.round(live.latency + ((videoOut && fmt !== 'fast') ? (live.comp || 0) : 0));   // slider + decode compensation (re-encoding formats only)
     const a = { eq: on('eq') ? live.eq : null, gain: on('gain') ? live.gain : 1,
       bass: 0, reverb: 0, filter: 0, dist: 0, crush: 0, echo: 0, trem: 0,
       delaySec: (on('latency') && lat < 0) ? Math.min(2, -lat / 1000) : 0 };

@@ -176,7 +176,7 @@
     };
 
     function currentLevel(){ return levelInfo(state.xp).level; }
-    function isUnlocked(level){ try { if ((localStorage.getItem('ppPlusMode') === '1' || localStorage.getItem('ppPremiumMode') === '1' || localStorage.getItem('ppPlaygroundMode') === '1' || localStorage.getItem('ppFocusMode') === '1') && localStorage.getItem('ppLiteMode') !== '1') return true; } catch(e){} return currentLevel() >= level; }
+    function isUnlocked(level){ try { if ((localStorage.getItem('ppPlusMode') === '1' || localStorage.getItem('ppPremiumMode') === '1' || localStorage.getItem('ppPlaygroundMode') === '1') && localStorage.getItem('ppLiteMode') !== '1') return true; } catch(e){} return currentLevel() >= level; }
 
     // ---------- EXP shop ----------
     // Spends grooves (the minigame currency, owned by a separate closure

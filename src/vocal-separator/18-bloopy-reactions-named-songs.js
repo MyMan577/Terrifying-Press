@@ -354,7 +354,7 @@
       }
     }
     lcDrawMenu();
-    setInterval(() => { if (!document.hidden) lcChips(); }, 1500); cfab.addEventListener('click', () => setTimeout(lcChips, 50));
+    setInterval(lcChips, 1500); cfab.addEventListener('click', () => setTimeout(lcChips, 50));
     // type-ahead: songs, artists and playlist names for play / add / find / like / block
     function lcSuggest() {
       const A = window.__ppApi; lcSug.textContent = ''; if (!A || !A.tracks) return; const v = cin.value; let m; const items = [], tr = A.tracks();

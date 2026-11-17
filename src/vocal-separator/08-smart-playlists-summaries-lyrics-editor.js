@@ -91,9 +91,8 @@
     async function isAway() {
       if (isBusy) return false;
       if (Date.now() - lastInput < parseInt(ls('ppvBgIdle') || '5', 10) * 60000) return false;
-      const focus = ls('ppFocusMode') === '1';                         // Focus mode: background AI work waits for the charger and for silence
-      if ((ls('ppvBgPlay') !== '1' || focus) && mediaPlaying()) return false;
-      if ((ls('ppvBgChg') === '1' || focus) && navigator.getBattery) { try { const b = await navigator.getBattery(); if (!b.charging) return false; } catch (e) {} }
+      if (ls('ppvBgPlay') !== '1' && mediaPlaying()) return false;
+      if (ls('ppvBgChg') === '1' && navigator.getBattery) { try { const b = await navigator.getBattery(); if (!b.charging) return false; } catch (e) {} }
       return true;
     }
     const freeBg = () => { if (bgCache) { Object.values(bgCache).forEach(s => s && s.release && s.release()); bgCache = null; } };
