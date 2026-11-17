@@ -282,7 +282,8 @@ class NativePlayerPlugin : Plugin() {
         PlaybackException.ERROR_CODE_DECODER_INIT_FAILED, PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
         PlaybackException.ERROR_CODE_DECODING_FAILED, PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
         PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED, PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED)
-    private val rescued = HashSet<String>()
+    private val rescuing = HashSet<String>()      // conversions running now
+    private val rescueFailed = HashSet<String>()  // files the VLC engine could not read either (not retried this session)
 
     /**
      * Audio ExoPlayer cannot decode (APE, WMA, DTS, RealAudio, AC-3 on phones without a Dolby decoder...) is decoded
@@ -296,13 +297,16 @@ class NativePlayerPlugin : Plugin() {
         val itemKind = item.mediaMetadata.extras?.getString("kind") ?: kind
         if (itemKind == "video") return false            // videos go to the full-screen VLC player (the page decides)
         val src = item.localConfiguration?.uri?.toString() ?: return false
-        if (src.contains("/pp-vlc/c_") || !rescued.add(src)) return false     // already converted, or already tried
+        // A converted file is never converted again; a second play of the original reuses the cached WAV (convertAudio
+        // returns it at once).
+        if (src.contains("/pp-vlc/c_") || src in rescueFailed || !rescuing.add(src)) return false
         val pos = p.currentPosition
         val wasPlaying = p.playWhenReady
         p.pause()
         notifyListeners("notice", JSObject().put("msg", "This format needs the VLC engine. Converting it once…"))
         VlcEngine.convertAudio(context, src, null, object : VlcEngine.Done {
             override fun ok(uri: String) {
+                rescuing.remove(src)
                 val pl = svc?.player ?: return
                 val cur = pl.currentMediaItem
                 if (cur == null || cur.localConfiguration?.uri?.toString() != src) return    // moved on meanwhile
@@ -315,6 +319,7 @@ class NativePlayerPlugin : Plugin() {
                 notifyListeners("notice", JSObject().put("msg", "Playing through the VLC engine."))
             }
             override fun fail(message: String) {
+                rescuing.remove(src); rescueFailed.add(src)
                 notifyListeners("error", JSObject().put("code", e?.errorCodeName ?: "ERROR_CODE_DECODING_FORMAT_UNSUPPORTED")
                     .put("message", (e?.message ?: "This format is not supported") + " (VLC engine: " + message + ")"))
             }
