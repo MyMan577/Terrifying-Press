@@ -11,16 +11,27 @@
   // Every fixed grey the stylesheets route through var(--g-xxxxxx, #xxxxxx). Keep in step with the CSS.
   var GREYS = ['0c0d10','101114','111216','131419','14151b','16171c','17181c','1a1b20','1c1d22','1c1e26','1d1e23',
                '1d1f26','1e1f26','22242a','23242c','2a2b31','2a2c33','2b2d35','333333'];
-  var FONTS = {
-    'default':   { label:'App default', css:null },
-    'jakarta':   { label:'Plus Jakarta Sans', css:"'Plus Jakarta Sans','Inter',sans-serif" },
-    'system':    { label:'Phone default (Roboto)', css:"Roboto,'Google Sans',sans-serif" },
-    'condensed': { label:'Condensed', css:"'sans-serif-condensed','Roboto Condensed','Arial Narrow',sans-serif" },
-    'serif':     { label:'Serif', css:"'Noto Serif','Droid Serif',Georgia,serif" },
-    'mono':      { label:'Monospace', css:"'Roboto Mono','Droid Sans Mono',ui-monospace,monospace" },
-    'casual':    { label:'Casual', css:"'Coming Soon',casual,cursive" },
-    'script':    { label:'Handwritten', css:"'Dancing Script',cursive" }
-  };
+  // Every font but the app/phone default ships in www/fonts (see pp-fonts.css), so it shows the same on every phone.
+  // Keys are stored in saved themes and widget settings: never rename one.
+  var FONT_GROUPS = [
+    ['Clean',       [['jakarta','Plus Jakarta Sans'],['inter','Inter'],['system','Roboto'],['dmsans','DM Sans'],['manrope','Manrope'],['lexend','Lexend'],['outfit','Outfit'],['sora','Sora'],['montserrat','Montserrat'],['poppins','Poppins'],['spacegrotesk','Space Grotesk']]],
+    ['Rounded',     [['nunito','Nunito'],['quicksand','Quicksand'],['comfortaa','Comfortaa'],['fredoka','Fredoka']]],
+    ['Tall & bold', [['condensed','Roboto Condensed'],['oswald','Oswald'],['bebas','Bebas Neue']]],
+    ['Serif',       [['serif','Noto Serif'],['lora','Lora'],['playfair','Playfair Display']]],
+    ['Handwritten', [['casual','Coming Soon'],['script','Dancing Script'],['caveat','Caveat'],['pacifico','Pacifico']]],
+    ['Techy',       [['mono','Roboto Mono'],['jetbrains','JetBrains Mono'],['spacemono','Space Mono'],['orbitron','Orbitron'],['pixel','Press Start 2P (pixel)']]]
+  ];
+  var FONT_FAMILY = { jakarta:'Plus Jakarta Sans', inter:'Inter', system:'Roboto', dmsans:'DM Sans', manrope:'Manrope', lexend:'Lexend', outfit:'Outfit',
+    sora:'Sora', montserrat:'Montserrat', poppins:'Poppins', spacegrotesk:'Space Grotesk', nunito:'Nunito', quicksand:'Quicksand', comfortaa:'Comfortaa',
+    fredoka:'Fredoka', condensed:'Roboto Condensed', oswald:'Oswald', bebas:'Bebas Neue', serif:'Noto Serif', lora:'Lora', playfair:'Playfair Display',
+    casual:'Coming Soon', script:'Dancing Script', caveat:'Caveat', pacifico:'Pacifico', mono:'Roboto Mono', jetbrains:'JetBrains Mono',
+    spacemono:'Space Mono', orbitron:'Orbitron', pixel:'Press Start 2P' };
+  var FONT_FALLBACK = { serif:'serif', lora:'serif', playfair:'serif', casual:'cursive', script:'cursive', caveat:'cursive', pacifico:'cursive',
+    mono:'monospace', jetbrains:'monospace', spacemono:'monospace', pixel:'monospace' };
+  var FONTS = { 'default': { label:'App default', css:null } };
+  FONT_GROUPS.forEach(function(g){ g[1].forEach(function(f){ FONTS[f[0]] = { label:f[1], group:g[0], css:"'" + FONT_FAMILY[f[0]] + "'," + (FONT_FALLBACK[f[0]] || 'sans-serif') }; }); });
+  // For widgets (Customize > Layout): the same list, so a widget can have its own font.
+  window.__ppFonts = { groups: FONT_GROUPS, css: function(k){ return FONTS[k] && FONTS[k].css || ''; } };
   var PRESETS = [
     { id:'default',  name:'Default' },
     { id:'midnight', name:'Midnight',  c:{ bg:'#0a0e1a', surface:'#121829', line:'#1f2840', text:'#e6ebf5', dim:'#8590a8', accent:'#6aa8ff', danger:'#ff6b81' } },
@@ -354,7 +365,9 @@
     });
 
     var font = panel.querySelector('#ppth-font'), sample = panel.querySelector('#ppth-font-sample');
-    Object.keys(FONTS).forEach(function(k){ var o = el('option', null, esc(FONTS[k].label)); o.value = k; font.appendChild(o); });
+    var o0 = el('option', null, esc(FONTS['default'].label)); o0.value = 'default'; font.appendChild(o0);
+    FONT_GROUPS.forEach(function(g){ var og = document.createElement('optgroup'); og.label = g[0];
+      g[1].forEach(function(f){ var o = el('option', null, esc(f[1])); o.value = f[0]; o.style.fontFamily = FONTS[f[0]].css; og.appendChild(o); }); font.appendChild(og); });
     font.addEventListener('change', function(){ var t = clean(current || stockTheme()); t.font = font.value; setTheme(t, true); });
 
     var styleEl2 = panel.querySelector('.ppth-style'), styleInputs = {};

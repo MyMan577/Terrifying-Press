@@ -69,3 +69,13 @@ SOFTWARE.
 Picture enhance: edge-adaptive upscaling and contrast-adaptive sharpening are
 Press Play's own shaders, modelled on the ideas of AMD FidelityFX Super
 Resolution 1.0 (EASU and RCAS).
+
+===========================================================================
+Fonts (Customize > Theme and widget text), from Fontsource (https://fontsource.org)
+Inter, Roboto, Roboto Condensed, Roboto Mono, Noto Serif, DM Sans, Manrope, Lexend,
+Outfit, Sora, Montserrat, Poppins, Space Grotesk, Nunito, Quicksand, Comfortaa,
+Fredoka, Oswald, Bebas Neue, Lora, Playfair Display, Dancing Script, Caveat,
+Pacifico, JetBrains Mono, Space Mono, Orbitron, Press Start 2P:
+licensed under the SIL Open Font License, Version 1.1.
+Coming Soon: licensed under the Apache License, Version 2.0.
+Each font's copyright notice and full licence text is in fonts/<font>-LICENSE.txt.
