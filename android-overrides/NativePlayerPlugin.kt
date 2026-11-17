@@ -256,7 +256,7 @@ class NativePlayerPlugin : Plugin() {
         }
         override fun onTracksChanged(tracks: Tracks) {
             notifyListeners("tracks", JSObject())
-            // A file can open fine and still carry a stream no decoder here can take (a DTS soundtrack, WMA audio,
+            // A file can open fine and still carry a stream no decoder here can take (WMA audio, RealAudio,
             // VC-1 video...). ExoPlayer then just leaves that stream out, so the film is silent or the song never
             // makes a sound. Audio is handed to the VLC engine right here; for video the page is told, and opens
             // the VLC player.
@@ -286,7 +286,7 @@ class NativePlayerPlugin : Plugin() {
     private val rescueFailed = HashSet<String>()  // files the VLC engine could not read either (not retried this session)
 
     /**
-     * Audio ExoPlayer cannot decode (APE, WMA, DTS, RealAudio, AC-3 on phones without a Dolby decoder...) is decoded
+     * Audio ExoPlayer cannot decode (APE, WMA, RealAudio, raw .dts files...; Dolby and DTS inside a container are decoded by the FFmpeg extension) is decoded
      * once by the VLC engine into a WAV in the cache, then swapped in at the same spot, so it still plays with the EQ,
      * effects, queue and notification. True when a conversion was started (the error is then not reported).
      */

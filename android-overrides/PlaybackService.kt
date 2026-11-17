@@ -26,6 +26,11 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.AudioRendererEventListener
+import androidx.media3.exoplayer.audio.ForwardingAudioSink
+import androidx.media3.exoplayer.Renderer
+import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
+import androidx.media3.common.Format
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -123,6 +128,31 @@ class PlaybackService : MediaLibraryService() {
                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                 .setAudioProcessors(arrayOf(fx))
                 .build(), fx).also { vizClock = it }
+
+            /**
+             * The phone's own audio decoders, then the FFmpeg ones (Media3's FFmpeg extension) for what the phone has
+             * no decoder for: DTS, DTS-HD, TrueHD, AC-3 and E-AC-3 soundtracks. They are only tried after the phone's
+             * decoders, and they play into the same output (the sink above), so the EQ, effects, visualizer, speed and
+             * Bluetooth delay work on these tracks exactly as on any other. They always decode to 16-bit, like the
+             * phone's own Dolby decoders: as 32-bit float (what the extension picks with Hi-res on) the effect chain
+             * would be skipped.
+             */
+            override fun buildAudioRenderers(
+                context: Context, extensionRendererMode: Int, mediaCodecSelector: MediaCodecSelector,
+                enableDecoderFallback: Boolean, audioSink: AudioSink, eventHandler: Handler,
+                eventListener: AudioRendererEventListener, out: ArrayList<Renderer>
+            ) {
+                // Both renderers share the one output, and each one registers itself as its listener when it is made:
+                // on its own the second would take the output's reports (position jumps, errors...) from the first.
+                val share = SharedSinkListener(audioSink)
+                super.buildAudioRenderers(context, extensionRendererMode, mediaCodecSelector, enableDecoderFallback,
+                    ListenerSlot(audioSink, share, 0), eventHandler, eventListener, out)
+                try {
+                    out.add(FfmpegAudioRenderer(eventHandler, eventListener, Pcm16Only(ListenerSlot(audioSink, share, 1))))
+                } catch (t: Throwable) {          // the decoders' native library is missing or would not load
+                    android.util.Log.w("PPPlayback", "FFmpeg audio decoders unavailable: $t")
+                }
+            }
         }
         renderers.setEnableDecoderFallback(true)
         // Which decoder is tried first. The others stay in the list, so a file still plays if the first one cannot take it.
@@ -137,6 +167,7 @@ class PlaybackService : MediaLibraryService() {
                 }
             })
         }
+        // Extensions stay off here: the one extension the app ships (FFmpeg audio) is added by buildAudioRenderers above.
         renderers.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
 
         // MP3/AAC/AMR files without a seek table: fall back to constant-bitrate seeking so they still get
@@ -360,4 +391,41 @@ private class UiForwardingPlayer(p: Player) : ForwardingPlayer(p) {
     override fun seekToNextMediaItem() { ui()?.invoke("next") ?: super.seekToNextMediaItem() }
     override fun seekToPrevious() { ui()?.invoke("prev") ?: super.seekToPrevious() }
     override fun seekToPreviousMediaItem() { ui()?.invoke("prev") ?: super.seekToPreviousMediaItem() }
+}
+
+/**
+ * The output as the FFmpeg decoders see it: the same sink, minus 32-bit float. They then decode to 16-bit, which is
+ * what the effect chain (EQ, effects, boost, visualizer) works on.
+ */
+@UnstableApi
+private class Pcm16Only(sink: AudioSink) : ForwardingAudioSink(sink) {
+    private fun isFloat(f: Format) = f.sampleMimeType == MimeTypes.AUDIO_RAW && f.pcmEncoding == C.ENCODING_PCM_FLOAT
+    override fun supportsFormat(format: Format): Boolean = !isFloat(format) && super.supportsFormat(format)
+    override fun getFormatSupport(format: Format): Int =
+        if (isFloat(format)) AudioSink.SINK_FORMAT_UNSUPPORTED else super.getFormatSupport(format)
+}
+
+/** One output shared by two renderers: its reports go to both (each ignores what is not about it). */
+@UnstableApi
+private class SharedSinkListener(private val sink: AudioSink) : AudioSink.Listener {
+    private val ls = arrayOfNulls<AudioSink.Listener>(2)
+    fun set(slot: Int, l: AudioSink.Listener) { ls[slot] = l; sink.setListener(this) }
+    private inline fun each(f: (AudioSink.Listener) -> Unit) { for (l in ls) if (l != null) f(l) }
+    override fun onPositionDiscontinuity() = each { it.onPositionDiscontinuity() }
+    override fun onPositionAdvancing(playoutStartSystemTimeMs: Long) = each { it.onPositionAdvancing(playoutStartSystemTimeMs) }
+    override fun onUnderrun(bufferSize: Int, bufferSizeMs: Long, elapsedSinceLastFeedMs: Long) = each { it.onUnderrun(bufferSize, bufferSizeMs, elapsedSinceLastFeedMs) }
+    override fun onSkipSilenceEnabledChanged(skipSilenceEnabled: Boolean) = each { it.onSkipSilenceEnabledChanged(skipSilenceEnabled) }
+    override fun onOffloadBufferEmptying() = each { it.onOffloadBufferEmptying() }
+    override fun onOffloadBufferFull() = each { it.onOffloadBufferFull() }
+    override fun onAudioSinkError(audioSinkError: Exception) = each { it.onAudioSinkError(audioSinkError) }
+    override fun onAudioCapabilitiesChanged() = each { it.onAudioCapabilitiesChanged() }
+    override fun onAudioTrackInitialized(audioTrackConfig: AudioSink.AudioTrackConfig) = each { it.onAudioTrackInitialized(audioTrackConfig) }
+    override fun onAudioTrackReleased(audioTrackConfig: AudioSink.AudioTrackConfig) = each { it.onAudioTrackReleased(audioTrackConfig) }
+    override fun onSilenceSkipped() = each { it.onSilenceSkipped() }
+}
+
+/** The shared output as one renderer sees it: everything passes through, except that its listener joins [share]. */
+@UnstableApi
+private class ListenerSlot(sink: AudioSink, private val share: SharedSinkListener, private val slot: Int) : ForwardingAudioSink(sink) {
+    override fun setListener(listener: AudioSink.Listener) { share.set(slot, listener) }
 }
