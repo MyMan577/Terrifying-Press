@@ -779,6 +779,10 @@
     if (!has) body.style.setProperty(zone === 'player-top' ? '--pw-top-h' : '--pw-none', '0px');
     return has;
   }
+  // The Library tab: an area at the top of the list, above the Add / Sort buttons. Takes no room until used.
+  var libZoneEl = document.createElement('div'); libZoneEl.id = 'pw-lib-zone';
+  (function(){ var pane = document.getElementById('sidebar-pane-playlist'), ar = document.getElementById('action-row'); if (pane) pane.insertBefore(libZoneEl, ar && ar.parentNode === pane ? ar : pane.firstChild); })();
+  function renderLibrary(){ if (fillZone(libZoneEl, 'library', 'pw-has-lib-zone')){ var K = kit(); if (K) K.observe(libZoneEl); startTick(); liveUpdate(); } }
   function renderPlayer(){
     var a = fillZone(playerZoneEl, 'player', 'pw-has-player-zone'), b = fillZone(playerTopEl, 'player-top', 'pw-has-player-top');
     if (a || b){ startTick(); liveUpdate(); }
@@ -1022,10 +1026,10 @@
   // ---------- refresh ----------
   function refreshAll(){
     var K = kit(); if (K) K.renderHome(true);
-    renderPage(); renderPlayer(); applyTabs(); applyHide();
+    renderPage(); renderPlayer(); renderLibrary(); applyTabs(); applyHide();
   }
   var dataTimer = null;
-  function onData(){ clearTimeout(dataTimer); dataTimer = setTimeout(function(){ if (openPageId && !editing) renderPage(); if (!editing) renderPlayer(); }, 120); }
+  function onData(){ clearTimeout(dataTimer); dataTimer = setTimeout(function(){ if (openPageId && !editing) renderPage(); if (!editing){ renderPlayer(); renderLibrary(); } }, 120); }
   // Rows on the Playlists page need re-rendering when the library changes, like Home's.
 
   // ======================= edit mode =======================
@@ -1042,10 +1046,10 @@
   function closeSheet(){ sheet.hidden = true; sheetBody.innerHTML = ''; }
   sheet.addEventListener('click', function(e){ if (e.target === sheet || e.target.closest('.pw-sheet-x')) closeSheet(); });
 
-  var ZNAMES = { home:'Home', player:'Above the controls', 'player-top':'Top of the player', video:'Over the video', playlists:'Playlists' };
+  var ZNAMES = { home:'Home', player:'Above the controls', 'player-top':'Top of the player', video:'Over the video', playlists:'Playlists', library:'Library' };
   function zoneName(z){ return ZNAMES[z] || ((pageById(z.slice(5)) || {}).name || 'Page'); }
   function sessionName(ed){ return ed === 'player' ? 'the player' : ed === 'video' ? 'the video overlay' : zoneName(ed); }
-  function currentZoneOnScreen(){ var K = kit(); return openPageId ? 'page:' + openPageId : body.hasAttribute('data-pl-player') ? (body.classList.contains('pl-video') ? 'video' : 'player') : K && K.view() === 'playlists' ? 'playlists' : 'home'; }
+  function currentZoneOnScreen(){ var K = kit(); return openPageId ? 'page:' + openPageId : body.hasAttribute('data-pl-player') ? (body.classList.contains('pl-video') ? 'video' : 'player') : K && K.view() === 'playlists' ? 'playlists' : K && K.view() === 'library' ? 'library' : 'home'; }
   function startEdit(zone){
     var K = kit();
     if (!K || !K.on()){ toast('Layout editing works in the media player layout (Settings).'); return; }
@@ -1059,8 +1063,9 @@
     if (editing && editing !== zone){ editing = null; edZone = null; body.classList.remove('pw-editing'); edBar.hidden = true; closeSheet(); }
     var ov = document.getElementById('customize-modal-overlay'); if (ov) ov.classList.remove('open');
     // Home, Playlists and pages sit under the music/video player: close it so the spot is on screen.
-    if (zone.indexOf('page:') === 0 || zone === 'home' || zone === 'playlists'){ if (K.playerOpen && K.playerOpen() && K.closePlayer) K.closePlayer(); }
+    if (zone.indexOf('page:') === 0 || zone === 'home' || zone === 'playlists' || zone === 'library'){ if (K.playerOpen && K.playerOpen() && K.closePlayer) K.closePlayer(); }
     if (zone === 'home' || zone === 'playlists'){ closePage(); K.setView(zone); }
+    else if (zone === 'library'){ closePage(); K.setView('library'); }
     else if (zone === 'player' || zone === 'video'){ closePage(); K.openPlayer(); }
     else openPage(zone.slice(5));
     zonesOf(zone).forEach(function(z){ zoneItems(z, true); }); save();
@@ -1085,6 +1090,7 @@
   function refreshZone(){
     if (editing === 'home' || editing === 'playlists'){ var K = kit(); if (K) K.renderHome(true); }
     else if (editing === 'player') renderPlayer();
+    else if (editing === 'library') renderLibrary();
     else if (editing === 'video') renderVideo();
     else if (editing) renderPage();
   }
@@ -1176,7 +1182,7 @@
   document.addEventListener('pointercancel', endDrag, true);
 
   // ---- add sheet ----
-  function zoneKind(z){ return z.indexOf('page:') === 0 || z === 'playlists' ? 'page' : z === 'player-top' ? 'player' : z; }
+  function zoneKind(z){ return z.indexOf('page:') === 0 || z === 'playlists' || z === 'library' ? 'page' : z === 'player-top' ? 'player' : z; }
   function addSheet(){
     if (!edZone || !isEd(edZone)) edZone = zonesOf(editing)[zonesOf(editing).length - 1];
     var zk = zoneKind(edZone), present = items().map(function(x){ return x.type; });
@@ -1499,6 +1505,7 @@
         '<p class="pw-note">Move, resize and swap anything, or add new widgets. Changes save as you go; Undo is in the bar at the top while editing.</p>' +
         '<div class="pw-lp-row"><div><b>Home screen</b><small>' + (L.zones.home ? 'Your layout' : 'The app’s default') + '</small></div><button type="button" class="settings-toggle-btn" data-lp="edit:home">Edit</button>' + (L.zones.home ? '<button type="button" class="settings-toggle-btn" data-lp="reset:home">Reset</button>' : '') + '</div>' +
         '<div class="pw-lp-row"><div><b>Playlists page</b><small>Widgets above your playlists</small></div><button type="button" class="settings-toggle-btn" data-lp="edit:playlists">Edit</button>' + (L.zones.playlists ? '<button type="button" class="settings-toggle-btn" data-lp="reset:playlists">Reset</button>' : '') + '</div>' +
+        '<div class="pw-lp-row"><div><b>Library</b><small>Widgets above your songs and videos</small></div><button type="button" class="settings-toggle-btn" data-lp="edit:library">Edit</button>' + (L.zones.library ? '<button type="button" class="settings-toggle-btn" data-lp="reset:library">Reset</button>' : '') + '</div>' +
         '<div class="pw-lp-row"><div><b>Tab bar</b><small>' + tabList().length + ' tabs</small></div><button type="button" class="settings-toggle-btn" data-lp="tabs">Edit</button></div>' +
         '<div class="pw-lp-row"><div><b>Over the video</b><small>' + (L.zones.video && L.zones.video.length ? L.zones.video.length + ' widget' + (L.zones.video.length === 1 ? '' : 's') + ' · ' : '') + 'Fades in and out with the video controls</small></div><button type="button" class="settings-toggle-btn" data-lp="edit:video">Edit</button></div>' +
         '<div class="pw-lp-row"><div><b>Player widgets</b><small>At the top of the music player and above its controls</small></div><button type="button" class="settings-toggle-btn" data-lp="edit:player">Edit</button></div>' +
@@ -1519,6 +1526,7 @@
       if (k.indexOf('edit:') === 0) startEdit(k.slice(5));
       else if (k.indexOf('arr:') === 0){ var ov2 = document.getElementById('customize-modal-overlay'); if (ov2) ov2.classList.remove('open'); arrangeSheet(k.slice(4)); }
       else if (k === 'reset:playlists'){ remember(); delete L.zones.playlists; save(); refreshAll(); draw(); }
+      else if (k === 'reset:library'){ remember(); delete L.zones.library; save(); refreshAll(); draw(); toast('Library widgets removed.'); }
       else if (k === 'reset:home'){ remember(); delete L.zones.home; save(); refreshAll(); draw(); toast('Home is back to the default.'); }
       else if (k === 'tabs'){ var ov = document.getElementById('customize-modal-overlay'); if (ov) ov.classList.remove('open'); tabsSheet(); }
       else if (k === 'newpage'){ var p = newPage(); remember(); L.tabs = L.tabs || tabsDefault(); L.tabs.splice(L.tabs.length - 1, 0, { id:uid(), type:'page', page:p.id }); save(); applyTabs(); startEdit('page:' + p.id); }
