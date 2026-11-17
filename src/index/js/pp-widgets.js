@@ -391,7 +391,7 @@
   T.upnext = { name:'Up next', icon:'queue', kind:'box', zones:['home','page','player','video'], w:'full', desc:'What plays after this, tap to jump',
     fields:[['title','Heading','text','Up next'],['n','How many','range',[1, 10, 1, '', 4]],['art','Show covers','toggle',true],['card','On a card','toggle',true]],
     render:function(o){
-      return card(cardOn(o), '<div class="pw-un" data-pw-live="upnext" data-n="' + (+o.n || 4) + '" data-art="' + (o.art === false ? 0 : 1) + '"><div class="pw-wh">' + esc(o.title || 'Up next') + '</div><div class="pw-un-l"></div></div>');
+      return card(cardOn(o), '<div class="pw-un" data-pw-live="upnext" data-n="' + (+o.n || 4) + '" data-art="' + (o.art === false ? 0 : 1) + '"><div class="pw-wh"><span class="pw-wh-t">' + esc(o.title || 'Up next') + '</span></div><div class="pw-un-l"></div></div>');
     },
     live:function(el, st){
       var list = st.has && st.W ? st.W.upNext(+el.dataset.n || 4) : [], sig = st.i + ':' + list.join(',');
@@ -453,7 +453,7 @@
   T.bookmarks = { name:'Bookmarks', icon:'bookmark', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Jump to the spots you saved in this song',
     fields:[['title','Heading','text','Bookmarks'],['add','Show “Add” button','toggle',true],['card','On a card','toggle',true],['hide','Hide when there are none','toggle',false]],
     render:function(o){
-      return card(cardOn(o), '<div class="pw-bm" data-pw-live="bookmarks" data-add="' + (o.add === false ? 0 : 1) + '" data-hide="' + (o.hide ? 1 : 0) + '"><div class="pw-wh">' + esc(o.title || 'Bookmarks') +
+      return card(cardOn(o), '<div class="pw-bm" data-pw-live="bookmarks" data-add="' + (o.add === false ? 0 : 1) + '" data-hide="' + (o.hide ? 1 : 0) + '"><div class="pw-wh"><span class="pw-wh-t">' + esc(o.title || 'Bookmarks') + '</span>' +
         (o.add === false ? '' : '<button type="button" class="ph-link" data-pw-act="bmadd">Add</button>') + '</div><div class="pw-bm-l"></div></div>');
     },
     live:function(el, st){
