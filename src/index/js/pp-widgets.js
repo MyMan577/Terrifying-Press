@@ -181,7 +181,7 @@
     render:function(o){ return card(o, '<div class="pw-clock pw-ts-' + (o.size || 'l') + '" data-pw-live="clock" data-secs="' + (o.secs ? 1 : 0) + '" data-h12="' + (o.h12 ? 1 : 0) + '" data-date="' + (o.date === false ? 0 : 1) + '"><div class="pw-clock-t"></div><div class="pw-clock-d"></div></div>'); } };
   T.greeting = { name:'Greeting', icon:'sun', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Good morning / evening, with your name',
     fields:[['name','Your name','text',''],['size','Size','seg',SIZES],['align','Align','seg',ALIGN],['card','On a card','toggle',false]],
-    render:function(o){ return card(o, '<div class="pw-greet pw-ts-' + (o.size || 'm') + '" data-pw-live="greet" data-name="' + esc(o.name || '') + '"></div>'); } };
+    render:function(o){ return card(o, '<div class="pw-greet pw-ts-' + (o.size || 'm') + '" data-pw-live="greeting" data-name="' + esc(o.name || '') + '"></div>'); } };
   T.nowplaying = { name:'Now playing', icon:'headphones', kind:'box', zones:['home','page','player'], w:'full', desc:'Cover, title and controls for what’s playing',
     fields:[['look','Look','seg',[['card','Card'],['big','Big'],['slim','Slim']]],['controls','Show controls','toggle',true],['progress','Show progress','toggle',true],['upnext','Show what plays next','toggle',false]],
     render:function(o){
@@ -755,9 +755,8 @@
     if (!openPageId) return;
     var top = pageEl.scrollTop;
     var editingThis = editing === 'page:' + openPageId, empty = !(L.zones['page:' + openPageId] || []).length;
-    pageEl.innerHTML = (editingThis ? '' : '<div class="pw-page-bar"><button type="button" class="pw-page-edit" data-pw-pageedit="1">' + svg('grid') + 'Edit page</button></div>') +
-      renderZone('page:' + openPageId, null) +
-      (empty && !editingThis ? '<div class="pw-page-empty">' + svg('page') + '<b>This page is empty</b><span>Tap Edit page to add a clock, buttons, rows of videos and more.</span></div>' : '');
+    pageEl.innerHTML = renderZone('page:' + openPageId, null) +
+      (empty && !editingThis ? '<div class="pw-page-empty">' + svg('page') + '<b>This page is empty</b><span>Long-press this page\u2019s tab, or use Your pages in Customize, to add a clock, buttons, rows of videos and more.</span></div>' : '');
     pageEl.scrollTop = top;
     if (kit()) kit().observe(pageEl);
     startTick(); liveUpdate();
@@ -1012,7 +1011,6 @@
   document.addEventListener('contextmenu', function(e){ if (!editing && e.target.closest && e.target.closest('[data-pw-hold]')) e.preventDefault(); }, true);
   // Rows on a page / in the player play through Home's own handler, which these zones aren't inside.
   pageEl.addEventListener('click', function(e){
-    if (e.target.closest && e.target.closest('[data-pw-pageedit]')){ if (openPageId) startEdit('page:' + openPageId); return; }
     if (editing) return;
     var c = e.target.closest('[data-act="play-video"]'); if (!c) return;
     var q = c.closest('[data-pw-q]'), A = api(), K = kit(); if (!A || !K) return;
