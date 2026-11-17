@@ -12,6 +12,8 @@ import org.videolan.libvlc.Dialog;
 import org.videolan.libvlc.LibVLC;
 import org.videolan.libvlc.Media;
 import org.videolan.libvlc.MediaPlayer;
+import org.videolan.libvlc.RendererDiscoverer;
+import org.videolan.libvlc.RendererItem;
 import org.videolan.libvlc.interfaces.IMedia;
 import org.videolan.libvlc.util.MediaBrowser;
 
@@ -49,6 +51,7 @@ public final class VlcEngine {
     public interface Done { void ok(String uri); void fail(String message); }
     public interface Progress { void at(float fraction); }
     public interface Listing { void done(List<Item> items, String error); }
+    public interface Renderers { void done(List<RendererItem> items, String error); }
 
     public static final class Item {
         public final String uri, name; public final boolean dir;
@@ -66,6 +69,7 @@ public final class VlcEngine {
                 "--http-reconnect",
                 "--audio-time-stretch",
                 "--avcodec-skiploopfilter=1",     // the "nonref" loop-filter skip VLC for Android uses: faster, invisible
+                "--aout=android_audiotrack",      // the output that can pass Dolby / DTS through to a receiver
                 "-v"));
             lib = new LibVLC(ctx.getApplicationContext(), opts);
             Dialog.setCallbacks(lib, new Dialogs(ctx.getApplicationContext()));
@@ -137,6 +141,8 @@ public final class VlcEngine {
     /** The WebView's own localhost addresses for files mean nothing to libVLC: turn them back into real URIs. */
     static String normalize(String uri) {
         if (uri == null) return "";
+        int cue = uri.indexOf("#pp-cue=");           // a CUE-sheet track: the file is the whole album
+        if (cue >= 0) uri = uri.substring(0, cue);
         int i = uri.indexOf("/_capacitor_file_/");
         if (i >= 0 && uri.startsWith("http")) return "file:///" + uri.substring(i + "/_capacitor_file_/".length());
         i = uri.indexOf("/_capacitor_content_/");
@@ -300,6 +306,87 @@ public final class VlcEngine {
         });
     }
 
+    // ---------------------------------------------------------------- multicast (discovery)
+
+    /**
+     * Many phones drop incoming multicast on Wi-Fi to save power, which hides UPnP/DLNA servers, mDNS shares and
+     * Chromecasts. Held only while a discovery runs. Null when Wi-Fi is not available.
+     */
+    static android.net.wifi.WifiManager.MulticastLock multicast(Context ctx) {
+        try {
+            android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager) ctx.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            if (wm == null) return null;
+            android.net.wifi.WifiManager.MulticastLock l = wm.createMulticastLock("pp-vlc-discovery");
+            l.setReferenceCounted(false);
+            l.acquire();
+            return l;
+        } catch (Throwable t) { return null; }
+    }
+    static void release(android.net.wifi.WifiManager.MulticastLock l) { try { if (l != null && l.isHeld()) l.release(); } catch (Throwable ignored) {} }
+
+    // ---------------------------------------------------------------- cast targets (Chromecast)
+
+    private static final java.util.LinkedHashMap<String, RendererItem> renderers = new java.util.LinkedHashMap<>();
+    private static final List<RendererDiscoverer> discoverers = new ArrayList<>();
+    private static final Runnable stopDiscovery = VlcEngine::stopRenderers;
+    private static android.net.wifi.WifiManager.MulticastLock rendererLock;
+
+    /** A cast target found by {@link #discoverRenderers}, by its name; null when it is gone. */
+    public static RendererItem renderer(String name) {
+        synchronized (renderers) { return name == null ? null : renderers.get(name); }
+    }
+
+    /**
+     * Looks for cast targets (Chromecast, and TVs / speakers with Chromecast built in) for [waitMs] and lists what it
+     * has found by then. The search keeps running for a minute after the last call, so the list stays fresh while
+     * the user picks, then stops to save battery.
+     */
+    public static void discoverRenderers(Context ctx, int waitMs, Renderers cb) {
+        main.post(() -> {
+            LibVLC l = get(ctx);
+            if (l == null) { cb.done(new ArrayList<>(), "The VLC engine is not available on this phone"); return; }
+            main.removeCallbacks(stopDiscovery);
+            if (discoverers.isEmpty()) {
+                rendererLock = multicast(ctx);
+                try {
+                    for (RendererDiscoverer.Description d : RendererDiscoverer.list(l)) {
+                        RendererDiscoverer rd = new RendererDiscoverer(l, d.name);
+                        rd.setEventListener(ev -> {
+                            RendererItem it = ev.getItem();
+                            if (it == null) return;
+                            synchronized (renderers) {
+                                if (ev.type == RendererDiscoverer.Event.ItemAdded) {
+                                    if (!renderers.containsKey(it.name) && it.retain()) renderers.put(it.name, it);
+                                } else if (ev.type == RendererDiscoverer.Event.ItemDeleted) {
+                                    RendererItem old = renderers.remove(it.name);
+                                    if (old != null) old.release();
+                                }
+                            }
+                        });
+                        if (rd.start()) discoverers.add(rd); else rd.release();
+                    }
+                } catch (Throwable t) { Log.w(TAG, "renderer discovery: " + t); }
+            }
+            main.postDelayed(() -> {
+                ArrayList<RendererItem> out;
+                synchronized (renderers) { out = new ArrayList<>(renderers.values()); }
+                cb.done(out, discoverers.isEmpty() ? "Casting is not available" : null);
+                main.postDelayed(stopDiscovery, 60000);
+            }, Math.max(1000, waitMs));
+        });
+    }
+
+    private static void stopRenderers() {
+        for (RendererDiscoverer rd : discoverers) { try { rd.setEventListener(null); rd.stop(); rd.release(); } catch (Throwable ignored) {} }
+        discoverers.clear();
+        synchronized (renderers) {
+            for (RendererItem it : renderers.values()) { try { it.release(); } catch (Throwable ignored) {} }
+            renderers.clear();
+        }
+        release(rendererLock);
+        rendererLock = null;
+    }
+
     // ---------------------------------------------------------------- browsing shares
 
     /**
@@ -338,8 +425,9 @@ public final class VlcEngine {
                 b.setIgnoreFileTypes("db,nfo,ini,jpg,jpeg,ljpg,gif,png,pgm,pgmyuv,pbm,pam,tga,bmp,pnm,xpm,xcf,pcx,tif,tiff,lbm,sfv,txt,sub,idx,srt,ass,ssa,vtt,cue,log,url,lnk,exe,dll,zip,rar,7z,pdf,doc,docx,xml,json,html,htm,ds_store");
                 if (uri == null || uri.isEmpty()) {
                     activeHost = "";
+                    final android.net.wifi.WifiManager.MulticastLock lock = multicast(ctx);
                     b.discoverNetworkShares();
-                    main.postDelayed(finish, Math.max(1500, waitMs));
+                    main.postDelayed(() -> { release(lock); finish.run(); }, Math.max(1500, waitMs));
                 } else {
                     String s = normalize(uri);
                     activeHost = hostOf(s);

@@ -18,6 +18,7 @@ import android.os.Looper;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
@@ -31,6 +32,7 @@ import android.widget.Toast;
 
 import org.videolan.libvlc.LibVLC;
 import org.videolan.libvlc.MediaPlayer;
+import org.videolan.libvlc.RendererItem;
 import org.videolan.libvlc.interfaces.IMedia;
 import org.videolan.libvlc.util.VLCVideoLayout;
 
@@ -69,6 +71,13 @@ public class VlcPlayerActivity extends Activity {
         MediaPlayer.ScaleType.SURFACE_235_1, MediaPlayer.ScaleType.SURFACE_ORIGINAL };
     private static final String[] SCALE_NAMES = { "Fit", "Fit screen", "Fill", "16:9", "4:3", "2.21:1", "2.35:1", "Original size" };
 
+    /** Set while casting: the picture and sound go to this device and this screen is the remote. */
+    private RendererItem castTo;
+    private boolean deint, passthrough, spherical;
+    private android.content.SharedPreferences prefs;
+    private String subUri;
+    private long stopMs;
+
     private AudioManager audio;
     private AudioFocusRequest focusReq;
     private boolean pausedByFocus;
@@ -83,7 +92,13 @@ public class VlcPlayerActivity extends Activity {
     };
 
     public static Intent intent(Context ctx, String uri, String title, String kind, long startMs, String subtitle) {
+        return intent(ctx, uri, title, kind, startMs, subtitle, null);
+    }
+
+    /** [renderer]: the name of a cast target from {@link VlcEngine#discoverRenderers}, or null to play here. */
+    public static Intent intent(Context ctx, String uri, String title, String kind, long startMs, String subtitle, String renderer) {
         return new Intent(ctx, VlcPlayerActivity.class)
+            .putExtra("renderer", renderer == null ? "" : renderer)
             .putExtra("uri", uri).putExtra("title", title == null ? "" : title)
             .putExtra("kind", kind == null ? "video" : kind).putExtra("startMs", startMs)
             .putExtra("sub", subtitle == null ? "" : subtitle)
@@ -118,6 +133,28 @@ public class VlcPlayerActivity extends Activity {
         // tap anywhere: show / hide the controls
         View tap = new View(this);
         tap.setOnClickListener(v -> setControls(bar.getVisibility() != View.VISIBLE));
+        // A 360° video: drag to look around (a tap still shows / hides the controls)
+        tap.setOnTouchListener(new View.OnTouchListener() {
+            float lx, ly; boolean moved;
+            @Override public boolean onTouch(View v, MotionEvent e) {
+                switch (e.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN: lx = e.getX(); ly = e.getY(); moved = false; return true;
+                    case MotionEvent.ACTION_MOVE: {
+                        float dx = e.getX() - lx, dy = e.getY() - ly;
+                        if (!moved && Math.hypot(dx, dy) < dp(8)) return true;
+                        moved = true;
+                        if (spherical && mp != null) {
+                            float k = 90f / Math.max(1, v.getWidth());
+                            mp.updateViewpoint(-dx * k, -dy * k, 0, 0, false);
+                        }
+                        lx = e.getX(); ly = e.getY();
+                        return true;
+                    }
+                    case MotionEvent.ACTION_UP: if (!moved) v.performClick(); return true;
+                    default: return false;
+                }
+            }
+        });
         root.addView(tap, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         top = new LinearLayout(this);
@@ -182,24 +219,66 @@ public class VlcPlayerActivity extends Activity {
         setContentView(root);
         immersive();
 
-        LibVLC lib = VlcEngine.get(this);
-        if (lib == null) { fail("The VLC engine is not available on this phone"); return; }
-        try { opened = VlcEngine.open(this, lib, uri); }
-        catch (Exception e) { fail("Could not open the file: " + e.getMessage()); return; }
-        IMedia m = opened.media;
-        m.setHWDecoderEnabled(true, false);      // hardware first, software when the phone's decoder cannot take it
-        if (startMs > 1000) m.addOption(":start-time=" + (startMs / 1000.0));
-        if (!isVideo) m.addOption(":no-video");
-        mp = new MediaPlayer(lib);
-        mp.setMedia(m);
-        m.release();
-        if (sub != null && !sub.isEmpty()) mp.addSlave(IMedia.Slave.Type.Subtitle, Uri.parse(VlcEngine.normalize(sub)), true);
-        mp.setEventListener(this::onVlcEvent);
-        mp.attachViews(videoLayout, null, true, false);
+        prefs = getSharedPreferences("pp_vlc_player", MODE_PRIVATE);
+        deint = prefs.getBoolean("deinterlace", false);
+        passthrough = prefs.getBoolean("passthrough", false);
+        subUri = sub;
+        stopMs = in.getLongExtra("stopMs", 0);
+        String rName = in.getStringExtra("renderer");
+        if (rName != null && !rName.isEmpty()) {
+            castTo = VlcEngine.renderer(rName);
+            if (castTo == null) { fail("That cast device is no longer available. Search again."); return; }
+            info.setText("Casting to " + castTo.displayName + "\n\n" + (title == null ? "" : title));
+            badge.setText("Casting · VLC engine");
+            back.setText("✕  Stop casting");
+        }
+        if (!startMedia(startMs)) return;
         requestFocus();
-        mp.play();
         main.post(tick);
         bump();
+    }
+
+    /**
+     * (Re)opens the file at [startMs] with the current options. Used at start, and when deinterlacing or
+     * passthrough is switched (both only take effect on a fresh start of the media).
+     */
+    private boolean startMedia(long startMs) {
+        LibVLC lib = VlcEngine.get(this);
+        if (lib == null) { fail("The VLC engine is not available on this phone"); return false; }
+        VlcEngine.Opened o;
+        try { o = VlcEngine.open(this, lib, uri); }
+        catch (Exception e) { fail("Could not open the file: " + e.getMessage()); return false; }
+        IMedia m = o.media;
+        // Hardware first, software when the phone's decoder cannot take it. The deinterlacer works on decoded
+        // pictures, so with it on decoding stays in software (the S24 does 1080i that way with ease).
+        m.setHWDecoderEnabled(!deint, false);
+        if (deint && isVideo) { m.addOption(":deinterlace=1"); m.addOption(":deinterlace-mode=yadif2x"); }
+        if (startMs > 1000) m.addOption(":start-time=" + (startMs / 1000.0));
+        if (stopMs > startMs) m.addOption(":stop-time=" + (stopMs / 1000.0));     // a CUE-sheet track ends here
+        if (!isVideo) m.addOption(":no-video");
+        if (mp == null) {
+            mp = new MediaPlayer(lib);
+            mp.setEventListener(this::onVlcEvent);
+            if (castTo != null) mp.setRenderer(castTo);
+            else mp.attachViews(videoLayout, null, true, false);
+        } else {
+            mp.stop();
+        }
+        mp.setAudioDigitalOutputEnabled(passthrough);
+        mp.setMedia(m);
+        m.release();
+        if (opened != null) opened.closeFd();
+        opened = o;
+        if (subUri != null && !subUri.isEmpty()) mp.addSlave(IMedia.Slave.Type.Subtitle, Uri.parse(VlcEngine.normalize(subUri)), true);
+        ended = false;
+        mp.play();
+        if (rate != 1f) mp.setRate(rate);
+        return true;
+    }
+
+    private void restartHere() {
+        if (mp == null) return;
+        startMedia(Math.max(lastTime, mp.getTime()));
     }
 
     private void onVlcEvent(MediaPlayer.Event ev) {
@@ -212,6 +291,10 @@ public class VlcPlayerActivity extends Activity {
                 if (ev.getVoutCount() > 0) {
                     info.setText("");
                     IMedia.VideoTrack vt = mp.getCurrentVideoTrack();
+                    if (vt != null && vt.projection != IMedia.VideoTrack.Projection.Rectangular && !spherical) {
+                        spherical = true;
+                        Toast.makeText(this, "360° video: drag to look around", Toast.LENGTH_LONG).show();
+                    }
                     if (vt != null && vt.width > 0 && vt.height > 0) {
                         boolean sideways = vt.orientation == IMedia.VideoTrack.Orientation.LeftBottom || vt.orientation == IMedia.VideoTrack.Orientation.RightTop;
                         boolean wide = sideways ? vt.height > vt.width : vt.width > vt.height;
@@ -266,7 +349,7 @@ public class VlcPlayerActivity extends Activity {
     /** Keeps the controls up for a few more seconds (only while a video is showing; audio keeps them). */
     private void bump() {
         main.removeCallbacks(hideControls);
-        if (isVideo && mp != null && mp.isPlaying()) main.postDelayed(hideControls, 3500);
+        if (isVideo && castTo == null && mp != null && mp.isPlaying()) main.postDelayed(hideControls, 3500);
     }
 
     private void togglePlay() {
@@ -334,14 +417,29 @@ public class VlcPlayerActivity extends Activity {
             "Speed: " + String.format(Locale.ROOT, "%.2gx", rate),
             "Audio delay: " + (mp.getAudioDelay() / 1000) + " ms",
             "Subtitle delay: " + (mp.getSpuDelay() / 1000) + " ms",
-            "Chapters" };
+            "Chapters",
+            "Deinterlace (old TV / DVD): " + (deint ? "on" : "off"),
+            "Dolby / DTS passthrough to a receiver: " + (passthrough ? "on" : "off") };
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setItems(items, (d, i) -> {
                 if (i == 0) choose("Speed", new String[] { "0.5x", "0.75x", "1x", "1.25x", "1.5x", "1.75x", "2x" },
                     k -> { rate = new float[] { 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f }[k]; mp.setRate(rate); });
                 else if (i == 1) delay("Audio delay", true);
                 else if (i == 2) delay("Subtitle delay", false);
-                else chapters();
+                else if (i == 3) chapters();
+                else if (i == 4) {
+                    deint = !deint;
+                    prefs.edit().putBoolean("deinterlace", deint).apply();
+                    Toast.makeText(this, deint ? "Deinterlacing on (software decoding)" : "Deinterlacing off", Toast.LENGTH_SHORT).show();
+                    restartHere();
+                } else {
+                    passthrough = !passthrough;
+                    prefs.edit().putBoolean("passthrough", passthrough).apply();
+                    Toast.makeText(this, passthrough
+                        ? "Passthrough on: Dolby / DTS go untouched to an HDMI or USB receiver that supports them"
+                        : "Passthrough off", Toast.LENGTH_LONG).show();
+                    restartHere();
+                }
             }).show();
     }
 
@@ -421,7 +519,7 @@ public class VlcPlayerActivity extends Activity {
 
     @Override protected void onPause() {
         super.onPause();
-        if (mp != null && mp.isPlaying() && !isInMultiWindowMode() && isVideo) mp.pause();
+        if (castTo == null && mp != null && mp.isPlaying() && !isInMultiWindowMode() && isVideo) mp.pause();
     }
 
     @Override public void finish() {

@@ -217,8 +217,10 @@
   function removeTrack(i, skipRefresh){
     const wasCurrent = i === currentIndex;
     const removed = tracks[i];
-    URL.revokeObjectURL(removed.url);
-    if (removed.artUrl) URL.revokeObjectURL(removed.artUrl);
+    if (!removed.cueOf){            // a CUE-sheet track shares its album file's URLs: those stay alive for the album
+      URL.revokeObjectURL(removed.url);
+      if (removed.artUrl) URL.revokeObjectURL(removed.artUrl);
+    }
     dbDelete(removed.dbId).catch(()=>{}).then(refreshStorageEstimate);
     if (removed.nativeLocal && window.PPNative && PPNative.lib) PPNative.lib.deleteLocal(removed.nativeUri).catch(()=>{});
     if (removed.artDbId) dbDelete(removed.artDbId).catch(()=>{});

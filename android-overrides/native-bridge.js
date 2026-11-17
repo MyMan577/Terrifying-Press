@@ -282,6 +282,8 @@
   function metaFor(t, uri) {
     var o = { id: String(t.dbId || uri), uri: uri, kind: t.kind, title: t.title || '', artist: t.artist || '', album: t.album || '' };
     var a = artFor(t); for (var k in a) o[k] = a[k];
+    // A CUE-sheet track is one stretch of a whole-album file: ExoPlayer plays just that part.
+    if (t.cueStart != null) { o.clipStartMs = Math.round(t.cueStart * 1000); if (t.cueEnd > t.cueStart) o.clipEndMs = Math.round(t.cueEnd * 1000); }
     return o;
   }
 
