@@ -438,3 +438,31 @@
     background:rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.16); color:#fff; }
   .ls-cov .ls-cov-cl{ left:3%; } .ls-cov .ls-cov-cr{ right:3%; }
   .ls-cov .ls-spot svg{ width:20px; height:20px; }
+
+  /* ================= more thumbnail shapes ================= */
+  /* Squircle, Leaf, Arch and Hexagon for the music cover, Library thumbnails, playlist covers and the song and
+     video cards on Home and in playlists. Circle and Hexagon covers are made square so they keep their shape. */
+  body.player-layout[data-pl-player]:not(.pl-video)[data-lsa-shape="squircle"] #art-ring{ inset:0; border-radius:30%; }
+  body.player-layout[data-pl-player]:not(.pl-video)[data-lsa-shape="leaf"] #art-ring{ inset:0; border-radius:42% 8% 42% 8%; }
+  body.player-layout[data-pl-player]:not(.pl-video)[data-lsa-shape="arch"] #art-ring{ inset:0; border-radius:50% 50% 8% 8% / 38% 38% 8% 8%; }
+  body.player-layout[data-pl-player]:not(.pl-video)[data-lsa-shape="hexagon"] #art-ring{ inset:0; border-radius:0; clip-path:polygon(25% 2%, 75% 2%, 99% 50%, 75% 98%, 25% 98%, 1% 50%); }
+  body[data-lsl-tshape="squircle"] #playlist .track-thumb{ border-radius:30%; }
+  body[data-lsl-tshape="leaf"] #playlist .track-thumb{ border-radius:42% 8% 42% 8%; }
+  body[data-lsl-tshape="arch"] #playlist .track-thumb{ border-radius:50% 50% 8% 8% / 38% 38% 8% 8%; }
+  body[data-lsl-tshape="hexagon"] #playlist .track-thumb{ border-radius:0; clip-path:polygon(25% 2%, 75% 2%, 99% 50%, 75% 98%, 25% 98%, 1% 50%); }
+  body[data-lsp-pshape="square"] #pl-home :is(.ph-pl-head, .ph-detail-head) .ph-thumb{ border-radius:calc(3px*var(--ui-round,1)); }
+  body[data-lsp-cshape="square"] #pl-home .ph-card .ph-thumb{ border-radius:calc(3px*var(--ui-round,1)); }
+  body[data-lsp-pshape="circle"] #pl-home :is(.ph-pl-head, .ph-detail-head) .ph-thumb{ border-radius:50%; }
+  body[data-lsp-cshape="circle"] #pl-home .ph-card .ph-thumb{ border-radius:50%; }
+  body[data-lsp-pshape="squircle"] #pl-home :is(.ph-pl-head, .ph-detail-head) .ph-thumb{ border-radius:30%; }
+  body[data-lsp-cshape="squircle"] #pl-home .ph-card .ph-thumb{ border-radius:30%; }
+  body[data-lsp-pshape="leaf"] #pl-home :is(.ph-pl-head, .ph-detail-head) .ph-thumb{ border-radius:42% 8% 42% 8%; }
+  body[data-lsp-cshape="leaf"] #pl-home .ph-card .ph-thumb{ border-radius:42% 8% 42% 8%; }
+  body[data-lsp-pshape="arch"] #pl-home :is(.ph-pl-head, .ph-detail-head) .ph-thumb{ border-radius:50% 50% 8% 8% / 38% 38% 8% 8%; }
+  body[data-lsp-cshape="arch"] #pl-home .ph-card .ph-thumb{ border-radius:50% 50% 8% 8% / 38% 38% 8% 8%; }
+  body[data-lsp-pshape="hexagon"] #pl-home :is(.ph-pl-head, .ph-detail-head) .ph-thumb{ border-radius:0; clip-path:polygon(25% 2%, 75% 2%, 99% 50%, 75% 98%, 25% 98%, 1% 50%); }
+  body[data-lsp-cshape="hexagon"] #pl-home .ph-card .ph-thumb{ border-radius:0; clip-path:polygon(25% 2%, 75% 2%, 99% 50%, 75% 98%, 25% 98%, 1% 50%); }
+  body:is([data-lsp-pshape="circle"], [data-lsp-pshape="hexagon"]) #pl-home :is(.ph-pl-head, .ph-detail-head) .ph-thumb,
+  body:is([data-lsp-cshape="circle"], [data-lsp-cshape="hexagon"]) #pl-home .ph-card .ph-thumb{ aspect-ratio:1; }
+  body[data-lsp-pshape="hexagon"] #pl-home :is(.ph-pl-head, .ph-detail-head) .ph-thumb, body[data-lsp-cshape="hexagon"] #pl-home .ph-card .ph-thumb,
+  body[data-lsl-tshape="hexagon"] #playlist .track-thumb{ border-color:transparent; }

@@ -71,7 +71,7 @@
           { k:'tsize', label:'Size', c:[['m','Medium'],['s','Small'],['l','Large'],['xl','Huge']], when:{ title:'flow' } }] },
         { name:'Cover', opts:[
           { k:'cover', label:'Size', c:[['l','Large'],['s','Small'],['m','Medium'],['xl','Edge to edge'],['off','Hidden']] },
-          { k:'shape', label:'Shape', c:[['disc','Disc'],['circle','Full circle'],['round','Rounded'],['square','Square']] }] },
+          { k:'shape', label:'Shape', c:[['disc','Disc'],['circle','Full circle'],['round','Rounded'],['square','Square'],['squircle','Squircle'],['leaf','Leaf'],['arch','Arch'],['hexagon','Hexagon']] }] },
         { name:'Seek bar', opts:[SEEK, TIMES] },
         { name:'Main buttons', opts:[BTN, PLAY, SPREAD] },
         { name:'Tools & volume', opts:[
@@ -127,7 +127,7 @@
           { k:'hl', label:'What is playing', c:[['soft','Soft highlight'],['bar','Accent bar'],['bold','Bold accent']] }] },
         { name:'Thumbnail', opts:[
           { k:'thumb', label:'Size', c:[['m','Medium'],['s','Small'],['l','Large'],['off','Hidden']] },
-          { k:'tshape', label:'Shape', c:[['round','Rounded'],['square','Square'],['circle','Circle']] }] },
+          { k:'tshape', label:'Shape', c:[['round','Rounded'],['square','Square'],['circle','Circle'],['squircle','Squircle'],['leaf','Leaf'],['arch','Arch'],['hexagon','Hexagon']] }] },
         { name:'Text & buttons', opts:[
           { k:'sub', label:'Under the title', c:[['all','Artist and details'],['artist','Artist only'],['off','Nothing']] },
           { k:'num', label:'Track numbers', c:[['show','Shown'],['off','Hidden']] },
@@ -151,12 +151,15 @@
         { name:'Your playlists', opts:[
           { k:'view', label:'Look', c:[['list','List'],['compact','Compact list'],['cards','Cards'],['grid2','Grid, 2 across'],['grid3','Grid, 3 across']] },
           { k:'cover', label:'Cover size', c:[['m','Medium'],['s','Small'],['l','Large']], when:{ view:['list','compact','cards'] } },
-          { k:'shape', label:'Cover shape', c:[['wide','Wide'],['square','Square']] },
+          { k:'shape', label:'Cover proportions', c:[['wide','Wide'],['square','Square']] },
+          { k:'pshape', label:'Cover shape', c:[['round','Rounded'],['square','Square'],['circle','Circle'],['squircle','Squircle'],['leaf','Leaf'],['arch','Arch'],['hexagon','Hexagon']] },
           { k:'counts', label:'Video and audio counts', c:[['show','Shown'],['off','Hidden']] },
           { k:'dur', label:'Total length', c:[['show','Shown'],['off','Hidden']] }] },
         { name:'An open playlist', opts:[
           { k:'head', label:'Header', c:[['side','Cover beside the name'],['hero','Big cover on top']] },
-          { k:'trk', label:'Tracks', c:[['normal','Normal'],['compact','Compact'],['big','Big thumbnails']] }] }
+          { k:'trk', label:'Tracks', c:[['normal','Normal'],['compact','Compact'],['big','Big thumbnails']] }] },
+        { name:'Song and video thumbnails', opts:[
+          { k:'cshape', label:'Shape (Home and playlists)', c:[['round','Rounded'],['square','Square'],['circle','Circle'],['squircle','Squircle'],['leaf','Leaf'],['arch','Arch'],['hexagon','Hexagon']] }] }
       ] },
     { id:'set', attr:'lss', name:'Settings', title:'Settings', icon:'sliders',
       presets:[

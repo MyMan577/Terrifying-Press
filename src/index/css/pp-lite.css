@@ -4,11 +4,10 @@ body.pp-lite #ppxp-accent-section, body.pp-lite #ppp-entry-section,
 body.pp-lite #dc-widget,
 body.pp-lite .settings-section:has(#dc-sidebar-toggle),
 body.pp-lite .settings-section:has(#dc-background-earn-toggle),
-body.pp-lite .ppxp-eq-pro-btn, body.pp-lite #ppxp-eq-custom, body.pp-lite .ppxp-quick, body.pp-lite .ppxp-jump, body.pp-lite #ppxp-perks-section, body.pp-lite #ppxp-bg-presets,
+body.pp-lite .ppxp-eq-pro-btn, body.pp-lite #ppxp-eq-custom, body.pp-lite .ppxp-quick, body.pp-lite #ppxp-perks-section, body.pp-lite #ppxp-bg-presets,
 body.pp-lite #eq-preset-row button:not([data-eq-preset="flat"]):not([data-eq-preset="bass"]):not([data-eq-preset="treble"]):not([data-eq-preset="vocal"]):not([data-eq-preset="pop"]):not([data-eq-preset="rock"]),
 body.pp-lite #filter-grid button:not([data-filter="none"]):not([data-filter="bw"]):not([data-filter="warm"]):not([data-filter="cool"]):not([data-filter="sepia"]):not([data-filter="vibrant"])
 { display:none !important; }
-body.pp-lite .eq-band-pro { display:flex !important; }
 #pp-lite-banner{position:fixed;top:0;left:0;right:0;z-index:99999;padding:calc(20px + env(safe-area-inset-top,0px)) 16px 20px;box-sizing:border-box;text-align:center;font:800 20px system-ui,sans-serif;letter-spacing:.5px;color:#fff;background:linear-gradient(90deg,#2563eb,#7c3aed,#ec4899,#f59e0b,#22d3ee,#2563eb);background-size:200% 100%;animation:ppLiteBannerFlow 3s linear infinite,ppLiteBannerGlow 1.2s ease-in-out infinite;box-shadow:0 4px 24px rgba(124,58,237,.7);transform:translateY(-120%) scale(.96);transition:transform .55s cubic-bezier(.2,1.4,.4,1);overflow:hidden}
 #pp-lite-banner.show{transform:translateY(0) scale(1)}
 #pp-lite-banner::after{content:'';position:absolute;top:0;bottom:0;left:-60%;width:40%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.65),transparent);transform:skewX(-20deg);animation:ppLiteBannerShine 1.6s ease-in-out infinite;pointer-events:none}
@@ -60,3 +59,29 @@ body.pp-lite .eq-band-pro { display:flex !important; }
 #pp-plus-section #pp-plus-toggle{border-color:rgba(245,158,11,.6) !important}
 #pp-plus-confirm .pl-yes{background:#d97706;border-color:#d97706}
 #pp-lite-banner.plus{background:linear-gradient(90deg,#f59e0b,#ec4899,#8b5cf6,#22d3ee,#f59e0b);background-size:200% 100%}
+
+/* ---------- Lite: a plain player ----------
+   Play, pause, skip, seek, shuffle, repeat, volume, a simple equalizer, speed, sleep timer, casting, subtitles,
+   picture-in-picture and full screen stay. The advanced tools go: effects, boost, bookmarks, A-B loop, clip export,
+   stems and other AI tools, smoothing and upscaling, video filters, latency, the visualizer, layout editing and the
+   Advanced settings. */
+body.pp-lite .menu-item:has(.menu-item-slot[data-slot="boost"]), body.pp-lite [data-item-wrapper="boost"],
+body.pp-lite .menu-item:has(.menu-item-slot[data-slot="fx"]), body.pp-lite [data-item-wrapper="fx"],
+body.pp-lite .menu-item:has(.menu-item-slot[data-slot="marks"]), body.pp-lite [data-item-wrapper="marks"],
+body.pp-lite .menu-item:has(.menu-item-slot[data-slot="abloop"]), body.pp-lite [data-item-wrapper="abloop"],
+body.pp-lite .menu-item:has(.menu-item-slot[data-slot="cutter"]), body.pp-lite [data-item-wrapper="cutter"],
+body.pp-lite .menu-item:has(.menu-item-slot[data-slot="stems"]), body.pp-lite [data-item-wrapper="stems"],
+body.pp-lite .menu-item:has(.menu-item-slot[data-slot="mashup"]), body.pp-lite [data-item-wrapper="mashup"],
+body.pp-lite .menu-item:has(.menu-item-slot[data-slot="spatial"]), body.pp-lite [data-item-wrapper="spatial"],
+body.pp-lite .menu-item:has(.menu-item-slot[data-slot="framestep"]), body.pp-lite [data-item-wrapper="framestep"],
+body.pp-lite .menu-item:has(.menu-item-slot[data-slot="viewmode"]), body.pp-lite [data-item-wrapper="viewmode"],
+body.pp-lite .menu-item:has(.menu-item-slot[data-slot="vizsens"]), body.pp-lite [data-item-wrapper="vizsens"],
+body.pp-lite .menu-item:has(.menu-item-slot[data-slot="latency"]), body.pp-lite [data-item-wrapper="latency"],
+body.pp-lite .menu-item:has(.menu-item-slot[data-slot="memc"]), body.pp-lite [data-item-wrapper="memc"],
+body.pp-lite .menu-item:has(.menu-item-slot[data-slot="upscale"]), body.pp-lite [data-item-wrapper="upscale"],
+body.pp-lite .menu-item:has(.menu-item-slot[data-slot="appearance"]), body.pp-lite [data-item-wrapper="appearance"],
+body.pp-lite #filter-btn, body.pp-lite #filter-dropdown, body.pp-lite #sub-tx-btn, body.pp-lite #ab-loop-btn, body.pp-lite #cutter-btn,
+body.pp-lite #viz, body.pp-lite #viz-gl, body.pp-lite #viz-front,
+body.pp-lite #ppv-btn, body.pp-lite #ppv-panel, body.pp-lite #ppv-libhost, body.pp-lite #ppv-whhost, body.pp-lite #ppv-savedhost, body.pp-lite #ppv-smartset, body.pp-lite #ppv-toast,
+body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-customize-section
+{ display:none !important; }

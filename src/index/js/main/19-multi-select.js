@@ -351,6 +351,7 @@
       case 'rename': openRenameSelection('title'); break;
       case 'rename-artist': openRenameSelection('artist'); break;
       case 'convert': convertSelected(); break;
+      case 'cover': openBatchCoverMenu([...selectedTracks].filter(t => tracks.includes(t))); break;
       case 'delete': deleteSelected(); break;
     }
   }

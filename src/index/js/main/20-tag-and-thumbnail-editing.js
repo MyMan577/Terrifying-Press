@@ -164,6 +164,88 @@
     if (idx === thumbnailModalIdx) refreshThumbnailPreview();
   }
 
+  // ---------- Batch covers (select bar > Cover) ----------
+  // One picture for every selected song, or their custom covers removed. The picture is scaled down once (longest side
+  // 640 px, JPEG) so a big photo is not stored again for every song.
+  async function shrinkCoverImage(file){
+    try {
+      const bmp = await createImageBitmap(file);
+      const k = Math.min(1, 640 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(bmp.width * k)); c.height = Math.max(1, Math.round(bmp.height * k));
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      if (bmp.close) bmp.close();
+      const out = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.88));
+      return out || file;
+    } catch (e){ return file; }
+  }
+  function coverChanged(list){
+    saveLibraryMeta();
+    renderPlaylist();
+    const cur = tracks[currentIndex];
+    if (cur && list.includes(cur)){
+      if (cur.artUrl && cur.kind !== 'video'){ artImg.src = cur.artUrl; artImg.style.display = 'block'; artFallback.style.display = 'none'; }
+      else if (!cur.artUrl) showFallbackArt();
+      updateMediaSession();
+    }
+    if (window.__ppRenderHomeNow){ try { window.__ppRenderHomeNow(); } catch (e){} }
+  }
+  function setCoverForTracks(list, blob){
+    list.forEach(t => {
+      if (t.artUrl) URL.revokeObjectURL(t.artUrl);
+      t.artUrl = URL.createObjectURL(blob);
+      t.artDbId = t.dbId + '_art';
+      persistTrackBytes(t.artDbId, blob, t.title + ' artwork');
+    });
+    coverChanged(list);
+  }
+  function clearCoverForTracks(list){
+    list.forEach(t => {
+      if (t.artUrl) URL.revokeObjectURL(t.artUrl);
+      if (t.artDbId) dbDelete(t.artDbId).catch(() => {});
+      t.artUrl = null; t.artDbId = null;
+    });
+    coverChanged(list);
+  }
+  const batchCoverInput = document.createElement('input');
+  batchCoverInput.type = 'file'; batchCoverInput.accept = 'image/*'; batchCoverInput.style.display = 'none';
+  document.body.appendChild(batchCoverInput);
+  let batchCoverList = [];
+  batchCoverInput.addEventListener('change', async () => {
+    const file = batchCoverInput.files[0];
+    batchCoverInput.value = '';
+    if (!file || !batchCoverList.length) return;
+    const blob = await shrinkCoverImage(file);
+    const n = batchCoverList.length;
+    setCoverForTracks(batchCoverList, blob);
+    batchCoverList = [];
+    showToast('New cover set for ' + n + (n === 1 ? ' song.' : ' songs.'));
+  });
+  function closeBatchCoverMenu(){ const m = document.getElementById('batch-cover-menu'); if (m) m.remove(); }
+  function openBatchCoverMenu(list){
+    closeBatchCoverMenu();
+    if (!list.length) return;
+    const n = list.length, withCover = list.filter(t => t.artDbId).length;
+    const o = document.createElement('div'); o.id = 'batch-cover-menu';
+    o.innerHTML = '<div class="bcm-sheet"><div class="bcm-title">Cover for ' + n + (n === 1 ? ' song' : ' songs') + '</div>' +
+      '<button type="button" data-bc="pick">🖼️ ' + (n === 1 ? 'Choose a picture' : 'Choose one picture for all of them') + '</button>' +
+      (withCover ? '<button type="button" data-bc="clear">Remove their custom covers (' + withCover + ')</button>' : '') +
+      '<button type="button" data-bc="cancel" class="bcm-cancel">Cancel</button></div>';
+    o.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-bc]');
+      if (e.target === o || (b && b.dataset.bc === 'cancel')){ closeBatchCoverMenu(); return; }
+      if (!b) return;
+      closeBatchCoverMenu();
+      if (b.dataset.bc === 'pick'){ batchCoverList = list.slice(); batchCoverInput.click(); }
+      else if (b.dataset.bc === 'clear'){
+        const had = list.filter(t => t.artDbId);
+        clearCoverForTracks(had);
+        showToast('Custom covers removed from ' + had.length + (had.length === 1 ? ' song.' : ' songs.'));
+      }
+    });
+    document.body.appendChild(o);
+  }
+
   thumbnailScrubRange.addEventListener('input', () => {
     thumbnailScrubVideo.currentTime = parseFloat(thumbnailScrubRange.value) || 0;
   });
@@ -381,6 +463,7 @@
     playlists: () => playlists,
     pickPlaylistThumb: id => pickPlaylistThumb(id),
     clearPlaylistThumb: id => clearPlaylistThumb(id),
+    editPlaylists: (ids, done) => openBatchPlaylistMenu(ids, done),   // batch playlist editing (Playlists page > Select)
     currentIndex: () => currentIndex,
     shufflePlaylist: id => shufflePlaylistOrder(id),
     makeShuffledPlaylist: id => makeShuffledPlaylist(id || null),

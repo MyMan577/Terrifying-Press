@@ -53,7 +53,7 @@
     // reached. `desc` is shown in the rank-up toast and the rank list.
     const REWARDS = [
       { level: 3,  desc: 'New backgrounds: Deep Space & Sunset Groove.' },
-      { level: 6,  desc: 'Expanded equalizer: Symphonic & Basshead Pro presets, plus two extra EQ bands (500Hz & 6K).' },
+      { level: 6,  desc: 'Expanded equalizer: Symphonic & Basshead Pro presets.' },
       { level: 10, desc: 'New backgrounds: Neon Wave & Aurora Drift.' },
       { level: 15, desc: 'New setting: pick a custom app-wide accent color.' },
       { level: 21, desc: 'New backgrounds: Midnight Amber & Retro Grid, plus Cinematic & Crystal Air EQ presets.' },
@@ -78,7 +78,6 @@
       { level: 320, desc: 'Custom EQ presets: save custom equalizer curves (1 slot), plus the Crimson Eclipse background.' },
       { level: 340, desc: 'Quick speed buttons in the speed menu and the Crescendo EQ preset.' },
       { level: 360, desc: 'Skip intro & outro: automatically skip the start and end of every track (Settings > Level perks). A second custom EQ slot and the Arctic Night background.' },
-      { level: 380, desc: 'Jump buttons: skip back and forward by 5, 10, 15 or 30 seconds with buttons right by Speed.' },
       { level: 400, desc: 'A third custom EQ slot, the Club Floor EQ preset, an exclusive Solar Flare animated background and a celestial badge finish.' },
       { level: 425, desc: 'Quick boost buttons in the volume booster, plus the Twilight Orchid background.' },
       { level: 450, desc: 'A fourth custom EQ slot and the Cyber Dawn animated background.' },

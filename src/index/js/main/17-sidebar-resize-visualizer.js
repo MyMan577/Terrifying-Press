@@ -208,6 +208,7 @@
   // The player-style layout keeps the closed player page drawn but invisible (visibility:hidden), so offsetParent
   // alone said "visible" and the ring was drawn every frame behind Home and the Library, slowing their animations.
   function vizIsVisible(){
+    if (window.ppLite) return false;   // Lite has no visualizer: nothing is drawn
     const b = document.body;
     if (b.classList.contains('player-layout') && !b.hasAttribute('data-pl-player')) return false;
     return !document.hidden && vizWrap.offsetParent !== null && vizWrap.style.display !== 'none';
@@ -226,8 +227,8 @@
     const hapticOnly = !vizShown && (hapticBass > 0 || widgetWants) && vizLive && !document.hidden;
     if ((!vizShown && !hapticOnly) || (vizIdle && !vizLive)){ vizLast = 0; setTimeout(() => requestAnimationFrame(drawViz), document.hidden ? 250 : 100); return; }
     requestAnimationFrame(drawViz);
-    // 60 fps: smooth falls and peaks without paying for 120. Focus mode draws at 30 (the motion is time-based, so it moves the same).
-    if (ts - vizLast < (hapticOnly || window.ppFocus ? 30 : 15)) return;
+    // 60 fps: smooth falls and peaks without paying for 120. Lite and Focus draw at 30 (the motion is time-based, so it moves the same).
+    if (ts - vizLast < (hapticOnly || window.ppSaver ? 30 : 15)) return;
     const dt = vizLast ? Math.min(0.1, (ts - vizLast) / 1000) : 0.016;
     vizLast = ts;
 

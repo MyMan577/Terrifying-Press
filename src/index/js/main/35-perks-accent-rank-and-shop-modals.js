@@ -1,22 +1,18 @@
     // ---------- Playback perks (Level 340+) ----------
-    // Quick speed buttons (340), skip intro/outro (360), jump buttons (380) and
+    // Quick speed buttons (340), skip intro/outro (360) and
     // quick boost buttons (425). All of them drive the app's own controls or
     // media elements - none touch the audio chain. Lite mode switches them off.
-    const PERK_LEVELS = { speed: 340, skip: 360, jump: 380, boost: 425 };
+    const PERK_LEVELS = { speed: 340, skip: 360, boost: 425 };
     const PERKS_KEY = 'ppxpPerksV1';
     const QUICK_SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
     const QUICK_BOOSTS = [100, 125, 150, 200, 300];
-    const JUMP_OPTIONS = [0, 5, 10, 15, 30];
-    const perks = { introSec: 0, outroSec: 0, jumpSec: 10, jumpPrev: 10 };
+    const perks = { introSec: 0, outroSec: 0 };
     (function loadPerks(){
       try {
         const v = JSON.parse(localStorage.getItem(PERKS_KEY));
         if (v && typeof v === 'object'){
           if (typeof v.introSec === 'number') perks.introSec = Math.max(0, Math.min(60, Math.round(v.introSec)));
           if (typeof v.outroSec === 'number') perks.outroSec = Math.max(0, Math.min(60, Math.round(v.outroSec)));
-          if (JUMP_OPTIONS.indexOf(v.jumpSec) >= 0) perks.jumpSec = v.jumpSec;
-          if (JUMP_OPTIONS.indexOf(v.jumpPrev) > 0) perks.jumpPrev = v.jumpPrev;
-          else if (perks.jumpSec > 0) perks.jumpPrev = perks.jumpSec;
         }
       } catch(e){ /* ignore */ }
     })();
@@ -82,25 +78,6 @@
       const eb = document.getElementById('eq-btn');
       if (eb) eb.addEventListener('click', () => setTimeout(paintQuickBoost, 0));
     }
-    function jumpBy(dir){
-      const m = perkMedia();
-      if (!m || !isFinite(m.duration) || perks.jumpSec <= 0) return;
-      m.currentTime = Math.max(0, Math.min(m.duration, m.currentTime + dir * perks.jumpSec));
-    }
-    function setupJump(){
-      const host = document.getElementById('extra-transport');
-      if (!host || document.getElementById('ppxp-jump-back')) return;
-      const mk = (id, title, dir) => {
-        const b = document.createElement('button');
-        b.type = 'button'; b.id = id; b.className = 'pill-btn ppxp-jump';
-        b.title = title; b.setAttribute('aria-label', title);
-        b.innerHTML = '<span></span>';
-        b.addEventListener('click', () => jumpBy(dir));
-        return b;
-      };
-      host.insertBefore(mk('ppxp-jump-fwd', 'Jump forward', 1), host.firstChild);
-      host.insertBefore(mk('ppxp-jump-back', 'Jump back', -1), host.firstChild);
-    }
     function setupSkip(){
       ['audio', 'video-el'].forEach(id => {
         const el = document.getElementById(id);
@@ -130,26 +107,6 @@
         });
       });
     }
-    // Jump buttons also get a plain on/off switch in the Menu panel, next to Playback speed.
-    function setupJumpMenuItem(){
-      if (document.getElementById('ppxp-jump-menu-item')) return;
-      const speedItem = document.querySelector('.menu-item-slot[data-slot="speed"]');
-      const after = speedItem && speedItem.closest('.menu-item');
-      if (!after) return;
-      const item = document.createElement('div');
-      item.className = 'menu-item'; item.id = 'ppxp-jump-menu-item';
-      item.innerHTML =
-        '<div class="menu-item-head"><div class="menu-item-title">' +
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>' +
-          '<span>Jump buttons</span></div>' +
-          '<label class="qb-toggle"><input type="checkbox" id="ppxp-jump-menu-cb"> Quick bar</label></div>';
-      after.insertAdjacentElement('afterend', item);
-      item.querySelector('#ppxp-jump-menu-cb').addEventListener('change', e => {
-        if (e.target.checked){ perks.jumpSec = perks.jumpPrev > 0 ? perks.jumpPrev : 10; }
-        else { if (perks.jumpSec > 0) perks.jumpPrev = perks.jumpSec; perks.jumpSec = 0; }
-        savePerks(); refreshPerks();
-      });
-    }
     function setupPerksSection(){
       const pane = document.getElementById('sidebar-pane-settings');
       if (!pane || document.getElementById('ppxp-perks-section')) return;
@@ -157,7 +114,7 @@
       sec.className = 'settings-section';
       sec.id = 'ppxp-perks-section';
       sec.innerHTML =
-        '<div class="settings-section-label">Level perks</div>' +
+        '<div class="settings-section-label"><span class="pp-nf">Level perks</span><span class="pp-f">Skip intro &amp; outro</span></div>' +
         '<div class="settings-row" data-perk="skip"><div class="settings-row-text">' +
           '<div class="settings-row-title">Skip intro <span id="ppxp-intro-val"></span></div>' +
           '<div class="settings-row-sub">Jump past the start of every track.</div></div>' +
@@ -165,38 +122,22 @@
         '<div class="settings-row" data-perk="skip" style="margin-top:12px;"><div class="settings-row-text">' +
           '<div class="settings-row-title">Skip outro <span id="ppxp-outro-val"></span></div>' +
           '<div class="settings-row-sub">Move on to the next track this long before the end.</div></div>' +
-          '<input type="range" id="ppxp-outro" min="0" max="60" step="5"></div>' +
-        '<div class="settings-row" data-perk="jump" style="margin-top:12px;"><div class="settings-row-text">' +
-          '<div class="settings-row-title">Jump buttons</div>' +
-          '<div class="settings-row-sub">Skip back and forward buttons next to Speed.</div></div>' +
-          '<select id="ppxp-jump"><option value="0">Hidden</option><option value="5">5 s</option><option value="10">10 s</option><option value="15">15 s</option><option value="30">30 s</option></select></div>';
+          '<input type="range" id="ppxp-outro" min="0" max="60" step="5"></div>';
       pane.appendChild(sec);
-      const intro = sec.querySelector('#ppxp-intro'), outro = sec.querySelector('#ppxp-outro'), jump = sec.querySelector('#ppxp-jump');
-      intro.value = perks.introSec; outro.value = perks.outroSec; jump.value = String(perks.jumpSec);
+      const intro = sec.querySelector('#ppxp-intro'), outro = sec.querySelector('#ppxp-outro');
+      intro.value = perks.introSec; outro.value = perks.outroSec;
       intro.addEventListener('input', () => { perks.introSec = parseInt(intro.value, 10) || 0; savePerks(); refreshPerks(); });
       outro.addEventListener('input', () => { perks.outroSec = parseInt(outro.value, 10) || 0; savePerks(); refreshPerks(); });
-      jump.addEventListener('change', () => { perks.jumpSec = parseInt(jump.value, 10) || 0; if (perks.jumpSec > 0) perks.jumpPrev = perks.jumpSec; savePerks(); refreshPerks(); });
     }
     function refreshPerks(){
       const show = (el, on) => { if (el) el.style.display = on ? '' : 'none'; };
       show(document.getElementById('ppxp-quick-speed'), perkOn('speed'));
       show(document.getElementById('ppxp-quick-boost'), perkOn('boost'));
-      const showJump = perkOn('jump') && perks.jumpSec > 0;
-      const back = document.getElementById('ppxp-jump-back'), fwd = document.getElementById('ppxp-jump-fwd');
-      show(back, showJump); show(fwd, showJump);
-      setupJumpMenuItem();
-      const jmItem = document.getElementById('ppxp-jump-menu-item'), jmCb = document.getElementById('ppxp-jump-menu-cb');
-      show(jmItem, perkOn('jump'));
-      if (jmCb) jmCb.checked = perks.jumpSec > 0;
-      const jmSel = document.getElementById('ppxp-jump'); if (jmSel) jmSel.value = String(perks.jumpSec);
-      if (back) back.firstChild.textContent = '\u21BA ' + perks.jumpSec + 's';
-      if (fwd) fwd.firstChild.textContent = perks.jumpSec + 's \u21BB';
       const sec = document.getElementById('ppxp-perks-section');
       if (sec){
-        const skipOn = perkOn('skip'), jumpOn = perkOn('jump');
+        const skipOn = perkOn('skip');
         sec.querySelectorAll('[data-perk="skip"]').forEach(r => show(r, skipOn));
-        sec.querySelectorAll('[data-perk="jump"]').forEach(r => show(r, jumpOn));
-        show(sec, skipOn || jumpOn);
+        show(sec, skipOn);
         const iv = sec.querySelector('#ppxp-intro-val'), ov = sec.querySelector('#ppxp-outro-val');
         if (iv) iv.textContent = perks.introSec > 0 ? perks.introSec + ' s' : 'Off';
         if (ov) ov.textContent = perks.outroSec > 0 ? perks.outroSec + ' s' : 'Off';

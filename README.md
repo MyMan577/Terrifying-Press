@@ -22,12 +22,12 @@ Press Play has a lot of settings, and most of them are things other players leav
 - Change the button color separately from the rest of the theme.
 - Choose between the modern layout, with a bottom tab bar and mini player, or the Retro layout, which drops both for a simpler, older style.
 - Turn on Simple playlist mode if you just want a plain track list, with no thumbnails, file sizes or multiple playlists.
+- Shape the thumbnails: rounded, square, circle, squircle, leaf, arch or hexagon, separately for the music player cover, Library rows, playlist covers and the song and video cards (Customize, Layout studio).
 - Hide the extras you do not want: the mascot, its speech bubbles, the assistant button and the game tab can each be switched off.
 
 **Controls**
 - Assign your own actions to taps, swipes, pinches and other gestures on the video or the disc.
 - Add custom keyboard shortcuts, which override the defaults.
-- Add skip back and skip forward buttons next to the speed control, with the jump lengths you choose.
 - Skip intros and outros automatically, with your own lengths, so long openings and endings do not get in the way.
 
 **Sound**
@@ -60,13 +60,15 @@ Settings, App mode switches the whole app between a few presets. Switching never
 
 | Mode | What it is | How to get it |
 | --- | --- | --- |
-| Lite | A simpler layout: fewer presets, no levels, EXP or games | Free from the start |
+| Lite | A plain player: the essentials only (play, skip, shuffle, repeat, volume, a simple equalizer, speed, sleep timer, casting, subtitles), with no effects, AI tools, visualizer, levels or games, and the same battery savings as Focus | Free from the start |
 | PLUS | Every perk unlocked from the start, levels and games kept | Pass the Press Play quiz, or 3 hours of listening or watching |
 | Focus | Just the player: everything unlocked, and levels, games, Points, Bloopy, the clicker and toy widgets out of the way, tuned for battery | Same as PLUS |
 | PREMIUM | Everything unlocked, levels and games hidden | Score 90% in The Marathon |
 | Playground | Everything unlocked plus the Playground extras | Bought in the Points shop |
 
-Focus saves battery by playing video through Android's own player (hardware decoding, no copying frames through the page), holding the screen at 60 Hz, drawing the visualizer at 30 fps, freezing moving backgrounds and blur, and keeping background tagging waiting for the charger. Bloopy (and its microphone wake word) stays off while Focus is on. Every audio and video tool stays.
+Lite starts from a clean slate: effects, boost, video filters, smoothing and upscaling are switched off, and the settings they had come back when you leave Lite. The equalizer has all 10 bands for everyone.
+
+Lite and Focus save battery by playing video through Android's own player (hardware decoding, no copying frames through the page), holding the screen at 60 Hz, drawing the visualizer at 30 fps, freezing moving backgrounds and blur, and keeping background tagging waiting for the charger. Bloopy (and its microphone wake word) stays off while Focus is on. Every audio and video tool stays.
 
 ## Privacy
 
@@ -137,6 +139,7 @@ Bloopy is entirely optional. If you do not want it, turn off the mascot and the 
 
 - Scan phone: one tap in the Add menu finds all the music and videos on your phone and adds them to your library, with titles, artists, albums and cover art. It skips ringtones, alarms, notification sounds and voice recordings, and running it again only adds what is new. If you said no to media access earlier, tapping it asks again. You can still add files or whole folders by hand if you prefer to choose exactly what goes in.
 - Browse the library by album, artist, genre or folder, as well as the plain list. Videos are included: one with no tags is filed under its folder as its album, and under what it looks like (a movie, a camera video, a screen recording) as its genre.
+- Edit in batches: select several songs and give them one cover (or remove their custom covers), or select several playlists (Select on the Playlists page, or Select several in Settings, Playlists) to merge them into a new playlist, give them one picture, reset their pictures, shuffle each, or delete them.
 - New on this phone: the app notices new music and videos on your phone and keeps them apart from your library, sorted into bundles by what each one looks like (an album, loose songs, podcasts, camera videos, screen recordings, voice messages and so on). You add or dismiss each bundle. Nothing joins your library by itself, and this can be switched off. Files you have deleted from the phone are offered for removal in the same place.
 - Plays audio and video, from local files and from web stream links.
 - Opens files from file managers, browsers and chat apps through "Open with".

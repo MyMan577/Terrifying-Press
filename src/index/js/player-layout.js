@@ -196,7 +196,7 @@
     }
     return false;
   }
-  const goTab = v => { if (v === 'playlists') openPlId = null; slideTo(v); };
+  const goTab = v => { if (v === 'playlists'){ openPlId = null; plSelIds = null; } slideTo(v); };
   // Bloopy ("open my Chill playlist"): shows that playlist's own page on the Playlists tab, closing the full player first.
   window.__ppOpenPlaylist = id => {
     if (!body.classList.contains('player-layout')) return false;
@@ -330,6 +330,7 @@
   try { playHistory = JSON.parse(localStorage.getItem(HKEY)) || []; } catch(e){}
   var openSec = null;   // 'videos' | 'audio' | 'history': that section's own full page on the Home tab
   var openPlId = null;   // playlist whose own page is open on the Playlists tab
+  let plSelIds = null;   // playlists ticked in Select mode on the Playlists tab (null = not selecting)
   let lastSig = '', lastView = '', homeTimer = null;
   const thumbCache = new Map();   // dbId -> dataURL | null (failed)
   const thumbQueue = [], thumbPending = new Set();
@@ -585,7 +586,9 @@
     } else {
       plHTML = plData.map(({ pl, idxs }) => {
         const n = plInfo(idxs);
-        return '<div class="ph-pl"><button type="button" class="ph-pl-head" data-act="pl-open" data-id="' + esc(pl.id) + '">' +
+        const picked = plSelIds && plSelIds.has(pl.id);
+        return '<div class="ph-pl' + (plSelIds ? ' ph-pl-selecting' : '') + (picked ? ' ph-pl-picked' : '') + '"><button type="button" class="ph-pl-head" data-act="' + (plSelIds ? 'pl-pick' : 'pl-open') + '" data-id="' + esc(pl.id) + '"' + (plSelIds ? ' aria-pressed="' + !!picked + '"' : '') + '>' +
+          (plSelIds ? '<span class="ph-pl-tick" aria-hidden="true">' + (picked ? '\u2713' : '') + '</span>' : '') +
           plThumbHTML(pl, n.first) +
           '<div class="ph-pl-text"><div class="ph-pl-name">' + esc(pl.name) + '</div>' + n.counts + '</div>' +
           '<span class="ph-pl-dur">' + (fmtDur(n.total) || '\u2013') + '</span>' + IC_CHEV +
@@ -596,9 +599,14 @@
     const top = homeEl.scrollTop;
     if (view === 'playlists'){
       homeEl.innerHTML =
-        (openPlId ? '' : '<h1 class="ph-app-title">Playlists</h1>') +
+        (openPlId ? '' : '<div class="ph-pl-titlebar"><h1 class="ph-app-title">Playlists</h1>' +
+          (plData.length > 1 && !plSelIds ? '<button type="button" class="ph-link" data-act="pl-sel-start">Select</button>' : '') + '</div>') +
         (!openPlId && window.PPWidgets && window.PPWidgets.has('playlists') ? '<div class="pw-pl-zone">' + window.PPWidgets.renderZone('playlists') + '</div>' : '') +   // Customize > Layout
-        '<section class="ph-sec" style="margin-top:' + (openPlId ? 0 : 14) + 'px;">' + plHTML + '</section>';
+        '<section class="ph-sec" style="margin-top:' + (openPlId ? 0 : 14) + 'px;">' + plHTML + '</section>' +
+        (plSelIds && !openPlId ? '<div class="ph-plsel-bar"><span>' + plSelIds.size + ' selected</span>' +
+          '<button type="button" data-act="pl-sel-all">All</button>' +
+          '<button type="button" data-act="pl-sel-edit"' + (plSelIds.size ? '' : ' disabled') + '>Edit\u2026</button>' +
+          '<button type="button" data-act="pl-sel-done">Done</button></div>' : '');
     } else if (openSec){
       // One section on its own page: every item in a grid
       const items = openSec === 'videos' ? vCards : (openSec === 'audio' ? aCards : hCards);
@@ -711,6 +719,12 @@
       playFrom(i, queue);
     }
     else if (act === 'pl-open'){ openPlId = el.dataset.id; renderHome(true); }
+    // batch editing: Select, tick playlists, then Edit opens the shared action sheet
+    else if (act === 'pl-sel-start'){ plSelIds = new Set(); renderHome(true); }
+    else if (act === 'pl-sel-done'){ plSelIds = null; renderHome(true); }
+    else if (act === 'pl-pick' && plSelIds){ const id = el.dataset.id; if (plSelIds.has(id)) plSelIds.delete(id); else plSelIds.add(id); renderHome(true); }
+    else if (act === 'pl-sel-all' && plSelIds){ const all = [...homeEl.querySelectorAll('[data-act="pl-pick"]')].map(b => b.dataset.id); /* only the playlists shown here */ plSelIds = new Set(plSelIds.size === all.length ? [] : all); renderHome(true); }
+    else if (act === 'pl-sel-edit' && plSelIds && plSelIds.size && A.editPlaylists){ A.editPlaylists([...plSelIds], () => { plSelIds = null; renderHome(true); }); }
     else if (act === 'pl-back'){ openPlId = null; renderHome(true); }
     else if (act === 'pl-thumb'){ if (A.pickPlaylistThumb) A.pickPlaylistThumb(el.dataset.id); }
     else if (act === 'pl-thumb-reset'){ if (A.clearPlaylistThumb) A.clearPlaylistThumb(el.dataset.id); }

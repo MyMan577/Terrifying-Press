@@ -454,3 +454,24 @@
     body:not(.player-layout):not(.pp-fs):not(.immersive) #controls-footer{ margin-top:2px; }
   }
 
+
+  /* Batch cover sheet (select bar > Cover) and batch playlist sheet share this look */
+  #batch-cover-menu, #batch-pl-menu{ position:fixed; inset:0; z-index:99996; background:rgba(0,0,0,.55); display:flex; align-items:flex-end; justify-content:center; }
+  #batch-cover-menu .bcm-sheet, #batch-pl-menu .bcm-sheet{
+    width:min(480px,100%); box-sizing:border-box; background:var(--bg-elev); color:var(--text); border:1px solid var(--line);
+    border-radius:calc(16px*var(--ui-round,1)) calc(16px*var(--ui-round,1)) 0 0; padding:14px 14px calc(14px + env(safe-area-inset-bottom,0px));
+    display:flex; flex-direction:column; gap:8px; max-height:86vh; overflow:auto; }
+  #batch-cover-menu .bcm-title, #batch-pl-menu .bcm-title{ font-weight:600; font-size:15px; margin:2px 2px 4px; }
+  #batch-cover-menu button, #batch-pl-menu button{
+    text-align:left; padding:12px 14px; border-radius:calc(10px*var(--ui-round,1)); border:1px solid var(--line);
+    background:var(--bg); color:var(--text); font:inherit; font-size:14px; cursor:pointer; }
+  #batch-cover-menu button:active, #batch-pl-menu button:active{ filter:brightness(1.2); }
+  #batch-cover-menu .bcm-cancel, #batch-pl-menu .bcm-cancel{ text-align:center; color:var(--text-dim); }
+  #batch-pl-menu .bcm-danger{ color:var(--danger,#e0667a); }
+  /* Settings > Playlists: select several */
+  .pl-manager-selbar{ display:flex; align-items:center; gap:8px; margin:0 0 8px; font-size:12.5px; color:var(--text-dim); }
+  .pl-manager-selbar span{ flex:1; }
+  .pl-manager-selbar button{ padding:6px 12px; border-radius:calc(8px*var(--ui-round,1)); border:1px solid var(--line); background:var(--bg); color:var(--text); font:600 12px system-ui,sans-serif; cursor:pointer; }
+  .pl-manager-selbar button:disabled{ opacity:.45; cursor:default; }
+  .pl-manager-check{ width:18px; height:18px; flex:none; margin:0 4px 0 0; accent-color:var(--accent); }
+  .pl-manager-item.picked{ outline:1px solid var(--accent-dim, var(--accent)); border-radius:calc(8px*var(--ui-round,1)); }

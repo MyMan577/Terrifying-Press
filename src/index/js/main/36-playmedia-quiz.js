@@ -23,16 +23,15 @@
       ['Which rank sits at Level 160?', "Press Play Media's Caesar", "Press Play's Emperor", 'Warlord of the Waves', 'Sovereign of Sound', 'Caesar was the original top rank.'],
       ['What is the final rank at Level 500?', "Press Play Media's Eternal", "Press Play Media's Immortal", 'Eternal Encore', 'Press Play Titan', 'Eternal is the summit.'],
       ['Which rank sits at Level 300?', "Press Play Media's Immortal", "Press Play Media's Eternal", 'Eternal Encore', 'Mythic Maestro', 'Immortal was the original summit.'],
-      ['What unlocks at Level 320?', 'Custom EQ preset slots', 'Accent colors', 'Extra EQ bands', 'Animated gradients', 'Ascendant of the Airwaves can save its own EQ curves.'],
+      ['What unlocks at Level 320?', 'Custom EQ preset slots', 'Accent colors', 'Quick boost buttons', 'Animated gradients', 'Ascendant of the Airwaves can save its own EQ curves.'],
       ['How many custom EQ slots are available at Level 500?', '5', '12', '8', '3', 'Slots unlock one at a time from Lv 320 to Lv 500.'],
-      ['What unlocks at Level 360?', 'Skip intro and outro', 'Quick speed buttons', 'Jump buttons', 'Quick boost buttons', 'It lives under Settings > Level perks.'],
+      ['What unlocks at Level 360?', 'Skip intro and outro', 'Quick speed buttons', 'Crossfade', 'Quick boost buttons', 'It lives under Settings > Level perks.'],
       ['What does Press Play PLUS do?', 'Unlocks every level perk from the start and keeps levels', 'Removes levels and EXP', 'Doubles XP', 'Hides all backgrounds', 'PLUS keeps the leveling system.'],
-      ['What does the Level 380 perk add?', 'Skip back and forward buttons', 'Quick boost buttons', 'Skip intro and outro', 'Custom EQ slots', 'The choices are 5, 10, 15 or 30 seconds.'],
-      ['What unlocks at Level 15?', 'Choosing a custom accent color', 'Animated gradients', 'The crown badge', 'Extra EQ bands', 'Pro Media Player unlocks app recoloring.'],
-      ['What unlocks at Level 6?', 'Two extra EQ bands (500Hz and 6K)', 'Accent colors', 'The crown badge', 'Animated gradients', 'Level 6 also adds Symphonic and Basshead Pro presets.'],
+      ['What unlocks at Level 15?', 'Choosing a custom accent color', 'Animated gradients', 'The crown badge', 'Quick boost buttons', 'Pro Media Player unlocks app recoloring.'],
+      ['What unlocks at Level 6?', 'Symphonic and Basshead Pro EQ presets', 'Accent colors', 'The crown badge', 'Animated gradients', 'Level 6 expands the equalizer presets.'],
       ['What unlocks at Level 28?', 'Slow animated gradient backgrounds', 'A gold badge glow', 'Accent colors', 'The crown', 'Press Play Elite unlocks animated gradients.'],
       ['What happens at Level 45?', 'The badge gets a legendary gold glow', 'A crown is awarded', 'The EQ unlocks', 'Nothing', 'Press Play Legend adds the gold finish.'],
-      ['What does Level 60 unlock?', "A crowned badge and the Monarch's Gold background", 'Accent colors', 'Extra EQ bands', 'A platinum badge', 'The crown arrives at 60.'],
+      ['What does Level 60 unlock?', "A crowned badge and the Monarch's Gold background", 'Accent colors', 'Quick boost buttons', 'A platinum badge', 'The crown arrives at 60.'],
       ['What new badge finish arrives at Level 215?', 'Platinum', 'Bronze', 'Gold', 'Rainbow', 'Maestro of Millennia gets platinum.'],
       ['What does the Level 300 badge look like?', 'Star-crowned with a rainbow finish', 'Laurelled bronze', 'Plain', 'Platinum', 'Immortal gets the star crown.'],
       ["Which EQ preset unlocks at Level 140?", "Caesar's Laurel", 'Warm Vinyl', 'Stadium Live', 'Cinematic', 'It comes with a bronze badge finish.'],
@@ -83,7 +82,7 @@
       ['What is Batch rename artists for?', 'Changing artist names on many tracks at once', 'Renaming playlists', 'Renaming files on disk', 'Merging albums', 'It is a library tool in the menu.'],
       ['What does the visualizer sensitivity setting change?', 'How strongly the visualizer reacts to sound', 'Its color', 'Its position', 'Its frame rate', 'Higher is more reactive.'],
       ['What does "Web audio: keep sound playing with the screen off" help with?', 'Audio continuing when the screen turns off', 'Saving battery by muting', 'Hiding the player', 'Casting to TVs', 'It is a background playback toggle.'],
-      ['How many equalizer bands are there in total once everything is unlocked?', '8', '4', '6', '10', 'Six standard bands plus 500Hz and 6K.'],
+      ['How many bands does the equalizer have?', '10', '4', '6', '8', 'From 31 Hz up to 16 kHz, for everyone from the start.'],
       ['Which is a video filter in the app?', 'Auto levels', 'Auto-tune', 'Noise gate', 'Reverb', 'Others include Sharpen, Local contrast and Posterize.'],
       ['What does Auto levels do?', 'Lifts dark scenes and stretches contrast, within limits', 'Normalizes audio', 'Crops black bars', 'Sets volume', 'It samples the picture every half second.'],
       ['What does Posterize do?', 'Reduces the number of colors', 'Adds subtitles', 'Blurs the picture', 'Speeds up the video', 'A hint shows the color level count.'],
@@ -277,7 +276,6 @@
     setupEqCustom();
     setupQuickSpeed();
     setupQuickBoost();
-    setupJump();
     setupSkip();
     setupPerksSection();
     setupExpShopEntry();

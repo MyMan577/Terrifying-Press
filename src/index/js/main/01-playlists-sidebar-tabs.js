@@ -220,8 +220,28 @@
   });
 
   // ---------- Playlist manager (Settings tab) ----------
+  let plMgrSel = null;   // the playlists ticked while selecting here (null = not selecting)
   function renderPlaylistsManager(){
     playlistsListEl.innerHTML = '';
+    if (plMgrSel) plMgrSel = new Set([...plMgrSel].filter(id => playlists.some(p => p.id === id)));
+    if (playlists.length > 1){
+      const bar = document.createElement('div');
+      bar.className = 'pl-manager-selbar';
+      bar.innerHTML = plMgrSel
+        ? '<span>' + plMgrSel.size + ' selected</span><button type="button" data-ms="all">All</button>' +
+          '<button type="button" data-ms="edit"' + (plMgrSel.size ? '' : ' disabled') + '>Edit…</button><button type="button" data-ms="done">Done</button>'
+        : '<button type="button" data-ms="start">Select several</button>';
+      bar.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-ms]'); if (!b || b.disabled) return;
+        const k = b.dataset.ms;
+        if (k === 'start') plMgrSel = new Set();
+        else if (k === 'done') plMgrSel = null;
+        else if (k === 'all') plMgrSel = new Set(plMgrSel && plMgrSel.size === playlists.length ? [] : playlists.map(p => p.id));
+        else if (k === 'edit'){ openBatchPlaylistMenu([...plMgrSel], () => { plMgrSel = null; renderPlaylistsManager(); }); return; }
+        renderPlaylistsManager();
+      });
+      playlistsListEl.appendChild(bar);
+    }
     if (playlists.length === 0){
       const empty = document.createElement('div');
       empty.className = 'pl-manager-empty';
@@ -255,6 +275,14 @@
       thumbBtn.addEventListener('click', () => pickPlaylistThumb(pl.id));
       row.querySelector('.pl-manager-del').addEventListener('click', () => deletePlaylist(pl.id));
       row.querySelector('.pl-manager-shuf').addEventListener('click', () => shufflePlaylistOrder(pl.id));
+      if (plMgrSel){
+        const cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.className = 'pl-manager-check'; cb.checked = plMgrSel.has(pl.id);
+        cb.setAttribute('aria-label', 'Select ' + pl.name);
+        cb.addEventListener('change', () => { if (cb.checked) plMgrSel.add(pl.id); else plMgrSel.delete(pl.id); renderPlaylistsManager(); });
+        row.insertBefore(cb, row.firstChild);
+        row.classList.toggle('picked', cb.checked);
+      }
       playlistsListEl.appendChild(row);
     });
     renderPlaylistViewSelect();
@@ -305,19 +333,22 @@
       img.src = url;
     });
   }
+  let plThumbTargets = null;   // several playlists getting one picture (batch editing)
   plThumbInput.addEventListener('change', async () => {
     const f = plThumbInput.files && plThumbInput.files[0];
-    const pl = playlists.find(p => p.id === plThumbTarget);
+    const list = plThumbTargets ? plByIds(plThumbTargets) : playlists.filter(p => p.id === plThumbTarget);
+    plThumbTargets = null;
     plThumbInput.value = '';
-    if (!f || !pl) return;
+    if (!f || !list.length) return;
     try {
-      pl.thumb = await playlistThumbFromFile(f);
+      const thumb = await playlistThumbFromFile(f);
+      list.forEach(pl => { pl.thumb = thumb; });
       savePlaylists();
       renderPlaylistsManager();
-      showToast('Playlist thumbnail set');
+      showToast(list.length > 1 ? 'Thumbnail set for ' + list.length + ' playlists' : 'Playlist thumbnail set');
     } catch(e){ showToast('Could not read that image'); }
   });
-  function pickPlaylistThumb(id){ plThumbTarget = id; plThumbInput.click(); }
+  function pickPlaylistThumb(id){ plThumbTargets = null; plThumbTarget = id; plThumbInput.click(); }
   function clearPlaylistThumb(id){
     const pl = playlists.find(p => p.id === id);
     if (!pl || !pl.thumb) return;
@@ -390,5 +421,90 @@
     saveLibraryMeta();
     renderPlaylistsManager();
     renderPlaylist();
+  }
+
+  // ---------- Batch playlist editing ----------
+  // Several playlists at once, from Select on the Playlists page or in Settings > Playlists: merge them into a new
+  // playlist, give them one picture, reset their pictures, shuffle each, or delete them. Tracks always stay in the library.
+  function plByIds(ids){ return ids.map(id => playlists.find(p => p.id === id)).filter(Boolean); }
+  function plIndices(pl){ const idxs = []; tracks.forEach((t, i) => { if ((t.playlistIds || []).includes(pl.id)) idxs.push(i); }); return orderIndicesForPlaylist(idxs, pl); }
+  function afterBatchPl(){
+    savePlaylists(); saveLibraryMeta(); renderPlaylistsManager(); renderPlaylist();
+    if (window.__ppRenderHomeNow){ try { window.__ppRenderHomeNow(); } catch(e){} }
+  }
+  function deletePlaylists(ids){
+    const list = plByIds(ids); if (!list.length) return false;
+    const n = list.length;
+    if (!confirm(n === 1 ? `Delete playlist "${list[0].name}"? Tracks will stay in the library.` : `Delete ${n} playlists? Tracks will stay in the library.`)) return false;
+    const gone = new Set(list.map(p => p.id));
+    playlists = playlists.filter(p => !gone.has(p.id));
+    tracks.forEach(t => { if (t.playlistIds) t.playlistIds = t.playlistIds.filter(pid => !gone.has(pid)); });
+    if (gone.has(activePlaylistView)) activePlaylistView = '__all__';
+    afterBatchPl();
+    showToast(n === 1 ? 'Playlist deleted' : n + ' playlists deleted');
+    return true;
+  }
+  function mergePlaylists(ids){
+    const list = plByIds(ids); if (list.length < 2){ showToast('Pick at least two playlists to merge'); return false; }
+    const guess = list.slice(0, 2).map(p => p.name).join(' + ') + (list.length > 2 ? ' + more' : '');
+    const name = prompt('Name for the merged playlist (the originals are kept):', guess);
+    if (name === null) return false;
+    const order = [], seen = new Set();
+    list.forEach(pl => plIndices(pl).forEach(i => { const id = tracks[i].dbId; if (!seen.has(id)){ seen.add(id); order.push(id); } }));
+    const npl = createPlaylist(name);
+    tracks.forEach(t => { if (seen.has(t.dbId)){ t.playlistIds = t.playlistIds || []; if (!t.playlistIds.includes(npl.id)) t.playlistIds.push(npl.id); } });
+    npl.order = order;
+    afterBatchPl();
+    showToast('Made “' + npl.name + '” (' + order.length + ' track' + (order.length === 1 ? '' : 's') + ')');
+    return true;
+  }
+  function pickPlaylistsThumb(ids){ plThumbTargets = ids.slice(); plThumbTarget = null; plThumbInput.click(); }
+  function clearPlaylistsThumb(ids){
+    const list = plByIds(ids).filter(p => p.thumb); if (!list.length) return false;
+    list.forEach(p => { delete p.thumb; });
+    afterBatchPl();
+    showToast('Pictures reset on ' + list.length + ' playlist' + (list.length === 1 ? '' : 's'));
+    return true;
+  }
+  function shufflePlaylists(ids){
+    const list = plByIds(ids); let n = 0;
+    list.forEach(pl => {
+      const members = ppMembers(pl.id); if (members.length < 2) return;
+      pl.order = ppShuffled(members); n++;
+      try { if (typeof sortViews === 'object' && sortViews[pl.id]){ delete sortViews[pl.id]; saveSortViews(); } } catch(e){}
+    });
+    if (!n){ showToast('Nothing to shuffle yet'); return false; }
+    afterBatchPl();
+    showToast('Shuffled ' + n + ' playlist' + (n === 1 ? '' : 's'));
+    return true;
+  }
+  // The action sheet. done() runs after an action is picked, so the caller can leave its select mode.
+  function openBatchPlaylistMenu(ids, done){
+    const old = document.getElementById('batch-pl-menu'); if (old) old.remove();
+    const list = plByIds(ids); if (!list.length) return;
+    const n = list.length, withPic = list.filter(p => p.thumb).length;
+    const o = document.createElement('div'); o.id = 'batch-pl-menu';
+    o.innerHTML = '<div class="bcm-sheet"><div class="bcm-title">' + (n === 1 ? escapeHtml(list[0].name) : n + ' playlists') + '</div>' +
+      (n > 1 ? '<button type="button" data-bp="merge">➕ Merge into a new playlist</button>' : '') +
+      '<button type="button" data-bp="pic">🖼️ Set one picture for ' + (n === 1 ? 'it' : 'all of them') + '</button>' +
+      (withPic ? '<button type="button" data-bp="unpic">↺ Reset pictures (' + withPic + ')</button>' : '') +
+      '<button type="button" data-bp="shuffle">⇄ Shuffle the order of ' + (n === 1 ? 'it' : 'each') + '</button>' +
+      '<button type="button" data-bp="delete" class="bcm-danger">🗑 Delete ' + (n === 1 ? 'it' : 'them') + '</button>' +
+      '<button type="button" data-bp="cancel" class="bcm-cancel">Cancel</button></div>';
+    o.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-bp]');
+      if (e.target === o || (b && b.dataset.bp === 'cancel')){ o.remove(); return; }
+      if (!b) return;
+      o.remove();
+      const k = b.dataset.bp;
+      let changed = false;
+      if (k === 'merge') changed = mergePlaylists(ids);
+      else if (k === 'pic'){ pickPlaylistsThumb(ids); changed = true; }
+      else if (k === 'unpic') changed = clearPlaylistsThumb(ids);
+      else if (k === 'shuffle') changed = shufflePlaylists(ids);
+      else if (k === 'delete') changed = deletePlaylists(ids);
+      if (changed && done) done(k);
+    });
+    document.body.appendChild(o);
   }
 
