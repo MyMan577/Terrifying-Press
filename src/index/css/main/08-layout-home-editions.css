@@ -407,3 +407,18 @@
   .ph-trk.cur .ph-trk-title{ color:var(--accent); }
 
 
+
+  /* Playlists tab: Select several playlists for batch editing */
+  .ph-pl-titlebar{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding-right:var(--ph-r, 24px); }
+  .ph-pl-titlebar .ph-app-title{ margin-right:auto; }
+  .ph-pl-selecting .ph-pl-head{ position:relative; }
+  .ph-pl-tick{ flex:none; width:22px; height:22px; border-radius:50%; border:2px solid var(--line); display:flex; align-items:center; justify-content:center;
+    font:700 13px system-ui,sans-serif; color:#fff; box-sizing:border-box; }
+  .ph-pl-picked .ph-pl-tick{ background:var(--accent); border-color:var(--accent); }
+  .ph-pl-picked .ph-pl-head{ background:color-mix(in srgb, var(--accent) 12%, transparent); border-radius:calc(12px*var(--ui-round,1)); }
+  .ph-plsel-bar{ position:sticky; bottom:calc(10px + env(safe-area-inset-bottom,0px)); z-index:5; margin:16px var(--ph-r, 24px) 10px var(--ph-l, 24px);
+    display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:calc(14px*var(--ui-round,1));
+    background:var(--bg-elev); border:1px solid var(--line); box-shadow:0 8px 24px rgba(0,0,0,.45); font-size:13px; }
+  .ph-plsel-bar span{ flex:1; color:var(--text-dim); }
+  .ph-plsel-bar button{ padding:8px 12px; border-radius:calc(9px*var(--ui-round,1)); border:1px solid var(--line); background:var(--bg); color:var(--text); font:600 12.5px system-ui,sans-serif; cursor:pointer; }
+  .ph-plsel-bar button:disabled{ opacity:.45; cursor:default; }

@@ -22,6 +22,7 @@ Press Play has a lot of settings, and most of them are things other players leav
 - Change the button color separately from the rest of the theme.
 - Choose between the modern layout, with a bottom tab bar and mini player, or the Retro layout, which drops both for a simpler, older style.
 - Turn on Simple playlist mode if you just want a plain track list, with no thumbnails, file sizes or multiple playlists.
+- Shape the thumbnails: rounded, square, circle, squircle, leaf, arch or hexagon, separately for the music player cover, Library rows, playlist covers and the song and video cards (Customize, Layout studio).
 - Hide the extras you do not want: the mascot, its speech bubbles, the assistant button and the game tab can each be switched off.
 
 **Controls**
@@ -138,6 +139,7 @@ Bloopy is entirely optional. If you do not want it, turn off the mascot and the 
 
 - Scan phone: one tap in the Add menu finds all the music and videos on your phone and adds them to your library, with titles, artists, albums and cover art. It skips ringtones, alarms, notification sounds and voice recordings, and running it again only adds what is new. If you said no to media access earlier, tapping it asks again. You can still add files or whole folders by hand if you prefer to choose exactly what goes in.
 - Browse the library by album, artist, genre or folder, as well as the plain list. Videos are included: one with no tags is filed under its folder as its album, and under what it looks like (a movie, a camera video, a screen recording) as its genre.
+- Edit in batches: select several songs and give them one cover (or remove their custom covers), or select several playlists (Select on the Playlists page, or Select several in Settings, Playlists) to merge them into a new playlist, give them one picture, reset their pictures, shuffle each, or delete them.
 - New on this phone: the app notices new music and videos on your phone and keeps them apart from your library, sorted into bundles by what each one looks like (an album, loose songs, podcasts, camera videos, screen recordings, voice messages and so on). You add or dismiss each bundle. Nothing joins your library by itself, and this can be switched off. Files you have deleted from the phone are offered for removal in the same place.
 - Plays audio and video, from local files and from web stream links.
 - Opens files from file managers, browsers and chat apps through "Open with".
