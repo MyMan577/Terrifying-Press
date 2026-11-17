@@ -714,3 +714,5 @@
   .pw-dr-mtn i:nth-child(2){ left:34%; width:76%; height:86%; background:color-mix(in srgb, var(--dc) 22%, #0c0e15); clip-path:polygon(0 100%, 44% 0, 54% 18%, 100% 100%); }
   .pw-dr-mtn i:nth-child(3){ left:-4%; width:110%; height:38%; background:#0a0b10; clip-path:polygon(0 100%, 0 40%, 20% 10%, 38% 46%, 60% 20%, 82% 52%, 100% 30%, 100% 100%); }
   .pw-dr-mtn b{ position:absolute; right:14%; top:12%; width:min(14%, calc(var(--h) * .3), 50px); aspect-ratio:1; border-radius:50%; background:#f4f1de; box-shadow:0 0 22px rgba(244,241,222,.6); }
+  .pw-shufpl{ padding:0 !important; margin:0 !important; }
+  .pw-shufpl .ph-chip svg{ width:16px; height:16px; }
