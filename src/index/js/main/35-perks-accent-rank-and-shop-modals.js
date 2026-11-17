@@ -157,7 +157,7 @@
       sec.className = 'settings-section';
       sec.id = 'ppxp-perks-section';
       sec.innerHTML =
-        '<div class="settings-section-label">Level perks</div>' +
+        '<div class="settings-section-label"><span class="pp-nf">Level perks</span><span class="pp-f">Skip &amp; jump</span></div>' +
         '<div class="settings-row" data-perk="skip"><div class="settings-row-text">' +
           '<div class="settings-row-title">Skip intro <span id="ppxp-intro-val"></span></div>' +
           '<div class="settings-row-sub">Jump past the start of every track.</div></div>' +

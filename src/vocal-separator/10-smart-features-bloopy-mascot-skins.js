@@ -23,6 +23,7 @@
         { id: 'mic', label: 'Talk to Bloopy (Moonshine)', box: 'ppv-mic-on', def: 0, get: () => h.mas.voice.get('ppvMic') },
         { id: 'wake', label: 'Wake word', box: 'ppv-wake-on', def: 0, get: () => h.mas.voice.get('ppvWake') }
       ];
+      const BL_FEATS = ['mascot', 'blbub', 'blhdr', 'assist', 'mini', 'speak', 'mic', 'wake'];
       const isOn = f => { if (f.get) return !!f.get(); const v = ls(f.key); return v == null ? f.def === 1 : v === '1'; };
       const show = (el, on) => { if (el) el.style.display = on ? '' : 'none'; };
       const F = id => FEATS.find(f => f.id === id), on = id => isOn(F(id));
@@ -42,7 +43,8 @@
       box.innerHTML = '<details open><summary>Smart features</summary>' +
         '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-fs-all"> <b>All smart features</b></label>' +
         '<div class="ppv-note">Off hides the smart menus and stops the automatic playlists and background work. Tags, playlists and listening history are kept. Turning it back on restores everything.</div>' +
-        FEATS.map(f => (f.g ? '<div style="margin-top:8px"><b>' + f.g + '</b></div>' : '') + '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-fs-' + f.id + '"> ' + f.label + '</label>').join('') + '</details>';
+        FEATS.map(f => { const bl = BL_FEATS.includes(f.id) ? ' ppv-bl-set' : '';   // Bloopy's rows: hidden in Focus mode
+          return (f.g ? '<div class="' + bl + '" style="margin-top:8px"><b>' + f.g + '</b></div>' : '') + '<label class="ppv-c' + bl + '" style="display:block"><input type="checkbox" id="ppv-fs-' + f.id + '"> ' + f.label + '</label>'; }).join('') + '</details>';
       const syncBoxes = () => { FEATS.forEach(f => { const el = box.querySelector('#ppv-fs-' + f.id); if (el) el.checked = isOn(f); }); box.querySelector('#ppv-fs-all').checked = FEATS.some(isOn); };
       FEATS.forEach(f => { box.querySelector('#ppv-fs-' + f.id).onchange = e => { setF(f, e.target.checked); syncBoxes(); }; });
       box.querySelector('#ppv-fs-all').onchange = e => {

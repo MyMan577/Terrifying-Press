@@ -105,7 +105,7 @@
     // a small co-listening matrix learned from your own play history (videos included), blended with sound similarity.
     // Songs you add yourself are never touched. Switch off with the "Auto mixes" checkbox in the Library tab.
     const lvLs = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} };
-    const lvOn = () => lvLs('ppvLiveMix') !== '0';
+    const lvOn = () => lvLs('ppvLiveMix') !== '0' && !window.ppFocus;   // Focus mode: auto mixes stop changing playlists on their own
     const LV_DAY = 864e5;
     let lvS = null, lvCur = null, lvBusy = false, lvLast = 0, lvTimer = null, lvTagVer = -1;
     const lvState = () => { if (lvS) return lvS; try { lvS = JSON.parse(lvLs('ppvLiveV1')) || {}; } catch (e) { lvS = {}; } lvS.seq = lvS.seq || []; lvS.co = lvS.co || {}; lvS.sk = lvS.sk || {}; lvS.meta = lvS.meta || {}; lvS.dk = lvS.dk || Date.now(); lvS.blocked = lvS.blocked || {}; return lvS; };
