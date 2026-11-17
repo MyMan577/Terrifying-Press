@@ -10,7 +10,7 @@
   var body = document.body;
   var kit = function(){ return window.__ppHomeKit || null; };
   var api = function(){ return window.__ppApi || null; };
-  function toast(m){ try { showToast(m); } catch(e){} }
+  function toast(m){ try { if (window.ppToast) window.ppToast(m); } catch(e){} }
   function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
   function uid(){ return Math.random().toString(36).slice(2, 9); }
   function clone(x){ return JSON.parse(JSON.stringify(x)); }
@@ -1049,15 +1049,20 @@
   function startEdit(zone){
     var K = kit();
     if (!K || !K.on()){ toast('Layout editing works in the media player layout (Settings).'); return; }
-    var ov = document.getElementById('customize-modal-overlay'); if (ov) ov.classList.remove('open');
-    if (zone === 'home' || zone === 'playlists'){ closePage(); K.setView(zone); }
-    else if (zone === 'player' || zone === 'video'){
+    // Work out first whether the spot can be shown; if not, say why and leave everything as it is.
+    if (zone.indexOf('page:') === 0 && !pageById(zone.slice(5))){ toast('That page no longer exists.'); return; }
+    if (zone === 'player' || zone === 'video'){
       var A0 = api(), t0 = A0 && A0.currentIndex() >= 0 ? A0.tracks()[A0.currentIndex()] : null;
-      if (!K.hasTrack() || !t0){ toast(zone === 'video' ? 'Play a video first, then edit what shows over it.' : 'Play something first, then edit the player.'); return; }
-      if (zone === 'video' && t0.kind !== 'video'){ toast('Play a video first, then edit what shows over it.'); return; }
+      if (!K.hasTrack() || !t0 || (zone === 'video' && t0.kind !== 'video')){ toast(zone === 'video' ? 'Play a video first, then edit what shows over it.' : 'Play something first, then edit the player.'); return; }
       if (zone === 'player' && t0.kind === 'video'){ toast('Play a song (not a video) to edit the music player.'); return; }
-      closePage(); K.openPlayer();
-    } else openPage(zone.slice(5));
+    }
+    if (editing && editing !== zone){ editing = null; edZone = null; body.classList.remove('pw-editing'); edBar.hidden = true; closeSheet(); }
+    var ov = document.getElementById('customize-modal-overlay'); if (ov) ov.classList.remove('open');
+    // Home, Playlists and pages sit under the music/video player: close it so the spot is on screen.
+    if (zone.indexOf('page:') === 0 || zone === 'home' || zone === 'playlists'){ if (K.playerOpen && K.playerOpen() && K.closePlayer) K.closePlayer(); }
+    if (zone === 'home' || zone === 'playlists'){ closePage(); K.setView(zone); }
+    else if (zone === 'player' || zone === 'video'){ closePage(); K.openPlayer(); }
+    else openPage(zone.slice(5));
     zonesOf(zone).forEach(function(z){ zoneItems(z, true); }); save();
     edZone = zone === 'player' ? 'player' : zone;
     undoStack = [];

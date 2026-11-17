@@ -95,6 +95,7 @@
     stack.appendChild(el);
     setTimeout(() => el.remove(), 4300);
   }
+  window.ppToast = showToast;   // for scripts outside this one (Customize > Layout)
 
   // Ask the browser not to evict our IndexedDB library under storage
   // pressure. Silent - no UI, just improves reliability in the background.

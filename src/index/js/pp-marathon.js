@@ -1,7 +1,7 @@
 (function(){
   var BEST='ppMarathonBestV1', BG='ppMarathonBgV1', LEN=30, XP_N=6, SECS=10, BG_NEED=24;   // 24/30 = 80%
   var ls={g:function(k){try{return localStorage.getItem(k)}catch(e){return null}},s:function(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
-  var toast=function(m){try{showToast(m)}catch(e){}};
+  var toast=function(m){try{window.ppToast(m)}catch(e){}};
   var G=window.PPModeGate||{unlocked:function(){return true},legacy:function(){return true},check:function(){}};
   var css=document.createElement('style');
   css.textContent='body.pp-lite #pp-marathon-section{display:none}'

@@ -1,7 +1,7 @@
 (function(){
   var KEYS={playground:'ppPlaygroundMode',lite:'ppLiteMode',plus:'ppPlusMode',premium:'ppPremiumMode'};
   var ls={g:function(k){try{return localStorage.getItem(k)}catch(e){return null}},s:function(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
-  var toast=function(m){try{showToast(m)}catch(e){}};
+  var toast=function(m){try{window.ppToast(m)}catch(e){}};
   var cur=function(){for(var k in KEYS){if(ls.g(KEYS[k])==='1')return k}return null};
   // Task gate (see pp-gate-core). If it somehow failed to load, nothing is locked.
   var G=window.PPModeGate||{unlocked:function(){return true},legacy:function(){return true},state:function(){return {}},check:function(){},done:function(){},addClean:function(){},quizBest:function(){return 0},marathonBest:function(){return 0},cleanGoal:3600000,plusPass:75};

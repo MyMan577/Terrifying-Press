@@ -1,6 +1,6 @@
 (function(){
   const $=id=>document.getElementById(id), ls={g:k=>{try{return localStorage.getItem(k)}catch(e){return null}},s:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
-  const toast=(m,t)=>{try{showToast(m,t)}catch(e){}};
+  const toast=(m,t)=>{try{window.ppToast(m,t)}catch(e){}};
   /* ---- Video adjustment sliders (filter dropdown) ---- */
   const D={b:100,c:100,s:100,h:0}; try{Object.assign(D,JSON.parse(ls.g('ppVidAdj')||'{}'))}catch(e){}
   const adj=window.__ppAdj={...D}; const dd=$('filter-dropdown');

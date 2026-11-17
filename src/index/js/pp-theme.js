@@ -261,7 +261,7 @@
     };
     r.readAsText(file);
   }
-  function toast(m){ try { showToast(m); } catch(e){} }
+  function toast(m){ try { window.ppToast(m); } catch(e){} }
 
   // ---------- saved themes ----------
   function savedList(){ try { var a = JSON.parse(localStorage.getItem(SAVED_KEY)); return Array.isArray(a) ? a.map(clean).filter(Boolean) : []; } catch(e){ return []; } }
