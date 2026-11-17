@@ -18,7 +18,7 @@
     var old=document.getElementById('pp-plus-confirm');if(old){old.remove();}
     var c=document.createElement('div');c.id='pp-plus-confirm';
     var d=turningOn
-      ?'The app will reset and reopen with every level reward unlocked from the start: all EQ presets and bands, custom EQ slots, backgrounds, accent color, quick speed and boost buttons, skip intro/outro, and jump buttons. Levels and EXP stay.'+(liteOn()?' This also turns off Press Play Lite.':'')
+      ?'The app will reset and reopen with every level reward unlocked from the start: all EQ presets and bands, custom EQ slots, backgrounds, accent color, quick speed and boost buttons, and skip intro/outro. Levels and EXP stay.'+(liteOn()?' This also turns off Press Play Lite.':'')
       :'The app will reset and reopen with perks unlocking by level again. Progress is kept.';
     c.innerHTML='<div class="pl-q">'+(turningOn?'Switch to Press Play PLUS?':'Switch back to normal Press Play?')+'</div><div class="pl-d">'+d+'</div><button type="button" class="pl-yes">'+(turningOn?'Yes, go PLUS':'Yes, switch back')+'</button><button type="button" class="pl-no">Cancel</button>';
     sec.appendChild(c);
