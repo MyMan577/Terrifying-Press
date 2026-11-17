@@ -216,7 +216,7 @@
       if (!typeRow || document.getElementById('ppxp-bg-presets')) return;
       const wrap = document.createElement('div');
       wrap.id = 'ppxp-bg-presets';
-      wrap.innerHTML = '<p class="ppxp-bg-presets-label">Unlockable presets (level up to earn more)</p>' +
+      wrap.innerHTML = '<p class="ppxp-bg-presets-label"><span class="pp-nf">Unlockable presets (level up to earn more)</span><span class="pp-f">Presets</span></p>' +
         '<div class="ppxp-bg-presets-grid"></div>';
       typeRow.parentNode.insertBefore(wrap, typeRow);
       bgPresetGrid = wrap.querySelector('.ppxp-bg-presets-grid');

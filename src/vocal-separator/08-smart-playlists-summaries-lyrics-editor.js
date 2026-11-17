@@ -99,7 +99,7 @@
     const freeBg = () => { if (bgCache) { Object.values(bgCache).forEach(s => s && s.release && s.release()); bgCache = null; } };
     const surpDue = () => Date.now() - (parseInt(ls('ppvSurpLast') || '0', 10)) >= parseInt(ls('ppvSurpEv') || '24', 10) * 3600000;
     async function bgTick() {
-      if (bgBusy) return; const bgOn = ls('ppvBg') === '1', surpOn = ls('ppvSurp') === '1'; const a = A();
+      if (bgBusy) return; const bgOn = ls('ppvBg') === '1', surpOn = ls('ppvSurp') === '1' && ls('ppFocusMode') !== '1';   // no surprise playlists in Focus mode const a = A();
       if (!a || (!bgOn && !surpOn)) { freeBg(); return; }
       if (!(await isAway())) { freeBg(); return; }
       bgBusy = true;
