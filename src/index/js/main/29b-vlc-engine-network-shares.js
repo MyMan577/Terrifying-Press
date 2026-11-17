@@ -46,6 +46,18 @@
     return false;
   }
 
+  /** Called by loadTrack: another track is starting, so a VLC playback or cast of an earlier one stops. */
+  function ppVlcLeave(t){
+    if (PPVlc && vlcTrack && vlcTrack !== t){ PPVlc.close().catch(() => {}); }
+  }
+
+  /** Play pressed on a track that is casting / playing in VLC right now: bring that screen back instead. */
+  function ppVlcResume(t){
+    if (!PPVlc || !vlcTrack || vlcTrack !== t) return false;
+    PPVlc.show().then(r => { if (!(r && r.running)) { vlcTrack = null; togglePlay(); } }).catch(() => {});
+    return true;
+  }
+
   /** loadTrack's stand-in for setSrc when the track belongs to VLC: leave the element empty, open VLC if asked to play. */
   function ppVlcPark(el, t, autoplay){
     try { const raw = PPNative.raw(el); raw.removeAttribute('src'); raw.load(); } catch(e){}

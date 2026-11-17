@@ -154,6 +154,7 @@
     syncAudioLoop();
 
     // Formats and links the in-app players cannot open at all go straight to the VLC engine (29b).
+    ppVlcLeave(t);
     const toVlc = ppVlcWants(t);
     if (t.kind === 'video'){
       showVideoView();
@@ -248,6 +249,8 @@
         updatePlayIcon();
         updateMediaSession();
       });
+    } else if (ppVlcResume(tracks[currentIndex])){
+      // it is casting / playing in the VLC player: that screen came back
     } else if (ppVlcWants(tracks[currentIndex])){
       ppVlcOpen(tracks[currentIndex]);                 // this one only plays in the VLC engine
     } else {
