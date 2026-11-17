@@ -1,6 +1,6 @@
 (function(){
   var pane=document.getElementById('sidebar-pane-settings'); if(!pane)return;
-  var GROUPS=[['play','Playback'],['lib','Library & playlists'],['look','Appearance & layout'],['data','Backup & storage'],['fun','Rewards & games']];
+  var GROUPS=[['play','Playback'],['lib','Library & playlists'],['look','Appearance & layout'],['data','Backup & storage'],['fun','Rewards & games'],['credits','Credits']];
   var root=null,cards={},wraps={},advD=null,advBody=null;
 
   function build(){
@@ -34,6 +34,7 @@
     if(id==='ppxp-badge-slot')return null;
     var k=key(sec),pl=A0.place&&A0.place[k];
     if(pl&&(cards[pl]||pl==='adv'))return pl;
+    if(id==='credits-section')return 'credits';   // always last, on its own
     var ft=((sec.querySelector('.settings-row-title')||{}).textContent||'').trim();
     if(id==='decoding-section'||id==='gestures-section'||sec.querySelector('#pp-ass-toggle'))return 'adv';
     if(id==='playback-position-section'||id==='audio-quality-section'||sec.querySelector('#xf-mode'))return 'play';

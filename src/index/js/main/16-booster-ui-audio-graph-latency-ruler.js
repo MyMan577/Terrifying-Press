@@ -402,7 +402,7 @@
   ltSlider.addEventListener('input', () => ltSetLatency(parseFloat(ltSlider.value) || 0));
   window.addEventListener('resize', () => { if (ltOpenNow && ltTab === 'measure') ltDrawScale(); });
 
-  // ---------- Open-source licences (Settings) ----------
+  // ---------- Credits (Settings, at the bottom): everything Press Play uses, and the licence texts ----------
   (function(){
     const sheet = document.getElementById('pp-licences'), btn = document.getElementById('licences-btn');
     if (!sheet || !btn) return;
@@ -410,9 +410,46 @@
     btn.addEventListener('click', (e) => {
       e.stopPropagation(); sheet.hidden = false;
       const pre = document.getElementById('pp-licences-text');
-      fetch('THIRD-PARTY-NOTICES.txt').then(r => r.text()).then(t => { pre.textContent = t; }).catch(() => { pre.textContent = 'Could not open the licence file.'; });
+      fetch('CREDITS.txt').then(r => r.text()).then(t => renderCredits(t, pre)).catch(() => { pre.textContent = 'Could not open the credits.'; });
     });
     document.getElementById('pp-licences-close').addEventListener('click', close);
+    // CREDITS.txt is plain text (the legal copy). Shown as headed sections and one card per credit; licence texts
+    // (Part 2, and the upscalers' own notices after a ---- line) stay as written, in monospace.
+    function renderCredits(t, box){
+      box.replaceChildren();
+      const lines = t.split(/\r?\n/);
+      const add = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; box.appendChild(e); return e; };
+      let para = [], raw = false, inPart2 = false, i = 0;
+      const flush = () => { if (!para.length) return; if (raw) add('pre', 'cr-pre', para.join('\n')); else add('p', 'cr-p', para.join(' ').replace(/\s+/g, ' ')); para = []; };
+      while (i < lines.length){
+        const l = lines[i];
+        if (/^#{20,}$/.test(l) || /^={20,}$/.test(l)){
+          flush();
+          const title = (lines[i + 1] || '').trim(), part = l[0] === '#';
+          add(part ? 'h3' : 'h4', part ? 'cr-part' : 'cr-sec', title);
+          if (part) inPart2 = /^PART 2/.test(title);
+          raw = inPart2;                                   // a new section starts as prose in Part 1, as licence text in Part 2
+          i += 3; continue;
+        }
+        if (/^-{20,}$/.test(l)){ flush(); raw = true; i++; continue; }          // a licence text follows
+        if (!raw && /^\* /.test(l)){
+          flush();
+          const card = add('div', 'cr-item'), h = document.createElement('b');
+          h.textContent = l.slice(2); card.appendChild(h); i++;
+          while (i < lines.length && /^    \S/.test(lines[i])){
+            const s = lines[i].trim(), d = document.createElement('div'), m = /^(By|Why|Licence):\s*(.*)$/.exec(s);
+            if (/^https?:\/\//.test(s)){ d.className = 'cr-link'; d.textContent = s; }
+            else if (m){ const k = document.createElement('span'); k.className = 'cr-k'; k.textContent = m[1] + ': '; d.append(k, m[2]); }
+            else d.textContent = s;
+            card.appendChild(d); i++;
+          }
+          continue;
+        }
+        if (!l.trim()){ flush(); i++; continue; }
+        para.push(l); i++;
+      }
+      flush();
+    }
     sheet.addEventListener('click', (e) => { if (e.target === sheet) close(); });
   })();
 

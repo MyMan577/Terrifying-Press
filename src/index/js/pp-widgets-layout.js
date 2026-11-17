@@ -360,7 +360,7 @@
       ['cur-time','Time played','#cur-time', true], ['dur-time','Length','#dur-time', true], ['vol-row','Volume slider','body.player-layout #vol-row', true]] },
     { id:'settings', name:'Settings sections', note:'Appearance always stays, so you can get back here.', items:[
       ['sg-play','Playback', SG(1), true], ['sg-lib','Library & playlists', SG(2), true], ['sg-look','Appearance & layout', SG(3), false],
-      ['sg-data','Backup & storage', SG(4), true], ['sg-fun','Rewards & games', SG(5), true]] }
+      ['sg-data','Backup & storage', SG(4), true], ['sg-fun','Rewards & games', SG(5), true], ['sg-credits','Credits', SG(6), true]] }
   ];
   function groupItems(g){
     var saved = (L.order || {})[g.id] || [], byKey = {};
