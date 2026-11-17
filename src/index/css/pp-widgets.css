@@ -107,7 +107,59 @@
   /* the strip of widgets in the player */
   #pw-player-zone{ display:none; }
   body.player-layout[data-pl-player]:not(.pl-video).pw-has-player-zone #pw-player-zone{ display:block; margin:0 0 14px; --ph-l:0px; --ph-r:0px; }
-  #pw-player-zone .pw-row-box{ padding:0; }
+  #pw-player-zone .pw-row-box, #pw-player-top .pw-row-box, #pw-video-zone .pw-row-box{ padding:0; }
+  /* the compact player lays the controls out as wrapping rows: the area takes a whole row, above the seek bar */
+  body.player-layout[data-pl-player]:not(.pl-video).pw-has-player-zone #controls-col > #pw-player-zone{ order:0; flex:0 0 100%; width:100%; min-width:0; margin:0 0 12px; }
+
+  /* top of the music player, under the title bar */
+  #pw-player-top{ display:none; }
+  body.player-layout[data-pl-player]:not(.pl-video).pw-has-player-top #pw-player-top{
+    display:block; position:fixed; z-index:74; left:var(--cv-l, 12px); right:var(--cv-r, 12px); top:calc(var(--cv-t, 6px) + 48px);
+    max-height:40dvh; overflow-y:auto; overscroll-behavior:contain; --ph-l:0px; --ph-r:0px; }
+  body.player-layout[data-pl-player]:not(.pl-video).pw-has-player-top.pw-editing #pw-player-top{ top:calc(var(--cv-t, 6px) + 74px); overflow:visible; max-height:none; }
+  /* with widgets in the player, the cover takes only the room that is left between them */
+  body.player-layout[data-pl-player]:not(.pl-video):is(.pw-has-player-top, .pw-has-player-zone) #main{
+    padding-top:calc(52px + var(--pw-top-h, 0px) + 8px); padding-bottom:calc(var(--cv-ctl-h, 150px) + 22px); }
+  body.player-layout[data-pl-player]:not(.pl-video):is(.pw-has-player-top, .pw-has-player-zone) #viz-wrap{
+    width:min(86vw, max(120px, calc(100dvh - 52px - var(--pw-top-h, 0px) - var(--cv-ctl-h, 150px) - 74px)));
+    height:min(86vw, max(120px, calc(100dvh - 52px - var(--pw-top-h, 0px) - var(--cv-ctl-h, 150px) - 74px))); }
+  /* sideways: both areas share a column on the right, beside the cover, so neither the cover nor the controls give up room */
+  @media (max-height:480px) and (orientation:landscape){
+    body.player-layout[data-pl-player]:not(.pl-video):is(.pw-has-player-top, .pw-has-player-zone) #main{
+      padding-top:52px; padding-bottom:var(--cv-main-b); padding-right:calc(min(30vw, 320px) + var(--cv-r) + 8px); }
+    body.player-layout[data-pl-player]:not(.pl-video):is(.pw-has-player-top, .pw-has-player-zone) #viz-wrap{
+      width:min(calc(100dvh - 160px), 36vw); height:min(calc(100dvh - 160px), 36vw); }
+    body.player-layout[data-pl-player]:not(.pl-video).pw-has-player-top #pw-player-top{
+      left:auto; width:min(30vw, 320px); top:calc(var(--cv-t, 6px) + 48px); max-height:calc(100dvh - var(--cv-ctl-h, 80px) - 70px); }
+    body.player-layout[data-pl-player]:not(.pl-video).pw-has-player-zone #controls-col > #pw-player-zone{
+      position:fixed; z-index:74; right:var(--cv-r, 12px); left:auto; width:min(30vw, 320px); flex:none; margin:0;
+      bottom:calc(var(--cv-ctl-h, 80px) + 10px); max-height:calc(50dvh - 40px); overflow-y:auto; }
+    body.player-layout[data-pl-player]:not(.pl-video).pw-has-player-zone.pw-has-player-top #pw-player-top{ max-height:calc(50dvh - 70px); }
+  }
+
+  /* over a video: follows the controls in and out unless set to stay */
+  #pw-video-zone{ display:none; }
+  body.player-layout.pl-video[data-pl-player].pw-has-video-zone #pw-video-zone{
+    display:block; position:fixed; z-index:76; left:var(--cv-l, 12px); right:var(--cv-r, 12px); max-width:560px; margin:0 auto;
+    pointer-events:none; opacity:0; transition:opacity .2s; --ph-l:0px; --ph-r:0px; }
+  body.player-layout.pl-video[data-pl-player].pw-has-video-zone #pw-video-zone.pw-vz-top{ top:calc(var(--cv-t, 6px) + 50px); }
+  body.player-layout.pl-video[data-pl-player].pw-has-video-zone #pw-video-zone.pw-vz-bottom{ bottom:calc(var(--cv-ctl-h, 170px) + 48px); }
+  body.player-layout.pl-video[data-pl-player].pl-ui-show #pw-video-zone,
+  body.player-layout.pl-video[data-pl-player] #pw-video-zone.pw-vz-always,
+  body.player-layout.pl-video[data-pl-player].pw-editing #pw-video-zone{ opacity:1; }
+  body.player-layout.pl-video[data-pl-player].pl-ui-show #pw-video-zone .pw-box,
+  body.player-layout.pl-video[data-pl-player] #pw-video-zone.pw-vz-always .pw-box,
+  body.player-layout.pl-video[data-pl-player].pw-editing #pw-video-zone :is(.pw-box, .pw-add-big){ pointer-events:auto; }
+  body.player-layout.pl-video[data-pl-player].pw-editing #pw-video-zone.pw-vz-top{ top:calc(var(--cv-t, 6px) + 74px); }
+  /* plain widgets over a picture: white with a shadow, like the video's own controls */
+  #pw-video-zone .pw-box:not([class*="pw-bx-"]){ color:#fff; --text:#fff; --text-dim:rgba(255,255,255,.8); text-shadow:0 1px 3px rgba(0,0,0,.9); }
+  #pw-video-zone .pw-box:not([class*="pw-bx-"]) svg{ filter:drop-shadow(0 1px 2px rgba(0,0,0,.8)); }
+  /* immersive and fullscreen keep the picture clear */
+  body.immersive #pw-video-zone:not(.pw-vz-always){ display:none !important; }
+
+  /* edit mode in the player: each area says what it is */
+  .pw-zone-label{ font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--accent); margin:0 0 6px 2px; text-shadow:0 1px 3px rgba(0,0,0,.8); }
+  .pw-add-big.pw-add-slim{ height:40px; margin:8px 0 2px; width:100%; font-size:13px; background:color-mix(in srgb, var(--bg) 70%, transparent); }
 
   /* the tab bar with more (or fewer) tabs */
   #pl-tabbar .pw-tab{ position:relative; z-index:1; }
@@ -348,3 +400,4 @@
   .pw-pg-btns{ display:flex; flex-wrap:wrap; gap:6px; }
   .pw-pg-main{ border-color:var(--accent) !important; color:var(--accent) !important; }
   .pw-ed-title input{ width:100%; min-width:0; height:36px; padding:0 10px; border-radius:calc(9px*var(--ui-round,1)); border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; font-size:14px; font-weight:700; }
+  #pw-edbar button[hidden]{ display:none; }
