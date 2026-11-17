@@ -339,7 +339,7 @@
     content:""; margin-left:auto; width:8px; height:8px; border-right:2px solid currentColor; border-bottom:2px solid currentColor;
     rotate:45deg; translate:0 -2px; opacity:.6; transition:rotate .2s; }
   body[data-lss-fold="on"] #pp-sg-root > .pp-sg.ls-folded > .pp-sg-title::after{ rotate:-45deg; translate:0 0; }
-  body[data-lss-fold="on"] #pp-sg-root > .pp-sg.ls-folded > :not(.pp-sg-title){ display:none !important; }
+  body[data-lss-fold="on"] #pp-sg-root > .pp-sg.ls-folded > :not(.pp-sg-title):not(.ls-slot){ display:none !important; }
   body[data-lss-fold="on"] #pp-sg-root > .pp-sg.ls-folded{ border-bottom:1px solid var(--line); padding-bottom:4px; }
   /* jump bar */
   #ls-jump{
@@ -349,3 +349,92 @@
   #ls-jump button{
     flex:0 0 auto; padding:6px 12px; border:1px solid var(--line); border-radius:calc(999px*var(--ui-round,1));
     background:var(--g-1a1b20, #1a1b20); color:var(--text); font:600 12px inherit; font-family:inherit; cursor:pointer; }
+
+  /* ================= the studio's newer parts ================= */
+  .ls-note{ font-size:12px; color:var(--text-dim); line-height:1.45; margin:0 0 8px; }
+  .ls-sgh{ font-size:11.5px; font-weight:800; letter-spacing:.04em; color:var(--accent); margin:12px 0 2px; }
+  .ls-secrow > span:first-child{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:12.5px; }
+  .ls-secrow .ls-ic{ width:30px; height:30px; }
+  .ls-secrow .ls-ic svg{ width:15px !important; height:15px !important; }
+  #ls-studio select{ background:var(--bg, #0c0d10); color:var(--text); border:1px solid var(--line); border-radius:calc(8px*var(--ui-round,1)); font:500 12px inherit; font-family:inherit; padding:6px 8px; }
+  #ls-studio .ls-secto{ width:92px; flex:0 0 92px; padding:5px 4px; font-size:11px; }
+  .ls-spotrow select{ width:100%; }
+  #ls-studio .ls-go{ background:var(--accent); color:var(--bg, #0c0d10); border:none; font-weight:700; }
+
+  /* ================= Settings sections the user hid ================= */
+  .settings-section.ls-sec-hidden{ display:none !important; }
+
+  /* ================= widget areas between rows ================= */
+  .ls-slot{ --ph-l:0px; --ph-r:0px; }
+  .ls-slot[hidden]{ display:none; }
+  #playlist > .ls-mid{ margin:6px 2px 8px; }
+  #pl-home .ls-mid{ padding:10px var(--ph-r, 24px) 10px var(--ph-l, 24px); grid-column:1 / -1; min-width:0; }
+  .ls-set-slot{ margin:12px 0 0; }
+  #sidebar-pane-settings > .ls-set-slot{ margin:6px 14px 4px; }
+  .ls-slot .pw-row-box{ padding:0; }
+  .ls-slot .pw-zone-label{ margin-left:0; margin-right:0; padding-left:2px; }
+
+  /* ================= Setting / Settings section widgets ================= */
+  .pw-st{ padding:2px 0; color:var(--pw-fg, var(--text)); }
+  .pw-st-card{ background:var(--g-1a1b20, #1a1b20); border:1px solid var(--line); border-radius:calc(14px*var(--ui-round,1)); padding:4px 14px; }
+  .pw-st-h{ font-size:13px; font-weight:750; margin:10px 0 2px; }
+  .pw-st-row{ display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid var(--line); }
+  .pw-st-h + .pw-st-row, .pw-st > .pw-st-row:first-child{ border-top:none; }
+  .pw-st-row.pw-st-off{ display:none; }
+  .pw-st-gone{ font-size:12px; color:var(--text-dim); }
+  .pw-st-txt{ flex:1 1 auto; min-width:0; }
+  .pw-st-txt b{ font-size:13.5px; font-weight:600; }
+  .pw-st-v{ margin-left:6px; font-size:12px; color:var(--accent); font-variant-numeric:tabular-nums; }
+  .pw-st-txt small{ display:block; font-size:11.5px; line-height:1.4; color:var(--text-dim); margin-top:2px; }
+  .pw-st-ctl{ display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:8px; flex:0 1 auto; max-width:58%; }
+  .pw-st-ctl select{ max-width:170px; background:var(--bg-elev, #16171b); color:var(--text); border:1px solid var(--line); border-radius:calc(8px*var(--ui-round,1)); padding:6px 8px; font:500 12.5px inherit; font-family:inherit; }
+  .pw-st-num{ width:64px; background:var(--bg-elev, #16171b); color:var(--text); border:1px solid var(--line); border-radius:calc(8px*var(--ui-round,1)); padding:6px 8px; font:500 12.5px inherit; font-family:inherit; }
+  .pw-st-btn{ background:none; border:1px solid var(--accent-dim); color:var(--accent); border-radius:calc(999px*var(--ui-round,1)); padding:6px 12px; font:600 12px inherit; font-family:inherit; cursor:pointer; }
+  .pw-st-row:has(.pw-st-range){ flex-wrap:wrap; row-gap:6px; }
+  .pw-st-row:has(.pw-st-range) .pw-st-ctl{ flex:1 1 100%; max-width:none; }
+  .pw-st-range{ flex:1 1 auto; min-width:120px; accent-color:var(--accent); }
+  .pw-st-sw{ position:relative; display:inline-block; width:44px; height:26px; flex:0 0 44px; cursor:pointer; }
+  .pw-st-sw input{ position:absolute; inset:0; width:100%; height:100%; margin:0; opacity:0; cursor:pointer; z-index:1; }
+  .pw-st-sw i{ position:absolute; inset:0; border-radius:999px; background:var(--line); transition:background .2s; }
+  .pw-st-sw i::after{ content:""; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%; background:#fff; transition:translate .2s; }
+  .pw-st-sw input:checked + i{ background:var(--accent); }
+  .pw-st-sw input:checked + i::after{ translate:18px 0; }
+  .pw-st-sw input:disabled + i{ opacity:.4; }
+  .pw-st-empty{ display:flex; align-items:center; gap:10px; padding:12px 0; font-size:12.5px; color:var(--text-dim); }
+  .pw-st-empty svg{ width:22px; height:22px; flex:0 0 auto; }
+
+  /* ================= button spots ================= */
+  .ls-spots{ display:none; }
+  .ls-spot{ display:inline-flex; align-items:center; justify-content:center; padding:0; cursor:pointer; color:var(--text); }
+  .ls-spot svg{ width:22px; height:22px; pointer-events:none; }
+  .ls-spot.active, .ls-spot.toggled, .ls-spot.on, .ls-spot[aria-pressed="true"]{ color:var(--accent); }
+  /* each player shows only its own spots */
+  body:not(.pl-video) .ls-spot[data-spot-k="vid"], body.pl-video .ls-spot[data-spot-k="aud"]{ display:none !important; }
+  /* the buttons a spot stands in for */
+  body.player-layout[data-pl-player]:not(.pl-video)[data-ls-hidebtn~="aud-tl"] #transport > #shuffle-btn,
+  body.player-layout[data-pl-player]:not(.pl-video)[data-ls-hidebtn~="aud-tr"] #transport > #repeat-btn,
+  body.player-layout.pl-video[data-pl-player][data-ls-hidebtn~="vid-tl"] #transport > #shuffle-btn,
+  body.player-layout.pl-video[data-pl-player][data-ls-hidebtn~="vid-tr"] #transport > #repeat-btn{ display:none !important; }
+  #transport > .ls-spot{ background:transparent; border:none; }
+  /* top bar */
+  body.player-layout[data-pl-player] .ls-tb{
+    display:flex; flex-direction:row; gap:4px; position:fixed; z-index:80; top:var(--cv-t, 6px); right:calc(var(--cv-r, 12px) + 88px); }
+  body.player-layout.pl-video[data-pl-player] .ls-tb{ right:calc(var(--cv-r, 12px) + 44px); }
+  body.player-layout[data-pl-player] .ls-tb .ls-spot{ width:40px; height:40px; background:transparent; border:none; border-radius:calc(10px*var(--ui-round,1)); }
+  body.player-layout[data-pl-player] .ls-tb .ls-spot svg{ filter:drop-shadow(0 1px 3px rgba(0,0,0,.9)); }
+  body.player-layout[data-pl-player]:not(.pl-video) #now-playing{ right:calc(var(--cv-r, 12px) + 92px + var(--ls-tb-aud, 0) * 44px); }
+  body.player-layout.pl-video[data-pl-player] #now-playing{ right:calc(var(--cv-r, 12px) + 168px + var(--ls-tb-vid, 0) * 44px); }
+  /* right edge on a video */
+  body.player-layout.pl-video[data-pl-player] .ls-rail{
+    display:flex; flex-direction:column; gap:12px; position:fixed; z-index:78; right:var(--cv-r, 12px); top:50%; translate:0 -50%; }
+  .ls-rail .ls-spot{ width:46px; height:46px; border-radius:50%; background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.18); color:#fff; }
+  .ls-rail .ls-spot svg{ width:22px; height:22px; filter:drop-shadow(0 1px 2px rgba(0,0,0,.8)); }
+  /* video: the top bar and edge buttons come and go with the controls */
+  body.player-layout.pl-video[data-pl-player] :is(.ls-tb, .ls-rail){ opacity:0; pointer-events:none; transition:opacity .2s; }
+  body.player-layout.pl-video[data-pl-player].pl-ui-show :is(.ls-tb, .ls-rail){ opacity:1; pointer-events:auto; }
+  /* the cover's corners */
+  body.player-layout[data-pl-player]:not(.pl-video) #viz-wrap > .ls-cov{ display:block; position:absolute; inset:0; pointer-events:none; z-index:6; }
+  .ls-cov .ls-spot{ position:absolute; bottom:3%; width:40px; height:40px; border-radius:50%; pointer-events:auto;
+    background:rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.16); color:#fff; }
+  .ls-cov .ls-cov-cl{ left:3%; } .ls-cov .ls-cov-cr{ right:3%; }
+  .ls-cov .ls-spot svg{ width:20px; height:20px; }

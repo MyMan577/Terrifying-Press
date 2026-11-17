@@ -1,7 +1,7 @@
   var BUILTIN_ORDER = ['title','games','tagline','playground','tabs','hero','chips','videos','audio','history'];
   var NEW_ORDER = ['nowplaying','cover','seekbar','upnext','lyrics','viz','volume','speed','trackinfo','stack','action','shufpl','shortcuts','search','eq','sleeper','bookmarks','level','bloopy','game',
                    'clock','greeting','countdown','calendar','dayprog','stopwatch','battery','text','rotate','drawing','image','stats',
-                   'recent','most','random','cont','genre','playlist','playlists','spacer','divider'];
+                   'recent','most','random','cont','genre','playlist','playlists','setting','setsec','spacer','divider'];
 
   function subOf(t){ return t.kind === 'video' ? (t.height ? t.height + 'p' : (t.ext || '').toUpperCase()) : ((t.artist && t.artist !== 'Unknown artist') ? t.artist : (t.ext || '').toUpperCase()); }
   // Home hands its lists over; other zones work them out the same way.
@@ -74,7 +74,8 @@
   // ---------- rendering a zone ----------
   var editing = null;   // what is being edited: a zone, or 'player' (both player areas at once)
   var edZone = null;    // the zone in that session that taps, Add and settings act on
-  var EDIT_GROUPS = { player: ['player-top', 'player'] };
+  var EDIT_GROUPS = { player: ['player-top', 'player'], library: ['library', 'lib-mid'], playlists: ['playlists', 'pls-mid'],
+    settings: ['set-top', 'set-play', 'set-lib', 'set-look', 'set-data', 'set-fun'] };
   function zonesOf(ed){ return EDIT_GROUPS[ed] || [ed]; }
   function isEd(zone){ return !!editing && zonesOf(editing).indexOf(zone) >= 0; }
   function okCol(v){ return typeof v === 'string' && /^#[0-9a-f]{3,8}$/i.test(v) ? v : ''; }
@@ -256,6 +257,57 @@
   var libZoneEl = document.createElement('div'); libZoneEl.id = 'pw-lib-zone';
   (function(){ var pane = document.getElementById('sidebar-pane-playlist'), ar = document.getElementById('action-row'); if (pane) pane.insertBefore(libZoneEl, ar && ar.parentNode === pane ? ar : pane.firstChild); })();
   function renderLibrary(){ if (fillZone(libZoneEl, 'library', 'pw-has-lib-zone')){ var K = kit(); if (K) K.observe(libZoneEl); startTick(); liveUpdate(); } }
+  // ---- areas between rows: partway down the Library list, among the playlists, and between the Settings groups ----
+  // The Library list and the Playlists page are redrawn from scratch often, so each area is one element that is put
+  // back after the chosen row whenever its list is redrawn (watched with a MutationObserver on the list itself).
+  var MID = {
+    'lib-mid': { list: function(){ return document.getElementById('playlist'); }, item: '.track', def: 3 },
+    'pls-mid': { list: function(){ var h = document.getElementById('pl-home'); if (!h || body.dataset.plView !== 'playlists') return null; var p = h.querySelector('.ph-pl'); return p ? p.parentNode : null; }, item: '.ph-pl', def: 2 }
+  };
+  var midEls = {};
+  function midAfter(z){ var o = (L.zopt && L.zopt[z]) || {}; return o.after != null ? Math.max(0, +o.after) : MID[z].def; }
+  function placeMid(z){
+    var el = midEls[z], m = MID[z], list = m.list();
+    var has = !!((zoneItems(z, false) || []).length) || isEd(z);
+    if (!list || !has){ if (el && el.parentNode && (!list || el.parentNode !== list || !has)) el.remove(); return; }
+    var rows = list.querySelectorAll(':scope > ' + m.item), n = midAfter(z), ref = n <= 0 ? rows[0] || null : rows[n] || null;
+    if (n > 0 && !rows[n - 1]) ref = null;
+    if (el.parentNode === list && el.nextElementSibling === ref && (n <= 0 || el.previousElementSibling === rows[Math.min(n, rows.length) - 1])) return;
+    list.insertBefore(el, ref);
+  }
+  function renderMid(z, force){
+    var el = midEls[z]; if (!el){ el = midEls[z] = document.createElement('div'); el.className = 'ls-slot ls-mid'; el.dataset.slot = z; }
+    var has = !!((zoneItems(z, false) || []).length) || isEd(z);
+    if (has && (force || !el.firstChild || el.dataset.sig !== sigN + ':' + (editing || ''))){ el.innerHTML = renderZone(z, null); el.dataset.sig = sigN + ':' + (editing || ''); var K = kit(); if (K) K.observe(el); startTick(); liveUpdate(); }
+    if (!has) el.innerHTML = '';
+    placeMid(z);
+  }
+  function renderMids(){ renderMid('lib-mid', true); renderMid('pls-mid', true); }
+  (function(){
+    if (typeof MutationObserver !== 'function') return;
+    var pl = document.getElementById('playlist'), home = document.getElementById('pl-home');
+    if (pl) new MutationObserver(function(){ renderMid('lib-mid'); }).observe(pl, { childList:true });
+    if (home) new MutationObserver(function(){ renderMid('pls-mid'); }).observe(home, { childList:true });
+  })();
+  // Settings: one area at the top and one after each group. They sit inside each group (after its card), so the
+  // groups keep their order and the Arrange list's place-by-position rules still match.
+  var SET_ZONES = ['set-top', 'set-play', 'set-lib', 'set-look', 'set-data', 'set-fun'], setEls = {};
+  function renderSettingsZones(){
+    var S = window.__ppSettings, root = document.getElementById('pp-sg-root'); if (!S || !root) return;
+    SET_ZONES.forEach(function(z){
+      var el = setEls[z]; if (!el){ el = setEls[z] = document.createElement('div'); el.className = 'ls-slot ls-set-slot'; el.dataset.slot = z; }
+      var host = z === 'set-top' ? null : S.wrap(z.slice(4));
+      var has = !!((zoneItems(z, false) || []).length) || isEd(z);
+      if (z === 'set-top'){ if (el.nextSibling !== root || el.parentNode !== root.parentNode) root.parentNode.insertBefore(el, root); }
+      else if (host && el.parentNode !== host) host.appendChild(el);
+      el.hidden = !has;
+      el.innerHTML = has ? renderZone(z, null) : '';
+      // a group with only widgets still shows, so its widgets do too
+      if (host && has && host.hidden) el.classList.add('ls-orphan'); else el.classList.remove('ls-orphan');
+    });
+    startTick(); liveUpdate();
+  }
+
   function renderPlayer(){
     var a = fillZone(playerZoneEl, 'player', 'pw-has-player-zone'), b = fillZone(playerTopEl, 'player-top', 'pw-has-player-top');
     if (a || b){ startTick(); liveUpdate(); }
@@ -563,10 +615,10 @@
   // ---------- refresh ----------
   function refreshAll(){
     var K = kit(); if (K) K.renderHome(true);
-    renderPage(); renderPlayer(); renderLibrary(); applyTabs(); applyHide();
+    renderPage(); renderPlayer(); renderLibrary(); renderMids(); renderSettingsZones(); applyTabs(); applyHide();
   }
   var dataTimer = null;
-  function onData(){ clearTimeout(dataTimer); dataTimer = setTimeout(function(){ if (openPageId && !editing) renderPage(); if (!editing){ renderPlayer(); renderLibrary(); } }, 120); }
+  function onData(){ clearTimeout(dataTimer); dataTimer = setTimeout(function(){ if (openPageId && !editing) renderPage(); if (!editing){ renderPlayer(); renderLibrary(); renderMids(); renderSettingsZones(); } }, 120); }
   // Rows on the Playlists page need re-rendering when the library changes, like Home's.
 
   // ======================= edit mode =======================
@@ -583,10 +635,12 @@
   function closeSheet(){ sheet.hidden = true; sheetBody.innerHTML = ''; }
   sheet.addEventListener('click', function(e){ if (e.target === sheet || e.target.closest('.pw-sheet-x')) closeSheet(); });
 
-  var ZNAMES = { home:'Home', player:'Above the controls', 'player-top':'Top of the player', video:'Over the video', playlists:'Playlists', library:'Library' };
+  var ZNAMES = { home:'Home', player:'Above the controls', 'player-top':'Top of the player', video:'Over the video', playlists:'Top of Playlists', library:'Top of the Library',
+    'lib-mid':'In the list', 'pls-mid':'Among your playlists', settings:'Settings', 'set-top':'Top of Settings', 'set-play':'After Playback', 'set-lib':'After Library & playlists',
+    'set-look':'After Appearance & layout', 'set-data':'After Backup & storage', 'set-fun':'After Rewards & games' };
   function zoneName(z){ return ZNAMES[z] || ((pageById(z.slice(5)) || {}).name || 'Page'); }
-  function sessionName(ed){ return ed === 'player' ? 'the player' : ed === 'video' ? 'the video overlay' : zoneName(ed); }
-  function currentZoneOnScreen(){ var K = kit(); return openPageId ? 'page:' + openPageId : body.hasAttribute('data-pl-player') ? (body.classList.contains('pl-video') ? 'video' : 'player') : K && K.view() === 'playlists' ? 'playlists' : K && K.view() === 'library' ? 'library' : 'home'; }
+  function sessionName(ed){ return ed === 'player' ? 'the player' : ed === 'video' ? 'the video overlay' : ed === 'library' ? 'the Library' : ed === 'playlists' ? 'Playlists' : ed === 'settings' ? 'Settings' : zoneName(ed); }
+  function currentZoneOnScreen(){ var K = kit(); return openPageId ? 'page:' + openPageId : body.hasAttribute('data-pl-player') ? (body.classList.contains('pl-video') ? 'video' : 'player') : K && K.view() === 'playlists' ? 'playlists' : K && K.view() === 'library' ? 'library' : K && K.view() === 'settings' ? 'settings' : 'home'; }
   function startEdit(zone){
     var K = kit();
     if (!K || !K.on()){ toast('Layout editing works in the media player layout (Settings).'); return; }
@@ -600,13 +654,14 @@
     if (editing && editing !== zone){ editing = null; edZone = null; body.classList.remove('pw-editing'); edBar.hidden = true; closeSheet(); }
     var ov = document.getElementById('customize-modal-overlay'); if (ov) ov.classList.remove('open');
     // Home, Playlists and pages sit under the music/video player: close it so the spot is on screen.
-    if (zone.indexOf('page:') === 0 || zone === 'home' || zone === 'playlists' || zone === 'library'){ if (K.playerOpen && K.playerOpen() && K.closePlayer) K.closePlayer(); }
+    if (zone.indexOf('page:') === 0 || zone === 'home' || zone === 'playlists' || zone === 'library' || zone === 'settings'){ if (K.playerOpen && K.playerOpen() && K.closePlayer) K.closePlayer(); }
     if (zone === 'home' || zone === 'playlists'){ closePage(); K.setView(zone); }
     else if (zone === 'library'){ closePage(); K.setView('library'); }
+    else if (zone === 'settings'){ closePage(); K.setView('settings'); }
     else if (zone === 'player' || zone === 'video'){ closePage(); K.openPlayer(); }
     else openPage(zone.slice(5));
     zonesOf(zone).forEach(function(z){ zoneItems(z, true); }); save();
-    edZone = zone === 'player' ? 'player' : zone;
+    edZone = zone === 'player' ? 'player' : zone === 'settings' ? 'set-top' : zone;
     undoStack = [];
     editing = zone; body.classList.add('pw-editing');
     edBar.hidden = false;
@@ -625,9 +680,10 @@
     refreshAll(); toast('Layout saved.');
   }
   function refreshZone(){
-    if (editing === 'home' || editing === 'playlists'){ var K = kit(); if (K) K.renderHome(true); }
+    if (editing === 'home' || editing === 'playlists'){ var K = kit(); if (K) K.renderHome(true); if (editing === 'playlists') renderMid('pls-mid', true); }
     else if (editing === 'player') renderPlayer();
-    else if (editing === 'library') renderLibrary();
+    else if (editing === 'library'){ renderLibrary(); renderMid('lib-mid', true); }
+    else if (editing === 'settings') renderSettingsZones();
     else if (editing === 'video') renderVideo();
     else if (editing) renderPage();
   }
@@ -719,7 +775,7 @@
   document.addEventListener('pointercancel', endDrag, true);
 
   // ---- add sheet ----
-  function zoneKind(z){ return z.indexOf('page:') === 0 || z === 'playlists' || z === 'library' ? 'page' : z === 'player-top' ? 'player' : z; }
+  function zoneKind(z){ return z.indexOf('page:') === 0 || z === 'playlists' || z === 'library' || z === 'lib-mid' || z === 'pls-mid' || z.indexOf('set-') === 0 ? 'page' : z === 'player-top' ? 'player' : z; }
   function addSheet(){
     if (!edZone || !isEd(edZone)) edZone = zonesOf(editing)[zonesOf(editing).length - 1];
     var zk = zoneKind(edZone), present = items().map(function(x){ return x.type; });
@@ -773,6 +829,8 @@
       if (v && !gm[v]) names.unshift(v);
       return row(names.length ? '<select data-k="' + k + '"><option value="">Choose a genre…</option>' + names.map(function(n){ return '<option value="' + esc(n) + '"' + (v === n ? ' selected' : '') + '>' + esc(n) + ' (' + ((gm[n] || []).length) + ')</option>'; }).join('') + '</select>'
         : '<p class="pw-note">No genres yet. Tag your songs with smart tags (Bloopy’s stems menu) and they show up here.</p>'); }
+    if (type === 'setting') return stPickHTML(k, v, label);
+    if (type === 'setsec') return stSecPickHTML(k, v, label);
     if (type === 'page') return row('<select data-k="' + k + '"><option value="">Choose a page…</option>' + L.pages.map(function(p){ return '<option value="' + p.id + '"' + (v === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>');
     if (type === 'playlist'){ var A = api(), pls = A ? A.playlists().filter(function(p){ return !p.libOnly; }) : [];
       return row('<select data-k="' + k + '"><option value="">Choose a playlist…</option>' + pls.map(function(p){ return '<option value="' + esc(p.id) + '"' + (v === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>'); }
@@ -1146,6 +1204,12 @@
     editTabs: tabsSheet,
     openPage: openPage,
     closePage: closePage,
+    addWidget: function(z, type, o){ if (!T[type]) return null; var it = { id:uid(), type:type, w:T[type].w, o:o || {} }; remember(); zoneItems(z, true).push(it); save(); refreshAll(); return it; },
+    zopt: function(z, v){ if (v === undefined) return clone((L.zopt && L.zopt[z]) || {}); L.zopt = L.zopt || {}; L.zopt[z] = Object.assign({}, L.zopt[z] || {}, v); save(); refreshAll(); },
+    zoneCount: function(z){ return ((L.zones[z]) || []).length; },
+    actions: function(){ return Object.keys(ACTIONS).filter(function(a){ return ACTIONS[a].run && ['page','editlayout'].indexOf(a) < 0; }).map(function(a){ return { id:a, label:ACTIONS[a].label, icon:ACTIONS[a].icon }; }); },
+    run: function(a){ runAction(a); },
+    icon: function(n){ return svg(n); },
     layout: function(){ return clone(L); },
     // The Layout studio arranges the app's own rows with the same order and hide lists as the Arrange sheets.
     arrange: {
@@ -1191,7 +1255,7 @@
       setTimeout(function(){ var t = document.querySelector('.ppth-switch button[data-p="' + k + '"]'); if (t) t.click(); }, 0);
     });
   }
-  function boot(){ settingsEntry(); applyTabs(); renderPlayer(); buildPanel(); if (L.zones.home && kit()) kit().renderHome(true); }
+  function boot(){ settingsEntry(); applyTabs(); renderPlayer(); buildPanel(); renderMids(); renderSettingsZones(); setTimeout(renderSettingsZones, 1600); if (L.zones.home && kit()) kit().renderHome(true); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
   // Back button leaves a page or edit mode first.
   window.addEventListener('keydown', function(e){ if (e.key === 'Escape'){ if (!sheet.hidden) closeSheet(); else if (editing) stopEdit(); } });

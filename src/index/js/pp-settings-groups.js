@@ -7,7 +7,7 @@
     if(root&&root.parentNode===pane)return;
     root=document.createElement('div'); root.id='pp-sg-root';
     GROUPS.forEach(function(g){
-      var w=document.createElement('div'); w.className='pp-sg'; w.hidden=true;
+      var w=document.createElement('div'); w.className='pp-sg'; w.hidden=true; w.dataset.sg=g[0];
       var t=document.createElement('div'); t.className='pp-sg-title'; t.textContent=g[1];
       var c=document.createElement('div'); c.className='pp-sg-card';
       w.appendChild(t); w.appendChild(c); root.appendChild(w);
@@ -20,9 +20,20 @@
     pane.appendChild(root);
   }
 
+  // A section's name that lasts between versions: its id, or else its first setting's title.
+  function key(sec){
+    if(sec.id)return sec.id;
+    var t=sec.querySelector('.settings-row-title')||sec.querySelector('.settings-section-label');
+    return t?'t:'+(t.textContent||'').replace(/\s+/g,' ').trim().slice(0,48):'';
+  }
+  // The user's own arrangement (Layout studio > Settings > Sections): { place:{key:group}, order:{group:[keys]}, hide:[keys] }
+  function arr(){ try{ var a=JSON.parse(localStorage.getItem('ppSettingsArrV1')||'null'); return a&&typeof a==='object'?a:{}; }catch(e){ return {}; } }
+  var A0={};
   function pick(sec){
     var id=sec.id||'';
     if(id==='ppxp-badge-slot')return null;
+    var k=key(sec),pl=A0.place&&A0.place[k];
+    if(pl&&(cards[pl]||pl==='adv'))return pl;
     var ft=((sec.querySelector('.settings-row-title')||{}).textContent||'').trim();
     if(id==='decoding-section'||id==='gestures-section'||sec.querySelector('#pp-ass-toggle'))return 'adv';
     if(id==='playback-position-section'||id==='audio-quality-section'||sec.querySelector('#xf-mode'))return 'play';
@@ -34,7 +45,7 @@
   }
 
   function organize(){
-    build();
+    build(); A0=arr();
     var list=pane.querySelectorAll('.settings-section');
     for(var i=0;i<list.length;i++){
       var s=list[i];
@@ -54,7 +65,19 @@
       bs.parentNode.insertBefore(d,bs); d.appendChild(bs);
     }
     var cz=document.getElementById('pw-customize-section');   // Customize leads the Appearance card
-    if(cz&&cz.parentNode===cards.look&&cards.look.firstElementChild!==cz)cards.look.insertBefore(cz,cards.look.firstElementChild);
+    if(cz&&cz.parentNode===cards.look&&cards.look.firstElementChild!==cz&&!((A0.order||{}).look||[]).length)cards.look.insertBefore(cz,cards.look.firstElementChild);
+    // the user's order inside each group: only moved when it differs, so this never sets off another pass
+    GROUPS.forEach(function(g){
+      var want=(A0.order||{})[g[0]]; if(!Array.isArray(want)||!want.length)return;
+      var card=cards[g[0]], secs=[].filter.call(card.children,function(x){return x.classList.contains('settings-section');});
+      var rank=function(x){ var i=want.indexOf(key(x)); return i<0?1e6+secs.indexOf(x):i; };
+      var sorted=secs.slice().sort(function(a,b){return rank(a)-rank(b);});
+      if(sorted.every(function(x,i){return x===secs[i];}))return;
+      var anchor=secs[secs.length-1].nextSibling;
+      sorted.forEach(function(x){ card.insertBefore(x,anchor); });
+    });
+    var hid=A0.hide||[], all=pane.querySelectorAll('.settings-section');
+    for(var j=0;j<all.length;j++){ var on=hid.indexOf(key(all[j]))>=0; if(all[j].classList.contains('ls-sec-hidden')!==on)all[j].classList.toggle('ls-sec-hidden',on); }
     GROUPS.forEach(function(g){ wraps[g[0]].hidden=!cards[g[0]].querySelector('.settings-section'); });
   }
 
@@ -78,5 +101,10 @@
   function run(){ if(busy)return; busy=true; try{organize();clamp();}catch(e){} busy=false; }
   function sched(){ if(queued)return; queued=true; setTimeout(function(){queued=false;run();},30); }
   run(); setTimeout(run,1000); setTimeout(run,3000);
-  if(window.MutationObserver)new MutationObserver(function(){if(!busy)sched();}).observe(pane,{childList:true,subtree:true});
+  // Widgets placed in Settings update themselves often; their changes are not new settings, so they don't set off a pass.
+  if(window.MutationObserver)new MutationObserver(function(ms){
+    if(busy)return;
+    for(var i=0;i<ms.length;i++){ var t=ms[i].target; t=t&&t.nodeType===1?t:t&&t.parentElement; if(!t||!t.closest||!t.closest('.ls-slot')){ sched(); return; } }
+  }).observe(pane,{childList:true,subtree:true});
+  window.__ppSettings={ key:key, groups:GROUPS, card:function(g){ build(); return cards[g]; }, wrap:function(g){ build(); return wraps[g]; }, adv:function(){ return advBody; }, run:function(){ run(); } };
 })();
