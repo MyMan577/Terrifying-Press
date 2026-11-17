@@ -72,6 +72,8 @@
     vol:'<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/>',
     mute:'<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor"/><line x1="16" y1="9" x2="22" y2="15"/><line x1="22" y1="9" x2="16" y2="15"/>',
     search:'<circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/>',
+    chevl:'<polyline points="15 18 9 12 15 6"/>',
+    chevr:'<polyline points="9 18 15 12 9 6"/>',
     spinner:'<circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="5" r="3"/><circle cx="5.9" cy="15.5" r="3"/><circle cx="18.1" cy="15.5" r="3"/>',
     swirl:'<path d="M12 12a2 2 0 1 1 2-2c0 3-3 5-6 4.5S3 11 4.5 7.5 11 2 15 3.5s6.5 6 5 10-6 7-10.5 6.5"/><circle cx="19" cy="5" r=".6" fill="currentColor"/><circle cx="5" cy="19" r=".6" fill="currentColor"/>',
     bubbles:'<circle cx="7" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><circle cx="7" cy="17" r="3"/><circle cx="17" cy="17" r="3" fill="currentColor"/>',
