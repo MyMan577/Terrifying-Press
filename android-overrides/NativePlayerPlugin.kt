@@ -292,6 +292,11 @@ class NativePlayerPlugin : Plugin() {
      */
     private fun vlcRescue(e: PlaybackException?): Boolean {
         if (e != null && e.errorCode !in rescueCodes) return false
+        // "Hardware only" means just the phone's hardware decoders: the VLC engine (software) is not slipped in instead.
+        if (svc?.audioDecoderMode == "hard") {
+            notifyListeners("notice", JSObject().put("msg", "This phone has no hardware decoder for this format. Set Audio decoder to Auto or Software only to play it."))
+            return false
+        }
         val p = svc?.player ?: return false
         val item = p.currentMediaItem ?: return false
         val itemKind = item.mediaMetadata.extras?.getString("kind") ?: kind

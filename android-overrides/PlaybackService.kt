@@ -66,6 +66,9 @@ class PlaybackService : MediaLibraryService() {
     /** Audio quality and decoding choices this player was built with (Settings; read once, when the service starts). */
     var hiRes = false
         private set
+    /** Settings, Audio decoder, as this player was built with it: "auto", "soft" (software only) or "hard" (hardware only). */
+    var audioDecoderMode = "auto"
+        private set
     /** Name of the audio decoder in use, for the "now playing" readout. */
     @Volatile var audioDecoder: String = ""
         private set
@@ -115,6 +118,7 @@ class PlaybackService : MediaLibraryService() {
         val opts = getSharedPreferences("pp_audio", MODE_PRIVATE)
         hiRes = opts.getBoolean("hiRes", false)
         val audioDec = opts.getString("adec", "auto") ?: "auto"
+        audioDecoderMode = audioDec
         val videoDec = opts.getString("vdec", "auto") ?: "auto"
         val floatOut = hiRes
 
@@ -147,6 +151,7 @@ class PlaybackService : MediaLibraryService() {
                 val share = SharedSinkListener(audioSink)
                 super.buildAudioRenderers(context, extensionRendererMode, mediaCodecSelector, enableDecoderFallback,
                     ListenerSlot(audioSink, share, 0), eventHandler, eventListener, out)
+                if (audioDec == "hard") return          // "Hardware only": the FFmpeg decoders are software
                 try {
                     out.add(FfmpegAudioRenderer(eventHandler, eventListener, Pcm16Only(ListenerSlot(audioSink, share, 1))))
                 } catch (t: Throwable) {          // the decoders' native library is missing or would not load
@@ -155,14 +160,16 @@ class PlaybackService : MediaLibraryService() {
             }
         }
         renderers.setEnableDecoderFallback(true)
-        // Which decoder is tried first. The others stay in the list, so a file still plays if the first one cannot take it.
+        // Settings, Audio / Video decoder. Auto: every decoder, best first, falling back to the next if one fails.
+        // Software only / Hardware only: just that kind, like VLC's hardware acceleration setting. Nothing of the other
+        // kind is tried, so a file the chosen kind cannot decode does not play (it is not quietly decoded another way).
         if (audioDec != "auto" || videoDec != "auto") {
             renderers.setMediaCodecSelector(MediaCodecSelector { mime, secure, tunneling ->
                 val list = MediaCodecSelector.DEFAULT.getDecoderInfos(mime, secure, tunneling)
                 val pref = if (MimeTypes.isVideo(mime)) videoDec else if (MimeTypes.isAudio(mime)) audioDec else "auto"
                 when (pref) {
-                    "soft" -> list.sortedBy { if (it.softwareOnly) 0 else 1 }
-                    "hard" -> list.sortedBy { if (it.hardwareAccelerated) 0 else 1 }
+                    "soft" -> list.filter { it.softwareOnly }
+                    "hard" -> list.filter { it.hardwareAccelerated && !it.softwareOnly }
                     else -> list
                 }
             })
