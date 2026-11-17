@@ -56,6 +56,12 @@ Playing music and video
     Licence: Apache 2.0
     https://github.com/androidx/media
 
+* FFmpeg audio decoders for Media3 (media3-ffmpeg-decoder)
+    By: the FFmpeg developers; Media3's FFmpeg extension by Google and the Android Open Source Project; built and published by the Jellyfin project
+    Why: Plays Dolby and DTS soundtracks (AC-3, E-AC-3, TrueHD, DTS, DTS-HD) in the main player on phones that have no decoder for them, with the EQ and effects.
+    Licence: FFmpeg: LGPL 2.1 or later; the extension: Apache 2.0. Source: https://github.com/jellyfin/jellyfin-androidx-media and https://ffmpeg.org
+    https://ffmpeg.org
+
 * LibRtmp-Client for Android (librtmp)
     By: Ant Media, on librtmp by the RTMPDump project
     Why: Playing RTMP streams (through Media3's RTMP module).
@@ -665,8 +671,8 @@ the Android Gradle plugin, and the Coming Soon font.
 GNU Lesser General Public License 2.1
 ===========================================================================
 
-Used by: libVLC (and the LGPL libraries it bundles, such as FFmpeg) and
-librtmp. Their source code is available from their projects (see Part 1).
+Used by: libVLC (and the LGPL libraries it bundles, such as FFmpeg), the
+FFmpeg audio decoders for Media3, and librtmp. Their source code is available from their projects (see Part 1).
 Press Play uses them unmodified, as separate libraries.
 
                   GNU LESSER GENERAL PUBLIC LICENSE

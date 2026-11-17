@@ -111,6 +111,12 @@ jobs:
           # (SMB, UPnP/DLNA, NFS, FTP, SFTP). Only its 64-bit ARM build is kept (see the packaging excludes below):
           # the four-ABI library would add about 190 MB to the APK.
           sed -i '/^dependencies {/a\    implementation "org.videolan.android:libvlc-all:3.7.7"' android/app/build.gradle
+          # FFmpeg audio decoders for ExoPlayer (Media3's FFmpeg extension, prebuilt by Jellyfin, LGPL 2.1+; every ABI):
+          # DTS, DTS-HD, TrueHD, AC-3 and E-AC-3 soundtracks play in the normal player, with the EQ and effects, instead of
+          # going to the VLC engine. Built for Media3 1.3.1; the extension's code is identical in 1.4.1, so it runs on the
+          # app's Media3. media3-decoder is pinned so Gradle cannot pick a mismatched version.
+          sed -i '/^dependencies {/a\    implementation "org.jellyfin.media3:media3-ffmpeg-decoder:1.3.1+2"\n    implementation "androidx.media3:media3-decoder:1.4.1"\n    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.4"' android/app/build.gradle
+          # (Jellyfin's package asks for core library desugaring: enabled in compileOptions below.)
           sed -i '/^android {/a\    packaging { jniLibs { excludes += ["lib/armeabi-v7a/libvlc.so", "lib/armeabi-v7a/libvlcjni.so", "lib/x86/libvlc.so", "lib/x86/libvlcjni.so", "lib/x86_64/libvlc.so", "lib/x86_64/libvlcjni.so"] } }' android/app/build.gradle
           # both native stacks may ship the same C++ runtime library: keep the first one instead of failing the build
           sed -i '/^android {/a\    packaging { jniLibs { pickFirsts += ["**/libc++_shared.so"] } }' android/app/build.gradle
@@ -161,7 +167,7 @@ jobs:
           grep -q "org.jetbrains.kotlin.android" android/app/build.gradle || \
             sed -i "0,/apply plugin: 'com.android.application'/s//apply plugin: 'com.android.application'\napply plugin: 'org.jetbrains.kotlin.android'/" android/app/build.gradle
           grep -q "org.jetbrains.kotlin.android" android/app/build.gradle || { echo "::error::Could not apply the Kotlin plugin in app/build.gradle"; cat android/app/build.gradle; exit 1; }
-          sed -i '/^android {/a\    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }\n    kotlinOptions { jvmTarget = "17"; freeCompilerArgs += ["-opt-in=androidx.media3.common.util.UnstableApi", "-Xskip-metadata-version-check"] }' android/app/build.gradle
+          sed -i '/^android {/a\    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17; coreLibraryDesugaringEnabled true }\n    kotlinOptions { jvmTarget = "17"; freeCompilerArgs += ["-opt-in=androidx.media3.common.util.UnstableApi", "-Xskip-metadata-version-check"] }' android/app/build.gradle
           sed -i '/^dependencies {/a\    implementation "androidx.media3:media3-exoplayer:1.4.1"\n    implementation "androidx.media3:media3-session:1.4.1"\n    implementation "androidx.media3:media3-ui:1.4.1"\n    implementation "androidx.media3:media3-effect:1.4.1"\n    implementation "androidx.media3:media3-common:1.4.1"\n    implementation "androidx.media3:media3-exoplayer-hls:1.4.1"\n    implementation "androidx.media3:media3-exoplayer-dash:1.4.1"\n    implementation "androidx.media3:media3-exoplayer-rtsp:1.4.1"\n    implementation "androidx.media3:media3-exoplayer-smoothstreaming:1.4.1"\n    implementation "androidx.media3:media3-datasource-rtmp:1.4.1"\n    implementation "androidx.core:core-ktx:1.12.0"' android/app/build.gradle
 
           # Manifest: merge the native layer's permissions, filters, services and receiver into the generated one

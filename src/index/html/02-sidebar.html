@@ -341,23 +341,23 @@
         <div class="settings-row" style="margin-top:12px;">
           <div class="settings-row-text">
             <div class="settings-row-title">Audio decoder</div>
-            <div class="settings-row-sub">Which decoder the phone tries first. Change it if a file crackles or will not play.</div>
+            <div class="settings-row-sub">Auto uses the best decoder for each file. Software only and Hardware only force that kind and nothing else, so nothing switches behind your back. Most phones decode music in software, so with Hardware only many files stay silent; Software only includes the built-in Dolby / DTS decoders.</div>
           </div>
           <select id="adec-select">
             <option value="auto">Auto</option>
-            <option value="soft">Software first</option>
-            <option value="hard">Hardware first</option>
+            <option value="soft">Software only</option>
+            <option value="hard">Hardware only</option>
           </select>
         </div>
         <div class="settings-row" style="margin-top:12px;">
           <div class="settings-row-text">
             <div class="settings-row-title">Video decoder</div>
-            <div class="settings-row-sub">For the native video player. Software is slower and uses more battery, but can fix a video that stutters or shows a broken picture.</div>
+            <div class="settings-row-sub">For the native video player and the VLC engine. Software only is slower and uses more battery, but can fix a video that stutters or shows a broken picture. Hardware only never falls back to software: a video the phone's chip cannot decode will not play.</div>
           </div>
           <select id="vdec-select">
             <option value="auto">Auto</option>
-            <option value="soft">Software first</option>
-            <option value="hard">Hardware first</option>
+            <option value="soft">Software only</option>
+            <option value="hard">Hardware only</option>
           </select>
         </div>
         <div id="audio-quality-note" hidden>Restart Press Play to apply the change.</div>
