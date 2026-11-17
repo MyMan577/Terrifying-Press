@@ -99,10 +99,10 @@ jobs:
           sed -i '/^dependencies {/a\    implementation "com.google.ai.edge.litertlm:litertlm-android:latest.release"' android/app/build.gradle
           # ML Kit on-device translation + language detection (TranslatePlugin). Language packs download on first use.
           sed -i '/^dependencies {/a\    implementation "com.google.mlkit:translate:17.0.3"\n    implementation "com.google.mlkit:language-id:17.0.6"' android/app/build.gradle
-          # VLC engine (libVLC, LGPL 2.1): plays the formats ExoPlayer and the WebView cannot, and reads network shares
+          # VLC engine (libVLC 3.7.2, LGPL 2.1; 3.7.3+ needs compileSdk 36 and a newer Android Gradle plugin): plays the formats ExoPlayer and the WebView cannot, and reads network shares
           # (SMB, UPnP/DLNA, NFS, FTP, SFTP). Only its 64-bit ARM build is kept (see the packaging excludes below):
           # the four-ABI library would add about 190 MB to the APK.
-          sed -i '/^dependencies {/a\    implementation "org.videolan.android:libvlc-all:3.7.7"' android/app/build.gradle
+          sed -i '/^dependencies {/a\    implementation "org.videolan.android:libvlc-all:3.7.2"' android/app/build.gradle
           sed -i '/^android {/a\    packaging { jniLibs { excludes += ["lib/armeabi-v7a/libvlc.so", "lib/armeabi-v7a/libvlcjni.so", "lib/x86/libvlc.so", "lib/x86/libvlcjni.so", "lib/x86_64/libvlc.so", "lib/x86_64/libvlcjni.so"] } }' android/app/build.gradle
           # both native stacks may ship the same C++ runtime library: keep the first one instead of failing the build
           sed -i '/^android {/a\    packaging { jniLibs { pickFirsts += ["**/libc++_shared.so"] } }' android/app/build.gradle

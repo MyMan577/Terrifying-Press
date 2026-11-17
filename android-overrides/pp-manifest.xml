@@ -101,6 +101,24 @@
                 <data android:mimeType="application/ogg" />
                 <data android:mimeType="application/vnd.apple.mpegurl" />
                 <data android:mimeType="application/x-mpegURL" />
+                <data android:mimeType="application/dash+xml" />
+                <data android:mimeType="application/vnd.ms-sstr+xml" />
+            </intent-filter>
+
+            <!-- Stream and network-share links (no file type to go by): RTSP/RTMP cameras and servers, MMS, shares -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="rtsp" />
+                <data android:scheme="rtsps" />
+                <data android:scheme="rtmp" />
+                <data android:scheme="rtmps" />
+                <data android:scheme="mms" />
+                <data android:scheme="mmsh" />
+                <data android:scheme="smb" />
+                <data android:scheme="sftp" />
+                <data android:scheme="nfs" />
             </intent-filter>
 
             <!-- Share sheet target -->

@@ -22,7 +22,36 @@ import java.util.List;
 @CapacitorPlugin(name = "PPVlc")
 public class VlcPlugin extends Plugin {
 
+    private static volatile VlcPlugin instance;
+    private static final java.util.ArrayList<String> pendingUrls = new java.util.ArrayList<>();
+
+    /** A stream or share link opened from another app ("Open with"): handed to the page as an "openUrl" event. */
+    public static void queueUrl(String url) {
+        synchronized (pendingUrls) { pendingUrls.add(url); }
+        VlcPlugin p = instance;
+        if (p != null) p.flushUrls();
+    }
+
+    private void flushUrls() {
+        java.util.ArrayList<String> list;
+        synchronized (pendingUrls) { list = new java.util.ArrayList<>(pendingUrls); pendingUrls.clear(); }
+        for (String u : list) { JSObject o = new JSObject(); o.put("url", u); notifyListeners("openUrl", o, true); }
+    }
+
+    /** Links that arrived before the page was listening. Resolves {urls: [...]}. */
+    @PluginMethod
+    public void takeUrls(PluginCall call) {
+        JSArray arr = new JSArray();
+        synchronized (pendingUrls) { for (String u : pendingUrls) arr.put(u); pendingUrls.clear(); }
+        JSObject o = new JSObject();
+        o.put("urls", arr);
+        call.resolve(o);
+    }
+
+    @Override protected void handleOnDestroy() { if (instance == this) instance = null; }
+
     @Override public void load() {
+        instance = this;
         VlcEngine.onLoginNeeded = (host, text) -> {
             JSObject o = new JSObject();
             o.put("host", host == null ? "" : host);

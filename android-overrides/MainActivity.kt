@@ -312,7 +312,9 @@ class MainActivity : BridgeActivity() {
         val uris = mutableListOf<Uri>()
         when (i.action) {
             "android.media.action.MEDIA_PLAY_FROM_SEARCH" -> LibraryPlugin.queueSearch(i.getStringExtra(android.app.SearchManager.QUERY) ?: "")
-            Intent.ACTION_VIEW -> i.data?.let { uris.add(it) }
+            // Streams and network shares are not files: the page adds them like "Open URL" (played by ExoPlayer,
+            // or by the VLC engine for what ExoPlayer cannot take). Local files keep the library's import path.
+            Intent.ACTION_VIEW -> i.data?.let { if (it.scheme?.lowercase() in remoteSchemes) VlcPlugin.queueUrl(it.toString()) else uris.add(it) }
             Intent.ACTION_SEND -> streamExtra(i)?.let { uris.add(it) }
             Intent.ACTION_SEND_MULTIPLE ->
                 if (Build.VERSION.SDK_INT >= 33) i.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)?.let { uris.addAll(it) }
@@ -320,6 +322,8 @@ class MainActivity : BridgeActivity() {
         }
         if (uris.isNotEmpty()) LibraryPlugin.queueOpen(uris)
     }
+
+    private val remoteSchemes = setOf("http", "https", "rtsp", "rtsps", "rtmp", "rtmps", "mms", "mmsh", "smb", "ftp", "ftps", "sftp", "nfs", "udp", "rtp", "srt")
 
     private fun streamExtra(i: Intent): Uri? =
         if (Build.VERSION.SDK_INT >= 33) i.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
