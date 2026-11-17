@@ -14,7 +14,10 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.BufferedOutputStream;
+import java.io.FileInputStream;
+import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.zip.CRC32;
 
 /**
  * Streams a big export (the library backup .zip) straight into Download/Press Play.
@@ -74,6 +77,58 @@ public class BackupPlugin extends Plugin {
                 call.reject(e.getMessage() != null ? e.getMessage() : e.toString());
             }
         }
+    }
+
+    /**
+     * Copies a file the library only links to (a song picked from the phone, a thumbnail saved by the app) straight into
+     * the export, without passing its bytes through the page. head = base64 of what goes just before it (the zip entry's
+     * header): written only once the file has opened, so a file that is gone fails alone and the export carries on.
+     * Resolves { crc, size } of the copied bytes, for the zip's directory.
+     */
+    @PluginMethod
+    public void copyUri(PluginCall call) {
+        String u = call.getString("uri");
+        String head = call.getString("head");
+        synchronized (lock) {
+            if (out == null) { call.reject("No export in progress"); return; }
+            InputStream in;
+            try {
+                in = open(u);
+                if (in == null) throw new IllegalStateException("Could not open " + u);
+            } catch (Throwable e) {
+                call.reject(e.getMessage() != null ? e.getMessage() : e.toString(), "missing");   // nothing written yet
+                return;
+            }
+            try {
+                if (head != null && !head.isEmpty()) {
+                    byte[] h = Base64.decode(head, Base64.NO_WRAP);
+                    out.write(h);
+                    written += h.length;
+                }
+                CRC32 crc = new CRC32();
+                byte[] buf = new byte[1 << 20];
+                long n = 0;
+                int r;
+                while ((r = in.read(buf)) > 0) { out.write(buf, 0, r); crc.update(buf, 0, r); n += r; }
+                written += n;
+                JSObject o = new JSObject();
+                o.put("crc", crc.getValue());
+                o.put("size", n);
+                call.resolve(o);
+            } catch (Throwable e) {
+                abortLocked();   // part of an entry is in the file: the export cannot be finished
+                call.reject(e.getMessage() != null ? e.getMessage() : e.toString(), "write");
+            } finally {
+                try { in.close(); } catch (Throwable ignored) { }
+            }
+        }
+    }
+
+    private InputStream open(String u) throws Exception {
+        if (u == null || u.isEmpty()) throw new IllegalArgumentException("No file");
+        if (u.startsWith("/")) return new FileInputStream(u);
+        if (u.startsWith("file://")) return new FileInputStream(Uri.parse(u).getPath());
+        return getContext().getContentResolver().openInputStream(Uri.parse(u));
     }
 
     @PluginMethod

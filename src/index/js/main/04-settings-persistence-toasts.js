@@ -278,41 +278,155 @@
     return { add, finish };
   }
 
+  // Streams the backup straight into Download/Press Play with the native PPBackup plugin, entry by entry.
+  // Songs the library only links to (picked from the phone: t.nativeUri) and thumbnails the app keeps as files
+  // (t.nativeArt) are not in IndexedDB at all; the plugin copies those bytes itself (copyUri) so they never pass
+  // through the page. Zip64 is written when the archive passes 4 GB, which a whole library easily does.
+  function createStreamZip(P){
+    const central = [], enc = new TextEncoder();
+    let offset = 0, count = 0, big = false;
+    const d = new Date();
+    const dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const dosDate = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    const M32 = 0xFFFFFFFF, LIM = M32;   // LIM: where zip64 starts (a test can lower it)
+    const b64 = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+    const blobB64 = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(r.error); r.readAsDataURL(b); });
+    const cat = arrs => { let n = 0; arrs.forEach(x => { n += x.length; }); const o = new Uint8Array(n); let p = 0; arrs.forEach(x => { o.set(x, p); p += x.length; }); return o; };
+    // flags: bit 11 = UTF-8 names; bit 3 = sizes and CRC follow the data (entries copied natively)
+    function localHeader(nameBytes, crc, size, desc){
+      const h = new DataView(new ArrayBuffer(30));
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 45, true); h.setUint16(6, desc ? 0x0808 : 0x0800, true);
+      h.setUint16(8, 0, true); h.setUint16(10, dosTime, true); h.setUint16(12, dosDate, true);
+      h.setUint32(14, desc ? 0 : crc, true); h.setUint32(18, desc ? 0 : Math.min(size, M32), true); h.setUint32(22, desc ? 0 : Math.min(size, M32), true);
+      h.setUint16(26, nameBytes.length, true); h.setUint16(28, 0, true);
+      return cat([new Uint8Array(h.buffer), nameBytes]);
+    }
+    function record(nameBytes, crc, size, at, desc){
+      const z64 = size >= LIM || at >= LIM;
+      if (z64) big = true;
+      const ex = z64 ? new DataView(new ArrayBuffer(4 + 8 * ((size >= LIM ? 2 : 0) + (at >= LIM ? 1 : 0)))) : null;
+      if (ex){ let q = 4; ex.setUint16(0, 1, true); ex.setUint16(2, ex.byteLength - 4, true);
+        if (size >= LIM){ ex.setBigUint64(q, BigInt(size), true); ex.setBigUint64(q + 8, BigInt(size), true); q += 16; }
+        if (at >= LIM) ex.setBigUint64(q, BigInt(at), true); }
+      const c = new DataView(new ArrayBuffer(46));
+      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 45, true); c.setUint16(6, 45, true);
+      c.setUint16(8, desc ? 0x0808 : 0x0800, true); c.setUint16(10, 0, true); c.setUint16(12, dosTime, true);
+      c.setUint16(14, dosDate, true); c.setUint32(16, crc, true); c.setUint32(20, size >= LIM ? M32 : size, true);
+      c.setUint32(24, size >= LIM ? M32 : size, true); c.setUint16(28, nameBytes.length, true); c.setUint16(30, ex ? ex.byteLength : 0, true);
+      c.setUint32(42, at >= LIM ? M32 : at, true);
+      central.push(new Uint8Array(c.buffer), nameBytes); if (ex) central.push(new Uint8Array(ex.buffer));
+      count++;
+    }
+    async function write(u8){ await P.write({ data: b64(u8) }); offset += u8.length; }
+    async function add(name, data){
+      const isBlob = data instanceof Blob, size = isBlob ? data.size : data.length;
+      if (size >= LIM) throw new Error('"' + name + '" is over 4 GB.');
+      const crc = isBlob ? await crc32OfBlob(data) : (crc32Update(M32, data) ^ M32) >>> 0;
+      const nb = enc.encode(name), at = offset;
+      await write(localHeader(nb, crc, size, false));
+      if (isBlob){
+        const CH = 6 * 1024 * 1024;   // a multiple of 3, so the base64 pieces line up
+        let next = blobB64(data.slice(0, CH));
+        for (let off = 0; off < size; off += CH){
+          const b = await next;
+          next = off + CH < size ? blobB64(data.slice(off + CH, off + 2 * CH)) : null;
+          await P.write({ data: b });
+        }
+        offset += size;
+      } else { await P.write({ data: b64(data) }); offset += size; }
+      record(nb, crc, size, at, false);
+    }
+    // A linked file: copied by the plugin. Resolves false (and adds nothing) when the file cannot be opened.
+    async function addUri(name, uri){
+      const nb = enc.encode(name), at = offset, head = localHeader(nb, 0, 0, true);
+      let r;
+      try { r = await P.copyUri({ uri, head: b64(head) }); }
+      catch (e){ if (e && e.code === 'missing') return false; throw e; }
+      const size = +r.size, crc = (+r.crc) >>> 0;
+      offset += head.length + size;
+      // data descriptor: 8-byte sizes once they no longer fit in 4 (the local header has no zip64 field, so readers take the directory's)
+      const dd = new DataView(new ArrayBuffer(size >= LIM ? 24 : 16));
+      dd.setUint32(0, 0x08074b50, true); dd.setUint32(4, crc, true);
+      if (size >= LIM){ dd.setBigUint64(8, BigInt(size), true); dd.setBigUint64(16, BigInt(size), true); }
+      else { dd.setUint32(8, size, true); dd.setUint32(12, size, true); }
+      await write(new Uint8Array(dd.buffer));
+      record(nb, crc, size, at, true);
+      return true;
+    }
+    async function finish(){
+      const cd = cat(central), cdOff = offset, z64 = big || cdOff >= LIM || count >= 0xFFFF;
+      const tailParts = [cd];
+      if (z64){
+        const r = new DataView(new ArrayBuffer(56));
+        r.setUint32(0, 0x06064b50, true); r.setBigUint64(4, 44n, true); r.setUint16(12, 45, true); r.setUint16(14, 45, true);
+        r.setBigUint64(24, BigInt(count), true); r.setBigUint64(32, BigInt(count), true);
+        r.setBigUint64(40, BigInt(cd.length), true); r.setBigUint64(48, BigInt(cdOff), true);
+        const l = new DataView(new ArrayBuffer(20));
+        l.setUint32(0, 0x07064b50, true); l.setBigUint64(8, BigInt(cdOff + cd.length), true); l.setUint32(16, 1, true);
+        tailParts.push(new Uint8Array(r.buffer), new Uint8Array(l.buffer));
+      }
+      const e = new DataView(new ArrayBuffer(22));
+      e.setUint32(0, 0x06054b50, true);
+      e.setUint16(8, Math.min(count, 0xFFFF), true); e.setUint16(10, Math.min(count, 0xFFFF), true);
+      e.setUint32(12, Math.min(cd.length, M32), true); e.setUint32(16, z64 ? M32 : cdOff, true);
+      tailParts.push(new Uint8Array(e.buffer));
+      const tail = cat(tailParts);
+      for (let i = 0; i < tail.length; i += 3 * 1024 * 1024) await write(tail.subarray(i, i + 3 * 1024 * 1024));
+      return await P.end({});
+    }
+    return { add, addUri, finish, abort: () => P.abort({}).catch(() => {}) };
+  }
+
   async function exportLibraryBackup(){
     const btn = document.getElementById('storage-export-btn');
     if (tracks.length === 0){ showToast('Library is empty.'); return; }
     const originalLabel = btn ? btn.textContent : '';
     if (btn){ btn.disabled = true; btn.textContent = 'Preparing…'; }
+    const C = window.Capacitor, BP = C && C.Plugins && C.Plugins.PPBackup;
+    const fileName = 'press-play-library-backup-' + new Date().toISOString().slice(0,10) + '.zip';
+    let sz = null;
     try {
-      const zip = createStoreZip();
+      // On the phone: stream it (every song, linked or not). Elsewhere: build a Blob as before.
+      if (BP && BP.copyUri){
+        try { await BP.begin({ name: fileName, mime: 'application/zip' }); sz = createStreamZip(BP); } catch(e){ sz = null; }
+      }
+      const zip = sz || createStoreZip();
+      // Blob route only: a linked file the page itself can read (an app file); content:// picks cannot be read from here.
+      const pageRead = async (uri) => {
+        if (!/^(file:|\/)/.test(uri || '') || !(C && C.convertFileSrc)) return null;
+        try { const r = await fetch(C.convertFileSrc('file://' + uri.replace(/^file:\/\//, ''))); return r.ok ? await r.blob() : null; } catch(e){ return null; }
+      };
+      const put = async (name, blob, uri) => {
+        if (blob){ await zip.add(name, blob); return true; }
+        if (!uri) return false;
+        if (sz) return await sz.addUri(name, uri);
+        const b = await pageRead(uri); if (!b) return false;
+        await zip.add(name, b); return true;
+      };
       const manifest = [];
-      let done = 0;
+      let done = 0, songs = 0, arts = 0, streams = 0;
+      const missing = [];
       for (const t of tracks){
-        if (btn) btn.textContent = 'Preparing ' + (++done) + '/' + tracks.length + '…';
+        if (btn) btn.textContent = (sz ? 'Saving ' : 'Preparing ') + (++done) + '/' + tracks.length + '…';
         await backupPause(backupThrottleMs() * 2);
-        const blob = await dbGet(t.dbId);
-        if (!blob) continue;
-        // Human-readable names in the zip itself, not just in manifest.json -
-        // opening the archive (or importing it somewhere that isn't this
-        // player) used to show a folder of bare dbId numbers with no way to
-        // tell tracks apart without cross-referencing the manifest. The dbId
-        // suffix stays, just shrunk and tucked on the end, so two tracks
-        // that happen to share a title/artist still can't collide.
+        // Human-readable names in the zip itself, with a short dbId suffix so two tracks with the same title cannot collide.
         const label = (t.artist && t.artist !== 'Unknown artist' && t.artist !== 'Video')
           ? `${t.artist} - ${t.title}` : (t.title || 'track');
         const idSuffix = String(t.dbId).slice(-6);
-        const fileName = safeFilename(label) + '_' + idSuffix + '.' + (t.ext || 'bin');
-        await zip.add('media/' + fileName, blob);
+        const mediaName = safeFilename(label) + '_' + idSuffix + '.' + (t.ext || 'bin');
+        // Where the song is: still in IndexedDB (older imports), or a file on the phone the library links to.
+        const blob = t.nativeUri ? null : await dbGet(t.dbId);
+        let mediaFile = null;
+        if (await put('media/' + mediaName, blob, blob ? null : t.nativeUri)){ mediaFile = 'media/' + mediaName; songs++; }
+        else if (t.remoteUrl){ streams++; }                       // a web stream: nothing to copy, the link is in the manifest
+        else { missing.push(t.title || 'track'); continue; }
         let artFile = null;
-        if (t.artDbId){
-          const artBlob = await dbGet(t.artDbId);
-          if (artBlob){
-            artFile = safeFilename(label) + '_' + idSuffix + '.img';
-            await zip.add('art/' + artFile, artBlob);
-          }
-        }
+        const artBlob = t.artDbId ? await dbGet(t.artDbId) : null;
+        const artUri = !artBlob && t.nativeArt ? 'file://' + String(t.nativeArt).replace(/^file:\/\//, '') : null;
+        const artName = safeFilename(label) + '_' + idSuffix + '.img';
+        if ((artBlob || artUri) && await put('art/' + artName, artBlob, artUri)){ artFile = 'art/' + artName; arts++; }
         manifest.push({
-          dbId: t.dbId, artDbId: t.artDbId || null, kind: t.kind, ext: t.ext || 'mp4',
+          dbId: t.dbId, artDbId: artFile ? (t.artDbId || (t.dbId + '_art')) : (t.artDbId || null), kind: t.kind, ext: t.ext || 'mp4',
           title: t.title, artist: t.artist, duration: t.duration, size: t.size != null ? t.size : null,
           width: t.width || null, height: t.height || null, playlistIds: t.playlistIds || [],
           stem: t.stem || undefined, stemOf: t.stemOf || undefined, stemSrc: t.stemSrc || undefined,
@@ -323,21 +437,29 @@
           origArtist: t.convertedFromVideo ? (t._origArtist != null ? t._origArtist : 'Video') : undefined,
           origWidth: t.convertedFromVideo ? (t._origWidth || null) : undefined,
           origHeight: t.convertedFromVideo ? (t._origHeight || null) : undefined,
-          mediaFile: 'media/' + fileName, artFile: artFile ? 'art/' + artFile : null
+          mediaFile, artFile: artFile
         });
       }
-      // Every track is packed now. What is left is writing the whole archive out, which used to show no progress at all and looked frozen on the last song.
       if (btn) btn.textContent = 'Finishing…';
       await zip.add('manifest.json', new TextEncoder().encode(JSON.stringify({ version: 2, playlists, tracks: manifest }, null, 2)));
       // Every setting and all progress too (per-song EQ, overrides, loops, subtitles, XP...), so one file restores everything.
       try { await zip.add('settings.json', new TextEncoder().encode(JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), data: progressBackupData() }))); } catch(e){}
-      const blob = zip.finish();
-      await backupPause(0);
-      await window.ppSaveBlob(blob, 'press-play-library-backup-' + new Date().toISOString().slice(0,10) + '.zip', (f, phase) => {
-        if (btn) btn.textContent = phase === 'finish' ? 'Saving to device…' : 'Saving ' + Math.round(f * 100) + '%…';
-      });
-      showToast('Backup exported.');
+      if (sz){
+        const r = await sz.finish(); sz = null;
+        if (window.PPNative && PPNative.hooks && PPNative.hooks.toast) PPNative.hooks.toast('Saved to ' + ((r && r.location) || 'Downloads'));
+      } else {
+        const out = zip.finish();
+        await backupPause(0);
+        await window.ppSaveBlob(out, fileName, (f, phase) => {
+          if (btn) btn.textContent = phase === 'finish' ? 'Saving to device…' : 'Saving ' + Math.round(f * 100) + '%…';
+        });
+      }
+      const n = (k, w) => k + ' ' + w + (k === 1 ? '' : 's');
+      showToast('Backup saved: ' + n(songs, 'file') + ', ' + n(arts, 'thumbnail') + (streams ? ', ' + n(streams, 'web stream') : '') +
+        (missing.length ? '. ' + n(missing.length, 'file') + ' could not be found: ' + missing.slice(0, 3).join(', ') + (missing.length > 3 ? '…' : '') : '.'),
+        missing.length ? 'warn' : undefined);
     } catch(e){
+      if (sz) await sz.abort();
       showToast('Backup failed: ' + (e && e.message ? e.message : 'unknown error'), 'error');
     } finally {
       if (btn){ btn.disabled = false; btn.textContent = originalLabel; }
@@ -359,10 +481,17 @@
         if (tv.getUint32(i, true) === 0x06054b50){ e = i; break; }
       }
       if (e < 0) throw new Error('no EOCD');
-      const count = tv.getUint16(e + 10, true);
-      const cdSize = tv.getUint32(e + 12, true);
-      const cdOff = tv.getUint32(e + 16, true);
-      if (count === 0xFFFF || cdSize === 0xFFFFFFFF || cdOff === 0xFFFFFFFF) throw new Error('zip64');
+      let count = tv.getUint16(e + 10, true);
+      let cdSize = tv.getUint32(e + 12, true);
+      let cdOff = tv.getUint32(e + 16, true);
+      // Zip64 (backups over 4 GB, or with very many files): the real numbers are in the zip64 record the locator points to.
+      if (count === 0xFFFF || cdSize === 0xFFFFFFFF || cdOff === 0xFFFFFFFF){
+        if (e < 20 || tv.getUint32(e - 20, true) !== 0x07064b50) throw new Error('zip64 without locator');
+        const recOff = Number(tv.getBigUint64(e - 20 + 8, true));
+        const rv = new DataView(await file.slice(recOff, recOff + 56).arrayBuffer());
+        if (rv.getUint32(0, true) !== 0x06064b50) throw new Error('bad zip64 record');
+        count = Number(rv.getBigUint64(32, true)); cdSize = Number(rv.getBigUint64(40, true)); cdOff = Number(rv.getBigUint64(48, true));
+      }
       const cd = new Uint8Array(await file.slice(cdOff, cdOff + cdSize).arrayBuffer());
       const cv = new DataView(cd.buffer);
       const dec = new TextDecoder('utf-8');
@@ -371,9 +500,23 @@
       for (let i = 0; i < count; i++){
         if (cv.getUint32(p, true) !== 0x02014b50) throw new Error('bad directory');
         const method = cv.getUint16(p + 10, true);
-        const csize = cv.getUint32(p + 20, true);
+        let csize = cv.getUint32(p + 20, true);
+        const usize = cv.getUint32(p + 24, true);
         const nlen = cv.getUint16(p + 28, true), xlen = cv.getUint16(p + 30, true), clen = cv.getUint16(p + 32, true);
-        const off = cv.getUint32(p + 42, true);
+        let off = cv.getUint32(p + 42, true);
+        if (csize === 0xFFFFFFFF || usize === 0xFFFFFFFF || off === 0xFFFFFFFF){   // zip64 extra field: the sizes and offset that did not fit
+          for (let x = p + 46 + nlen; x + 4 <= p + 46 + nlen + xlen; ){
+            const id = cv.getUint16(x, true), len = cv.getUint16(x + 2, true);
+            if (id === 1){
+              let q = x + 4;
+              if (usize === 0xFFFFFFFF){ q += 8; }
+              if (csize === 0xFFFFFFFF){ csize = Number(cv.getBigUint64(q, true)); q += 8; }
+              if (off === 0xFFFFFFFF){ off = Number(cv.getBigUint64(q, true)); }
+              break;
+            }
+            x += 4 + len;
+          }
+        }
         if (method !== 0) throw new Error('compressed');
         entries.set(dec.decode(cd.subarray(p + 46, p + 46 + nlen)), { csize, off });
         p += 46 + nlen + xlen + clen;
@@ -414,7 +557,15 @@
       for (const m of (manifest.tracks || [])){
         if (btn) btn.textContent = 'Restoring ' + (++done) + '/' + total + '…';
         await backupPause(backupThrottleMs() * 2);
+        if (tracks.some(t => t.dbId === m.dbId)) continue;            // already here: do not store its bytes a second time
         const mediaBlob = (m.mediaFile && zip.has(m.mediaFile)) ? await zip.blob(m.mediaFile) : null;
+        if (!mediaBlob && m.remoteUrl && !m.mediaFile){                // a web stream: the link is all there is
+          tracks.push({ dbId: m.dbId, artDbId: null, url: m.remoteUrl, artUrl: null, kind: m.kind, ext: m.ext, title: m.title, artist: m.artist,
+            duration: m.duration, size: m.size, width: m.width, height: m.height, playlistIds: m.playlistIds || [], album: m.album || '',
+            genre: m.genre || '', trackNo: m.trackNo || null, disc: m.disc || null, year: m.year || null, folder: m.folder || '',
+            fileName: m.fileName || null, remoteUrl: m.remoteUrl });
+          restored++; continue;
+        }
         if (!mediaBlob){ failed++; continue; }
         const ok = await persistTrackBytes(m.dbId, mediaBlob, m.title);
         await backupPause(backupThrottleMs());
