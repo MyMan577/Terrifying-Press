@@ -164,6 +164,21 @@
   /* the tab bar with more (or fewer) tabs */
   #pl-tabbar .pw-tab{ position:relative; z-index:1; }
   #pl-tabbar button[hidden]{ display:none !important; }
+  /* More than five tabs: the bar slides sideways instead of squeezing them. Arrows at the ends slide it for you. */
+  #pl-tabbar button{ min-width:0; }
+  #pl-tabbar button span{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  body.player-layout.pw-tabs-scroll #pl-tabbar{ overflow-x:auto !important; overflow-y:hidden !important; scrollbar-width:none; overscroll-behavior-x:contain; scroll-snap-type:x proximity; touch-action:pan-x; }
+  body.player-layout.pw-tabs-scroll #pl-tabbar::-webkit-scrollbar{ display:none; }
+  body.player-layout.pw-tabs-scroll #pl-tabbar button{ flex:0 0 20%; scroll-snap-align:start; padding:0 3px; }
+  .pw-tb-arrow{ display:none; }
+  body.player-layout.pw-tabs-scroll .pw-tb-arrow{ display:block; position:sticky; z-index:3; flex:0 0 0; width:0; align-self:stretch; }
+  .pw-tb-arrow.pw-tb-l{ left:0; } .pw-tb-arrow.pw-tb-r{ right:0; }
+  .pw-tb-arrow i{ position:absolute; top:0; bottom:0; width:26px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--text);
+    opacity:0; pointer-events:none; transition:opacity .2s; -webkit-tap-highlight-color:transparent; }
+  .pw-tb-l i{ left:0; background:linear-gradient(90deg, var(--bg-elev, #15171b) 35%, transparent); }
+  .pw-tb-r i{ right:0; background:linear-gradient(270deg, var(--bg-elev, #15171b) 35%, transparent); }
+  .pw-tb-arrow i svg{ width:16px; height:16px; }
+  #pl-tabbar.pw-more-l .pw-tb-l i, #pl-tabbar.pw-more-r .pw-tb-r i{ opacity:1; pointer-events:auto; }
 
   /* ---------- edit mode ---------- */
   #pw-edbar{ position:fixed; z-index:120; left:10px; right:10px; top:calc(env(safe-area-inset-top, 0px) + 8px); display:flex; align-items:center; gap:8px; padding:8px;

@@ -391,7 +391,10 @@
       if (el) bar.insertBefore(el, ind || null);
     });
     body.style.setProperty('--pw-tabs', list.length);
-    syncTabs();
+    body.classList.toggle('pw-tabs-scroll', list.length > 5);
+    // the arrows go at the two ends, around the tabs
+    bar.insertBefore(tbArrowL, bar.firstChild); bar.appendChild(tbArrowR);
+    syncTabs(); tbArrows();
   }
   function syncTabs(){
     if (!bar) return;
@@ -404,6 +407,34 @@
       var K = kit(), v = K ? K.view() : 'home';
       bar.querySelectorAll('button[data-pl-view]').forEach(function(b){ b.classList.toggle('active', b.dataset.plView === v); });
     }
+    showActiveTab();
+  }
+  // Arrows at the ends of a bar that slides: shown when there are more tabs that way, a tap slides it a screen's worth.
+  function tbArrowEl(side){
+    var s = document.createElement('span'); s.className = 'pw-tb-arrow pw-tb-' + side;
+    s.innerHTML = '<i role="button" aria-label="' + (side === 'l' ? 'Earlier tabs' : 'More tabs') + '">' + svg(side === 'l' ? 'chevl' : 'chevr') + '</i>';
+    s.addEventListener('click', function(e){
+      e.stopPropagation(); if (!bar) return;
+      var w = bar.clientWidth, step = Math.max(1, Math.round(w / 5)) * 4;
+      bar.scrollBy({ left: side === 'l' ? -step : step, behavior: 'smooth' });
+    });
+    return s;
+  }
+  var tbArrowL = tbArrowEl('l'), tbArrowR = tbArrowEl('r');
+  function tbArrows(){
+    if (!bar) return;
+    var on = body.classList.contains('pw-tabs-scroll'), sl = bar.scrollLeft, max = bar.scrollWidth - bar.clientWidth;
+    bar.classList.toggle('pw-more-l', on && sl > 4);
+    bar.classList.toggle('pw-more-r', on && sl < max - 4);
+  }
+  if (bar){ bar.addEventListener('scroll', tbArrows, { passive:true }); window.addEventListener('resize', tbArrows); }
+  // When the bar slides, keep the tab you are on in view.
+  function showActiveTab(){
+    if (!bar || !body.classList.contains('pw-tabs-scroll')) return;
+    var a = bar.querySelector('button.active'); if (!a || !a.offsetWidth) return;
+    var l = a.offsetLeft, r = l + a.offsetWidth, sl = bar.scrollLeft, w = bar.clientWidth;
+    if (l < sl) bar.scrollTo({ left: l - 8, behavior: 'smooth' });
+    else if (r > sl + w) bar.scrollTo({ left: r - w + 8, behavior: 'smooth' });
   }
   if (bar) bar.addEventListener('click', function(e){
     var b = e.target.closest('button'); if (!b) return;
@@ -426,6 +457,7 @@
       lpTimer = setTimeout(function(){ lpFired = true; if (navigator.vibrate) try { navigator.vibrate(15); } catch(err){} startEdit('page:' + t.page); }, 550);
     });
     ['pointerup','pointercancel','pointerleave'].forEach(function(ev){ bar.addEventListener(ev, function(){ clearTimeout(lpTimer); }); });
+    bar.addEventListener('scroll', function(){ clearTimeout(lpTimer); }, { passive:true });
     bar.addEventListener('click', function(e){ if (lpFired){ lpFired = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
     bar.addEventListener('contextmenu', function(e){ if (e.target.closest('.pw-tab')) e.preventDefault(); });
   }

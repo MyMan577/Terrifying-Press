@@ -9,7 +9,7 @@
     if (!ind || !body.classList.contains('pp-refined')) return;
     var a = bar.querySelector('button.active'); if (!a) return;
     var br = bar.getBoundingClientRect(), r = a.getBoundingClientRect(); if (!r.width) return;
-    ind.style.transform = 'translateX(' + Math.round(r.left - br.left + r.width / 2 - 28) + 'px)';
+    ind.style.transform = 'translateX(' + Math.round(r.left - br.left + bar.scrollLeft + r.width / 2 - 28) + 'px)';
   }
   function apply(v){
     body.classList.toggle('pp-refined', v);
