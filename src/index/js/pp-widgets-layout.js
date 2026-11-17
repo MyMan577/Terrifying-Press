@@ -1145,7 +1145,23 @@
     edit: startEdit,
     editTabs: tabsSheet,
     openPage: openPage,
-    layout: function(){ return clone(L); }
+    closePage: closePage,
+    layout: function(){ return clone(L); },
+    // The Layout studio arranges the app's own rows with the same order and hide lists as the Arrange sheets.
+    arrange: {
+      list: function(gid){ var g = GROUPS.find(function(x){ return x.id === gid; }); if (!g) return null; var hide = L.hide || [];
+        return groupItems(g).map(function(it){ return { key: it[0], label: it[1], canHide: !!it[3], shown: hide.indexOf(it[0]) < 0 }; }); },
+      canOrder: function(gid){ var g = GROUPS.find(function(x){ return x.id === gid; }); return !!g && !g.noOrder; },
+      move: function(gid, i, dir){
+        var g = GROUPS.find(function(x){ return x.id === gid; }); if (!g || g.noOrder) return;
+        var keys = groupItems(g).map(function(x){ return x[0]; }), j = i + dir; if (j < 0 || j >= keys.length) return;
+        remember(); var t = keys[i]; keys[i] = keys[j]; keys[j] = t; L.order = L.order || {}; L.order[gid] = keys; save(); applyHide(); },
+      toggle: function(k){ toggleHide(k); },
+      reset: function(gid){
+        var g = GROUPS.find(function(x){ return x.id === gid; }); if (!g) return;
+        remember(); if (L.order) delete L.order[gid]; var keys = g.items.map(function(x){ return x[0]; });
+        L.hide = (L.hide || []).filter(function(k){ return keys.indexOf(k) < 0; }); save(); applyHide(); }
+    }
   };
   applyHide();
   // The Customize button lives in the player's \u2630 menu, which Home and Settings don't show. This card in
