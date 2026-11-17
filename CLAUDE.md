@@ -25,6 +25,7 @@ The owner tests on a Galaxy S24 Ultra (120 Hz, strong GPU).
 - `backup/unsplit/` holds the full files as they were at the split. It is a snapshot: do not edit it or build from it.
 - `android-overrides/native-bridge.js` is the copy that ships: the workflow overwrites `www/native-bridge.js` with it. Edit that one, and keep `www/native-bridge.js` identical to it.
 - `android-overrides/` holds the native Android code. The workflow copies it into the generated Capacitor project.
+- `www/CREDITS.txt` is Settings > Credits (shown at the very bottom): every library, model, font, service and tool the app uses, who made it, why it is used, and the licence texts. Add an entry whenever something new is used, and the licence text in Part 2 if that licence is not there yet.
 - The signing key is `android-overrides/pp.keystore.enc`, unlocked in CI by the `KEYSTORE_FILE_PASSWORD` secret. Never commit a plain keystore.
 
 ## Checks before merging

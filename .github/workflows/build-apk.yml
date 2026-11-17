@@ -75,6 +75,14 @@ jobs:
           done
           npx cap add android
           npx cap sync android
+          # Newer Android build tools than Capacitor 6's template (Gradle plugin 8.2.1, compileSdk 34): libVLC 3.7.3+
+          # needs compileSdk 36. Only the compile SDK moves; targetSdk (the app's runtime behaviour) stays as it is.
+          sed -i "s/com.android.tools.build:gradle:8.2.1/com.android.tools.build:gradle:8.10.1/" android/build.gradle
+          sed -i "s#gradle-8.2.1-all.zip#gradle-8.11.1-all.zip#" android/gradle/wrapper/gradle-wrapper.properties
+          sed -i -E "s/compileSdkVersion *= *[0-9]+/compileSdkVersion = 36/" android/variables.gradle
+          grep -q "gradle:8.10.1" android/build.gradle && grep -q "gradle-8.11.1" android/gradle/wrapper/gradle-wrapper.properties \
+            && grep -q "compileSdkVersion = 36" android/variables.gradle \
+            || { echo "::error::Could not raise the Android build tools (the Capacitor template changed?)"; cat android/build.gradle android/variables.gradle android/gradle/wrapper/gradle-wrapper.properties; exit 1; }
           # App icons: generated from resources/icon.png (1024x1024) into every mipmap size, including the adaptive icon.
           if [ -f resources/icon.png ]; then
             npx @capacitor/assets@3 generate --androidProject android --iconBackgroundColor '#1b1c20' --iconBackgroundColorDark '#1b1c20' || { echo "::error::Icon generation failed"; exit 1; }
@@ -86,7 +94,7 @@ jobs:
 
       - name: Add the native ONNX plugin
         run: |
-          for f in OnnxSeparatorPlugin Accel StemNative SpleeterNative KeepAliveService SpleeterSeparatorPlugin BackupPlugin EmbedPlugin MiniTokenizer StoragePlugin TranslatePlugin Throttle WhisperNative ParakeetNative LlmNative FastDownload GameModePlugin SpeechPlugin VlcEngine VlcPlugin VlcPlayerActivity; do
+          for f in OnnxSeparatorPlugin Accel StemNative SpleeterNative KeepAliveService SpleeterSeparatorPlugin BackupPlugin EmbedPlugin MiniTokenizer StoragePlugin TranslatePlugin Throttle WhisperNative ParakeetNative LlmNative FastDownload GameModePlugin SpeechPlugin VlcEngine VlcPlugin VlcPlayerActivity VlcSession VlcPlaybackService; do
             f="android-overrides/$f.java"
             if [ ! -f "$f" ]; then echo "::error::Missing file in the repo: $f. Add it at that exact path (folder included) and run again."; exit 1; fi
           done
@@ -99,10 +107,10 @@ jobs:
           sed -i '/^dependencies {/a\    implementation "com.google.ai.edge.litertlm:litertlm-android:latest.release"' android/app/build.gradle
           # ML Kit on-device translation + language detection (TranslatePlugin). Language packs download on first use.
           sed -i '/^dependencies {/a\    implementation "com.google.mlkit:translate:17.0.3"\n    implementation "com.google.mlkit:language-id:17.0.6"' android/app/build.gradle
-          # VLC engine (libVLC 3.7.2, LGPL 2.1; 3.7.3+ needs compileSdk 36 and a newer Android Gradle plugin): plays the formats ExoPlayer and the WebView cannot, and reads network shares
+          # VLC engine (libVLC, LGPL 2.1; needs compileSdk 36, set up above): plays the formats ExoPlayer and the WebView cannot, and reads network shares
           # (SMB, UPnP/DLNA, NFS, FTP, SFTP). Only its 64-bit ARM build is kept (see the packaging excludes below):
           # the four-ABI library would add about 190 MB to the APK.
-          sed -i '/^dependencies {/a\    implementation "org.videolan.android:libvlc-all:3.7.2"' android/app/build.gradle
+          sed -i '/^dependencies {/a\    implementation "org.videolan.android:libvlc-all:3.7.7"' android/app/build.gradle
           sed -i '/^android {/a\    packaging { jniLibs { excludes += ["lib/armeabi-v7a/libvlc.so", "lib/armeabi-v7a/libvlcjni.so", "lib/x86/libvlc.so", "lib/x86/libvlcjni.so", "lib/x86_64/libvlc.so", "lib/x86_64/libvlcjni.so"] } }' android/app/build.gradle
           # both native stacks may ship the same C++ runtime library: keep the first one instead of failing the build
           sed -i '/^android {/a\    packaging { jniLibs { pickFirsts += ["**/libc++_shared.so"] } }' android/app/build.gradle

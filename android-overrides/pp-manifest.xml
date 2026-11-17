@@ -174,9 +174,16 @@
         <activity
             android:name=".VlcPlayerActivity"
             android:exported="false"
+            android:launchMode="singleTop"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
             android:resizeableActivity="true"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode|navigation|density" />
+
+        <!-- Keeps the VLC player / a cast going in the background, with its media notification -->
+        <service
+            android:name=".VlcPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- Progress notification + keep-alive for long tasks (vocal split, MP3 conversion) -->
         <service

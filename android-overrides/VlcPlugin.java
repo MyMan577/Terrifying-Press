@@ -58,7 +58,7 @@ public class VlcPlugin extends Plugin {
             o.put("text", text == null ? "" : text);
             notifyListeners("login", o);
         };
-        VlcPlayerActivity.onClosed = (uri, posMs, durMs, ended, error) -> {
+        VlcSession.onClosed = (uri, posMs, durMs, ended, error) -> {
             JSObject o = new JSObject();
             o.put("uri", uri);
             o.put("posMs", posMs);
@@ -135,11 +135,32 @@ public class VlcPlugin extends Plugin {
         call.resolve();
     }
 
+    /** Brings the running VLC playback / cast screen back. Resolves {running}. */
+    @PluginMethod
+    public void show(PluginCall call) {
+        Activity act = getActivity();
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            boolean running = VlcSession.current != null;
+            if (running) {
+                Intent i = new Intent(getContext(), VlcPlayerActivity.class).putExtra("resume", true);
+                if (act != null) act.startActivity(i);
+                else getContext().startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            }
+            JSObject o = new JSObject();
+            o.put("running", running);
+            call.resolve(o);
+        });
+    }
+
     /** Closes the VLC player if it is open (e.g. the page moved on to another track). */
     @PluginMethod
     public void close(PluginCall call) {
-        VlcPlayerActivity a = VlcPlayerActivity.current;
-        if (a != null) a.runOnUiThread(a::finish);
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            VlcSession s = VlcSession.current;
+            if (s != null) s.end(false, null);
+            VlcPlayerActivity a = VlcPlayerActivity.current;
+            if (a != null) a.finish();
+        });
         call.resolve();
     }
 
