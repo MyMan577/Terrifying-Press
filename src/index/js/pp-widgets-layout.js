@@ -329,7 +329,12 @@
       if (g.id === 'settings' && ordered) css.push('#pp-sg-root{display:flex;flex-direction:column}');
     });
     hideStyle.textContent = css.join('\n');
+    // The text the app modes add to the header: the mode's name next to the title, and its tagline under it.
+    body.classList.toggle('pw-no-edname', hide.indexOf('ed-name') >= 0);
+    body.classList.toggle('pw-no-edtag', hide.indexOf('ed-tag') >= 0);
   }
+  var HEADER_BITS = [['ed-name', 'Mode name by the title', 'Lite, Plus, Premium or Playground after “Press Play Media”'], ['ed-tag', 'Mode tagline', '“Everything unlocked.” and the like, under the title']];
+  function toggleHide(k){ remember(); var h = L.hide = (L.hide || []).slice(), i = h.indexOf(k); if (i >= 0) h.splice(i, 1); else h.push(k); save(); applyHide(); }
   function arrangeSheet(gid){
     var g = GROUPS.find(function(x){ return x.id === gid; }), hide = L.hide || [];
     var list = groupItems(g);
@@ -1058,6 +1063,9 @@
         return '<div class="pw-lp-row"><div><b>' + esc(g.name) + '</b><small>' + (L.order && L.order[g.id] ? 'Your order' : 'Normal order') + (n ? ' \u00b7 ' + n + ' hidden' : '') + '</small></div><button type="button" class="settings-toggle-btn" data-lp="arr:' + g.id + '">Arrange</button></div>'; }).join('');
       panel.innerHTML =
         '<p class="pw-note">Move, resize and swap anything, or add new widgets. Changes save as you go; Undo is in the bar at the top while editing.</p>' +
+        '<div class="pw-sh-h">Header</div>' + HEADER_BITS.map(function(x){ var shown = (L.hide || []).indexOf(x[0]) < 0;
+          return '<label class="pw-lp-row pw-lp-tog"><div><b>' + esc(x[1]) + '</b><small>' + esc(x[2]) + '</small></div><input type="checkbox" data-lp-hdr="' + x[0] + '"' + (shown ? ' checked' : '') + ' aria-label="Show ' + esc(x[1]) + '"></label>'; }).join('') +
+        '<div class="pw-sh-h">Screens</div>' +
         '<div class="pw-lp-row"><div><b>Home screen</b><small>' + (L.zones.home ? 'Your layout' : 'The app’s default') + '</small></div><button type="button" class="settings-toggle-btn" data-lp="edit:home">Edit</button>' + (L.zones.home ? '<button type="button" class="settings-toggle-btn" data-lp="reset:home">Reset</button>' : '') + '</div>' +
         '<div class="pw-lp-row"><div><b>Playlists page</b><small>Widgets above your playlists</small></div><button type="button" class="settings-toggle-btn" data-lp="edit:playlists">Edit</button>' + (L.zones.playlists ? '<button type="button" class="settings-toggle-btn" data-lp="reset:playlists">Reset</button>' : '') + '</div>' +
         '<div class="pw-lp-row"><div><b>Library</b><small>Widgets above your songs and videos</small></div><button type="button" class="settings-toggle-btn" data-lp="edit:library">Edit</button>' + (L.zones.library ? '<button type="button" class="settings-toggle-btn" data-lp="reset:library">Reset</button>' : '') + '</div>' +
@@ -1075,6 +1083,7 @@
         '<div class="ppth-row"><button type="button" class="settings-toggle-btn ppth-danger" data-lp="resetall">Reset every layout</button></div>';
     }
     draw();
+    panel.addEventListener('change', function(e){ var c = e.target.closest && e.target.closest('[data-lp-hdr]'); if (c) toggleHide(c.dataset.lpHdr); });
     panel.addEventListener('click', function(e){
       var b = e.target.closest('[data-lp]'); if (!b) return;
       var k = b.dataset.lp;
