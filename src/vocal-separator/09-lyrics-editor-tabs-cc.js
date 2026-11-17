@@ -421,7 +421,10 @@
             if (txt || lyOn) stLayout();
             if (ST.hl && !aud.paused && !stRaf && (txt || lyOn)) stRaf = requestAnimationFrame(stFrame);
           };
-          setInterval(tick, 60);
+          // 60 ms keeps the words in step while a song plays. Paused, nothing moves, so it checks only every ~0.5 s,
+          // and with the screen off (music playing in the background) there is nothing to draw at all.
+          let tickN = 0;
+          setInterval(() => { if (document.hidden) return; if (aud.paused && !preview && (++tickN % 8)) return; tick(); }, 60);
           window.addEventListener('resize', () => { stKey = ''; });
           // ----- the controls -----
           const ui = panel.querySelector('#ppv-stui');

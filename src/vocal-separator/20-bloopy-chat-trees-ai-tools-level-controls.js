@@ -554,7 +554,7 @@
       host.appendChild(b); return true;
     };
     if (!place()) { let n = 0; const iv = setInterval(() => { if (place() || ++n > 40) clearInterval(iv); }, 250); }
-    setInterval(place, 2000);
+    setInterval(() => { if (!document.hidden) place(); }, 2000);
     const $ = s => p.querySelector(s), st = $('#ppv-st'), bar = $('#ppv-bar i'), go = $('#ppv-go'), sel = $('#ppv-model'), sl = $('#ppv-sl'), sv = $('#ppv-sv'), gpu = $('#ppv-gpuc'), lsel = $('#ppv-lvl'), lvi = $('#ppv-lvi'), qsel = $('#ppv-q'), gsel = $('#ppv-gate'), msel = $('#ppv-mask');
     const LV = () => +lsel.value === 4 ? customLevel() : LEVELS[+lsel.value] || null, showLv = () => { const l = LV(); lvi.textContent = !l ? 'No limits. Fastest, but can crash weak phones.' : l.custom ? 'Custom: ' + (l.threads ? l.threads + ' thread' + (l.threads > 1 ? 's' : '') : 'auto threads') + ', ' + Math.round(l.duty * 100) + '% rest.' : l.info; };
     let holdUntil = 0;                                                // keep "Done"/"Error" visible instead of being wiped by "Ready" a split second later

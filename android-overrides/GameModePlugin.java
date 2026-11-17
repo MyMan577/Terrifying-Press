@@ -53,6 +53,55 @@ public class GameModePlugin extends Plugin {
         });
     }
 
+    // ---------- Focus mode: hold the screen at 60 Hz ----------
+    // While on, the window asks for the display's ~60 Hz mode at the current resolution, which roughly halves the
+    // work of drawing the page. While a game holds the fastest mode, the cap is stored as what the game puts back.
+    private boolean capped = false;
+    private int capSavedModeId = 0;
+    private float capSavedRate = 0f;
+
+    @PluginMethod
+    public void cap(final PluginCall call) {
+        final boolean want = Boolean.TRUE.equals(call.getBoolean("on", false));
+        getActivity().runOnUiThread(() -> {
+            try {
+                Window w = getActivity().getWindow();
+                WindowManager.LayoutParams lp = w.getAttributes();
+                if (want && !capped) {
+                    Display d = Build.VERSION.SDK_INT >= 30 ? getActivity().getDisplay() : w.getWindowManager().getDefaultDisplay();
+                    Display.Mode pick = null;
+                    if (d != null) {
+                        Display.Mode cur = d.getMode();
+                        for (Display.Mode m : d.getSupportedModes()) {
+                            if (m.getPhysicalWidth() != cur.getPhysicalWidth() || m.getPhysicalHeight() != cur.getPhysicalHeight()) continue;
+                            if (m.getRefreshRate() < 59f) continue;
+                            if (pick == null || m.getRefreshRate() < pick.getRefreshRate()) pick = m;
+                        }
+                    }
+                    if (pick != null) {
+                        if (on) { capSavedModeId = savedModeId; capSavedRate = savedRate; savedModeId = pick.getModeId(); savedRate = pick.getRefreshRate(); }
+                        else {
+                            capSavedModeId = lp.preferredDisplayModeId; capSavedRate = lp.preferredRefreshRate;
+                            lp.preferredDisplayModeId = pick.getModeId(); lp.preferredRefreshRate = pick.getRefreshRate();
+                            w.setAttributes(lp);
+                        }
+                        capped = true;
+                    }
+                } else if (!want && capped) {
+                    if (on) { savedModeId = capSavedModeId; savedRate = capSavedRate; }
+                    else {
+                        lp.preferredDisplayModeId = capSavedModeId; lp.preferredRefreshRate = capSavedRate;
+                        w.setAttributes(lp);
+                    }
+                    capped = false;
+                }
+                call.resolve();
+            } catch (Exception e) {
+                call.reject(e.getMessage() == null ? "refresh cap failed" : e.getMessage());
+            }
+        });
+    }
+
     @PluginMethod
     public void exit(final PluginCall call) {
         getActivity().runOnUiThread(() -> {

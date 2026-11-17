@@ -226,7 +226,8 @@
     const hapticOnly = !vizShown && (hapticBass > 0 || widgetWants) && vizLive && !document.hidden;
     if ((!vizShown && !hapticOnly) || (vizIdle && !vizLive)){ vizLast = 0; setTimeout(() => requestAnimationFrame(drawViz), document.hidden ? 250 : 100); return; }
     requestAnimationFrame(drawViz);
-    if (ts - vizLast < (hapticOnly ? 30 : 15)) return;   // 60 fps: smooth falls and peaks without paying for 120
+    // 60 fps: smooth falls and peaks without paying for 120. Focus mode draws at 30 (the motion is time-based, so it moves the same).
+    if (ts - vizLast < (hapticOnly || window.ppFocus ? 30 : 15)) return;
     const dt = vizLast ? Math.min(0.1, (ts - vizLast) / 1000) : 0.016;
     vizLast = ts;
 

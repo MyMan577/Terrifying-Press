@@ -183,7 +183,7 @@
       });
     }
     document.querySelectorAll('.bl-mark,.bl-dot').forEach(e => e.remove());
-    blTopRows(); setInterval(blTopRows, 2000);
+    blTopRows(); setInterval(() => { if (!document.hidden) blTopRows(); }, 2000);   // scans the whole page: never while the screen is off
     // ---------- Draggable Bloopy: drag the floating ball or the chat box anywhere on screen. Bloopy strains while you pull him and springs back when you let go. ----------
     const blDragCss = document.createElement('style');
     blDragCss.textContent = '@keyframes blStrain{0%,100%{transform:scale(1.1,.9)}50%{transform:scale(.9,1.1)}}@keyframes blSnap{0%{transform:scale(1.25,.75)}40%{transform:scale(.85,1.15)}70%{transform:scale(1.05,.95)}100%{transform:scale(1)}}#ppv-cfab.bl-strain{animation:blStrain .16s ease-in-out infinite}#ppv-cfab.bl-snap{animation:blSnap .45s ease-out}#ppv-chat.bl-strain .ch-h{box-shadow:0 0 0 2px #7c5cff inset}#ppv-cfab,#ppv-chat .ch-h{touch-action:none;cursor:grab}#ppv-cfab.bl-strain,#ppv-chat.bl-strain .ch-h{cursor:grabbing}';

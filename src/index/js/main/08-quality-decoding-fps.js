@@ -207,17 +207,6 @@
         memcLastKey = '';
       });
     }
-    const dcTog = document.getElementById('decode-comp-toggle');
-    if (dcTog){
-      dcTog.checked = decodeComp;
-      dcTog.addEventListener('change', () => {
-        decodeComp = dcTog.checked;
-        try { localStorage.setItem(DECODE_COMP_KEY, decodeComp ? '1' : '0'); } catch (e){}
-        memcLastKey = '';
-        refreshVideoDelayState();
-        if (VIDEO_DELAY_CAN_USE_TRACK && videoDelayActive()) restartVideoDelayCapture();
-      });
-    }
     const llTog = document.getElementById('lossless-latency-toggle');
     const llQRow = document.getElementById('lossless-quality-row');
     const llQSel = document.getElementById('lossless-quality-select');

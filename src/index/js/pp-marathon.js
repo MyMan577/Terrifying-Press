@@ -1,5 +1,5 @@
 (function(){
-  var BEST='ppMarathonBestV1', BG='ppMarathonBgV1', LEN=30, XP_N=6, SECS=10, BG_NEED=24;   // 24/30 = 80%
+  var BEST='ppMarathonBestV1', BG='ppMarathonBgV1', LEN=30, XP_N=6, SECS=10, BG_NEED=24, PREM_NEED=27;   // 24/30 = 80%, 27/30 = 90%
   var ls={g:function(k){try{return localStorage.getItem(k)}catch(e){return null}},s:function(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
   var toast=function(m){try{window.ppToast(m)}catch(e){}};
   var G=window.PPModeGate||{unlocked:function(){return true},legacy:function(){return true},check:function(){}};
@@ -30,7 +30,7 @@
   function status(){
     var bits=['Best: '+best()+'%'];
     bits.push(bgHave()?'Finish Line background unlocked':'80% unlocks the Finish Line background');
-    bits.push(G.unlocked('premium')?(G.legacy()?'Premium is unlocked':'Premium unlocked'):'100% grants Premium');
+    bits.push(G.unlocked('premium')?(G.legacy()?'Premium is unlocked':'Premium unlocked'):'90% grants Premium');
     return bits.join('  \u00b7  ');
   }
   function refreshStatus(){if(statEl)statEl.textContent=status()}
@@ -42,7 +42,7 @@
     if(!pane||document.getElementById('pp-marathon-section'))return;
     var sec=mk('div','settings-section');sec.id='pp-marathon-section';
     sec.innerHTML='<div class="settings-row" id="pp-marathon-row"><div class="settings-row-text"><div class="settings-row-title">The Marathon</div>'
-      +'<div class="settings-row-sub">30 questions, 10 seconds each. Score 80% to unlock the Finish Line background, or 100% to earn Press Play PREMIUM.</div>'
+      +'<div class="settings-row-sub">30 questions, 10 seconds each. Score 80% to unlock the Finish Line background, or 90% to earn Press Play PREMIUM.</div>'
       +'<div class="pp-mar-stat"></div></div></div>';
     pane.appendChild(sec);
     statEl=sec.querySelector('.pp-mar-stat');refreshStatus();
@@ -62,7 +62,7 @@
     if(!B||!B.app||!B.xp||B.app.length<LEN-XP_N||B.xp.length<XP_N){body.appendChild(mk('div','ppxp-quiz-explain','The question bank is not available right now. Try again after the app finishes loading.'));return}
     body.appendChild(mk('div','ppxp-quiz-question','Ready for the Marathon?'));
     var ul=mk('ul','pp-mar-list');
-    ['30 random questions, mostly about the app.','Each question has 10 seconds. Running out of time counts as a miss, and the clock keeps running when switching away.','Score 80% (24 right) to unlock the Finish Line background.','Score 100% to earn Press Play PREMIUM.','Closing this window ends the run.'].forEach(function(t){ul.appendChild(mk('li',null,t))});
+    ['30 random questions, mostly about the app.','Each question has 10 seconds. Running out of time counts as a miss, and the clock keeps running when switching away.','Score 80% (24 right) to unlock the Finish Line background.','Score 90% (27 right) to earn Press Play PREMIUM.','Closing this window ends the run.'].forEach(function(t){ul.appendChild(mk('li',null,t))});
     body.appendChild(ul);
     body.appendChild(mk('div','ppxp-quiz-progress',status()));
     var go=mk('button','ppxp-quiz-next-btn','Start the Marathon');go.type='button';go.addEventListener('click',start);body.appendChild(go);
@@ -105,17 +105,17 @@
 
   function result(){
     stopTick();running=false;timerBar.style.display='none';
-    var total=set.length,pct=Math.round(right/total*100),prev=best(),was=G.unlocked('premium');   // read before saving, so a first perfect run is reported as new
+    var total=set.length,pct=Math.round(right/total*100),prev=best(),was=G.unlocked('premium');   // read before saving, so a first winning run is reported as new
     if(pct>prev)ls.s(BEST,String(pct));
     var lines=[];
     if(right>=BG_NEED){
       if(!bgHave()){ls.s(BG,'1');lines.push('Finish Line unlocked. Find it under Customize appearance \u2192 Unlockable presets.');toast('Finish Line background unlocked');try{window.PPXpApi&&window.PPXpApi.refreshUnlocks&&window.PPXpApi.refreshUnlocks()}catch(e){}}
       else lines.push('Finish Line background: already unlocked.');
     }else lines.push(BG_NEED+' of '+total+' (80%) needed for the Finish Line background.');
-    if(right===total){
+    if(pct>=90){
       try{G.check()}catch(e){}
-      lines.push(G.legacy()||was?'A perfect run! Premium was already unlocked.':'A perfect run! Press Play PREMIUM is unlocked. Find it under Settings \u2192 App mode.');
-    }else lines.push('Only a perfect 30 of 30 earns Press Play PREMIUM.');
+      lines.push(G.legacy()||was?'90% or better! Premium was already unlocked.':'90% or better! Press Play PREMIUM is unlocked. Find it under Settings \u2192 App mode.');
+    }else lines.push(PREM_NEED+' of '+total+' (90%) earns Press Play PREMIUM.');
     body.innerHTML='';
     var res=mk('div','ppxp-quiz-result');
     res.appendChild(mk('div','ppxp-quiz-result-score',right+' / '+total+' correct ('+pct+'%)'));

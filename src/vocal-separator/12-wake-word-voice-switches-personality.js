@@ -106,6 +106,7 @@
       setWhen: v => lsSet('ppvVoiceWhen', v === 'all' ? 'all' : 'talk')
     };
     setTimeout(vSync, 0);
+    window.addEventListener('ppfocus', () => vSync());     // Focus mode turns the wake word off (and back on when it ends)
     // ---------- Follow-up buttons ----------
     // When Bloopy ends a reply with a question (or a "pick one!") and nothing else offered buttons, add the likely answers
     // as tappable buttons so nobody has to guess what to type. Only the newest message gets them, and only if it has none.

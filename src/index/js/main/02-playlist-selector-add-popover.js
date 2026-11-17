@@ -409,17 +409,9 @@
   function memcEnhOn(){ return !!enhMaster && memcEnhSettings(); }
   const MEMC_DELAY_KEY = 'playerMemcDelayGL';
   let memcDelayGL = true;   // carry the picture delay on the GPU engine when smoothing is off/skipped
-  // Hidden decode compensation: a fixed extra picture delay added to every video to cover the
-  // browser's own decoding lag. It is never shown on (or saved with) the latency slider.
-  const DECODE_COMP_KEY = 'playerDecodeComp';
-  const DECODE_COMP_MS = 300;
-  let decodeComp = true;
-  try { if (localStorage.getItem(DECODE_COMP_KEY) === '0') decodeComp = false; } catch (e){}
-  // Total delay the picture/subtitles would normally get: slider + hidden decode compensation.
-  function netLatencyMs(){
-    const isVideo = currentIndex !== -1 && tracks[currentIndex] && tracks[currentIndex].kind === 'video';
-    return subtitleLatencyMs + (decodeComp && isVideo ? DECODE_COMP_MS : 0);
-  }
+  // Total delay the picture/subtitles get: the latency slider. (The old hidden +300 ms "decode compensation" is
+  // gone: it pushed every video through the frame-delay engine for no visible gain and cost battery.)
+  function netLatencyMs(){ return subtitleLatencyMs; }
   // What the picture engines, subtitles and sound-delay use. While audio lead is running the
   // picture is left alone (zero delay) and the sound plays ahead instead.
   function effLatencyMs(){

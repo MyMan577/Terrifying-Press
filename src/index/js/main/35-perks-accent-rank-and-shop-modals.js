@@ -22,8 +22,8 @@
     })();
     function savePerks(){ try { localStorage.setItem(PERKS_KEY, JSON.stringify(perks)); } catch(e){ /* storage full */ } }
     function liteOn(){ try { return localStorage.getItem('ppLiteMode') === '1'; } catch(e){ return false; } }
-    // Press Play PLUS keeps the leveling system but unlocks every perk from the start.
-    function plusOn(){ try { return !liteOn() && (localStorage.getItem('ppPlusMode') === '1' || localStorage.getItem('ppPremiumMode') === '1' || localStorage.getItem('ppPlaygroundMode') === '1'); } catch(e){ return false; } }
+    // PLUS, PREMIUM, Playground and Focus unlock every perk from the start.
+    function plusOn(){ try { return !liteOn() && (localStorage.getItem('ppPlusMode') === '1' || localStorage.getItem('ppPremiumMode') === '1' || localStorage.getItem('ppPlaygroundMode') === '1' || localStorage.getItem('ppFocusMode') === '1'); } catch(e){ return false; } }
     function perkOn(name){ return !liteOn() && (plusOn() || isUnlocked(PERK_LEVELS[name])); }
     function setRange(el, v){
       el.value = String(v);
