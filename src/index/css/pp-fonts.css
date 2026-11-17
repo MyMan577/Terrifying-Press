@@ -1,0 +1,34 @@
+  /* Fonts for Customize > Theme and widget text, shipped in www/fonts (the phone's WebView can't be relied on to have them).
+     Latin only; a face is only read from disk when something on screen uses it. Licences: www/fonts/*-LICENSE.txt */
+  @font-face{ font-family:'Roboto'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/roboto-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Roboto Condensed'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/roboto-condensed-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Noto Serif'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/noto-serif-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Roboto Mono'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/roboto-mono-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Coming Soon'; font-style:normal; font-weight:400; font-display:swap; src:url('fonts/coming-soon-latin-400.woff2') format('woff2'); }
+  @font-face{ font-family:'Dancing Script'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/dancing-script-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Inter'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/inter-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Outfit'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/outfit-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Space Grotesk'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/space-grotesk-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Nunito'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/nunito-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Quicksand'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/quicksand-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Poppins'; font-style:normal; font-weight:400; font-display:swap; src:url('fonts/poppins-latin-400.woff2') format('woff2'); }
+  @font-face{ font-family:'Poppins'; font-style:normal; font-weight:600; font-display:swap; src:url('fonts/poppins-latin-600.woff2') format('woff2'); }
+  @font-face{ font-family:'Poppins'; font-style:normal; font-weight:700; font-display:swap; src:url('fonts/poppins-latin-700.woff2') format('woff2'); }
+  @font-face{ font-family:'Montserrat'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/montserrat-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Oswald'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/oswald-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Bebas Neue'; font-style:normal; font-weight:400; font-display:swap; src:url('fonts/bebas-neue-latin-400.woff2') format('woff2'); }
+  @font-face{ font-family:'Playfair Display'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/playfair-display-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Lora'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/lora-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Caveat'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/caveat-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Pacifico'; font-style:normal; font-weight:400; font-display:swap; src:url('fonts/pacifico-latin-400.woff2') format('woff2'); }
+  @font-face{ font-family:'Comfortaa'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/comfortaa-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Orbitron'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/orbitron-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Press Start 2P'; font-style:normal; font-weight:400; font-display:swap; src:url('fonts/press-start-2p-latin-400.woff2') format('woff2'); }
+  @font-face{ font-family:'Fredoka'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/fredoka-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Lexend'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/lexend-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'DM Sans'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/dm-sans-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Manrope'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/manrope-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Sora'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/sora-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'JetBrains Mono'; font-style:normal; font-weight:100 900; font-display:swap; src:url('fonts/jetbrains-mono-latin.woff2') format('woff2'); }
+  @font-face{ font-family:'Space Mono'; font-style:normal; font-weight:400; font-display:swap; src:url('fonts/space-mono-latin-400.woff2') format('woff2'); }
+  @font-face{ font-family:'Space Mono'; font-style:normal; font-weight:700; font-display:swap; src:url('fonts/space-mono-latin-700.woff2') format('woff2'); }
