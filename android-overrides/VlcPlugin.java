@@ -89,6 +89,47 @@ public class VlcPlugin extends Plugin {
         Activity act = getActivity();
         long startMs = call.getData().optLong("startMs", 0L);
         Intent i = VlcPlayerActivity.intent(ctx, uri, call.getString("title", ""), call.getString("kind", "video"), startMs, call.getString("subtitle", ""));
+        i.putExtra("stopMs", call.getData().optLong("stopMs", 0L));
+        if (act != null) { i.removeFlags(Intent.FLAG_ACTIVITY_NEW_TASK); act.runOnUiThread(() -> act.startActivity(i)); }
+        else ctx.startActivity(i);
+        call.resolve();
+    }
+
+    /** Cast targets on the Wi-Fi (Chromecast and built-in Chromecast). Resolves {devices: [{name, label, type}], error?}. */
+    @PluginMethod
+    public void castDevices(PluginCall call) {
+        int waitMs = call.getInt("waitMs", 4000);
+        VlcEngine.discoverRenderers(getContext(), waitMs, (items, error) -> {
+            JSArray arr = new JSArray();
+            for (org.videolan.libvlc.RendererItem it : items) {
+                JSObject o = new JSObject();
+                o.put("name", it.name);
+                o.put("label", it.displayName == null || it.displayName.isEmpty() ? it.name : it.displayName);
+                o.put("type", it.type == null ? "" : it.type);
+                arr.put(o);
+            }
+            JSObject res = new JSObject();
+            res.put("devices", arr);
+            if (error != null) res.put("error", error);
+            call.resolve(res);
+        });
+    }
+
+    /**
+     * Plays a file on a cast target ({@link #castDevices} name). The VLC engine converts whatever the device cannot
+     * play by itself, on the fly. The VLC player opens as the remote; closing it stops casting ("closed" as usual).
+     */
+    @PluginMethod
+    public void cast(PluginCall call) {
+        String uri = call.getString("uri", "");
+        String device = call.getString("device", "");
+        if (uri == null || uri.isEmpty() || device == null || device.isEmpty()) { call.reject("uri and device required"); return; }
+        if (VlcEngine.renderer(device) == null) { call.reject("That cast device is no longer available. Search again."); return; }
+        Context ctx = getContext();
+        Activity act = getActivity();
+        long startMs = call.getData().optLong("startMs", 0L);
+        Intent i = VlcPlayerActivity.intent(ctx, uri, call.getString("title", ""), call.getString("kind", "video"), startMs, "", device);
+        i.putExtra("stopMs", call.getData().optLong("stopMs", 0L));
         if (act != null) { i.removeFlags(Intent.FLAG_ACTIVITY_NEW_TASK); act.runOnUiThread(() -> act.startActivity(i)); }
         else ctx.startActivity(i);
         call.resolve();
@@ -176,17 +217,24 @@ public class VlcPlugin extends Plugin {
                 o = VlcEngine.open(getContext(), lib, uri);
                 o.media.parse(org.videolan.libvlc.interfaces.IMedia.Parse.ParseLocal | org.videolan.libvlc.interfaces.IMedia.Parse.ParseNetwork);
                 int a = 0, v = 0, t = 0;
+                boolean spherical = false;
                 StringBuilder codecs = new StringBuilder();
                 for (int i = 0; i < o.media.getTrackCount(); i++) {
                     org.videolan.libvlc.interfaces.IMedia.Track tr = o.media.getTrack(i);
                     if (tr == null) continue;
                     if (tr.type == org.videolan.libvlc.interfaces.IMedia.Track.Type.Audio) a++;
-                    else if (tr.type == org.videolan.libvlc.interfaces.IMedia.Track.Type.Video) v++;
+                    else if (tr.type == org.videolan.libvlc.interfaces.IMedia.Track.Type.Video) {
+                        v++;
+                        if (tr instanceof org.videolan.libvlc.interfaces.IMedia.VideoTrack
+                            && ((org.videolan.libvlc.interfaces.IMedia.VideoTrack) tr).projection != org.videolan.libvlc.interfaces.IMedia.VideoTrack.Projection.Rectangular)
+                            spherical = true;
+                    }
                     else if (tr.type == org.videolan.libvlc.interfaces.IMedia.Track.Type.Text) t++;
                     if (tr.codec != null && !tr.codec.isEmpty()) { if (codecs.length() > 0) codecs.append(", "); codecs.append(tr.codec); }
                 }
                 JSObject r = new JSObject();
                 r.put("audio", a); r.put("video", v); r.put("text", t);
+                r.put("spherical", spherical);
                 r.put("codecs", codecs.toString());
                 r.put("durMs", o.media.getDuration());
                 call.resolve(r);

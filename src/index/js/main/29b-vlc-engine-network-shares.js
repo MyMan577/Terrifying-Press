@@ -60,6 +60,13 @@
     return Promise.reject(new Error('This file is not on the device storage'));
   }
 
+  /** Start / stop times for the VLC engine, in the file's own time: a CUE-sheet track is a stretch of the album file. */
+  function vlcSpan(t, posSec){
+    const off = t.cueStart || 0, o = { startMs: Math.round((off + (posSec || 0)) * 1000) };
+    if (t.cueEnd > off) o.stopMs = Math.round(t.cueEnd * 1000);
+    return o;
+  }
+
   function ppVlcOpen(t, why){
     if (!PPVlc || vlcOpening) return Promise.resolve(false);
     vlcOpening = true;
@@ -75,7 +82,7 @@
         isPlaying = false; updatePlayIcon();
         vlcTrack = t;
         if (why) ppToast(why);
-        return PPVlc.open({ uri, title: t.title || '', kind: t.kind === 'video' ? 'video' : 'audio', startMs: Math.round(start * 1000) }).then(() => true);
+        return PPVlc.open(Object.assign({ uri, title: t.title || '', kind: t.kind === 'video' ? 'video' : 'audio' }, vlcSpan(t, start))).then(() => true);
       });
     }).catch(e => { ppToast("Couldn't open the VLC engine: " + ((e && e.message) || e)); return false; })
       .finally(() => { vlcOpening = false; });
@@ -136,7 +143,7 @@
       const t = vlcTrack; vlcTrack = null;
       if (!t) return;
       if (e && e.error) t._vlcFailed = true;
-      const pos = ((e && e.posMs) || 0) / 1000;
+      const pos = ((e && e.posMs) || 0) / 1000 - (t.cueStart || 0);
       if (e && e.ended){
         if (rememberPlaybackPosition) savePlaybackPosition(t.dbId, null);
         if (tracks[currentIndex] === t){
@@ -207,11 +214,11 @@
     css.textContent = `
       #net-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:120;align-items:center;justify-content:center}
       #net-modal-overlay.open{display:flex}
-      #net-modal{background:var(--bg-elev);border:1px solid var(--line);border-radius:calc(14px*var(--ui-round,1));width:min(640px,94vw);max-height:84vh;display:flex;flex-direction:column;overflow:hidden;color:var(--text)}
-      #net-head{padding:14px 16px 10px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
-      #net-head h2{margin:0;font-size:15px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #net-modal,.pp-pick-box{background:var(--bg-elev);border:1px solid var(--line);border-radius:calc(14px*var(--ui-round,1));width:min(640px,94vw);max-height:84vh;display:flex;flex-direction:column;overflow:hidden;color:var(--text)}
+      #net-head,.pp-pick-head{padding:14px 16px 10px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+      #net-head h2,.pp-pick-head h2{margin:0;font-size:15px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
       #net-path{font-size:11px;color:var(--text-dim);padding:6px 16px 0;word-break:break-all}
-      #net-list{flex:1;overflow-y:auto;padding:8px 8px 12px}
+      #net-list,.pp-pick-list{flex:1;overflow-y:auto;padding:8px 8px 12px}
       .net-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:0;color:var(--text);padding:11px 10px;border-radius:calc(9px*var(--ui-round,1));font-size:14px;cursor:pointer}
       .net-item:hover,.net-item:focus-visible{background:var(--accent-soft)}
       .net-item .ic{width:22px;text-align:center;flex:none}
@@ -220,7 +227,7 @@
       .net-label{font-size:11px;color:var(--text-dim);padding:10px 10px 4px;text-transform:uppercase;letter-spacing:.04em}
       .net-note{font-size:13px;color:var(--text-dim);padding:14px 10px}
       #net-foot{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line);flex-wrap:wrap}
-      #net-foot button,#net-head button{background:var(--accent-soft);color:var(--text);border:1px solid var(--line);border-radius:calc(9px*var(--ui-round,1));padding:8px 12px;font-size:13px;cursor:pointer}
+      #net-foot button,#net-head button,.pp-pick-head button{background:var(--accent-soft);color:var(--text);border:1px solid var(--line);border-radius:calc(9px*var(--ui-round,1));padding:8px 12px;font-size:13px;cursor:pointer}
       #net-foot .grow{flex:1}`;
     document.head.appendChild(css);
     const ov = document.createElement('div');
@@ -354,3 +361,79 @@
     if (!PPVlc){ b.style.display = 'none'; return; }
     b.addEventListener('click', () => { ppCloseAdd(); netOpen(); });
   })();
+
+  // ----- Cast (Chromecast, and TVs / speakers with Chromecast built in) and "open in the VLC player" -----
+  /** A small chooser in the same style as the shares browser. Resolves the picked item, or null. */
+  function ppPick(title, items, label){
+    netEnsureUi();
+    return new Promise(resolve => {
+      let ov = ppEl('pp-pick-overlay');
+      if (!ov){
+        ov = document.createElement('div');
+        ov.id = 'pp-pick-overlay';
+        ov.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:121;align-items:center;justify-content:center';
+        ov.innerHTML = '<div class="pp-pick-box" style="max-width:420px" role="dialog" aria-modal="true"><div class="pp-pick-head"><h2></h2><button type="button" class="pp-pick-x" aria-label="Close">✕</button></div><div class="pp-pick-list"></div></div>';
+        document.body.appendChild(ov);
+      }
+      const done = (v) => { ov.style.display = 'none'; resolve(v); };
+      ov.onclick = (e) => { if (e.target === ov) done(null); };
+      ov.querySelector('.pp-pick-x').onclick = () => done(null);
+      ov.querySelector('h2').textContent = title;
+      const list = ov.querySelector('.pp-pick-list');
+      list.replaceChildren();
+      items.forEach(it => list.appendChild(netRow('📺', label(it), () => done(it))));
+      ov.style.display = 'flex';
+    });
+  }
+
+  let castBusy = false;
+  async function ppCast(){
+    const t = tracks[currentIndex];
+    if (!t){ ppToast('Play something first, then cast it.'); return; }
+    if (!PPVlc || !(await vlcAvailable())){ ppToast('Casting uses the VLC engine, which runs on 64-bit ARM phones only.'); return; }
+    if (castBusy) return;
+    castBusy = true;
+    try {
+      ppToast('Looking for cast devices on your Wi-Fi…');
+      const r = await PPVlc.castDevices({ waitMs: 4000 });
+      const devs = (r && r.devices) || [];
+      if (!devs.length){ ppToast('No Chromecast found. Make sure it is on and on the same Wi-Fi, then try again.'); return; }
+      const dev = devs.length === 1 ? devs[0] : await ppPick('Cast to', devs, d => d.label);
+      if (!dev || tracks[currentIndex] !== t) return;
+      const uri = await vlcUriFor(t);
+      const m = media();
+      const start = m && isFinite(m.currentTime) && m.currentTime > 1 && !m.error ? m.currentTime : 0;
+      try { m.pause(); } catch(e){}
+      isPlaying = false; updatePlayIcon();
+      vlcTrack = t;
+      await PPVlc.cast(Object.assign({ uri, device: dev.name, title: t.title || '', kind: t.kind === 'video' ? 'video' : 'audio' }, vlcSpan(t, start)));
+      ppToast('Casting to ' + dev.label + '. Close the cast screen to stop.');
+    } catch(e){
+      ppToast("Couldn't cast: " + ((e && e.message) || e));
+    } finally { castBusy = false; }
+  }
+  (function(){
+    const cb = ppEl('cast-btn'), vb = ppEl('vlc-open-btn');
+    if (cb) cb.addEventListener('click', ppCast);
+    if (vb) vb.addEventListener('click', () => {
+      const t = tracks[currentIndex];
+      if (!t){ ppToast('Play something first.'); return; }
+      if (!PPVlc){ ppToast('The VLC player needs the Android app.'); return; }
+      ppVlcOpen(t);
+    });
+  })();
+
+  // A 360° video plays flat in the normal player. Most are 2:1; when one is, ask VLC whether it is spherical and say
+  // where to look around in it.
+  videoEl.addEventListener('loadedmetadata', () => {
+    const t = tracks[currentIndex], v = videoEl;
+    if (!PPVlc || !t || t.kind !== 'video' || t._vlc360 != null) return;
+    const w = v.videoWidth, h = v.videoHeight;
+    if (!w || !h || Math.abs(w / h - 2) > 0.02){ t._vlc360 = false; return; }
+    t._vlc360 = false;
+    vlcAvailable().then(ok => ok ? vlcUriFor(t) : null).then(uri => uri && PPVlc.probe({ uri })).then(info => {
+      if (!info || !info.spherical || tracks[currentIndex] !== t) return;
+      t._vlc360 = true;
+      ppToast('This is a 360° video. Open it with Cast & VLC player → VLC player to look around by dragging.');
+    }).catch(() => {});
+  });

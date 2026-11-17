@@ -113,48 +113,139 @@
     window.ppSaveBlob(blob, name.replace(/[\\/:*?"<>|]+/g, '_') + '.m3u8');
     ppToast('Exported ' + idxs.length + ' track' + (idxs.length === 1 ? '' : 's') + ' to M3U.');
   }
-  async function ppImportM3U(file){
-    const text = (await file.text()).replace(/^\uFEFF/, '');
-    const entries = [];
+  // ----- Playlist import: M3U / M3U8, PLS, XSPF, and CUE sheets -----
+  const ppPlBase = (s) => { s = String(s).replace(/^file:\/\/\/?/i, ''); try { s = decodeURIComponent(s); } catch(e){} return s.split(/[\\/]/).pop().toLowerCase(); };
+  const ppPlStripExt = (s) => s.replace(/\.[^.]+$/, '');
+  const ppIsLink = (p) => /^[a-z][a-z0-9+.-]*:\/\//i.test(p) && !/^file:/i.test(p);
+  /** The library track a playlist line points at (by file name, then by name without extension, then by title). */
+  function ppFindByName(p, used){
+    const b = ppPlBase(p), nb = ppPlStripExt(b);
+    let idx = tracks.findIndex((t, i) => !used.has(i) && !t.cueOf && ((t.fileName || '').toLowerCase() === b || (t.title + '.' + t.ext).toLowerCase() === b));
+    if (idx < 0) idx = tracks.findIndex((t, i) => !used.has(i) && !t.cueOf && (ppPlStripExt((t.fileName || '').toLowerCase()) === nb || (t.title || '').toLowerCase() === nb));
+    return idx;
+  }
+  /** [{loc, title}] from the text of an M3U, PLS or XSPF file. */
+  function ppParsePlaylist(name, text){
+    const out = [];
+    if (/\.pls$/i.test(name) || /^\s*\[playlist\]/i.test(text)){
+      const files = {}, titles = {};
+      text.split(/\r?\n/).forEach(l => {
+        let m = /^\s*File(\d+)\s*=\s*(.+?)\s*$/i.exec(l); if (m){ files[m[1]] = m[2]; return; }
+        m = /^\s*Title(\d+)\s*=\s*(.+?)\s*$/i.exec(l); if (m) titles[m[1]] = m[2];
+      });
+      Object.keys(files).sort((a, b) => a - b).forEach(k => out.push({ loc: files[k], title: titles[k] || '' }));
+      return out;
+    }
+    if (/\.xspf$/i.test(name) || /<playlist[^>]+xspf/i.test(text)){
+      const doc = new DOMParser().parseFromString(text, 'application/xml');
+      doc.querySelectorAll('track').forEach(tr => {
+        const loc = tr.querySelector('location'), ti = tr.querySelector('title'), cr = tr.querySelector('creator');
+        if (loc && loc.textContent.trim()) out.push({ loc: loc.textContent.trim(), title: ti ? ti.textContent.trim() : '', artist: cr ? cr.textContent.trim() : '' });
+      });
+      return out;
+    }
+    let pending = '';
     text.split(/\r?\n/).forEach(raw => {
       const line = raw.trim();
-      if (!line || line[0] === '#') return;
-      entries.push(line);
+      if (!line) return;
+      if (/^#EXTINF:/i.test(line)){ pending = line.replace(/^#EXTINF:[^,]*,?/i, '').trim(); return; }
+      if (line[0] === '#') return;
+      out.push({ loc: line, title: pending }); pending = '';
     });
-    const base = (s) => { s = s.replace(/^file:\/\/\/?/i, ''); try { s = decodeURIComponent(s); } catch(e){} return s.split(/[\\/]/).pop().toLowerCase(); };
-    const stripExt = (s) => s.replace(/\.[^.]+$/, '');
+    return out;
+  }
+  async function ppImportPlaylist(file){
+    const text = (await file.text()).replace(/^﻿/, '');
+    if (/\.cue$/i.test(file.name) || (/^\s*(REM|PERFORMER|TITLE|FILE)\b/im.test(text) && /^\s*TRACK\s+\d+\s+AUDIO/im.test(text))) return ppImportCue(file.name, text);
+    const entries = ppParsePlaylist(file.name, text);
     const used = new Set(), matched = [];
     let missing = 0;
-    entries.forEach(p => {
-      if (/^https?:\/\//i.test(p)){
+    entries.forEach(e => {
+      const p = e.loc;
+      if (ppIsLink(p)){                     // web radio, streams, network shares
         const ex = tracks.findIndex(t => t.remoteUrl === p);
-        const idx = ex >= 0 ? ex : ppAddRemote(p);
+        const idx = ex >= 0 ? ex : ppAddRemote(p, e.title ? e.title.replace(/^.* - /, '') || e.title : undefined);
+        if (idx >= 0 && ex < 0 && e.artist) tracks[idx].artist = e.artist;
         if (idx >= 0 && !used.has(idx)){ used.add(idx); matched.push(idx); } else if (idx < 0) missing++;
         return;
       }
-      const b = base(p), nb = stripExt(b);
-      let idx = tracks.findIndex((t, i) => !used.has(i) && ((t.fileName || '').toLowerCase() === b || (t.title + '.' + t.ext).toLowerCase() === b));
-      if (idx < 0) idx = tracks.findIndex((t, i) => !used.has(i) && (stripExt((t.fileName || '').toLowerCase()) === nb || (t.title || '').toLowerCase() === nb));
+      const idx = ppFindByName(p, used);
       if (idx < 0){ missing++; return; }
       used.add(idx); matched.push(idx);
     });
-    if (!matched.length){ ppToast('No tracks in that M3U matched the library. Add the files first, then import again.'); return; }
+    if (!matched.length){ ppToast('No tracks in that playlist matched the library. Add the files first, then import again.'); return; }
+    ppMakePlaylist(file.name.replace(/\.(m3u8?|pls|xspf|txt)$/i, '') || 'Imported playlist', matched,
+      'Imported "%s": ' + matched.length + ' matched' + (missing ? ', ' + missing + ' not found in the library.' : '.'));
+  }
+  function ppMakePlaylist(name, idxs, msg){
     const tg = ppEl('detailed-mode-toggle');
     if (tg && tg.checked){ tg.checked = false; tg.dispatchEvent(new Event('change', { bubbles: true })); }
-    const pl = { id: 'pl_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8), name: file.name.replace(/\.(m3u8?|txt)$/i, '') || 'Imported playlist' };
+    const pl = { id: 'pl_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8), name };
     playlists.push(pl);
-    matched.forEach(i => { const t = tracks[i]; t.playlistIds = t.playlistIds || []; if (!t.playlistIds.includes(pl.id)) t.playlistIds.push(pl.id); });
-    pl.order = matched.map(i => tracks[i].dbId);
+    idxs.forEach(i => { const t = tracks[i]; t.playlistIds = t.playlistIds || []; if (!t.playlistIds.includes(pl.id)) t.playlistIds.push(pl.id); });
+    pl.order = idxs.map(i => tracks[i].dbId);
     savePlaylists(); saveLibraryMeta();
     renderPlaylistsManager(); renderPlaylistViewSelect();
     const sel = ppEl('playlist-view-select');
     if (sel){ sel.value = pl.id; sel.dispatchEvent(new Event('change', { bubbles: true })); }
     renderPlaylist();
-    ppToast('Imported "' + pl.name + '": ' + matched.length + ' matched' + (missing ? ', ' + missing + ' not found in the library.' : '.'));
+    ppToast(msg.replace('%s', pl.name));
+  }
+
+  /**
+   * A CUE sheet splits a whole-album file (one big FLAC / APE / WAV) into its songs. Each song becomes its own
+   * library track that plays just its stretch of the album file (the native player clips it), with the sheet's titles.
+   * The album file must already be in the library.
+   */
+  async function ppImportCue(name, text){
+    const q = (s) => String(s || '').trim().replace(/^"(.*)"$/, '$1');
+    const time = (s) => { const m = /(\d+):(\d+):(\d+)/.exec(s || ''); return m ? (+m[1]) * 60 + (+m[2]) + (+m[3]) / 75 : null; };
+    const album = { title: '', performer: '', date: '', genre: '' }, files = [];
+    let file = null, tr = null;
+    text.split(/\r?\n/).forEach(raw => {
+      const l = raw.trim(); let m;
+      if ((m = /^FILE\s+(.+?)\s+\w+$/i.exec(l)) || (m = /^FILE\s+(.+)$/i.exec(l))){ file = { name: q(m[1]), tracks: [] }; files.push(file); tr = null; return; }
+      if ((m = /^TRACK\s+(\d+)\s+(\w+)/i.exec(l))){ tr = file && /AUDIO/i.test(m[2]) ? { no: +m[1], title: '', performer: '', start: null } : null; if (tr) file.tracks.push(tr); return; }
+      if ((m = /^TITLE\s+(.+)$/i.exec(l))){ if (tr) tr.title = q(m[1]); else album.title = q(m[1]); return; }
+      if ((m = /^PERFORMER\s+(.+)$/i.exec(l))){ if (tr) tr.performer = q(m[1]); else album.performer = q(m[1]); return; }
+      if ((m = /^REM\s+DATE\s+(.+)$/i.exec(l))){ album.date = q(m[1]); return; }
+      if ((m = /^REM\s+GENRE\s+(.+)$/i.exec(l))){ album.genre = q(m[1]); return; }
+      if ((m = /^INDEX\s+01\s+(\S+)/i.exec(l)) && tr) tr.start = time(m[1]);
+    });
+    const real = files.filter(f => f.tracks.some(t => t.start != null));
+    if (!real.length){ ppToast("That CUE sheet has no tracks in it."); return; }
+    const used = new Set(), made = [], notFound = [];
+    for (const f of real){
+      const pi = ppFindByName(f.name, used);
+      if (pi < 0){ notFound.push(f.name); continue; }
+      const parent = tracks[pi];
+      if (!parent.nativeUri && window.PPNative && PPNative.ensureLocal){ try { await PPNative.ensureLocal(parent); } catch(e){} }
+      if (!parent.nativeUri){ ppToast('CUE sheets need the Android app (the album file has to be on the phone).'); return; }
+      const list = f.tracks.filter(t => t.start != null).sort((a, b) => a.start - b.start);
+      list.forEach((t, k) => {
+        const end = k + 1 < list.length ? list[k + 1].start : (parent.duration > t.start ? parent.duration : null);
+        const dbId = 'cue_' + parent.dbId + '_' + t.no;
+        let idx = tracks.findIndex(x => x.dbId === dbId);
+        const fields = {
+          dbId, cueOf: parent.dbId, cueStart: t.start, cueEnd: end,
+          nativeUri: parent.nativeUri.split('#pp-cue=')[0] + '#pp-cue=' + t.no, nativeLocal: false, nativeArt: parent.nativeArt || null,
+          url: parent.url, artUrl: parent.artUrl || null, artDbId: null, kind: 'audio', ext: parent.ext, fileName: parent.fileName,
+          title: t.title || ('Track ' + t.no), artist: t.performer || album.performer || parent.artist,
+          album: album.title || parent.album || '', trackNo: t.no, year: album.date || parent.year || null, genre: album.genre || parent.genre || '',
+          duration: end != null ? end - t.start : null, size: null, width: null, height: null, folder: parent.folder || ''
+        };
+        if (idx >= 0) Object.assign(tracks[idx], fields);
+        else { tracks.push(Object.assign({ playlistIds: [] }, fields)); idx = tracks.length - 1; }
+        made.push(idx);
+      });
+    }
+    if (!made.length){ ppToast('Add "' + notFound[0] + '" to your library first, then import the CUE sheet again.'); return; }
+    ppMakePlaylist(album.title || name.replace(/\.cue$/i, '') || 'Album', made,
+      'Split "%s" into ' + made.length + ' tracks' + (notFound.length ? '. Not in the library: ' + notFound.join(', ') : '.'));
   }
   ppEl('m3u-export-btn').addEventListener('click', ppExportM3U);
   ppEl('m3u-import-btn').addEventListener('click', () => ppEl('m3u-input').click());
-  ppEl('m3u-input').addEventListener('change', (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) ppImportM3U(f); });
+  ppEl('m3u-input').addEventListener('change', (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) ppImportPlaylist(f); });
   const ppCloseAdd = () => { ppEl('add-dropdown').classList.remove('open'); ppEl('add-btn').classList.remove('open'); };
   ppEl('add-url-btn').addEventListener('click', () => { ppCloseAdd(); ppOpenUrl(); });
   ppEl('add-m3u-btn').addEventListener('click', () => { ppCloseAdd(); ppEl('m3u-input').click(); });

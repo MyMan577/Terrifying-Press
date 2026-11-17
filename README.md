@@ -41,11 +41,14 @@ Press Play has a lot of settings, and most of them are things other players leav
 - Remembers where you stopped in each track, and lets you choose how often progress is saved. You can also turn it off so tracks always start from the beginning.
 - Video settings aimed at slower phones, including frame-drop protection, audio lead and a lighter interface while video plays.
 - Styled subtitle support for .ass and .ssa files, including colors, fonts and positions.
-- Sleep timer, A-B repeat, shuffle, and playlist import and export.
+- Sleep timer, A-B repeat, shuffle, and playlist import (M3U, PLS, XSPF, CUE) and export.
 
 **Plays nearly anything**
 - A built-in VLC engine (libVLC) takes over whenever a file or stream won't play in the normal player: WMV and WMA, RealMedia, APE, DTS and TrueHD soundtracks, VC-1, MPEG-2, odd AVIs, and more. Audio is converted once, on the phone, and keeps the EQ, effects, queue and notification. Video opens in a full-screen VLC player with audio and subtitle tracks, aspect ratio, delays, speed and chapters. You can turn the hand-over off under Settings, Video decoding. The VLC engine runs on 64-bit ARM phones.
 - Streams: HLS (.m3u8), DASH (.mpd), Smooth Streaming, RTSP and RTMP play in the normal player; MMS, UDP/RTP and SRT go through the VLC engine. Paste a link in Open URL, or open one with Press Play from another app.
+- Cast to a Chromecast, or a TV or speaker with Chromecast built in, from Cast & VLC player in the menu (it can sit on the Quick bar too). Anything the device can't play is converted on the fly.
+- The VLC player (Cast & VLC player, then VLC player) adds deinterlacing for old TV and DVD rips, drag-to-look-around for 360° videos, and Dolby / DTS passthrough to an HDMI or USB receiver.
+- Playlist import reads M3U, PLS and XSPF, and CUE sheets: an album ripped as one big file with a .cue shows up as its separate songs, each playing just its part of the file.
 - Network shares: + Add, Network shares finds Windows/SMB shares, UPnP/DLNA media servers and NFS exports on your Wi-Fi, and you can connect to SMB, FTP, SFTP and NFS servers by address. Play a file straight from a share, or add a whole folder to your library.
 
 **Backup and moving phones**

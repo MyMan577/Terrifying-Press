@@ -373,7 +373,8 @@ class NativePlayerPlugin : Plugin() {
             // Off the main thread: verify the source can be seeked (copy it locally if it can't).
             // The length probe is NOT done here: parsing a whole video with MediaMetadataRetriever can take seconds,
             // and ExoPlayer reports the duration itself. It runs after the item is handed over (probeAsync below).
-            val play = try { SourceResolver.playable(context, orig) } catch (e: Exception) { orig }
+            val file = cueFile(orig)
+            val play = try { SourceResolver.playable(context, file) } catch (e: Exception) { file }
             main.post {
                 if (gen != loadGen) { call.resolve(); return@post }   // a newer load superseded this one
                 withSvc(call) { s ->
@@ -405,8 +406,21 @@ class NativePlayerPlugin : Plugin() {
         val b64 = d.optString("artBase64", "")
         if (b64.isNotEmpty()) md.setArtworkData(Base64.decode(b64, Base64.DEFAULT), MediaMetadata.PICTURE_TYPE_FRONT_COVER)
         val id = d.optString("id", "")
-        return MediaItem.Builder().setMediaId(if (id.isNotEmpty()) id else orig).setUri(Uri.parse(play)).setMediaMetadata(md.build()).build()
+        val b = MediaItem.Builder().setMediaId(if (id.isNotEmpty()) id else orig).setUri(Uri.parse(play)).setMediaMetadata(md.build())
+        // A track from a CUE sheet: one stretch of a whole-album file. ExoPlayer plays just that part and reports
+        // its own length and position, so the page sees an ordinary track.
+        val cs = d.optLong("clipStartMs", -1L)
+        val ce = d.optLong("clipEndMs", -1L)
+        if (cs > 0 || ce > 0) {
+            val clip = MediaItem.ClippingConfiguration.Builder().setStartPositionMs(maxOf(0L, cs))
+            if (ce > cs) clip.setEndPositionMs(ce)
+            b.setClippingConfiguration(clip.build())
+        }
+        return b.build()
     }
+
+    /** CUE-sheet tracks share one file; the page tells them apart by a "#pp-cue=N" marker that the file does not have. */
+    private fun cueFile(uri: String): String = uri.substringBefore("#pp-cue=")
 
     @PluginMethod fun play(call: PluginCall) = withSvc(call) { it.syncFocus(); it.player.play(); call.resolve() }
     @PluginMethod fun pause(call: PluginCall) = withSvc(call) { it.player.pause(); call.resolve() }
@@ -472,7 +486,8 @@ class NativePlayerPlugin : Plugin() {
         val gen = ++nextGen
         if (orig.isNullOrEmpty()) { withSvc(call) { s -> clearNext(s); call.resolve() }; return }
         runBg {
-            val play = try { SourceResolver.playable(context, orig) } catch (e: Exception) { orig }
+            val file = cueFile(orig)
+            val play = try { SourceResolver.playable(context, file) } catch (e: Exception) { file }
             main.post {
                 if (gen != nextGen) { call.resolve(); return@post }
                 withSvc(call) { s ->

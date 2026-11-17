@@ -15,7 +15,7 @@
   // real listeners already attached above) that we relocate between the
   // quick bar row and its slot inside the settings menu, rather than
   // cloning or rebuilding anything.
-  const QUICKBAR_ORDER = ['eq', 'boost', 'fx', 'speed', 'marks', 'abloop', 'cutter', 'stems', 'mashup', 'spatial', 'sleep', 'framestep', 'viewmode', 'vizsens', 'latency', 'memc', 'upscale', 'appearance'];
+  const QUICKBAR_ORDER = ['eq', 'boost', 'fx', 'speed', 'marks', 'abloop', 'cast', 'cutter', 'stems', 'mashup', 'spatial', 'sleep', 'framestep', 'viewmode', 'vizsens', 'latency', 'memc', 'upscale', 'appearance'];
   const QUICKBAR_DEFAULT = ['speed', 'marks', 'abloop', 'cutter', 'sleep'];
   const QUICKBAR_KEY = 'playerQuickBar';
   // Hard cap: the pill row lives in the same fixed-size column as the
@@ -58,7 +58,7 @@
 
   // How many buttons each item puts on the bar: Frame step is two (back, forward) and fit & zoom three (Fit, Zoom, Reset),
   // so they count as that many towards the cap instead of one.
-  const QUICKBAR_WEIGHT = { framestep: 2, viewmode: 3 };
+  const QUICKBAR_WEIGHT = { framestep: 2, viewmode: 3, cast: 2 };
   const qbWeight = name => QUICKBAR_WEIGHT[name] || 1;
   const qbUsed = list => list.reduce((n, x) => n + qbWeight(x), 0);
   // Pills actually shown right now: the saved list, in order, as far as the current mode's limit allows
