@@ -272,13 +272,9 @@
     flex:1;
     min-width:0;
   }
-  /* Level 6 unlock: two extra bands (500Hz, 6K). Hidden, not removed, so
-     no DOM/audio-graph rebuilding is needed when they unlock - just a
-     class toggle from refreshEqBandLocks(). */
+  /* All ten bands always show (500Hz and 6K used to wait for Level 6). */
   #eq-bands{ gap:2px; }
   .eq-band-gain{ font-size:9px; letter-spacing:-0.2px; }
-  .eq-band-pro{ display:none; }
-  .eq-band-pro.unlocked{ display:flex; }
   .eq-band-gain{
     font-size:10px;
     color:var(--text-dim);

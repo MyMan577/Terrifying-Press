@@ -59,13 +59,15 @@ Settings, App mode switches the whole app between a few presets. Switching never
 
 | Mode | What it is | How to get it |
 | --- | --- | --- |
-| Lite | A simpler layout: fewer presets, no levels, EXP or games | Free from the start |
+| Lite | A plain player: the essentials only (play, skip, shuffle, repeat, volume, a simple equalizer, speed, sleep timer, casting, subtitles), with no effects, AI tools, visualizer, levels or games, and the same battery savings as Focus | Free from the start |
 | PLUS | Every perk unlocked from the start, levels and games kept | Pass the Press Play quiz, or 3 hours of listening or watching |
 | Focus | Just the player: everything unlocked, and levels, games, Points, Bloopy, the clicker and toy widgets out of the way, tuned for battery | Same as PLUS |
 | PREMIUM | Everything unlocked, levels and games hidden | Score 90% in The Marathon |
 | Playground | Everything unlocked plus the Playground extras | Bought in the Points shop |
 
-Focus saves battery by playing video through Android's own player (hardware decoding, no copying frames through the page), holding the screen at 60 Hz, drawing the visualizer at 30 fps, freezing moving backgrounds and blur, and keeping background tagging waiting for the charger. Bloopy (and its microphone wake word) stays off while Focus is on. Every audio and video tool stays.
+Lite starts from a clean slate: effects, boost, video filters, smoothing and upscaling are switched off, and the settings they had come back when you leave Lite. The equalizer has all 10 bands for everyone.
+
+Lite and Focus save battery by playing video through Android's own player (hardware decoding, no copying frames through the page), holding the screen at 60 Hz, drawing the visualizer at 30 fps, freezing moving backgrounds and blur, and keeping background tagging waiting for the charger. Bloopy (and its microphone wake word) stays off while Focus is on. Every audio and video tool stays.
 
 ## Privacy
 

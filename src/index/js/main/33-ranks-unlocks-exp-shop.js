@@ -53,7 +53,7 @@
     // reached. `desc` is shown in the rank-up toast and the rank list.
     const REWARDS = [
       { level: 3,  desc: 'New backgrounds: Deep Space & Sunset Groove.' },
-      { level: 6,  desc: 'Expanded equalizer: Symphonic & Basshead Pro presets, plus two extra EQ bands (500Hz & 6K).' },
+      { level: 6,  desc: 'Expanded equalizer: Symphonic & Basshead Pro presets.' },
       { level: 10, desc: 'New backgrounds: Neon Wave & Aurora Drift.' },
       { level: 15, desc: 'New setting: pick a custom app-wide accent color.' },
       { level: 21, desc: 'New backgrounds: Midnight Amber & Retro Grid, plus Cinematic & Crystal Air EQ presets.' },

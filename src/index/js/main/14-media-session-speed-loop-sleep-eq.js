@@ -535,15 +535,16 @@
     const h = v => Math.round(v * 0.5 * 2) / 2;
     return [h(a[0])].concat(a, [h(a[7])]);
   };
+  // All ten bands are shown to everyone, at every level and in every mode.
   const EQ_BANDS = [
     { freq: 31,    label: '31' },
     { freq: 60,    label: '60' },
     { freq: 170,   label: '170' },
     { freq: 350,   label: '350' },
-    { freq: 500,   label: '500',  pro: true, proLevel: 6 },
+    { freq: 500,   label: '500' },
     { freq: 1000,  label: '1K' },
     { freq: 3500,  label: '3.5K' },
-    { freq: 6000,  label: '6K',   pro: true, proLevel: 6 },
+    { freq: 6000,  label: '6K' },
     { freq: 10000, label: '10K' },
     { freq: 16000, label: '16K' }
   ];
