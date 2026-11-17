@@ -2,7 +2,7 @@
 (function(){
   const V = document.getElementById('video-el'), A = document.getElementById('audio');
   if (!V || !A) return;
-  const toast = (m) => { try { showToast(m); } catch(e){} };
+  const toast = (m) => { try { window.ppToast(m); } catch(e){} };
   const act = () => (V.currentSrc && V.videoWidth > 0) ? V : A;
 
   // ---- Extra keyboard shortcuts (existing: Space, arrows, , . A Z Esc) ----

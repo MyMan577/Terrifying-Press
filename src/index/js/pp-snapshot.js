@@ -2,7 +2,7 @@
 (function(){
   const V=document.getElementById('video-el'), pip=document.getElementById('pip-btn');
   if(!V) return;
-  const toast=m=>{try{showToast(m);}catch(e){}};
+  const toast=m=>{try{window.ppToast(m);}catch(e){}};
   function snap(){
     if(!V.currentSrc||!V.videoWidth){toast('Play a video to save a snapshot.');return;}
     if(window.PPNative&&PPNative.videoActive()){

@@ -810,7 +810,7 @@
   // Pieces of the Home screen that Customize > Layout (pp-widgets.js) builds its widgets from.
   window.__ppHomeKit = {
     cardHTML, listRowHTML, sectionHTML, thumbHTML, esc, relTime, fmtDur,
-    history: () => playHistory, playFrom, openPlayer, goTab: v => goTab(v), setView: v => setView(v),
+    history: () => playHistory, playFrom, openPlayer, closePlayer, playerOpen: () => body.hasAttribute('data-pl-player'), goTab: v => goTab(v), setView: v => setView(v),
     view: () => view, on: () => on, renderHome: f => renderHome(f),
     observe: el => { if (thumbObserver) el.querySelectorAll('.ph-thumb:not(.has-img)').forEach(t => thumbObserver.observe(t)); },
     hasTrack: () => body.classList.contains('pl-has-track')
