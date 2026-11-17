@@ -47,11 +47,11 @@
 (function(){
   var l=document.getElementById('pp-loader');
   try{
-    var ed=localStorage.getItem('ppPlaygroundMode')==='1'?'playground':localStorage.getItem('ppLiteMode')==='1'?'lite':localStorage.getItem('ppPlusMode')==='1'?'plus':localStorage.getItem('ppPremiumMode')==='1'?'premium':'';
+    var ed=localStorage.getItem('ppPlaygroundMode')==='1'?'playground':localStorage.getItem('ppLiteMode')==='1'?'lite':localStorage.getItem('ppPlusMode')==='1'?'plus':localStorage.getItem('ppPremiumMode')==='1'?'premium':localStorage.getItem('ppFocusMode')==='1'?'focus':'';
     if(ed&&l){
       l.setAttribute('data-ed',ed);
       var t=l.querySelector('.pp-ld-title');
-      if(t)t.insertAdjacentHTML('beforeend','<span class="pp-ld-ed" data-ed="'+ed+'">'+{lite:'Lite',plus:'Plus',premium:'Premium',playground:'Playground'}[ed]+'</span>');
+      if(t)t.insertAdjacentHTML('beforeend','<span class="pp-ld-ed" data-ed="'+ed+'">'+{lite:'Lite',plus:'Plus',premium:'Premium',playground:'Playground',focus:'Focus'}[ed]+'</span>');
     }
   }catch(e){}
   setTimeout(function(){var x=document.getElementById('pp-loader');if(x)x.remove()},15000);

@@ -409,6 +409,7 @@
     // The panel is "active" (worth spending cycles on) when it's open, or
     // whenever background earning is explicitly turned on.
     function shouldRunGameLoop(){
+      if (window.ppFocus) return false;                 // Focus mode: the clicker is hidden and earns nothing
       if (document.hidden) return isBackgroundEarnOn();
       return root.classList.contains('dc-open') || isBackgroundEarnOn();
     }

@@ -137,7 +137,7 @@
   }
 
   // ---------- Sidebar tabs ----------
-  // Header title: "Press Play Media <Lite|Plus|Premium>", the edition word coloured;
+  // Header title: "Press Play Media <Lite|Plus|Premium|Playground|Focus>", the edition word coloured;
   // " Settings" is added on the Settings tab. Nothing is added when no edition is on.
   function currentEdition(){
     try {
@@ -145,10 +145,11 @@
       if (localStorage.getItem('ppLiteMode') === '1') return 'lite';
       if (localStorage.getItem('ppPlusMode') === '1') return 'plus';
       if (localStorage.getItem('ppPremiumMode') === '1') return 'premium';
+      if (localStorage.getItem('ppFocusMode') === '1') return 'focus';
     } catch(e){}
     return '';
   }
-  const EDITION_NAMES = { lite: 'Lite', plus: 'Plus', premium: 'Premium', playground: 'Playground' };
+  const EDITION_NAMES = { lite: 'Lite', plus: 'Plus', premium: 'Premium', playground: 'Playground', focus: 'Focus' };
   window.__ppEdition = currentEdition;
   let lastEdition = null;
   function syncTitleMode(){
@@ -157,13 +158,13 @@
     if (lastEdition !== null && lastEdition !== ed && window.__ppRenderHomeNow) window.__ppRenderHomeNow();
     lastEdition = ed;
     const tg = document.getElementById('ed-tag');
-    if (tg) tg.textContent = ({ lite: 'Just play.', plus: 'Everything unlocked.', premium: 'The full experience.', playground: 'Everything. Unlocked. Unleashed.' })[ed] || '';
+    if (tg) tg.textContent = ({ lite: 'Just play.', plus: 'Everything unlocked.', premium: 'The full experience.', playground: 'Everything. Unlocked. Unleashed.', focus: 'Everything you need. Nothing you don\'t.' })[ed] || '';
     const html = ed ? ' <span class="title-mode" data-ed="' + ed + '">' + EDITION_NAMES[ed] + '</span>' : '';
     document.querySelectorAll('.ed-slot').forEach(el => { if (el.dataset.ed !== ed){ el.dataset.ed = ed; el.innerHTML = html; } });
     const tail = document.getElementById('title-tail');
     if (tail) tail.textContent = sidebarPanes.settings.classList.contains('active') ? ' Settings' : '';
   }
-  // The mode scripts flip pp-lite / pp-plus / pp-premium on <body>; follow them.
+  // The mode scripts flip pp-lite / pp-plus / pp-premium / pp-focus on <body>; follow them.
   new MutationObserver(syncTitleMode).observe(document.body, { attributes: true, attributeFilter: ['class'] });
   window.__ppSyncTitle = syncTitleMode;
   sidebarTabBtns.forEach(btn => {

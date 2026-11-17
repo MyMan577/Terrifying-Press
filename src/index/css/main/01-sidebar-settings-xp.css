@@ -74,6 +74,7 @@
   .title-mode{ color:var(--accent); }
   .title-mode[data-ed="lite"]{ color:#a78bfa; }
   .title-mode[data-ed="plus"]{ color:#22d3ee; }
+  .title-mode[data-ed="focus"]{ color:#34d399; }
   .title-mode[data-ed="playground"]{
     background:linear-gradient(90deg,#6ee7d0,#8b5cff,#ff5fd8,#ffb36e,#6ee7d0); background-size:200% 100%;
     -webkit-background-clip:text; background-clip:text;
