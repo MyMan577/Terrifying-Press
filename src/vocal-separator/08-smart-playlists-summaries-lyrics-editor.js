@@ -91,6 +91,7 @@
     async function isAway() {
       if (isBusy) return false;
       if (Date.now() - lastInput < parseInt(ls('ppvBgIdle') || '5', 10) * 60000) return false;
+      if (ls('ppLiteMode') === '1') return false;                     // Lite: no background AI work at all
       const focus = ls('ppFocusMode') === '1';                         // Focus mode: background AI work waits for the charger and for silence
       if ((ls('ppvBgPlay') !== '1' || focus) && mediaPlaying()) return false;
       if ((ls('ppvBgChg') === '1' || focus) && navigator.getBattery) { try { const b = await navigator.getBattery(); if (!b.charging) return false; } catch (e) {} }
@@ -99,7 +100,7 @@
     const freeBg = () => { if (bgCache) { Object.values(bgCache).forEach(s => s && s.release && s.release()); bgCache = null; } };
     const surpDue = () => Date.now() - (parseInt(ls('ppvSurpLast') || '0', 10)) >= parseInt(ls('ppvSurpEv') || '24', 10) * 3600000;
     async function bgTick() {
-      if (bgBusy) return; const bgOn = ls('ppvBg') === '1', surpOn = ls('ppvSurp') === '1' && ls('ppFocusMode') !== '1';   // no surprise playlists in Focus mode const a = A();
+      if (bgBusy) return; const bgOn = ls('ppvBg') === '1', surpOn = ls('ppvSurp') === '1' && ls('ppFocusMode') !== '1' && ls('ppLiteMode') !== '1';   // no surprise playlists in Lite or Focus const a = A();
       if (!a || (!bgOn && !surpOn)) { freeBg(); return; }
       if (!(await isAway())) { freeBg(); return; }
       bgBusy = true;
