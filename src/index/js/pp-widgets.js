@@ -740,7 +740,10 @@
   function renderPage(){
     if (!openPageId) return;
     var top = pageEl.scrollTop;
-    pageEl.innerHTML = renderZone('page:' + openPageId, null);
+    var editingThis = editing === 'page:' + openPageId, empty = !(L.zones['page:' + openPageId] || []).length;
+    pageEl.innerHTML = (editingThis ? '' : '<div class="pw-page-bar"><button type="button" class="pw-page-edit" data-pw-pageedit="1">' + svg('grid') + 'Edit page</button></div>') +
+      renderZone('page:' + openPageId, null) +
+      (empty && !editingThis ? '<div class="pw-page-empty">' + svg('page') + '<b>This page is empty</b><span>Tap Edit page to add a clock, buttons, rows of videos and more.</span></div>' : '');
     pageEl.scrollTop = top;
     if (kit()) kit().observe(pageEl);
     startTick(); liveUpdate();
@@ -895,6 +898,19 @@
     else if (t.type === 'player') runAction('player');
     else if (t.type === 'action') runAction(t.action, t);
   }, true);
+  // Long-press a page's tab: open it in edit mode.
+  var lpTimer = 0, lpFired = false;
+  if (bar){
+    bar.addEventListener('pointerdown', function(e){
+      var b = e.target.closest('.pw-tab'); if (!b) return;
+      var t = tabList().find(function(x){ return x.id === b.dataset.pwTab; }); if (!t || t.type !== 'page') return;
+      lpFired = false; clearTimeout(lpTimer);
+      lpTimer = setTimeout(function(){ lpFired = true; if (navigator.vibrate) try { navigator.vibrate(15); } catch(err){} startEdit('page:' + t.page); }, 550);
+    });
+    ['pointerup','pointercancel','pointerleave'].forEach(function(ev){ bar.addEventListener(ev, function(){ clearTimeout(lpTimer); }); });
+    bar.addEventListener('click', function(e){ if (lpFired){ lpFired = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+    bar.addEventListener('contextmenu', function(e){ if (e.target.closest('.pw-tab')) e.preventDefault(); });
+  }
   function goView(v){
     closePage();
     var K = kit(); if (!K) return;
@@ -954,6 +970,7 @@
   document.addEventListener('contextmenu', function(e){ if (!editing && e.target.closest && e.target.closest('[data-pw-hold]')) e.preventDefault(); }, true);
   // Rows on a page / in the player play through Home's own handler, which these zones aren't inside.
   pageEl.addEventListener('click', function(e){
+    if (e.target.closest && e.target.closest('[data-pw-pageedit]')){ if (openPageId) startEdit('page:' + openPageId); return; }
     if (editing) return;
     var c = e.target.closest('[data-act="play-video"]'); if (!c) return;
     var q = c.closest('[data-pw-q]'), A = api(), K = kit(); if (!A || !K) return;
@@ -998,7 +1015,13 @@
     zoneItems(zone, true); save();
     undoStack = [];
     editing = zone; body.classList.add('pw-editing');
-    edBar.hidden = false; edBar.querySelector('.pw-ed-title').textContent = 'Editing ' + zoneName(zone);
+    edBar.hidden = false;
+    var ttl = edBar.querySelector('.pw-ed-title');
+    if (zone.indexOf('page:') === 0){
+      ttl.innerHTML = '<input type="text" maxlength="24" aria-label="Page name" value="' + esc(zoneName(zone)) + '">';
+      var nm = ttl.firstChild, pid = zone.slice(5), tmr;
+      nm.addEventListener('input', function(){ clearTimeout(tmr); tmr = setTimeout(function(){ var p = pageById(pid); if (p){ p.name = nm.value.trim() || 'Page'; save(); applyTabs(); } }, 250); });
+    } else ttl.textContent = 'Editing ' + zoneName(zone);
     refreshZone();
   }
   function stopEdit(){
@@ -1337,7 +1360,7 @@
     }); });
     sheetBody.querySelectorAll('[data-addtab]').forEach(function(b){ b.addEventListener('click', function(){
       var k = b.dataset.addtab;
-      if (k === 'newpage'){ var p = newPage(); commit(function(a){ a.splice(a.length - 1, 0, { id:uid(), type:'page', page:p.id }); }); return; }
+      if (k === 'newpage'){ createAndEditPage(); return; }
       if (k === 'action'){ actionTabSheet(); return; }
       commit(function(a){
         var t = k.indexOf('view:') === 0 ? { id:k.slice(5), type:'view', view:k.slice(5) } : k.indexOf('page:') === 0 ? { id:uid(), type:'page', page:k.slice(5) } : { id:uid(), type:k };
@@ -1359,6 +1382,42 @@
     var p = { id:uid(), name: name || 'Page ' + (L.pages.length + 1) };
     L.pages.push(p); L.zones['page:' + p.id] = pageDefault(p.name); save();
     return p;
+  }
+  function pageOnTabs(id){ return tabList().some(function(t){ return t.type === 'page' && t.page === id; }); }
+  function addPageTab(id){ L.tabs = L.tabs || tabsDefault(); L.tabs.splice(Math.max(0, L.tabs.length - 1), 0, { id:uid(), type:'page', page:id }); }
+  function createAndEditPage(){
+    remember(); var p = newPage(); addPageTab(p.id); save(); applyTabs(); closeSheet(); startEdit('page:' + p.id);
+  }
+  function pagesSheet(){
+    var rows = L.pages.map(function(p){
+      var n = (L.zones['page:' + p.id] || []).length, onTabs = pageOnTabs(p.id);
+      return '<div class="pw-pg-row" data-pg="' + p.id + '">' +
+        '<input type="text" value="' + esc(p.name) + '" maxlength="24" data-pgname="' + p.id + '" aria-label="Page name">' +
+        '<div class="pw-pg-meta">' + n + ' widget' + (n === 1 ? '' : 's') + (onTabs ? ' \u00b7 on the tab bar' : ' \u00b7 not on the tab bar') + '</div>' +
+        '<div class="pw-pg-btns">' +
+          '<button type="button" class="pw-mini pw-pg-main" data-pgact="edit">' + svg('grid') + 'Edit</button>' +
+          '<button type="button" class="pw-mini" data-pgact="open">' + svg('eye') + 'Open</button>' +
+          '<button type="button" class="pw-mini" data-pgact="tab">' + svg('tabs') + (onTabs ? 'Remove tab' : 'Add tab') + '</button>' +
+          '<button type="button" class="pw-mini pw-danger" data-pgact="del">' + svg('x') + 'Delete</button>' +
+        '</div></div>';
+    }).join('');
+    openSheet('Your pages',
+      (L.pages.length ? '<p class="pw-note">Pages are your own screens made of widgets. Tip: long-press a page\u2019s tab to edit it.</p><div class="pw-pg-list">' + rows + '</div>'
+        : '<p class="pw-note">You have no pages yet. A page is your own screen made of widgets, opened from its own tab.</p>') +
+      '<div class="pw-sh-actions"><button type="button" class="pw-mini pw-pg-main" data-pgnew="1">' + svg('plus') + 'New page</button></div>');
+    sheetBody.querySelector('[data-pgnew]').addEventListener('click', createAndEditPage);
+    sheetBody.querySelectorAll('[data-pgname]').forEach(function(inp){ var tmr; inp.addEventListener('input', function(){ clearTimeout(tmr); tmr = setTimeout(function(){
+      var p = pageById(inp.dataset.pgname); if (!p) return; p.name = inp.value.trim() || 'Page'; save(); applyTabs(); }, 250); }); });
+    sheetBody.querySelectorAll('[data-pgact]').forEach(function(b){ b.addEventListener('click', function(){
+      var id = b.closest('[data-pg]').dataset.pg, act = b.dataset.pgact;
+      if (act === 'edit'){ closeSheet(); startEdit('page:' + id); }
+      else if (act === 'open'){ closeSheet(); openPage(id); }
+      else if (act === 'tab'){ remember(); if (pageOnTabs(id)){ L.tabs = tabList().filter(function(t){ return !(t.type === 'page' && t.page === id); }); } else addPageTab(id); save(); applyTabs(); pagesSheet(); }
+      else if (act === 'del'){
+        if (!b.dataset.armed){ b.dataset.armed = '1'; b.lastChild.textContent = 'Sure?'; setTimeout(function(){ if (b.isConnected){ delete b.dataset.armed; b.lastChild.textContent = 'Delete'; } }, 3000); return; }
+        deletePage(id); pagesSheet(); toast('Page deleted.');
+      }
+    }); });
   }
   function deletePage(id){
     remember();
@@ -1466,7 +1525,8 @@
       '<div class="pw-cz-grid">' +
         '<button type="button" class="pw-cz" data-cz="theme">' + svg('palette') + '<span>Theme</span></button>' +
         '<button type="button" class="pw-cz" data-cz="layout">' + svg('grid') + '<span>Layout</span></button>' +
-        '<button type="button" class="pw-cz" data-cz="home">' + svg('home') + '<span>Edit Home</span></button>' +
+        '<button type="button" class="pw-cz" data-cz="home">' + svg('home') + '<span>Home</span></button>' +
+        '<button type="button" class="pw-cz" data-cz="pages">' + svg('page') + '<span>Pages</span></button>' +
         '<button type="button" class="pw-cz" data-cz="tabs">' + svg('tabs') + '<span>Tab bar</span></button>' +
       '</div>';
     pane.appendChild(sec);
@@ -1475,6 +1535,7 @@
       var k = b.dataset.cz;
       if (k === 'home') return startEdit('home');
       if (k === 'tabs') return tabsSheet();
+      if (k === 'pages') return pagesSheet();
       var btn = document.getElementById('customize-btn'); if (!btn) return;
       btn.click();
       setTimeout(function(){ var t = document.querySelector('.ppth-switch button[data-p="' + k + '"]'); if (t) t.click(); }, 0);
