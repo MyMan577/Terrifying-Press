@@ -240,33 +240,67 @@
   mini.addEventListener('keydown', e => {
     if ((e.key === 'Enter' || e.key === ' ') && e.target === mini){ e.preventDefault(); openPlayer(); }
   });
-  // The mini-player has a bit of give: drag it any way and it follows with growing resistance (a rubber band), then
-  // springs back to its place with a small overshoot when you let go. A drag never counts as a tap.
-  { let sx = 0, sy = 0, down = false, locked = false, clickBlock = 0;
+  // Swipe the mini-player away: drag it down or sideways and it follows your finger, fading as it goes. Let go past
+  // about a third of the way (or flick it) and it slides off: playback pauses and the bar stays hidden until something
+  // plays again. Short of that, or dragged up, it springs back with a small overshoot. A drag never counts as a tap.
+  { let sx = 0, sy = 0, down = false, locked = false, clickBlock = 0, trail = [];
     mini.style.touchAction = 'none';
     const band = (d, lim) => Math.sign(d) * lim * (1 - 1 / (Math.abs(d) / lim * 0.6 + 1));   // ~lim px at most
+    const offset = (dx, dy) => {
+      // sideways and down follow the finger; up only gives a little
+      const side = Math.abs(dx) > Math.abs(dy);
+      return side ? [dx, band(dy, 20)] : dy > 0 ? [band(dx, 30), dy] : [band(dx, 46), band(dy, 30)];
+    };
+    const show = (ox, oy) => {
+      const gone = Math.max(Math.abs(ox) / (mini.offsetWidth * 0.9 || 300), oy > 0 ? oy / 110 : 0);
+      mini.style.transform = 'translate(' + ox.toFixed(1) + 'px,' + oy.toFixed(1) + 'px) rotate(' + (ox * 0.03).toFixed(2) + 'deg)';
+      mini.style.opacity = String(Math.max(0.15, 1 - gone * 0.85).toFixed(3));
+    };
     mini.addEventListener('pointerdown', e => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
-      down = true; locked = false; sx = e.clientX; sy = e.clientY;
+      down = true; locked = false; sx = e.clientX; sy = e.clientY; trail = [[performance.now(), e.clientX, e.clientY]];
     });
     mini.addEventListener('pointermove', e => {
       if (!down) return;
-      const dx = e.clientX - sx, dy = e.clientY - sy;
+      const dx = e.clientX - sx, dy = e.clientY - sy, now = performance.now();
+      trail.push([now, e.clientX, e.clientY]); while (trail.length > 2 && now - trail[0][0] > 100) trail.shift();   // the last 0.1 s, for the flick speed
       if (!locked){
         if (Math.hypot(dx, dy) < 6) return;
         locked = true; try { mini.setPointerCapture(e.pointerId); } catch(err){}
         mini.style.transition = 'none';
       }
-      const ox = band(dx, 46), oy = band(dy, 30);
-      mini.style.transform = 'translate(' + ox.toFixed(1) + 'px,' + oy.toFixed(1) + 'px) rotate(' + (ox * 0.04).toFixed(2) + 'deg) scale(' + (1 - Math.min(0.03, Math.hypot(ox, oy) / 1500)).toFixed(3) + ')';
+      const o = offset(dx, dy); show(o[0], o[1]);
     });
-    const end = () => {
+    const springBack = () => {
+      mini.style.transition = 'transform .5s cubic-bezier(.3,1.6,.5,1), opacity .3s';
+      mini.style.transform = ''; mini.style.opacity = '';
+      setTimeout(() => { if (!down) mini.style.transition = ''; }, 520);
+    };
+    const dismiss = (ox, oy) => {
+      const w = window.innerWidth, side = Math.abs(ox) > Math.abs(oy);
+      mini.style.transition = 'transform .22s ease-in, opacity .22s ease-in';
+      mini.style.transform = side ? 'translate(' + (Math.sign(ox) * w).toFixed(0) + 'px,0) rotate(' + (Math.sign(ox) * 8) + 'deg)' : 'translate(' + ox.toFixed(0) + 'px,' + (oy + 160).toFixed(0) + 'px)';
+      mini.style.opacity = '0';
+      try { if (navigator.vibrate) navigator.vibrate(12); } catch(err){}
+      setTimeout(() => {
+        if (playBtn.getAttribute('aria-label') === 'Pause') playBtn.click();
+        miniDismissed = miniKey(); syncMini();
+        mini.style.transition = 'none'; mini.style.transform = ''; mini.style.opacity = '';
+        requestAnimationFrame(() => { mini.style.transition = ''; });
+        if (window.ppToast) window.ppToast('Paused. Play something to bring the mini player back.');
+      }, 230);
+    };
+    const end = e => {
       if (!down) return; down = false;
       if (!locked) return;
       clickBlock = performance.now() + 350;       // the click that follows a drag must not open the player
-      mini.style.transition = 'transform .5s cubic-bezier(.3,1.6,.5,1)';
-      mini.style.transform = '';
-      setTimeout(() => { if (!down) mini.style.transition = ''; }, 520);
+      if (!e || e.type !== 'pointerup'){ springBack(); return; }
+      const dx = e.clientX - sx, dy = e.clientY - sy, o = offset(dx, dy), side = Math.abs(dx) > Math.abs(dy);
+      const a = trail[0], z = trail[trail.length - 1], dt = Math.max(16, z[0] - a[0]), fresh = performance.now() - z[0] < 80;
+      const vx = fresh ? (z[1] - a[1]) / dt : 0, vy = fresh ? (z[2] - a[2]) / dt : 0;
+      const far = side ? Math.abs(dx) > mini.offsetWidth * 0.33 : dy > 55;
+      const flick = side ? Math.abs(vx) > 0.6 && Math.sign(vx) === Math.sign(dx) && Math.abs(dx) > 24 : vy > 0.5 && dy > 18;
+      if (far || flick) dismiss(o[0], o[1]); else springBack();
     };
     mini.addEventListener('pointerup', end);
     mini.addEventListener('pointercancel', end);
