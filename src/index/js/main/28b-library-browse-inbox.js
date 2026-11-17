@@ -449,6 +449,7 @@
   function ppAutoScan(){
     if (!(window.PPNative && PPNative.enabled && PPNative.lib && PPNative.lib.scanDevice) || !ppAutoScanOn()) return Promise.resolve();
     if (ppAutoScanP) return ppAutoScanP;
+    if (ppScanBusy) return Promise.resolve();    // Scan phone is running: its finds go straight to the library
     ppAutoScanP = (async () => {
       const before = ppFoundList().length;
       const known = () => tracks.map(t => t.nativeUri).filter(Boolean).concat(ppFoundList().map(e => e.uri), ppIgnoredUris());

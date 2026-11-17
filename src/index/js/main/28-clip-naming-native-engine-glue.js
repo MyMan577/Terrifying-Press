@@ -353,9 +353,15 @@
     if (kind === 'folder') showToast('Scanning folder…');
     return true;
   }
-  // "Scan phone": asks for media access if needed, then adds every song and video the phone's media library knows about.
+  // "Scan phone": asks for media access if needed, then adds every song and video the phone's media library knows about
+  // straight to the library (never to New on this phone), leaving out duplicates and byte-for-byte copies.
+  var ppManualScan = false, ppScanBusy = false, ppScanStats = { added: 0, skipped: 0 };
   async function ppScanDevice(){
     if (!(window.PPNative && PPNative.enabled && PPNative.lib && PPNative.lib.scanDevice)) return;
+    if (ppScanBusy) return;
+    // Set before the permission prompt: it sends the app to the background and back, which would otherwise start a
+    // background look that sends this scan's finds to New on this phone.
+    ppScanBusy = true;
     try {
       let a = await PPNative.lib.mediaAccess();
       if (!a.audio && !a.video) a = await PPNative.lib.requestMediaAccess();
@@ -363,13 +369,76 @@
         showToast('Media access is off. Allow it in Android Settings under Apps, Press Play, Permissions, or add files with Files or Folder.', 'error');
         return;
       }
-      if (ppAutoScanP) await ppAutoScanP;   // a background look is running: let it finish so its finds do not land in the library
+      if (ppAutoScanP) await ppAutoScanP;   // a background look was already running: let it finish (its finds are taken below)
+      ppManualScan = true;
+      ppScanStats = { added: 0, skipped: 0 };
       showToast('Scanning this phone…');
-      const r = await PPNative.lib.scanDevice(tracks.map(t => t.nativeUri).filter(Boolean), true);
-      const n = (r && r.total) || 0;
+      // Whatever was already waiting in New on this phone goes straight in too.
+      const waiting = ppFoundList().slice();
+      if (waiting.length){ ppFound = []; ppFoundSave(); ppAddNative(waiting, 'scan'); }
+      await PPNative.lib.scanDevice(tracks.map(t => t.nativeUri).filter(Boolean), true);
+      await new Promise(r => setTimeout(r, 400));   // let the last batch of finds arrive
+      await ppAddChain;                              // and finish the duplicate checks
       ppFoundPrune();
-      showToast(n ? ('Added ' + n + ' new file' + (n === 1 ? '' : 's')) : 'No new music or videos found');
+      const { added, skipped } = ppScanStats;
+      const dup = skipped ? (skipped + ' duplicate' + (skipped === 1 ? '' : 's') + ' skipped') : '';
+      showToast(added ? ('Added ' + added + ' new file' + (added === 1 ? '' : 's') + (dup ? ', ' + dup : '')) : ('No new music or videos found' + (dup ? ' (' + dup + ')' : '')));
     } catch(e){ showToast('Could not scan: ' + ((e && e.message) || e), 'error'); }
+    finally { ppManualScan = false; ppScanBusy = false; }
+  }
+  // ---------- duplicate checks for scanned files ----------
+  // A duplicate is the same song under another file: the same title and artist with (nearly) the same length, or the
+  // same file name and size. A byte-for-byte copy is a file whose bytes match one already in the library, whatever it
+  // is called; only files of exactly the same size are read to check.
+  const ppHashes = new Map();   // uri or dbId -> sha-256
+  const ppNorm = (s) => String(s || '').toLowerCase().replace(/\.[a-z0-9]{2,4}$/, '').replace(/[\s_]+/g, ' ').trim();
+  const ppSongKey = (title, artist) => ppNorm(title) + '\u0001' + ppNorm(artist);
+  async function ppHashBlob(blob){
+    const d = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+    return Array.from(new Uint8Array(d), b => b.toString(16).padStart(2, '0')).join('');
+  }
+  async function ppHashMany(items){   // items: [{ key, uri } | { key, dbId }]
+    const need = items.filter(o => !ppHashes.has(o.key));
+    const uris = need.filter(o => o.uri).map(o => o.uri);
+    if (uris.length && PPNative.lib.hashFiles){
+      try { const r = await PPNative.lib.hashFiles(uris); const h = (r && r.hashes) || {}; for (const u of uris) if (h[u]) ppHashes.set(u, h[u]); } catch(e){}
+    }
+    for (const o of need) if (o.dbId){
+      try { const b = await dbGet(o.dbId); if (b) ppHashes.set(o.key, await ppHashBlob(b)); } catch(e){}
+    }
+  }
+  async function ppDropDuplicates(entries){
+    const byKey = new Map(), byNameSize = new Set(), bySize = new Map();
+    const remember = (key, dur, name, size, ref) => {
+      if (key !== '\u0001'){ if (!byKey.has(key)) byKey.set(key, []); byKey.get(key).push(+dur || 0); }
+      if (size > 0){
+        if (name) byNameSize.add(ppNorm(name) + '|' + size);
+        if (!bySize.has(size)) bySize.set(size, []);
+        bySize.get(size).push(ref);
+      }
+    };
+    for (const t of tracks){
+      if (t.remoteUrl) continue;
+      remember(ppSongKey(t.title, t.artist), t.duration, t.fileName, t.size, t.nativeUri ? { key: t.nativeUri, uri: t.nativeUri } : { key: t.dbId, dbId: t.dbId });
+    }
+    const keep = [], skipped = [];
+    for (const e of entries){
+      const name = e.title || e.name, artist = e.artist || '', size = e.size >= 0 ? e.size : 0, dur = +e.durationSec || 0;
+      const key = ppSongKey(name, artist);
+      const sameSong = (artist || e.title) && (byKey.get(key) || []).some(d => !d || !dur || Math.abs(d - dur) <= 2);
+      const sameFile = size > 0 && e.name && byNameSize.has(ppNorm(e.name) + '|' + size);
+      if (sameSong || sameFile){ skipped.push(e.uri); continue; }
+      if (size > 0 && bySize.has(size)){
+        const refs = bySize.get(size), me = { key: e.uri, uri: e.uri };
+        await ppHashMany(refs.concat([me]));
+        const h = ppHashes.get(e.uri);
+        if (h && refs.some(r => ppHashes.get(r.key) === h)){ skipped.push(e.uri); continue; }
+      }
+      remember(key, dur, e.name, size, { key: e.uri, uri: e.uri });
+      keep.push(e);
+    }
+    if (skipped.length) ppIgnoreUris(skipped);   // so background looks stop offering them
+    return { keep, skipped: skipped.length };
   }
   const PP_FOLDERS_KEY = 'ppNativeFolders';
   function ppRememberFolder(tree){
@@ -378,9 +447,23 @@
       if (l.indexOf(tree) < 0){ l.push(tree); localStorage.setItem(PP_FOLDERS_KEY, JSON.stringify(l)); }
     } catch(e){}
   }
-  async function ppAddNative(entries, src){
+  // Scanned files are checked one batch at a time, so a copy in one batch is caught against the batch before it.
+  var ppAddChain = Promise.resolve();
+  function ppAddNative(entries, src){
+    if (!entries || !entries.length) return ppAddChain;
+    if (src === 'scan' && ppInboxScans > 0 && !ppManualScan){ ppFoundAdd(entries); return ppAddChain; }   // found by a background look: wait in the inbox
+    if (src !== 'scan' && src !== 'inbox') return ppAddNativeNow(entries, src);
+    const manual = ppManualScan;
+    ppAddChain = ppAddChain.then(async () => {
+      const known = new Set(tracks.map(t => t.nativeUri).filter(Boolean));
+      const { keep, skipped } = await ppDropDuplicates(entries.filter(e => e && e.uri && !known.has(e.uri)));
+      if (manual){ ppScanStats.skipped += skipped; ppScanStats.added += keep.length; }
+      if (keep.length) await ppAddNativeNow(keep, src);
+    }).catch(e => console.warn('[scan add]', e));
+    return ppAddChain;
+  }
+  async function ppAddNativeNow(entries, src){
     if (!entries || !entries.length) return;
-    if (src === 'scan' && ppInboxScans > 0){ ppFoundAdd(entries); return; }   // found by a background look: wait in the inbox
     const startIdx = tracks.length;
     const targetPlaylistId = src === 'inbox' ? null : userPlaylistViewId();
     const known = new Set(tracks.map(t => t.nativeUri).filter(Boolean));

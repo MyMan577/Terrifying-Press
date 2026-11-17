@@ -463,6 +463,27 @@ class LibraryPlugin : Plugin() {
         }
     }
 
+    /** SHA-256 of each file's bytes, so byte-for-byte copies can be told apart from different files. Resolves {hashes: {uri: hex}}. */
+    @PluginMethod
+    fun hashFiles(call: PluginCall) {
+        val uris = ArrayList<String>()
+        call.data.optJSONArray("uris")?.let { a -> for (k in 0 until a.length()) uris.add(a.optString(k)) }
+        pool.execute {
+            val out = JSObject()
+            val buf = ByteArray(256 * 1024)
+            for (u in uris) {
+                try {
+                    val md = MessageDigest.getInstance("SHA-256")
+                    val src = Uri.parse(u)
+                    val input = if (src.scheme == "file" || src.scheme == null) File(src.path ?: u).inputStream() else context.contentResolver.openInputStream(src)
+                    input?.use { s -> while (true) { val n = s.read(buf); if (n < 0) break; md.update(buf, 0, n) } } ?: continue
+                    out.put(u, md.digest().joinToString("") { "%02x".format(it) })
+                } catch (_: Exception) {}
+            }
+            call.resolve(JSObject().put("hashes", out))
+        }
+    }
+
     /** Export a file from app cache into Music/ or Movies/ (visible in the gallery/music apps). Android 10+. */
     @PluginMethod
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)

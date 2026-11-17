@@ -818,6 +818,7 @@
     missing: function (uris) { return Lib.missing({ uris: uris || [] }); },
     mediaDetails: function (uris) { return Lib.mediaDetails({ uris: uris || [] }); },
     readText: function (uri) { return Lib.readText({ uri: uri }); },
+    hashFiles: function (uris) { return Lib.hashFiles({ uris: uris || [] }); },
     getPendingOpen: function () { return Lib.getPendingOpen(); },
     deleteLocal: function (uri) { return Lib.deleteLocal({ uri: uri }); },
     saveToDevice: function (o) { return Lib.saveToDevice(o); },
