@@ -147,10 +147,10 @@
   var T = {};
   // --- built-in parts of the Home screen ---
   T.title = { name:'App title', icon:'title', kind:'box', builtin:true, zones:['home','page'], w:'fill',
-    fields:[['text','Text','text','Press Play Media'],['size','Size','seg',SIZES]],
+    fields:[['text','Text','text','Press Play Media'],['size','Size','seg',SIZES],['align','Align','seg',ALIGN]],
     render:function(o, c, ctx){
       var size = o.size ? ' pw-ts-' + o.size : '';
-      return '<h1 class="ph-app-title pw-title' + size + '">' + esc(o.text || (ctx.zone === 'home' ? 'Press Play Media' : 'My page')) + (ctx.zone === 'home' ? '<span class="ed-slot"></span>' : '') + '</h1>';
+      return '<h1 class="ph-app-title pw-title' + size + (o.align && o.align !== 'left' ? ' pw-al-' + o.align : '') + '">' + esc(o.text || (ctx.zone === 'home' ? 'Press Play Media' : 'My page')) + (ctx.zone === 'home' ? '<span class="ed-slot"></span>' : '') + '</h1>';
     } };
   T.games = { name:'Games button', icon:'game', kind:'box', builtin:true, zones:['home','page','player'], w:'auto',
     fields:[['label','Label','text','Games'],['look','Look','seg',[['pill','Pill'],['icon','Icon only'],['tile','Big tile']]]],
@@ -177,18 +177,27 @@
         { builtin:'history', empty:'Played tracks show up here.', extra: d.hist.length ? '<button type="button" class="ph-link dim" data-act="clear-history">Clear</button>' : '' }, c); } };
   // --- new widgets ---
   T.clock = { name:'Clock', icon:'clock', kind:'box', zones:['home','page','player','video'], w:'half', desc:'The time, and the date if you like',
-    fields:[['size','Size','seg',SIZES],['date','Show the date','toggle',true],['secs','Show seconds','toggle',false],['h12','12-hour clock','toggle',false],['align','Align','seg',ALIGN],['card','On a card','toggle',true]],
-    render:function(o){ return card(o, '<div class="pw-clock pw-ts-' + (o.size || 'l') + '" data-pw-live="clock" data-secs="' + (o.secs ? 1 : 0) + '" data-h12="' + (o.h12 ? 1 : 0) + '" data-date="' + (o.date === false ? 0 : 1) + '"><div class="pw-clock-t"></div><div class="pw-clock-d"></div></div>'); } };
+    fields:[['look','Look','seg',[['digital','Digital'],['analog','Analog']]],['size','Size','seg',SIZES],['date','Show the date','seg',[['long','Full'],['short','Short'],['day','Day only'],['off','Off']]],
+            ['secs','Show seconds','toggle',false],['h12','12-hour clock','toggle',false],['align','Align','seg',ALIGN],['card','On a card','toggle',true]],
+    render:function(o){
+      var date = o.date === false ? 'off' : o.date === true || !o.date ? 'long' : o.date;
+      var face = o.look === 'analog' ? '<svg class="pw-clock-face" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="47" class="pw-cf-rim"/>' +
+          Array.apply(null, Array(12)).map(function(x, i){ var a = i * Math.PI / 6, r1 = i % 3 ? 40 : 36; return '<line x1="' + (50 + Math.sin(a) * r1).toFixed(1) + '" y1="' + (50 - Math.cos(a) * r1).toFixed(1) + '" x2="' + (50 + Math.sin(a) * 44).toFixed(1) + '" y2="' + (50 - Math.cos(a) * 44).toFixed(1) + '" class="pw-cf-tick' + (i % 3 ? '' : ' pw-cf-big') + '"/>'; }).join('') +
+          '<line x1="50" y1="54" x2="50" y2="27" class="pw-cf-h"/><line x1="50" y1="56" x2="50" y2="15" class="pw-cf-m"/>' + (o.secs ? '<line x1="50" y1="60" x2="50" y2="12" class="pw-cf-s"/>' : '') + '<circle cx="50" cy="50" r="3" class="pw-cf-pin"/></svg>' : '<div class="pw-clock-t"></div>';
+      return card(o, '<div class="pw-clock pw-ts-' + (o.size || 'l') + (o.look === 'analog' ? ' pw-clock-an' : '') + '" data-pw-live="clock" data-secs="' + (o.secs ? 1 : 0) + '" data-h12="' + (o.h12 ? 1 : 0) + '" data-date="' + date + '">' + face + '<div class="pw-clock-d"></div></div>');
+    } };
   T.greeting = { name:'Greeting', icon:'sun', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Good morning / evening, with your name',
-    fields:[['name','Your name','text',''],['size','Size','seg',SIZES],['align','Align','seg',ALIGN],['card','On a card','toggle',false]],
-    render:function(o){ return card(o, '<div class="pw-greet pw-ts-' + (o.size || 'm') + '" data-pw-live="greeting" data-name="' + esc(o.name || '') + '"></div>'); } };
+    fields:[['name','Your name','text',''],['size','Size','seg',SIZES],['emoji','Sun / moon emoji','toggle',false],['sub','Second line','text',''],['align','Align','seg',ALIGN],['card','On a card','toggle',false]],
+    render:function(o){ return card(o, '<div class="pw-greet pw-ts-' + (o.size || 'm') + '" data-pw-live="greeting" data-name="' + esc(o.name || '') + '" data-emoji="' + (o.emoji ? 1 : 0) + '"></div>' +
+      (o.sub ? '<div class="pw-greet-sub">' + esc(o.sub) + '</div>' : '')); } };
   T.nowplaying = { name:'Now playing', icon:'headphones', kind:'box', zones:['home','page','player'], w:'full', desc:'Cover, title and controls for what’s playing',
-    fields:[['look','Look','seg',[['card','Card'],['big','Big'],['slim','Slim']]],['controls','Show controls','toggle',true],['progress','Show progress','toggle',true],['upnext','Show what plays next','toggle',false]],
+    fields:[['look','Look','seg',[['card','Card'],['big','Big'],['slim','Slim']]],['art','Show the cover','toggle',true],['round','Round cover','toggle',false],['artist','Show the artist','toggle',true],
+            ['controls','Show controls','toggle',true],['progress','Show progress','toggle',true],['upnext','Show what plays next','toggle',false]],
     render:function(o){
       var look = o.look || 'card';
-      return '<div class="pw-np pw-np-' + look + '" data-pw-live="np">' +
-        '<button type="button" class="pw-np-art" data-pw-act="player"><img alt=""><span>' + svg('music') + '</span></button>' +
-        '<div class="pw-np-text" data-pw-act="player"><div class="pw-np-t">Nothing playing</div><div class="pw-np-a">Tap shuffle to start</div>' +
+      return '<div class="pw-np pw-np-' + look + (o.round ? ' pw-np-round' : '') + '" data-pw-live="np">' +
+        (o.art === false ? '' : '<button type="button" class="pw-np-art" data-pw-act="player"><img alt=""><span>' + svg('music') + '</span></button>') +
+        '<div class="pw-np-text" data-pw-act="player"><div class="pw-np-t">Nothing playing</div><div class="pw-np-a"' + (o.artist === false ? ' hidden' : '') + '>Tap shuffle to start</div>' +
           (o.upnext ? '<div class="pw-np-up"></div>' : '') + (o.progress === false ? '' : '<div class="pw-np-bar"><i></i></div>') + '</div>' +
         (o.controls === false ? '' : '<div class="pw-np-ctl"><button type="button" data-pw-act="prev" aria-label="Previous">' + svg('prev') + '</button>' +
           '<button type="button" class="pw-np-pp" data-pw-act="playpause" aria-label="Play or pause">' + svg('play') + '</button>' +
@@ -196,7 +205,7 @@
         '</div>';
     } };
   T.action = { name:'Button', icon:'bolt', kind:'box', zones:['home','page','player','video'], w:'half', desc:'Shuffle, open a page, sleep timer, games and more',
-    fields:[['action','Does','action','shuffleall'],['page','Page to open','page',''],['label','Label','text',''],['icon','Icon','icon',''],
+    fields:[['action','Does','action','shuffleall'],['page','Page to open','page',''],['label','Label','text',''],['sub','Second line','text',''],['icon','Icon','icon',''],
             ['look','Look','seg',[['tile','Tile'],['pill','Pill'],['icon','Icon only'],['big','Big']]],['color','Colour','color','']],
     render:function(o){
       var a = ACTIONS[o.action] || ACTIONS.shuffleall, look = o.look || 'tile';
@@ -204,41 +213,54 @@
       var st = o.color ? ' style="--pw-c:' + esc(o.color) + '"' : '';
       return '<button type="button" class="pw-btn pw-btn-' + look + (o.color ? ' pw-colored' : '') + '"' + st +
         (a.games ? ' data-pp-games' : ' data-pw-act="' + esc(o.action || 'shuffleall') + '"') + (o.page ? ' data-pw-page="' + esc(o.page) + '"' : '') + ' aria-label="' + esc(label) + '">' +
-        svg(o.icon || a.icon) + (look === 'icon' ? '' : '<span>' + esc(label) + '</span>') + '</button>';
+        svg(o.icon || a.icon) + (look === 'icon' ? '' : o.sub ? '<span class="pw-btn-2"><span>' + esc(label) + '</span><small>' + esc(o.sub) + '</small></span>' : '<span>' + esc(label) + '</span>') + '</button>';
     } };
   T.shortcuts = { name:'Shortcuts', icon:'grid', kind:'box', zones:['home','page','player','video'], w:'full', desc:'A row of up to four icon buttons',
-    fields:[['a1','First','action','shuffleall'],['a2','Second','action','random'],['a3','Third','action','resume'],['a4','Fourth','action','sleep'],
-            ['labels','Show names','toggle',true],['look','Look','seg',[['soft','Soft'],['accent','Accent'],['plain','Plain']]]],
+    fields:[['a1','First','action0','shuffleall'],['a2','Second','action0','random'],['a3','Third','action0','resume'],['a4','Fourth','action0','sleep'],['a5','Fifth','action0',''],['a6','Sixth','action0',''],
+            ['labels','Show names','toggle',true],['look','Look','seg',[['soft','Soft'],['accent','Accent'],['plain','Plain']]],['shape','Icon shape','seg',[['','Rounded'],['circle','Circle'],['square','Square']]]],
     render:function(o){
-      var acts = ['a1','a2','a3','a4'].map(function(k, i){ return o[k] != null ? o[k] : ['shuffleall','random','resume','sleep'][i]; }).filter(function(a){ return ACTIONS[a]; });
-      return '<div class="pw-shortcuts pw-sc-' + (o.look || 'soft') + '">' + acts.map(function(a){ var A = ACTIONS[a];
+      var acts = ['a1','a2','a3','a4','a5','a6'].map(function(k, i){ return o[k] != null ? o[k] : ['shuffleall','random','resume','sleep','',''][i]; }).filter(function(a){ return ACTIONS[a]; });
+      return '<div class="pw-shortcuts pw-sc-' + (o.look || 'soft') + (o.shape ? ' pw-sc-' + o.shape : '') + '">' + acts.map(function(a){ var A = ACTIONS[a];
         return '<button type="button"' + (A.games ? ' data-pp-games' : ' data-pw-act="' + a + '"') + ' aria-label="' + esc(A.label) + '"><i>' + svg(A.icon) + '</i>' + (o.labels === false ? '' : '<span>' + esc(A.label) + '</span>') + '</button>'; }).join('') + '</div>';
     } };
   T.text = { name:'Text', icon:'text', kind:'box', zones:['home','page','player','video'], w:'full', desc:'A heading, a note, anything',
-    fields:[['text','Text','textarea','Your text here'],['size','Size','seg',SIZES],['bold','Bold','toggle',false],['align','Align','seg',ALIGN],['color','Colour','color',''],['card','On a card','toggle',false]],
+    fields:[['text','Text','textarea','Your text here'],['size','Size','seg',SIZES],['bold','Bold','toggle',false],['italic','Italic','toggle',false],
+            ['lh','Line spacing','seg',[['tight','Tight'],['','Normal'],['loose','Loose']]],['align','Align','seg',ALIGN],['color','Colour','color',''],['card','On a card','toggle',false]],
     render:function(o){
-      var st = o.color ? ' style="color:' + esc(o.color) + '"' : '';
-      return card(o, '<div class="pw-text pw-ts-' + (o.size || 'm') + (o.bold ? ' pw-bold' : '') + '"' + st + '>' + esc(o.text == null ? 'Your text here' : o.text).replace(/\n/g, '<br>') + '</div>');
+      var st = okCol(o.color) ? ' style="color:' + esc(o.color) + '"' : '';
+      return card(o, '<div class="pw-text pw-ts-' + (o.size || 'm') + (o.bold ? ' pw-bold' : '') + (o.italic ? ' pw-italic' : '') + (o.lh ? ' pw-lh-' + o.lh : '') + '"' + st + '>' + esc(o.text == null ? 'Your text here' : o.text).replace(/\n/g, '<br>') + '</div>');
     } };
   T.image = { name:'Picture', icon:'image', kind:'box', zones:['home','page','player','video'], w:'full', desc:'A photo or banner of your own',
-    fields:[['img','Picture','image',''],['h','Height','range',[60, 420, 10, 'px']],['fit','Fit','seg',[['cover','Fill'],['contain','Whole picture']]]],
+    fields:[['img','Picture','image',''],['h','Height','range',[60, 420, 10, 'px']],['fit','Fit','seg',[['cover','Fill'],['contain','Whole picture']]],
+            ['cap','Caption','text',''],['capat','Caption on','seg',[['','The picture'],['below','Below it']]],['gray','Black and white','toggle',false]],
     render:function(o){
       var h = o.h || 160;
       if (!o.img) return '<div class="pw-img pw-img-empty" style="height:' + h + 'px">' + svg('image') + '<span>Pick a picture in this box’s settings</span></div>';
-      return '<div class="pw-img" style="height:' + h + 'px"><img alt="" src="' + esc(o.img) + '" style="object-fit:' + (o.fit === 'contain' ? 'contain' : 'cover') + '"></div>';
+      var cap = o.cap ? '<div class="pw-img-cap' + (o.capat === 'below' ? ' pw-img-cap-below' : '') + '">' + esc(o.cap) + '</div>' : '';
+      return '<div class="pw-img' + (o.capat === 'below' ? ' pw-img-below' : '') + '" style="height:' + h + 'px"><img alt="" src="' + esc(o.img) + '" style="object-fit:' + (o.fit === 'contain' ? 'contain' : 'cover') + (o.gray ? ';filter:grayscale(1)' : '') + '">' + (o.capat === 'below' ? '' : cap) + '</div>' + (o.capat === 'below' ? cap : '');
     } };
   T.spacer = { name:'Space', icon:'space', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Empty room between things',
     fields:[['h','Height','range',[4, 160, 4, 'px']]], render:function(o){ return '<div class="pw-space" style="height:' + (o.h || 24) + 'px"></div>'; } };
   T.divider = { name:'Line', icon:'minus', kind:'box', zones:['home','page','player'], w:'full', desc:'A thin dividing line',
-    fields:[], render:function(){ return '<div class="pw-divider"></div>'; } };
+    fields:[['ls','Style','seg',[['','Solid'],['dashed','Dashed'],['dotted','Dotted'],['fade','Fades out']]],['th','Thickness','range',[1, 8, 1, 'px', 1]],
+            ['len','Length','seg',[['','Full'],['m','Middle'],['s','Short']]],['color','Colour','color','']],
+    render:function(o){
+      var th = Math.max(1, Math.min(8, +o.th || 1)), c = okCol(o.color) || 'var(--r-line-strong, var(--line))';
+      var bg = o.ls === 'fade' ? 'linear-gradient(90deg, transparent, ' + c + ', transparent)' : o.ls === 'dashed' || o.ls === 'dotted' ? 'none' : c;
+      var border = o.ls === 'dashed' || o.ls === 'dotted' ? ';height:0;border-top:' + th + 'px ' + o.ls + ' ' + c : '';
+      return '<div class="pw-divider' + (o.len ? ' pw-div-' + o.len : '') + '" style="height:' + th + 'px;background:' + bg + border + '"></div>';
+    } };
   T.stats = { name:'Stats', icon:'chart', kind:'box', zones:['home','page','player'], w:'full', desc:'Your library and listening time at a glance',
-    fields:[], render:function(){
+    fields:[['sv','Videos','toggle',true],['sa','Songs','toggle',true],['sp','Playlists','toggle',true],['shr','Hours played','toggle',true],['look','Look','seg',[['','Tiles'],['plain','Plain'],['line','One line']]]],
+    render:function(o){
       var A = api(), t = A ? A.tracks() : [], v = 0, a = 0;
       t.forEach(function(x){ if (x.stem) return; if (x.kind === 'video') v++; else a++; });
       var pls = A ? A.playlists().filter(function(p){ return !p.libOnly; }).length : 0, hrs = 0;
       try { var s = JSON.parse(localStorage.getItem('pppSaveV1')) || {}; hrs = (s.totalListenMs || 0) / 3600000; } catch(e){}
       var cell = function(n, l){ return '<div class="pw-stat"><b>' + n + '</b><span>' + l + '</span></div>'; };
-      return '<div class="pw-stats">' + cell(v, 'videos') + cell(a, 'songs') + cell(pls, 'playlists') + cell(hrs < 10 ? hrs.toFixed(1) : Math.round(hrs), 'hours played') + '</div>';
+      var cells = (o.sv === false ? '' : cell(v, 'videos')) + (o.sa === false ? '' : cell(a, 'songs')) + (o.sp === false ? '' : cell(pls, 'playlists')) + (o.shr === false ? '' : cell(hrs < 10 ? hrs.toFixed(1) : Math.round(hrs), 'hours played'));
+      var n = [o.sv, o.sa, o.sp, o.shr].filter(function(x){ return x !== false; }).length;
+      return n ? '<div class="pw-stats' + (o.look ? ' pw-stats-' + o.look : '') + '" style="--pw-sn:' + n + '">' + cells + '</div>' : '<div class="pw-empty">Switch on something to show in this box’s settings.</div>';
     } };
   var NEWROW = [['title','Heading','text',''],['style','Look','seg',ROW_STYLES],['max','Show at most','range',[1, 40, 1, '']]];
   T.recent = { name:'Recently added', icon:'sparkle', kind:'block', zones:['home','page'], desc:'The newest files in your library', fields:NEWROW,
@@ -289,14 +311,20 @@
 
   // --- live parts of the first widgets ---
   T.clock.live = function(el, st){
-    var now = st.now, h = now.getHours(), m = now.getMinutes(), h12 = el.dataset.h12 === '1';
-    var hh = h12 ? ((h % 12) || 12) : pad(h);
-    setText(el.firstChild, hh + ':' + pad(m) + (el.dataset.secs === '1' ? ':' + pad(now.getSeconds()) : '') + (h12 ? (h < 12 ? ' AM' : ' PM') : ''));
-    setText(el.lastChild, el.dataset.date === '1' ? now.toLocaleDateString(undefined, { weekday:'long', day:'numeric', month:'long' }) : '');
+    var now = st.now, h = now.getHours(), m = now.getMinutes(), sec = now.getSeconds(), h12 = el.dataset.h12 === '1';
+    var t = el.querySelector('.pw-clock-t');
+    if (t){ var hh = h12 ? ((h % 12) || 12) : pad(h); setText(t, hh + ':' + pad(m) + (el.dataset.secs === '1' ? ':' + pad(sec) : '') + (h12 ? (h < 12 ? ' AM' : ' PM') : '')); fitText(t); }
+    else {
+      var rot = function(sel, deg){ var x = el.querySelector(sel); if (x) x.setAttribute('transform', 'rotate(' + deg.toFixed(1) + ' 50 50)'); };
+      rot('.pw-cf-h', (h % 12) * 30 + m / 2); rot('.pw-cf-m', m * 6 + sec / 10); rot('.pw-cf-s', sec * 6);
+    }
+    var d = el.dataset.date, fmt = d === 'short' ? { weekday:'short', day:'numeric', month:'short' } : d === 'day' ? { weekday:'long' } : { weekday:'long', day:'numeric', month:'long' };
+    setText(el.querySelector('.pw-clock-d'), d === 'off' || d === '0' ? '' : now.toLocaleDateString(undefined, fmt));
   };
   T.greeting.live = function(el, st){
     var hr = st.now.getHours(), g = hr < 5 ? 'Good night' : hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
-    setText(el, g + (el.dataset.name ? ', ' + el.dataset.name : ''));
+    var e = el.dataset.emoji === '1' ? (hr < 5 || hr >= 21 ? '\uD83C\uDF19 ' : hr < 18 ? '\u2600\uFE0F ' : '\uD83C\uDF07 ') : '';
+    setText(el, e + g + (el.dataset.name ? ', ' + el.dataset.name : ''));
   };
   T.np = { name:'Now playing', kind:'box', zones:[], hidden:true, render:function(){ return ''; }, live:function(el, st){
     var title = ((document.getElementById('np-title') || {}).textContent || '').trim(), artist = ((document.getElementById('np-artist') || {}).textContent || '').trim();
@@ -313,7 +341,7 @@
     if (bar && seek){ var mx = parseFloat(seek.max) || 100; bar.style.transform = 'scaleX(' + (has ? Math.max(0, Math.min(1, (parseFloat(seek.value) || 0) / mx)) : 0).toFixed(4) + ')'; }
     var up = el.querySelector('.pw-np-up');
     if (up){ var nx = has && st.W ? st.W.upNext(1)[0] : null, nt = nx != null ? st.A.tracks()[nx] : null; setText(up, nt ? 'Next: ' + nt.title : ''); }
-    var img = el.querySelector('.pw-np-art img'), src = null;
+    var img = el.querySelector('.pw-np-art img'), src = null; if (!img) return;
     try { if (has && window.__ppThumbSrc) src = window.__ppThumbSrc(st.t); } catch(e){}
     el.querySelector('.pw-np-art').classList.toggle('has-art', !!src);
     if (src && img.getAttribute('src') !== src) img.src = src;
@@ -374,9 +402,9 @@
 
   // Lyrics: the line being sung (and the next one), taken from the player's own lyrics line.
   T.lyrics = { name:'Lyrics', icon:'text', kind:'box', zones:['home','page','player','video'], w:'full', desc:'The line being sung right now',
-    fields:[['next','Show the next line','toggle',true],['size','Size','seg',SIZES],['align','Align','seg',ALIGN],['card','On a card','toggle',true],['hide','Hide when a song has no lyrics','toggle',false]],
+    fields:[['next','Show the next line','toggle',true],['size','Size','seg',SIZES],['glow','Highlight the line in the accent colour','toggle',false],['align','Align','seg',ALIGN],['card','On a card','toggle',true],['hide','Hide when a song has no lyrics','toggle',false]],
     render:function(o){
-      return card(cardOn(o), '<div class="pw-lyr pw-ts-' + (o.size || 'm') + '" data-pw-live="lyrics" data-next="' + (o.next === false ? 0 : 1) + '" data-hide="' + (o.hide ? 1 : 0) + '"><div class="pw-lyr-c">♪</div><div class="pw-lyr-n"></div></div>');
+      return card(cardOn(o), '<div class="pw-lyr pw-ts-' + (o.size || 'm') + (o.glow ? ' pw-lyr-glow' : '') + '" data-pw-live="lyrics" data-next="' + (o.next === false ? 0 : 1) + '" data-hide="' + (o.hide ? 1 : 0) + '"><div class="pw-lyr-c">♪</div><div class="pw-lyr-n"></div></div>');
     },
     live:function(el, st){
       var ov = document.getElementById('lyrics-overlay'), has = st.has && ov && ov.classList.contains('show');
@@ -389,9 +417,9 @@
 
   // Up next: the next few in the queue. Tap one to play it.
   T.upnext = { name:'Up next', icon:'queue', kind:'box', zones:['home','page','player','video'], w:'full', desc:'What plays after this, tap to jump',
-    fields:[['title','Heading','text','Up next'],['n','How many','range',[1, 10, 1, '', 4]],['art','Show covers','toggle',true],['card','On a card','toggle',true]],
+    fields:[['title','Heading','text','Up next'],['n','How many','range',[1, 10, 1, '', 4]],['art','Show covers','toggle',true],['num','Number them','toggle',false],['card','On a card','toggle',true]],
     render:function(o){
-      return card(cardOn(o), '<div class="pw-un" data-pw-live="upnext" data-n="' + (+o.n || 4) + '" data-art="' + (o.art === false ? 0 : 1) + '"><div class="pw-wh"><span class="pw-wh-t">' + esc(o.title || 'Up next') + '</span></div><div class="pw-un-l"></div></div>');
+      return card(cardOn(o), '<div class="pw-un' + (o.num ? ' pw-un-num' : '') + '" data-pw-live="upnext" data-n="' + (+o.n || 4) + '" data-art="' + (o.art === false ? 0 : 1) + '"><div class="pw-wh"><span class="pw-wh-t">' + esc(o.title || 'Up next') + '</span></div><div class="pw-un-l"></div></div>');
     },
     live:function(el, st){
       var list = st.has && st.W ? st.W.upNext(+el.dataset.n || 4) : [], sig = st.i + ':' + list.join(',');
@@ -438,9 +466,9 @@
 
   // Sleep timer with its countdown.
   T.sleeper = { name:'Sleep timer', icon:'moon', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Start, see and stop the sleep timer',
-    fields:[['card','On a card','toggle',true]],
+    fields:[['compact','Compact (no heading)','toggle',false],['card','On a card','toggle',true]],
     render:function(o){
-      return card(cardOn(o), '<div class="pw-sl" data-pw-live="sleeper"><div class="pw-sl-h">' + svg('moon') + '<b>Sleep timer</b><small></small></div><div class="pw-sl-b">' +
+      return card(cardOn(o), '<div class="pw-sl' + (o.compact ? ' pw-sl-compact' : '') + '" data-pw-live="sleeper"><div class="pw-sl-h">' + svg('moon') + '<b>Sleep timer</b><small></small></div><div class="pw-sl-b">' +
         [['15','15 min'],['30','30 min'],['60','1 hour'],['end','End of track'],['off','Off']].map(function(x){ return '<button type="button" data-pw-act="sleepset" data-m="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div></div>');
     },
     live:function(el, st){
@@ -627,6 +655,7 @@
   function okCol(v){ return typeof v === 'string' && /^#[0-9a-f]{3,8}$/i.test(v) ? v : ''; }
   function okImg(v){ return typeof v === 'string' && v.indexOf('data:image/') === 0 ? v : ''; }
   var RAD = { '0':0, s:8, m:16, l:24, xl:34 };
+  var TZ = { xs:0.8, s:0.9, l:1.15, xl:1.3, xxl:1.5 };   // "Text size" for a whole widget
   // The look every widget can have (Settings > "Every widget"): what is behind it, corners, room inside, text colour,
   // height, and what a tap or a long press does. Used for boxes and for the pages of a stack.
   function styleOf(o){
@@ -639,6 +668,17 @@
     if (o.pad) cls += ' pw-pad-' + o.pad;
     if (okCol(o.fg)){ cls += ' pw-fg'; st.push('--pw-fg:' + o.fg); }
     if (+o.minh > 0) st.push('min-height:' + Math.min(600, +o.minh) + 'px');
+    var F = window.__ppFonts, fcss = o.font && F ? F.css(o.font) : '';
+    if (fcss){ cls += ' pw-font'; st.push('--pw-font:' + fcss); }
+    if (TZ[o.tz]){ cls += ' pw-tz'; st.push('--pw-tz:' + TZ[o.tz]); }
+    if (o.bd && ['thin','thick','accent','dashed'].indexOf(o.bd) >= 0){ cls += ' pw-bd-' + o.bd; if (okCol(o.bdc)) st.push('--pw-bdc:' + o.bdc); }
+    if (o.sh && ['soft','deep','glow'].indexOf(o.sh) >= 0) cls += ' pw-sh-' + o.sh;
+    if (o.op != null && +o.op < 100) st.push('opacity:' + Math.max(0.15, +o.op / 100));
+    if (+o.tilt) st.push('rotate:' + Math.max(-12, Math.min(12, +o.tilt)) + 'deg');
+    if (o.an && ['fade','pop','float','pulse','wiggle'].indexOf(o.an) >= 0) cls += ' pw-an-' + o.an;
+    if (o.caps) cls += ' pw-caps';
+    if (o.tsh) cls += ' pw-tsh';
+    if (o.va === 'top' || o.va === 'bottom') cls += ' pw-va-' + o.va;
     if (o.tap && ACTIONS[o.tap]){ cls += ' pw-tappable'; data += ' data-pw-tap="' + esc(o.tap) + '"' + (o.tpage ? ' data-pw-tpage="' + esc(o.tpage) + '"' : ''); }
     if (o.hold && ACTIONS[o.hold]) data += ' data-pw-hold="' + esc(o.hold) + '"' + (o.hpage ? ' data-pw-hpage="' + esc(o.hpage) + '"' : '');
     return { cls: cls, style: st.length ? ' style="' + esc(st.join(';')) + '"' : '', data: data };
@@ -715,6 +755,14 @@
   })();
   function fmtT(sec){ sec = Math.max(0, Math.round(sec || 0)); var h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), x = sec % 60; return (h ? h + ':' + pad(m) : m) + ':' + pad(x); }
   function setText(el, v){ if (el && el.textContent !== v) el.textContent = v; }
+  // Shrinks one line of text until it fits its box (wide fonts, big text sizes). Redone when the box, the text length or its width changes.
+  function fitText(el){
+    var key = el.clientWidth + ':' + el.textContent.length + ':' + el.scrollWidth; if (!el.clientWidth || el._fit === key) return;
+    el.style.fontSize = ''; el._fit = key;
+    for (var n = 0, over = el.scrollWidth / el.clientWidth; over > 1.01 && n < 6; n++, over = el.scrollWidth / el.clientWidth)
+      el.style.fontSize = (parseFloat(getComputedStyle(el).fontSize) / (el.currentCSSZoom || 1) / over * 0.97).toFixed(1) + 'px';
+    el._fit = el.clientWidth + ':' + el.textContent.length + ':' + el.scrollWidth;   // a font that loads later changes the width: fit again
+  }
   // A widget that has nothing to show this moment (no lyrics, no bookmarks...) can hide its whole box.
   function liveHide(el, hide){ var b = el.closest('.pw-box, .pw-stk-pg'); if (b) b.classList.toggle('pw-live-hide', !!hide && !editing); }
 
@@ -1216,11 +1264,14 @@
     if (type === 'text') return row('<input type="text" data-k="' + k + '" value="' + esc(v || '') + '" placeholder="' + esc(def || '') + '" maxlength="80">');
     if (type === 'textarea') return row('<textarea data-k="' + k + '" rows="3" maxlength="600">' + esc(v || '') + '</textarea>');
     if (type === 'toggle') return '<label class="pw-f pw-f-tog"><span>' + esc(label) + '</span><input type="checkbox" data-k="' + k + '"' + (v ? ' checked' : '') + '></label>';
-    if (type === 'seg') return row('<div class="pw-seg" data-k="' + k + '">' + def.map(function(x, i){ var on = v ? v === x[0] : (x[0] === '' || (i === 0 && k !== 'size')); return '<button type="button" data-v="' + x[0] + '"' + (on ? ' class="on"' : '') + '>' + esc(x[1]) + '</button>'; }).join('') + '</div>');
+    if (type === 'seg'){ var blank = def.some(function(x){ return x[0] === ''; }), sv = o[k];
+      if (sv === true || sv === false) sv = null;   // an older on/off setting that is now a choice
+      return row('<div class="pw-seg" data-k="' + k + '">' + def.map(function(x, i){ var on = sv ? sv === x[0] : blank ? x[0] === '' : (i === 0 && k !== 'size'); return '<button type="button" data-v="' + x[0] + '"' + (on ? ' class="on"' : '') + '>' + esc(x[1]) + '</button>'; }).join('') + '</div>'); }
     if (type === 'range'){ var r = def, val = v == null ? (r[4] != null ? r[4] : r[3] === 'all' ? 0 : r[0] === 60 ? 160 : r[0] === 4 ? 24 : 12) : v;
       return row('<div class="pw-range"><input type="range" data-k="' + k + '" data-unit="' + esc(r[3] || '') + '" min="' + (r[3] === 'all' ? 0 : r[0]) + '" max="' + r[1] + '" step="' + r[2] + '" value="' + val + '"><output>' + rangeLabel(r[3], val) + '</output></div>'); }
     if (type === 'color') return row('<div class="pw-colrow"><input type="color" data-k="' + k + '" value="' + esc(v || '#6ee7d0') + '"' + (v ? '' : ' data-unset="1"') + '><button type="button" class="pw-mini" data-clear="' + k + '">' + (v ? 'Use theme colour' : 'Theme colour') + '</button></div>');
     if (type === 'action') return row('<select data-k="' + k + '">' + Object.keys(ACTIONS).map(function(a){ return '<option value="' + a + '"' + ((v || def) === a ? ' selected' : '') + '>' + esc(ACTIONS[a].label) + '</option>'; }).join('') + '</select>');
+    if (type === 'action0') return row('<select data-k="' + k + '"><option value="none"' + (!v || v === 'none' ? ' selected' : '') + '>None</option>' + Object.keys(ACTIONS).map(function(a){ return '<option value="' + a + '"' + (v === a ? ' selected' : '') + '>' + esc(ACTIONS[a].label) + '</option>'; }).join('') + '</select>');
     if (type === 'tapact') return row('<select data-k="' + k + '"><option value="">Nothing extra</option>' + Object.keys(ACTIONS).filter(function(a){ return !ACTIONS[a].games; }).map(function(a){ return '<option value="' + a + '"' + (v === a ? ' selected' : '') + '>' + esc(ACTIONS[a].label) + '</option>'; }).join('') + '</select>');
     if (type === 'eqp'){ var eqs = Array.prototype.map.call(document.querySelectorAll('#eq-preset-row button[data-eq-preset]'), function(b){ return [b.dataset.eqPreset, b.textContent.trim()]; });
       return row('<select data-k="' + k + '"><option value=""' + (v === '' ? ' selected' : '') + '>None</option>' + eqs.map(function(x){ return '<option value="' + esc(x[0]) + '"' + (v === x[0] ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; }).join('') + '</select>'); }
@@ -1233,6 +1284,9 @@
     if (type === 'playlist'){ var A = api(), pls = A ? A.playlists().filter(function(p){ return !p.libOnly; }) : [];
       return row('<select data-k="' + k + '"><option value="">Choose a playlist…</option>' + pls.map(function(p){ return '<option value="' + esc(p.id) + '"' + (v === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>'); }
     if (type === 'icon') return row('<div class="pw-icons" data-k="' + k + '"><button type="button" data-v=""' + (!v ? ' class="on"' : '') + '>Auto</button>' + ICON_CHOICES.map(function(n){ return '<button type="button" data-v="' + n + '"' + (v === n ? ' class="on"' : '') + ' aria-label="' + n + '">' + svg(n) + '</button>'; }).join('') + '</div>');
+    if (type === 'font'){ var FF = window.__ppFonts;
+      return row('<select data-k="' + k + '"><option value="">Same as the app</option>' + (FF ? FF.groups.map(function(g){ return '<optgroup label="' + esc(g[0]) + '">' +
+        g[1].map(function(x){ return '<option value="' + x[0] + '"' + (v === x[0] ? ' selected' : '') + ' style="font-family:' + esc(FF.css(x[0])) + '">' + esc(x[1]) + '</option>'; }).join('') + '</optgroup>'; }).join('') : '') + '</select>'); }
     if (type === 'image') return row('<div class="pw-colrow"><button type="button" class="pw-mini" data-pick="' + k + '">' + (v ? 'Change picture…' : 'Choose picture…') + '</button>' + (v ? '<button type="button" class="pw-mini" data-clear="' + k + '">Remove</button>' : '') + '<input type="file" accept="image/*" hidden data-file="' + k + '"></div>');
     return '';
   }
@@ -1257,8 +1311,20 @@
     if (o.bx === 'image'){ f += fieldHTML(['bxi', 'Picture', 'image', ''], o); f += fieldHTML(['bxd', 'Darken it', 'range', [0, 80, 5, '%', 35]], o); }
     f += fieldHTML(['rad', 'Corners', 'seg', [['','Theme'],['0','Square'],['s','Slight'],['m','Round'],['l','Rounder'],['xl','Very round']]], o);
     f += fieldHTML(['pad', 'Room inside', 'seg', [['','Normal'],['0','None'],['s','Snug'],['l','Roomy']]], o);
-    f += fieldHTML(['fg', 'Text colour', 'color', ''], o);
     f += fieldHTML(['minh', 'Height at least', 'range', [0, 400, 10, 'autopx', 0]], o);
+    f += fieldHTML(['va', 'Line up', 'seg', [['top','Top'],['','Middle'],['bottom','Bottom']]], o);
+    f += fieldHTML(['bd', 'Border', 'seg', [['','None'],['thin','Thin'],['thick','Thick'],['dashed','Dashed'],['accent','Accent']]], o);
+    if (o.bd && o.bd !== 'accent') f += fieldHTML(['bdc', 'Border colour', 'color', ''], o);
+    f += fieldHTML(['sh', 'Shadow', 'seg', [['','None'],['soft','Soft'],['deep','Deep'],['glow','Glow']]], o);
+    f += fieldHTML(['op', 'See-through', 'range', [15, 100, 5, '%', 100]], o);
+    f += fieldHTML(['tilt', 'Tilt', 'range', [-12, 12, 1, '°', 0]], o);
+    f += fieldHTML(['an', 'Animation', 'seg', [['','None'],['fade','Fade in'],['pop','Pop in'],['float','Float'],['pulse','Pulse'],['wiggle','Wiggle']]], o);
+    f += '<div class="pw-sh-h">Text</div>';
+    f += fieldHTML(['font', 'Font', 'font', ''], o);
+    f += fieldHTML(['tz', 'Text size', 'seg', [['xs','XS'],['s','S'],['','Normal'],['l','L'],['xl','XL'],['xxl','XXL']]], o);
+    f += fieldHTML(['fg', 'Text colour', 'color', ''], o);
+    f += fieldHTML(['caps', 'All capitals', 'toggle', false], o);
+    f += fieldHTML(['tsh', 'Text shadow (easier to read on pictures)', 'toggle', false], o);
     f += '<div class="pw-sh-h">Tap and hold</div><p class="pw-note">Runs on the widget itself. Its own buttons and rows keep doing what they do.</p>';
     f += fieldHTML(['tap', 'Tap it to', 'tapact', ''], o);
     if (o.tap === 'page') f += fieldHTML(['tpage', 'Page to open', 'page', ''], o);
@@ -1306,7 +1372,7 @@
       remember(); if (v === '' || v == null) delete it.o[k]; else it.o[k] = v; save(); refreshZone();
       if (rerender) keep();
     };
-    var RERENDER = ['bx', 'action', 'tap', 'hold'];
+    var RERENDER = ['bx', 'action', 'tap', 'hold', 'bd', 'look', 'style'];
     sheetBody.querySelectorAll('.pw-wseg button').forEach(function(b){ b.addEventListener('click', function(){
       sheetBody.querySelectorAll('.pw-wseg button').forEach(function(x){ x.classList.toggle('on', x === b); });
       remember(); it.w = b.dataset.w; save(); refreshZone(); }); });
