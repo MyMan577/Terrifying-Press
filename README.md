@@ -62,11 +62,11 @@ Settings, App mode switches the whole app between a few presets. Switching never
 | --- | --- | --- |
 | Lite | A simpler layout: fewer presets, no levels, EXP or games | Free from the start |
 | PLUS | Every perk unlocked from the start, levels and games kept | Pass the Press Play quiz, or 3 hours of listening or watching |
-| Focus | Press Play focused: everything unlocked, levels, games, the mascot and the clicker out of the way, and tuned for battery | Same as PLUS |
+| Focus | Just the player: everything unlocked, and levels, games, Points, Bloopy, the clicker and toy widgets out of the way, tuned for battery | Same as PLUS |
 | PREMIUM | Everything unlocked, levels and games hidden | Score 90% in The Marathon |
 | Playground | Everything unlocked plus the Playground extras | Bought in the Points shop |
 
-Focus saves battery by playing video through Android's own player (hardware decoding, no copying frames through the page), holding the screen at 60 Hz, drawing the visualizer at 30 fps, freezing moving backgrounds and blur, and keeping Bloopy's wake word off and background tagging waiting for the charger. Every audio and video tool stays.
+Focus saves battery by playing video through Android's own player (hardware decoding, no copying frames through the page), holding the screen at 60 Hz, drawing the visualizer at 30 fps, freezing moving backgrounds and blur, and keeping background tagging waiting for the charger. Bloopy (and its microphone wake word) stays off while Focus is on. Every audio and video tool stays.
 
 ## Privacy
 
