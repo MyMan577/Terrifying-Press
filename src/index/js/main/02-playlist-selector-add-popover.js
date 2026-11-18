@@ -269,6 +269,21 @@
   // next/prev to fall back to the full library order instead of the
   // playlist the song was actually played from.
   let playQueue = [];
+  // Songs picked by hand ("Play next" / "Add to queue", the queue board): [{id: dbId, after: dbId|null}].
+  // Kept by dbId so library edits that shift indices can't point them at another song. `after` null means
+  // "straight after the current song"; otherwise the picked song plays right after that song from playQueue
+  // (set when it is dragged among them). Picked songs sharing a place keep this array's order.
+  // While a picked song plays, queueAnchorId remembers the song in playQueue that playback carries on from.
+  let userQueue = [];
+  let queueAnchorId = null;
+  let playingQueued = false;
+  let forceQueuedK = -1;        // the next loadTrack plays userQueue[forceQueuedK], tapped out of order
+  let queueCtxArr = null;       // the playQueue array at the last loadTrack: a new array means a new context
+  let queueVer = 0;             // bumped on every queue change, so the native engine re-reads what plays next
+  try {
+    const s = JSON.parse(localStorage.getItem('ppUserQueue') || 'null');
+    if (s && Array.isArray(s.ids)) userQueue = s.ids.filter(x => x != null).map(x => typeof x === 'object' ? { id: x.id, after: x.after == null ? null : x.after } : { id: x, after: null }).filter(e => e.id != null);
+  } catch(e){}
   let isPlaying = false;
   let bgAudioActive = false; // true while audioEl is substituting for a backgrounded video
   let bgAudioManual = false; // the web-audio button: keep audioEl in charge even while the app is in the foreground

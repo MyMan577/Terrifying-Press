@@ -36,6 +36,8 @@
     N.snapshot = function () { return Promise.reject(new Error('not native')); };
     N.sameUri = function () { return false; };
     N.expectAdvance = function () {};
+    N.crossfade = function () { return Promise.resolve(false); };
+    N.cancelCrossfade = function () {};
     N.jobs = { run: function (title, fn) { return fn(function () {}); } };
     N.lib = null;
     return;
@@ -349,6 +351,15 @@
 
   // Queue the track JS will play next so ExoPlayer advances gaplessly and while the screen is off.
   var nextToken = 0;
+  // Settings > Transitions, Crossfade: ask ExoPlayer to fade into the queued next item over ms (see PlaybackService).
+  // Resolves true when the fade is set up; false means the normal gapless advance happens instead.
+  N.crossfade = function (ms) {
+    var S = cur;
+    if (!S || !S.active || S.kind !== 'audio' || !Player.crossfade) return Promise.resolve(false);
+    return Player.crossfade({ ms: Math.round(ms) }).then(function (r) { return !!(r && r.ok); }, function () { return false; });
+  };
+  N.cancelCrossfade = function () { if (cur && cur.active && Player.cancelCrossfade) call(function () { return Player.cancelCrossfade(); }); };
+
   N.queueNext = function (t) {
     var tok = ++nextToken;
     var S = cur;

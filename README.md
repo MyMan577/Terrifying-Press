@@ -33,7 +33,7 @@ Press Play has a lot of settings, and most of them are things other players leav
 **Sound**
 - A full equalizer with presets (bass, treble, vocal, v-shape, acoustic, pop, rock, jazz, classical, electronic, hip hop, loudness, podcast, late night and flat) as well as manual bands.
 - Bass and reverb controls, and playback speed.
-- Choose how songs join: normal, gapless with no pause between tracks, or crossfade with a length you set.
+- Choose how songs join: normal, gapless with no pause between tracks, or crossfade with a length you set. Crossfade really overlaps the two songs, with your EQ and effects on both, and can leave albums gapless so live albums and mixes flow as recorded. Neither one ever overrides repeat one, the end of the queue or the sleep timer.
 - ReplayGain keeps songs at a similar loudness so you are not reaching for the volume between tracks.
 - Hi-res output plays 24-bit and 32-bit files at full depth, with the equalizer, effects, boost, ReplayGain, speed and visualizer all still working on them, and the player shows each track's format, bit depth and sample rate. You can also force software-only or hardware-only decoding, for audio and for video, like VLC's hardware acceleration setting; Auto picks the best decoder for each file.
 
@@ -51,6 +51,14 @@ Press Play has a lot of settings, and most of them are things other players leav
 - The VLC player (Cast & VLC player, then VLC player) adds deinterlacing for old TV and DVD rips, drag-to-look-around for 360° videos, and Dolby / DTS passthrough to an HDMI or USB receiver.
 - Playlist import reads M3U, PLS and XSPF, and CUE sheets: an album ripped as one big file with a .cue shows up as its separate songs, each playing just its part of the file.
 - Network shares: + Add, Network shares finds Windows/SMB shares, UPnP/DLNA media servers and NFS exports on your Wi-Fi, and you can connect to SMB, FTP, SFTP and NFS servers by address. Play a file straight from a share, or add a whole folder to your library.
+
+**Queue**
+- Swipe up on the mini player and it flips over to show what plays next. Tap it (or swipe up again) and the queue board grows out of it; swipe down flips it back.
+- The board is one list in play order: the songs you picked (marked "Added by you") mixed in with what follows from the playlist you were playing. Drag any song anywhere, by its handle or with a long-press: a picked song can go after playlist songs and a playlist song can go before picked ones. Tap a song to jump to it, x to take it out.
+- Long-press songs in Home or the Library and choose Play next or Add to queue, or use Add songs on the board to search your library.
+- Swipe sideways on the board for your saved queues (Save queue keeps the current one) and presets: Shuffle everything, Recently added, Most played and Videos. Their songs drag too. Play starts one, Add to queue tacks it on.
+- Three queue widgets in Customize, Layout (also inside stacks): Queue (the list, with drag handles, Add and remove), Up next card (the next song, big, with a skip-to button) and Queue covers (a sideways row of covers you drag left and right). The Up next widget's songs drag as well.
+- "Open the queue" can be put on a gesture.
 
 **Leaving the player** (Settings, Playback)
 - Mini player on or off. With it off, leaving the player either keeps the track playing (tap it in Home or the Library to get back) or stops it.

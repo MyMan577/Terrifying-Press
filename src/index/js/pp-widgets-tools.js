@@ -5,22 +5,29 @@
 
   // ---------- Queue ----------
   // What plays next, with the time it all ends; add songs to play next by searching, take them out with ×.
-  T.queue = { name:'Queue', icon:'queue', kind:'box', zones:['home','page','player'], w:'full', desc:'What plays next and when it ends. Search to add a song, × to take one out',
+  // Drag a song (its handle, or a long-press) to move it anywhere; Open shows the whole queue board (pp-queue.js).
+  T.queue = { name:'Queue', icon:'queue', kind:'box', zones:['home','page','player'], w:'full', desc:'What plays next and when it ends. Search to add, drag to reorder, × to take one out',
     fields:[['n','Show','seg',[['3','3'],['','5'],['8','8']]],['card','On a card','toggle',true]],
     render:function(o){
-      return card(cardOn(o), '<div class="pw-qb" data-pw-live="queue" data-n="' + (+o.n || 5) + '"><div class="pw-wh"><span class="pw-wh-t">Queue</span><span class="pw-qb-end"></span></div>' +
+      return card(cardOn(o), '<div class="pw-qb" data-pw-live="queue" data-n="' + (+o.n || 5) + '"><div class="pw-wh"><span class="pw-wh-t">Queue</span><span class="pw-q-acts"><span class="pw-qb-end"></span><button type="button" class="ph-link" data-pw-act="qopen">Open</button></span></div>' +
         '<div class="pw-qb-l"></div><form class="pw-qb-f" data-pw-qb="1"><input type="search" placeholder="Add a song to play next…" aria-label="Find a song to play next" autocomplete="off"></form><div class="pw-qb-r"></div></div>');
     },
     live:function(el, st){
       var w = wapi(), A = api(); if (!w || !A) return;
-      var t = A.tracks(), n = +el.dataset.n || 5, up = st.has ? w.upNext(60) : [], sig = (st.has ? st.t.dbId : '') + '|' + up.slice(0, n).join(',') + '|' + Math.floor(Date.now() / 30000);
-      if (el._sig !== sig){
+      // the queue in play order: songs you picked (k set) placed among the rest
+      var Qs = qState(st, 60), ents = Qs ? Qs.up : [], up = ents.map(function(e){ return e.i; });
+      var t = A.tracks(), n = +el.dataset.n || 5, sig = (st.has ? st.t.dbId : '') + '|' + ents.slice(0, n).map(function(e){ return e.i + (e.k != null ? 'p' : ''); }).join(',') + '|' + up.length + '|' + Math.floor(Date.now() / 30000);
+      if (el._sig !== sig && !qDragging(el)){
         el._sig = sig;
-        el.querySelector('.pw-qb-l').innerHTML = !st.has ? '<p class="pw-otd-e">Play something to start a queue.</p>' : !up.length ? '<p class="pw-otd-e">Nothing after this one. Add a song below.</p>' :
-          up.slice(0, n).map(function(i, k){ var x = t[i];
-            return '<div class="pw-qb-i"><button type="button" class="pw-song" data-pw-act="jump" data-i="' + i + '"><em>' + (k + 1) + '</em>' + artHTML(x) + '<span class="pw-song-t"><b>' + esc(x.title) + '</b><small>' + esc(x.artist && x.artist !== 'Unknown artist' ? x.artist : '') + (x.duration ? (x.artist && x.artist !== 'Unknown artist' ? ' · ' : '') + fmtT(x.duration) : '') + '</small></span></button>' +
-              '<button type="button" class="pw-tdo-x" data-pw-qb-rm="' + i + '" aria-label="Take out of the queue">' + svg('x') + '</button></div>'; }).join('') +
-          (up.length > n ? '<p class="pw-qb-more">and ' + plural(up.length - n, 'more') + '</p>' : '');
+        var box = el.querySelector('.pw-qb-l'), shown = ents.slice(0, n);
+        if (shown.length > 1) box.setAttribute('data-pq-sort', 'live'); else box.removeAttribute('data-pq-sort');
+        box.innerHTML = !st.has ? '<p class="pw-otd-e">Play something to start a queue.</p>' : !up.length ? '<p class="pw-otd-e">Nothing after this one. Add a song below.</p>' :
+          shown.map(function(e, k){ var x = t[e.i], ar = x.artist && x.artist !== 'Unknown artist' ? x.artist : '';
+            return '<div class="pw-qb-i' + (e.k != null ? ' pw-q-picked' : '') + '" data-pq-row><span class="pq-grip pw-q-grip" aria-hidden="true">' + svg('grip') + '</span>' +
+              '<button type="button" class="pw-song" data-pw-act="qjump" data-pos="' + k + '"><em>' + (k + 1) + '</em>' + artHTML(x) + '<span class="pw-song-t"><b>' + esc(x.title) + '</b><small>' +
+                (e.k != null ? '<i class="pw-qb-pk">Added by you</i>' + (ar || x.duration ? ' · ' : '') : '') + esc(ar) + (x.duration ? (ar ? ' · ' : '') + fmtT(x.duration) : '') + '</small></span></button>' +
+              '<button type="button" class="pw-tdo-x" data-pw-qb-rm="' + k + '" aria-label="Take ' + esc(x.title) + ' out of the queue">' + svg('x') + '</button></div>'; }).join('') +
+          (up.length > n ? '<button type="button" class="pw-q-more" data-pw-act="qopen">and ' + plural(up.length - n, 'more') + '</button>' : '');
       }
       // when it all ends: what is left of this one plus everything after it (only if every length is known)
       var tm = media2(), left = Math.max(0, tm.d - tm.t), known = st.has && tm.d > 0;
@@ -39,7 +46,7 @@
     var b = e.target.closest && e.target.closest('[data-pw-qb-add], [data-pw-qb-rm]'); if (!b || editing) return;
     var w = wapi(), A = api(), K = kit(); if (!w || !A) return;
     var el = b.closest('[data-pw-live="queue"]');
-    if (b.dataset.pwQbRm){ w.unqueue(+b.dataset.pwQbRm); }
+    if (b.dataset.pwQbRm){ var Qa = window.__ppQueue; if (Qa) Qa.removeAt(+b.dataset.pwQbRm); }
     else {
       var i = +b.dataset.pwQbAdd, t = A.tracks()[i];
       if (!K || !K.hasTrack()){ playOne(i); }

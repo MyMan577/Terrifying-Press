@@ -217,6 +217,7 @@ class NativePlayerPlugin : Plugin() {
             notifyListeners("state", snapshot("playing")); updateTicker()
         }
         override fun onPositionDiscontinuity(o: Player.PositionInfo, n: Player.PositionInfo, reason: Int) {
+            if (svc?.xfAdvancing == true) return       // a crossfade moving on: reported as "advanced" below
             if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT)
                 notifyListeners("state", snapshot("seeked"))
         }
@@ -233,7 +234,10 @@ class NativePlayerPlugin : Plugin() {
                     notifyListeners("external", snapshot("external"))
                 }
             }
-            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+            // A crossfade moves the player on itself (a seek to the queued item): to the page it is the same as the
+            // song ending and the next one starting.
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
+                (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK && svc?.xfAdvancing == true)) {
                 val p = svc?.player ?: return
                 // Drop the finished item so the queue is just [current]; JS will queue the next one.
                 if (p.currentMediaItemIndex > 0) p.removeMediaItems(0, p.currentMediaItemIndex)
@@ -377,6 +381,7 @@ class NativePlayerPlugin : Plugin() {
         if (!companion) main.post { PlaybackService.instance?.clearMirror() }     // ExoPlayer owns the notification again
         val gen = ++loadGen
         nextGen++                                   // any queued "next" belongs to the previous track
+        if (!companion) main.post { PlaybackService.instance?.cancelCrossfade() }   // a new song was picked: the old one's fade-out stops
         srcOrig = orig; probedDurMs = -1L
         runBg {
             // Off the main thread: verify the source can be seeked (copy it locally if it can't).
@@ -472,7 +477,7 @@ class NativePlayerPlugin : Plugin() {
         }
     }
     @PluginMethod fun stop(call: PluginCall) = withSvc(call) {
-        it.player.stop(); it.player.clearMediaItems(); videoPlaying = false
+        it.cancelCrossfade(); it.player.stop(); it.player.clearMediaItems(); videoPlaying = false
         MainActivity.instance?.keepScreenOn(false); call.resolve()
     }
     @PluginMethod fun setRate(call: PluginCall) {
@@ -502,6 +507,21 @@ class NativePlayerPlugin : Plugin() {
         withSvc(call) { it.player.repeatMode = if (on) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF; call.resolve() }
     }
     @PluginMethod fun getState(call: PluginCall) = withSvc(call) { call.resolve(snapshot("get")) }
+
+    /**
+     * Settings > Transitions, Crossfade: fade from this song into the queued next one over [ms], ending with the song.
+     * The page calls this a little before the fade is due; the timing itself is done here. ok=false: nothing queued
+     * (repeat one, end of the queue...) or the song is too short, and the normal gapless advance happens instead.
+     */
+    @PluginMethod
+    fun crossfade(call: PluginCall) {
+        val ms = call.data.optLong("ms", 0L).coerceIn(500L, 15000L)
+        withSvc(call) { s ->
+            if (kind != "audio" || nextUri == null) { call.resolve(JSObject().put("ok", false)); return@withSvc }
+            call.resolve(JSObject().put("ok", s.startCrossfade(ms)))
+        }
+    }
+    @PluginMethod fun cancelCrossfade(call: PluginCall) = withSvc(call) { it.cancelCrossfade(); call.resolve() }
 
     /** Queue the item JS will play next so ExoPlayer advances by itself (gapless, works with the screen off). */
     @PluginMethod

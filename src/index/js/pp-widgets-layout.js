@@ -1,5 +1,5 @@
   var BUILTIN_ORDER = ['title','games','tagline','playground','tabs','hero','chips','videos','audio','history'];
-  var NEW_ORDER = ['nowplaying','cover','seekbar','upnext','queue','lyrics','singalong','stems','viz','volume','speed','trackinfo','stack','action','shufpl','mood','shortcuts','search','eq','sleeper','alarm','bookmarks','practice','level','sotd','onthisday','recap','bloopy','pet','game','guess','taptempo',
+  var NEW_ORDER = ['nowplaying','cover','seekbar','upnext','queue','queuecard','queuestrip','lyrics','singalong','stems','viz','volume','speed','trackinfo','stack','action','shufpl','mood','shortcuts','search','eq','sleeper','alarm','bookmarks','practice','level','sotd','onthisday','recap','bloopy','pet','game','guess','taptempo',
                    'clock','world','greeting','countdown','calendar','dayprog','stopwatch','focus','battery','todo','tally','dice','breathe','text','rotate','drawing','image','slides','stats','storage',
                    'recent','most','random','cont','genre','playlist','playlists','pltiles','tagchips','setting','setsec','spacer','divider'];
 
@@ -177,6 +177,7 @@
   (function(){
     if (typeof MutationObserver !== 'function') return;
     var mo = new MutationObserver(liveSoon);
+    document.addEventListener('pp-queue', liveSoon);   // the queue changed (added, moved, removed)
     ['np-title', 'np-artist'].forEach(function(id){ var e = document.getElementById(id); if (e) mo.observe(e, { childList:true, characterData:true, subtree:true }); });
     var pb = document.getElementById('play-btn'); if (pb) mo.observe(pb, { attributes:true, attributeFilter:['aria-label'] });
     var ly = document.getElementById('lyrics-overlay'); if (ly) mo.observe(ly, { childList:true, subtree:true, attributes:true, attributeFilter:['class'] });
@@ -568,6 +569,8 @@
     if (act === 'openpl'){ closePage(); var K = kit(); if (K) K.goTab('playlists'); setTimeout(function(){ if (window.__ppOpenPlaylist) window.__ppOpenPlaylist(el.dataset.pl); }, 50); return; }
     var w = wapi();
     if (act === 'jump'){ if (w) w.jump(+el.dataset.i); liveSoon(); return; }
+    if (act === 'qjump' || act === 'qrm'){ var Qa = window.__ppQueue; if (Qa){ if (act === 'qjump') Qa.jumpAt(+el.dataset.pos); else Qa.removeAt(+el.dataset.pos); } liveSoon(); return; }
+    if (act === 'qopen' || act === 'qadd'){ if (window.ppOpenQueue) window.ppOpenQueue({ from: el.closest('.pw-cardwrap') || el, add: act === 'qadd' }); return; }
     if (act === 'seek'){ if (w) w.seek(+el.dataset.s); return; }
     if (act === 'bmadd'){ if (!kit() || !kit().hasTrack()){ toast('Play something first.'); return; } if (click('bm-add')){ toast('Bookmark added.'); setTimeout(liveSoon, 50); } return; }
     if (act === 'eqp'){ var b = document.querySelector('#eq-preset-row button[data-eq-preset="' + el.dataset.p + '"]'); if (b){ b.click(); toast('Sound: ' + eqLabel(el.dataset.p)); } setTimeout(liveSoon, 30); return; }

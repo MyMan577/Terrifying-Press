@@ -458,9 +458,58 @@
       var list = st.has && st.W ? st.W.upNext(+el.dataset.n || 4) : [], sig = st.i + ':' + list.join(',');
       if (el._sig === sig) return; el._sig = sig;
       var t = st.A ? st.A.tracks() : [], art = el.dataset.art === '1', box = el.querySelector('.pw-un-l');
+      if (qDragging(el)) return;
+      if (list.length > 1) box.setAttribute('data-pq-sort', 'live'); else box.removeAttribute('data-pq-sort');
       box.innerHTML = !st.has ? '<div class="pw-empty">Play something to see what comes next.</div>' : !list.length ? '<div class="pw-empty">Nothing after this one.</div>'
-        : list.map(function(i){ var x = t[i]; if (!x) return '';
-            return '<button type="button" class="pw-li" data-pw-act="jump" data-i="' + i + '">' + (art ? artHTML(x) : '') + '<span class="pw-li-t"><b>' + esc(x.title) + '</b><small>' + esc(subOf(x)) + '</small></span></button>'; }).join('');
+        : list.map(function(i, pos){ var x = t[i]; if (!x) return '';
+            return '<div class="pw-q-row" data-pq-row><button type="button" class="pw-li" data-pw-act="qjump" data-pos="' + pos + '">' + (art ? artHTML(x) : '') + '<span class="pw-li-t"><b>' + esc(x.title) + '</b><small>' + esc(subOf(x)) + '</small></span></button></div>'; }).join('');
+    } };
+
+  // ===================== queue widgets =====================
+  // All three read the live queue (window.__ppQueue). Rows drag to reorder (pp-queue.js: data-pq-sort / data-pq-row).
+  function qApi(){ return window.__ppQueue || null; }
+  function qDragging(el){ return !!el.querySelector('.pq-dragging'); }
+  function qState(st, n){ var q = qApi(); return q && st.has ? q.state(n) : null; }
+  function qSig(st, s, n){ return st.i + '|' + st.playing + '|' + (s ? s.repeat + ':' + s.up.length + ':' + s.up.slice(0, n).map(function(e){ return e.i + (e.k != null ? 'p' : ''); }).join(',') : '-'); }
+  function qMore(n, shown){ return n > shown ? '<button type="button" class="pw-q-more" data-pw-act="qopen">' + (n - shown) + ' more in the queue</button>' : ''; }
+
+  // 1. Queue: the list itself, with search-to-add, the time it ends and drag to reorder, is in pp-widgets-tools.js.
+
+  // 2. Up next card: just the next song, big, with Skip to it and Open queue.
+  T.queuecard = { name:'Up next card', icon:'queue', kind:'box', zones:['home','page','player','video'], w:'full', desc:'The next song, big, one tap from the queue',
+    fields:[['look','Look','seg',[['card','Card'],['big','Big cover'],['slim','Slim']]],['card','On a card','toggle',true]],
+    render:function(o){ return card(cardOn(o), '<div class="pw-qc pw-qc-' + esc(o.look || 'card') + '" data-pw-live="queuecard"></div>'); },
+    live:function(el, st){
+      var s = qState(st, 400), sig = qSig(st, s, 1);
+      if (el._sig === sig) return; el._sig = sig;
+      var t = st.A ? st.A.tracks() : [], e = s && s.up[0], x = e ? t[e.i] : null, more = s ? Math.max(0, s.up.length - 1) : 0;
+      if (!x){
+        el.innerHTML = '<button type="button" class="pw-qc-main" data-pw-act="' + (st.has ? 'qadd' : 'qopen') + '"><span class="pw-qc-art">' + svg('queue') + '</span><span class="pw-qc-t"><small>Up next</small><b>' + (st.has ? 'Nothing after this' : 'Nothing playing') + '</b><i>' + (st.has ? 'Tap to add songs' : 'Your queue shows up here') + '</i></span></button>';
+        return;
+      }
+      el.innerHTML = '<button type="button" class="pw-qc-main" data-pw-act="qopen" aria-label="Open the queue">' + artHTML(x).replace('pw-art', 'pw-art pw-qc-art') +
+          '<span class="pw-qc-t"><small>Up next' + (e.k != null ? ' · added by you' : '') + '</small><b>' + esc(x.title) + '</b><i>' + esc(subOf(x)) + (more ? ' · ' + more + ' more' : '') + '</i></span></button>' +
+        '<button type="button" class="pw-qc-skip" data-pw-act="qjump" data-pos="0" aria-label="Play ' + esc(x.title) + ' now">' + svg('next') + '</button>';
+    } };
+
+  // 3. Queue covers: a sideways row of what's coming, dragged left and right.
+  T.queuestrip = { name:'Queue covers', icon:'queue', kind:'box', zones:['home','page','player'], w:'full', desc:'A row of covers for what’s coming, drag to reorder',
+    fields:[['title','Heading','text','Coming up'],['n','How many','range',[4, 30, 1, '', 12]],['size','Size','seg',[['s','Small'],['m','Medium'],['l','Large']]],['card','On a card','toggle',false]],
+    render:function(o){
+      return card(o, '<div class="pw-qs pw-qs-sz-' + esc(o.size || 'm') + '" data-pw-live="queuestrip" data-n="' + (+o.n || 12) + '">' +
+        '<div class="pw-wh"><span class="pw-wh-t">' + esc(o.title || 'Coming up') + '</span><button type="button" class="ph-link" data-pw-act="qopen">Queue</button></div>' +
+        '<div class="pw-qs-row no-swipe"></div></div>');
+    },
+    live:function(el, st){
+      var n = +el.dataset.n || 12, s = qState(st, 400), sig = qSig(st, s, n);
+      if (el._sig === sig || qDragging(el)) return; el._sig = sig;
+      var t = st.A ? st.A.tracks() : [], box = el.querySelector('.pw-qs-row'), shown = s ? s.up.slice(0, n) : [];
+      if (shown.length > 1){ box.setAttribute('data-pq-sort', 'live'); box.setAttribute('data-pq-axis', 'x'); } else box.removeAttribute('data-pq-sort');
+      box.innerHTML = !st.has ? '<div class="pw-empty">Play something to see what’s coming.</div>' : !shown.length ? '<div class="pw-empty">Nothing after this one.</div>'
+        : shown.map(function(e, pos){ var x = t[e.i]; if (!x) return '';
+            return '<div class="pw-qs-it' + (e.k != null ? ' pw-q-picked' : '') + '" data-pq-row><button type="button" data-pw-act="qjump" data-pos="' + pos + '" aria-label="Play ' + esc(x.title) + '">' +
+              artHTML(x) + '<b>' + esc(x.title) + '</b></button></div>'; }).join('') +
+          (s.up.length > shown.length ? '<button type="button" class="pw-qs-more" data-pw-act="qopen">+' + (s.up.length - shown.length) + '</button>' : '');
     } };
 
   // Sound: one-tap EQ presets.
