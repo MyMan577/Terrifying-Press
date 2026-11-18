@@ -129,6 +129,9 @@
   const VIZ_BANDS = 32;
   const vizLevel = new Float32Array(VIZ_BANDS);   // what is drawn, 0..1
   const vizAvg = new Float32Array(VIZ_BANDS);     // slow average per band: hits are measured against it
+  // Each band's own range in this song: lo follows its quiet moments, hi its loud ones. A bar shows where the band is
+  // inside that range, so a loud, steady (compressed) song still moves instead of sitting at one height.
+  const vizLo = new Float32Array(VIZ_BANDS), vizHi = new Float32Array(VIZ_BANDS); let vizRangeT = 0;
   const vizGroup = new Float32Array(VIZ_BANDS);   // level of a bar together with its neighbours (for the glow)
   const VIZ_BASS = 9;                             // the lowest bands (to about 200 Hz) get extra weight
   let vizBandPos = null, vizBandPosFor = '';      // [first bin, last bin] (fractional) per band
@@ -267,13 +270,22 @@
         // The average only feeds the jump term, so a steady loud band cannot creep up to full on its own.
         const hit = Math.max(0, v - vizAvg[k]);
         vizAvg[k] += (v - vizAvg[k]) * kAvg;
+        // the band's range in this song: a new start (or a long silence) snaps it to the band; then the floor sinks
+        // fast into quiet moments and creeps up slowly, the ceiling jumps up to peaks and creeps down slowly
+        if (vizRangeT < 0.05){ vizLo[k] = v * 0.8; vizHi[k] = Math.max(v, vizLo[k] + 0.1); }
+        vizLo[k] += (v - vizLo[k]) * (v < vizLo[k] ? 1 - Math.exp(-dt / 0.25) : 1 - Math.exp(-dt / 3));
+        vizHi[k] += (v - vizHi[k]) * (v > vizHi[k] ? 1 - Math.exp(-dt / 0.03) : 1 - Math.exp(-dt / 2));
+        vizLo[k] = Math.max(0, Math.min(vizLo[k], vizHi[k] - 0.16));     // a held note stays tall: the floor never climbs right up to it
+        const span = Math.max(0.1, vizHi[k] - vizLo[k]), rel = Math.max(0, Math.min(1, (v - vizLo[k]) / span));
         const bassW = k < VIZ_BASS ? 1.3 - 0.3 * k / VIZ_BASS : 1;      // the bass is the star: taller and punchier
-        target = Math.min(1, (Math.pow(v, 2.6) * 0.62 + hit * 2.6 * bassW) * bassW * vizSensitivity);
+        // how loud the band is overall (a quiet band stays shorter) times where it is in its own range, plus the jumps
+        target = Math.min(1, ((0.35 + 0.65 * v) * Math.pow(rel, 1.3) * 0.85 + hit * 2.2 * bassW) * bassW * vizSensitivity);
       } else {
         vizAvg[k] *= 1 - kAvg;
       }
       vizLevel[k] += (target - vizLevel[k]) * (target > vizLevel[k] ? kRise : kFall);
     }
+    vizRangeT = raw ? vizRangeT + dt : 0;
 
     // --- stems (if this song was split) and the beat (tracked and predicted, see 17b) ---
     const stems = vizStemsNow(dt);

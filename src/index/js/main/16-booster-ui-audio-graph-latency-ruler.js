@@ -463,6 +463,9 @@
     // into one or two bins that every low-frequency bar ends up sharing.
     analyser.fftSize = 1024;
     analyser.smoothingTimeConstant = 0;   // the visualizer does its own rise/fall; 0.8 here smeared every hit
+    // -100..-10 dB instead of the default -100..-30: loud, mastered songs sat above -30 dB nearly all the time, so every
+    // band was pinned at the top and the bars barely moved. The native player maps its spectrum the same way.
+    analyser.minDecibels = -100; analyser.maxDecibels = -10;
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
     const source = ctx.createMediaElementSource(PPNative.raw(el));
 
