@@ -6,7 +6,11 @@
   // streak. The Pomodoro widget is a small window onto the same timer. Everything is kept in localStorage 'ppPomoV1'.
   // Times are kept as end times, so the timer is right after the app was in the background or closed: on coming back,
   // the phases that ended meanwhile are counted (and with "Start the next one by itself", it carries on from there).
-  var POMO_ID = '__clock', PO_KEY = 'ppPomoV1';   // POMO_ID: the tab's page id (pp-widgets-layout.js treats it as this tab)
+  var POMO_ID = '__clock', PO_KEY = 'ppPomoV1';
+  // Press Play Lite ("Just play. Nothing else.") leaves Pendulum out: no tab, no widgets, and no alarm or Pomodoro goes
+  // off (the phone's alarm clocks are taken away too). Everything is kept, and comes back when Lite is switched off.
+  // Focus keeps it. Switching mode reloads the app, so this is read once.
+  var PEND_OFF = (function(){ try { return localStorage.getItem('ppLiteMode') === '1'; } catch(e){ return false; } })();   // POMO_ID: the tab's page id (pp-widgets-layout.js treats it as this tab)
   var PO_DEF = { focus: 25, short: 5, long: 15, every: 4, auto: true, goal: 8, chime: true, buzz: true, awake: false, fm: 'resume', bm: 'pause' };
   var PO_NAME = { focus: 'Focus', short: 'Short break', long: 'Long break' };
   var PO = (function(){
@@ -38,6 +42,7 @@
     return next;
   }
   function poTick(){
+    if (PEND_OFF) return false;
     if (!PO.run || Date.now() < PO.end) return false;
     var next, n = 0, focusDone = 0;
     while (PO.run && Date.now() >= PO.end && n++ < 12){ if (PO.ph === 'focus') focusDone++; next = poFinish(PO.end, true); }
@@ -78,12 +83,13 @@
 
   // ---------- music for each phase ----------
   function poPlaylists(){ var A = api(); return A ? A.playlists().filter(function(p){ return !p.libOnly && !p.stemOf; }) : []; }
-  function poPlayPl(id){
+  function poPlayPl(id, shuf){
     var A = api(); if (!A) return false;
     var t = A.tracks(), mine = t.map(function(x, i){ return (x.playlistIds || []).indexOf(id) >= 0 && !x.stem ? i : -1; }).filter(function(i){ return i >= 0; });
     if (!mine.length) return false;
     var st = liveState();
     if (st.playing && st.t && (st.t.playlistIds || []).indexOf(id) >= 0) return true;    // already playing from it
+    if (shuf){ playQ(shuffled(mine)); return true; }
     var q = A.orderFor ? A.orderFor(mine, id) : mine; playQ(Array.isArray(q) ? q : mine); return true;
   }
   var fadeT = 0;
@@ -262,14 +268,15 @@
       setText(el.querySelector('.pw-po-task'), PO.task ? 'On: ' + PO.task : '');
     } };
   P.tomato = '<path d="M12 7.5c-4.6 0-8 2.9-8 6.6S7.4 21 12 21s8-3.2 8-6.9-3.4-6.6-8-6.6z"/><path d="M12 7.5c-.6-1.8-2.3-2.9-4.4-3 .9 1.6 2.5 2.6 4.4 3zm0 0c.6-1.8 2.3-2.9 4.4-3-.9 1.6-2.5 2.6-4.4 3zM12 7.5V3.5"/>';
-  ACTIONS.pomodoro = { label:'Pomodoro (Pendulum)', icon:'tomato', run:function(){ pendGo('pomo'); } };
-  ACTIONS.alarms = { label:'Alarms (Pendulum)', icon:'alarm', run:function(){ pendGo('alarms'); } };
+  function pendLite(){ toast('Pendulum isn’t part of Press Play Lite. Your alarms are kept for when you switch Lite off.'); }
+  ACTIONS.pomodoro = { label:'Pomodoro (Pendulum)', icon:'tomato', run:function(){ if (PEND_OFF) pendLite(); else pendGo('pomo'); } };
+  ACTIONS.alarms = { label:'Alarms (Pendulum)', icon:'alarm', run:function(){ if (PEND_OFF) pendLite(); else pendGo('alarms'); } };
   P.alarm = '<circle cx="12" cy="13" r="8"/><polyline points="12 9 12 13 14.5 15"/><path d="M5 3 2 6M19 3l3 3M7 20l-1.5 2M17 20l1.5 2"/>';
 
   // The Pendulum tab: added once to the tab bar (before Settings); it can be moved or removed like any other.
   setTimeout(function(){
     try {
-      if (localStorage.getItem('ppPendTabV1')) return;
+      if (PEND_OFF || localStorage.getItem('ppPendTabV1')) return;
       localStorage.setItem('ppPendTabV1', '1');
       L.tabs = L.tabs || tabsDefault();
       if (L.tabs.some(function(t){ return t.type === 'page' && t.page === POMO_ID; })) return;
@@ -281,17 +288,58 @@
 
   // ===================== Pendulum: alarms =====================
   // Each alarm: { id, on, time 'HH:MM', days [0-6] ([] = once), label, music ('' shuffle everything, 'resume', 'none',
-  // or a playlist id), fade (minutes the volume takes to rise), snooze (minutes), pomo (start a focus session when it is
-  // stopped), last (the last time it went off: it never rings twice for one time), snoozeAt }. Kept in 'ppAlarmsV2'.
+  // 'song' (one song, a.song, repeated until stopped) or a playlist id), shuf (a playlist plays shuffled), fade (minutes
+  // the volume takes to rise), snooze (minutes, any 1-120), snoozeMax (how many snoozes it allows: null for no limit,
+  // 0 for none), snoozed (snoozes used since it last rang on time), pomo (start a focus session when it is stopped),
+  // last (the last time it went off: it never rings twice for one time), snoozeAt }. The alarm sound (tone) can also be
+  // your own music: 'song' (a.song, repeated) or 'shuffle' (songs shuffled from a.toneFrom: '' everything or a playlist
+  // id). Kept in 'ppAlarmsV2'.
   var AL_KEY = 'ppAlarmsV2', DAY_N = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
   var AL = (function(){ var a = []; try { a = JSON.parse(localStorage.getItem(AL_KEY)) || []; } catch(e){} return Array.isArray(a) ? a : []; })();
   var alOpen = null, RING = null;   // the alarm being edited in the tab; the alarm ringing now
   function alSave(){ try { localStorage.setItem(AL_KEY, JSON.stringify(AL)); } catch(e){} alNative(); }
   function alById(id){ return AL.filter(function(a){ return a.id === id; })[0] || null; }
-  function alNew(){ return { id: 'a' + uid(), on: true, time: '07:30', days: [1, 2, 3, 4, 5], label: '', wake: 'sound', tone: 'classic', louder: true, out: 'speaker', music: '', fade: 1, snooze: 9, pomo: false, last: Date.now() }; }
+  function alNew(){ return { id: 'a' + uid(), on: true, time: '07:30', days: [1, 2, 3, 4, 5], label: '', wake: 'sound', tone: 'classic', louder: true, out: 'speaker', music: '', fade: 1, snooze: 9, ringFor: 10, loud: false, pomo: false, last: Date.now() }; }
   // what an alarm wakes you to: 'sound' (an alarm tone), 'both' (the tone, then music after 30 s) or 'music'
   // (alarms made before tones existed: music, or "just the alarm sound" for music 'none')
   function alWake(a){ return a.wake || (a.music === 'none' ? 'sound' : 'music'); }
+  function songTone(k){ return k === 'song' || k === 'shuffle'; }
+  // how long it rings before it stops by itself (minutes, 1-60; 10 to start with, like most alarm clocks)
+  function alRingMin(a){ return Math.max(1, Math.min(60, Math.round(+a.ringFor || 10))); }
+  // super loud: the alarm sound (never your music) at full volume from the first second, the phone's alarm volume
+  // turned all the way up, and on the speaker only, never in headphones
+  function alLoud(a){ return !!a.loud && alWake(a) !== 'music'; }
+  // snoozes: how many are left this time (Infinity with no limit), and the length
+  function alSnoozeMin(a){ return Math.max(1, Math.min(120, Math.round(+a.snooze || 9))); }
+  function alSnoozeLeft(a){ return a.snoozeMax == null || a.snoozeMax === '' ? Infinity : Math.max(0, +a.snoozeMax - (+a.snoozed || 0)); }
+  function alSnoozeBtn(a, attr){
+    var left = alSnoozeLeft(a); if (!left) return '';
+    return '<button type="button" ' + attr + '="snooze">Snooze ' + alSnoozeMin(a) + ' min' + (left !== Infinity ? '<small> · ' + left + ' left</small>' : '') + '</button>';
+  }
+  // your own songs, by their library id
+  function songIdx(id){ var A = api(); if (!A || id == null) return -1; var t = A.tracks(); for (var i = 0; i < t.length; i++) if (t[i].dbId === id && !t[i].stem) return i; return -1; }
+  function songName(id){ var A = api(), i = songIdx(id); if (i < 0) return ''; var t = A.tracks()[i]; return (t.title || t.name || 'Song') + (t.artist ? ' · ' + t.artist : ''); }
+  // starts what an alarm plays: one song (kept going until the alarm is stopped), what you last played, a playlist
+  // (shuffled or in order) or everything shuffled
+  function alPlayFrom(m, a, shuf){
+    if (RING){ RING.loop = null; RING.played = false; }
+    if (m === 'song'){
+      var i = songIdx(a.song);
+      if (i >= 0){ playQ([i]); if (RING) RING.loop = a.song; return; }
+      toast('That song isn’t in your library any more. Shuffling everything.'); runAction('shuffleall'); return;
+    }
+    if (m === 'resume') runAction('resume');
+    else if (m && m !== 'none' && m !== '' && poPlayPl(m, shuf)) {}
+    else runAction('shuffleall');
+  }
+  // one song plays again when it ends, for as long as the alarm rings
+  setInterval(function(){
+    if (!RING || !RING.loop) return;
+    if (liveState().playing){ RING.idle = 0; RING.played = true; return; }
+    if (!RING.played || ++RING.idle < 2) return;
+    RING.played = false;
+    RING.idle = 0; var i = songIdx(RING.loop); if (i >= 0) playQ([i]);
+  }, 1000);
   // the next time it goes off after `from`
   function alNext(a, from){
     if (!a.on) return null;
@@ -313,24 +361,33 @@
     return days.slice().sort(function(x, y){ return ((x + 6) % 7) - ((y + 6) % 7); }).map(function(d){ return new Date(2024, 0, 7 + d).toLocaleDateString(undefined, { weekday: 'short' }); }).join(', ');
   }
   function wakeText(a){
-    var w = alWake(a), t = toneName(a.tone);
-    return w === 'sound' ? t : w === 'both' ? t + ', then ' + musicText(a.music) : musicText(a.music);
+    var w = alWake(a), t = toneText(a);
+    return w === 'sound' ? t : w === 'both' ? t + ', then ' + musicText(a.music, a) : musicText(a.music, a);
   }
-  function musicText(m){
+  function toneText(a){
+    if (a.tone === 'song') return songName(a.song) || 'A song (none chosen)';
+    if (a.tone === 'shuffle') return 'Songs, shuffled' + (a.toneFrom ? ' (' + plName(a.toneFrom) + ')' : '');
+    return toneName(a.tone);
+  }
+  function plName(id){ var pl = poPlaylists().filter(function(p){ return p.id === id; })[0]; return pl ? pl.name : 'everything'; }
+  function musicText(m, a){
     if (m === 'none') return 'Alarm sound only'; if (m === 'resume') return 'What you last played'; if (!m) return 'Everything, shuffled';
-    var pl = poPlaylists().filter(function(p){ return p.id === m; })[0]; return pl ? pl.name : 'Everything, shuffled';
+    if (m === 'song') return (a && songName(a.song)) || 'A song (none chosen)';
+    var pl = poPlaylists().filter(function(p){ return p.id === m; })[0]; return pl ? pl.name + (a && a.shuf ? ', shuffled' : '') : 'Everything, shuffled';
   }
 
   // ---------- ringing ----------
   function alTick(){
+    if (PEND_OFF) return;
     var now = Date.now(), changed = false;
     AL.forEach(function(a){
       if (!a.on) return;
       var due = alNext(a, a.last || now - 60000);
       if (!due || due > now) return;
+      if (!(a.snoozeAt && due === a.snoozeAt)) a.snoozed = 0;   // on time (not a snooze): the snoozes start again
       a.last = due; a.snoozeAt = null; changed = true;
       if (!a.days || !a.days.length) a.on = false;   // a one-off alarm switches itself off
-      if (now - due < 30 * 60000) alRing(a, due);       // missed by more than half an hour (the phone was off): let it go
+      if (now - due < alRingMin(a) * 60000) alRing(a, due);   // it would have stopped by now (the phone was off): let it go
     });
     if (changed){ alSave(); alPaint(); }
   }
@@ -344,7 +401,7 @@
     } else alNative();
   });
   window.addEventListener('pagehide', alNative);
-  var beepT = 0, fadeUpT = 0;
+  var beepT = 0, fadeUpT = 0, buzzT = 0;
   function alRing(a, at){
     alStopSound();
     RING = { id: a.id, at: at, t0: Date.now() };
@@ -356,40 +413,55 @@
     var vo = document.getElementById('volume'), target = vo ? Math.max(30, +vo.value || 70) : 70;
     RING.vol = target;
     var wake = alWake(a);
+    var rise = function(mins){
+      if (!vo) return;
+      clearInterval(fadeUpT); inputTo('volume', 4);
+      var ms = mins * 60000, t0 = Date.now();
+      fadeUpT = setInterval(function(){ var f = Math.min(1, (Date.now() - t0) / ms); inputTo('volume', Math.round(4 + (target - 4) * f)); if (f >= 1) clearInterval(fadeUpT); }, 1000);
+    };
     var startMusic = function(){
       if (!RING || RING.id !== a.id) return;
-      if (a.music === 'resume') runAction('resume');
-      else if (a.music && a.music !== 'none' && !poPlayPl(a.music)) runAction('shuffleall');
-      else if (!a.music || a.music === 'none') runAction('shuffleall');
-      if (+a.fade && vo){
-        inputTo('volume', 4);
-        var ms = +a.fade * 60000, t0 = Date.now();
-        fadeUpT = setInterval(function(){ var f = Math.min(1, (Date.now() - t0) / ms); inputTo('volume', Math.round(4 + (target - 4) * f)); if (f >= 1) clearInterval(fadeUpT); }, 1000);
-      }
+      alPlayFrom(a.music === 'none' ? '' : a.music, a, !!a.shuf);
+      if (+a.fade) rise(+a.fade);
     };
     if (wake === 'music') startMusic();
+    else if (songTone(a.tone) && !alLoud(a)){
+      // the alarm sound is your own music: one song over and over, or songs shuffled; "gets louder" over half a minute
+      alPlayFrom(a.tone === 'song' ? 'song' : a.toneFrom || '', a, true);
+      if (a.louder !== false) rise(0.5); else if (vo) inputTo('volume', target);
+      if (wake === 'both') beepT = setTimeout(function(){ clearInterval(fadeUpT); if (vo) inputTo('volume', target); startMusic(); RING && (RING.music = true); alPaint(); }, 30000);
+    }
     else {
       if (liveState().playing) click('play-btn');   // the alarm sound on its own, not over a song
-      if (!(a.tone === 'phone' && RING.native)) tonePlay(a.tone || 'classic', { louder: a.louder !== false, id: a.id, label: a.label, speaker: a.out !== 'phones' });   // (the phone's own alarm is already ringing)
+      var tk = songTone(a.tone) ? 'classic' : a.tone || 'classic', loud = alLoud(a);
+      // (the phone's own alarm, or a super loud one rung by the phone, is already ringing)
+      if (!((tk === 'phone' || loud && nativeSound()) && RING.native)) tonePlay(tk, { louder: a.louder !== false, loud: loud, id: a.id, label: a.label, speaker: loud || a.out !== 'phones', maxMs: Math.max(1000, at + alRingMin(a) * 60000 - Date.now()) });
       if (wake === 'both') beepT = setTimeout(function(){ toneStop(); startMusic(); RING && (RING.music = true); alPaint(); }, 30000);
     }
     try { navigator.vibrate && navigator.vibrate([500, 250, 500, 250, 500]); } catch(e){}
+    if (alLoud(a)) buzzT = setInterval(function(){ try { navigator.vibrate && navigator.vibrate([1000, 300, 1000]); } catch(e){} }, 2600);   // super loud: it keeps shaking
     if (!(RS.alarm && !document.hidden)) toast('⏰ ' + (a.label || 'Alarm') + ' · ' + fmtTime(a.time));   // the ringing screen says it already
     // show it: the Alarms part of the Pendulum tab, with Snooze and Stop
     if (!document.hidden){ pendSec = 'alarms'; if (openPageId !== POMO_ID) openPage(POMO_ID); else renderPage(); }
     alPaint();
-    // after 30 minutes it stops by itself
-    setTimeout(function(){ if (RING && RING.id === a.id && RING.at === at) alStop(false); }, 30 * 60000);
+    // the time limit: it stops by itself (counted from when it was due, so a late start does not ring longer)
+    RING.until = at + alRingMin(a) * 60000;
+    setTimeout(function(){ if (RING && RING.id === a.id && RING.at === at){ alStop(false); toast('⏰ ' + (a.label || 'Alarm') + ' stopped by itself after ' + plural(alRingMin(a), 'minute') + '.'); } }, Math.max(1000, RING.until - Date.now()));
   }
-  function alStopSound(){ clearTimeout(beepT); clearInterval(fadeUpT); beepT = fadeUpT = 0; toneStop(); }
+  function alStopSound(){ clearTimeout(beepT); clearInterval(fadeUpT); clearInterval(buzzT); beepT = fadeUpT = buzzT = 0; toneStop(); try { navigator.vibrate && navigator.vibrate(0); } catch(e){} }
   function alStop(snooze){
     if (!RING) return;
     var a = alById(RING.id), vol = RING.vol;
     alStopSound(); RING = null;
+    if (a && snooze && !alSnoozeLeft(a)) snooze = false;   // no snoozes left: it stops
     var focusNow = a && !snooze && a.pomo;
     if (liveState().playing && !(focusNow && alWake(a) !== 'sound')) click('play-btn');   // "then focus": the music carries on as focus music
     if (vol) setTimeout(function(){ inputTo('volume', vol); }, 200);
-    if (a && snooze){ a.snoozeAt = Date.now() + (+a.snooze || 9) * 60000; a.on = true; toast('Snoozing for ' + (+a.snooze || 9) + ' minutes.'); }
+    if (a && snooze){
+      a.snoozed = (+a.snoozed || 0) + 1; a.snoozeAt = Date.now() + alSnoozeMin(a) * 60000; a.on = true;
+      var left = alSnoozeLeft(a);
+      toast('Snoozing for ' + alSnoozeMin(a) + ' minutes.' + (left === Infinity ? '' : left ? ' ' + plural(left, 'snooze') + ' left.' : ' That was the last snooze.'));
+    } else if (a) a.snoozed = 0;
     if (focusNow){ pendSec = 'pomo'; PO.ph = 'focus'; PO.left = null; PO.run = false; poDo('go'); renderPage(); toast('🍅 Focus started.'); }
     alSave(); alPaint();
   }
@@ -403,18 +475,31 @@
     natT = setTimeout(function(){
       var N = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PPNotify; if (!N || !N.alarms) return;
       var items = [], now = Date.now();
-      AL.forEach(function(a){
+      if (!PEND_OFF) AL.forEach(function(a){
         var t = alNext(a, now), n = 0;
         while (t && n++ < 2){
-          items.push({ id: a.id + '_' + t, at: t, title: '⏰ ' + (a.label || 'Alarm') + ' · ' + fmtTime(a.time), text: alWake(a) === 'sound' ? 'Tap to stop it.' : 'Tap to start your music (' + musicText(a.music) + ').' });
+          items.push({ id: a.id + '_' + t, at: t, alarm: a.id, timeout: alRingMin(a) * 60000, loud: alLoud(a), title: '⏰ ' + (a.label || 'Alarm') + ' · ' + fmtTime(a.time), text: alWake(a) === 'sound' ? 'Tap to stop it.' : 'Tap to start your music (' + musicText(a.music) + ').' });
           if (!a.days || !a.days.length || a.snoozeAt === t) break;
           t = alNext(Object.assign({}, a, { snoozeAt: null }), t);
         }
       });
       N.alarms({ items: items }).then(function(r){ natExact = r && r.exact; alPaint(); }).catch(function(){});
+      alSaveSounds();
     }, 300);
   }
   setTimeout(alNative, 2500);
+  // a super loud alarm rings with the app closed through the phone (AlarmSound in JobsPlugin.kt, speaker only): it gets
+  // its sound, rendered loud, ahead of time. The phone's own alarm sound needs nothing (the phone plays it).
+  var savedSnd = {};
+  function alSaveSounds(){
+    var N = nativeSound(); if (!N || !N.saveSound) return;
+    AL.forEach(function(a){
+      var key = !PEND_OFF && alLoud(a) && a.tone !== 'phone' ? 'loud-' + (TONE_PAT[a.tone] ? a.tone : 'classic') : '';
+      if (savedSnd[a.id] === key) return; savedSnd[a.id] = key;
+      if (!key){ N.saveSound({ alarm: a.id }).catch(function(){}); return; }
+      soundWav(key).then(function(w){ if (w && savedSnd[a.id] === key) N.saveSound({ alarm: a.id, wav: w }).catch(function(){}); });
+    });
+  }
 
   // ---------- the Alarms part of the tab ----------
   function alarmsSection(el){
@@ -428,7 +513,7 @@
   function alRowHTML(a){
     var at = alNext(a, Date.now()), open = alOpen === a.id, p = String(a.time).split(':'), d = new Date(); d.setHours(+p[0] || 0, +p[1] || 0, 0, 0);
     var tp = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }), m = tp.match(/^(.*?)(\s?[AaPp]\.?\s?[Mm]\.?)$/);
-    var sub = [daysText(a.days), wakeText(a)].concat(a.pomo ? ['then focus'] : []).join(' · ');
+    var sub = [daysText(a.days), wakeText(a)].concat(alLoud(a) ? ['super loud'] : [], a.pomo ? ['then focus'] : []).join(' · ');
     var h = '<div class="ppa-al' + (a.on ? ' on' : '') + (open ? ' open' : '') + '" data-al="' + esc(a.id) + '">' +
       '<button type="button" class="ppa-main" data-ppa="edit"><span class="ppa-t">' + esc(m ? m[1] : tp) + (m ? '<small>' + esc(m[2].trim()) + '</small>' : '') + '</span>' +
         '<span class="ppa-m"><b>' + esc(a.label || 'Alarm') + '</b><small>' + esc(sub) + '</small>' + (a.on && at ? '<small class="ppa-in">' + (a.snoozeAt && a.snoozeAt > Date.now() ? 'Snoozed · ' : '') + 'in ' + fmtIn(at - Date.now()) + '</small>' : '') + '</span></button>' +
@@ -441,21 +526,55 @@
         '<div class="ppp-f"><span>Repeat</span><div class="ppa-days">' + DAY_N.map(function(n, k){ var dk = (k + 1) % 7; return '<button type="button" data-ppa="day" data-v="' + dk + '"' + ((a.days || []).indexOf(dk) >= 0 ? ' class="on"' : '') + ' aria-label="' + esc(new Date(2024, 0, 7 + dk).toLocaleDateString(undefined, { weekday: 'long' })) + '">' + DAY_N[dk] + '</button>'; }).join('') + '</div>' +
           '<div class="ppa-quick">' + [['once', 'Once'], ['all', 'Every day'], ['wk', 'Weekdays'], ['we', 'Weekends']].map(function(x){ return '<button type="button" data-ppa="days" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div></div>' +
         '<div class="ppp-f"><span>Wake up to</span>' + alSegS('wake', [['sound', 'Alarm sound'], ['both', 'Sound, then music'], ['music', 'Music']], alWake(a)) + '</div>' +
-        (alWake(a) !== 'music' ? '<div class="ppp-f"><span>Alarm sound</span><div class="ppa-tone"><select data-ppa-set="tone">' + opts(TONES.concat(phoneTone() ? [['phone', 'The phone’s alarm sound']] : []), a.tone || 'classic') + '</select>' +
-          '<button type="button" data-ppa="hear">' + svg('play') + 'Hear it</button></div></div>' +
-          '<label class="ppp-tog"><span><b>Gets louder</b><small>Starts quiet and rises over half a minute.</small></span><input type="checkbox" data-ppa-set="louder"' + (a.louder !== false ? ' checked' : '') + '></label>' +
-          (nativeSound() ? '<div class="ppp-f"><span>Plays through</span>' + alSegS('out', [['speaker', 'Speaker, even with headphones in'], ['phones', 'Headphones when they’re in']], a.out === 'phones' ? 'phones' : 'speaker') + '</div>' : '') : '') +
-        (alWake(a) !== 'sound' ? '<label class="ppp-f"><span>' + (alWake(a) === 'both' ? 'Then the music (after 30 s)' : 'Music') + '</span><select data-ppa-set="music">' + opts([['', 'Everything, shuffled'], ['resume', 'What I last played']].concat(pls), a.music === 'none' ? '' : a.music || '') + '</select></label>' +
+        (alWake(a) !== 'music' ? '<div class="ppp-f"><span>Alarm sound</span><div class="ppa-tone"><select data-ppa-set="tone">' +
+            '<optgroup label="Alarm sounds">' + opts(TONES.concat(phoneTone() ? [['phone', 'The phone’s alarm sound']] : []), a.tone || 'classic') + '</optgroup>' +
+            (a.loud ? '' : '<optgroup label="Your music">' + opts([['song', 'One song (plays over and over)'], ['shuffle', 'Songs, shuffled']], a.tone) + '</optgroup>') + '</select>' +
+          (songTone(a.tone) ? '' : '<button type="button" data-ppa="hear">' + svg('play') + 'Hear it</button>') + '</div></div>' +
+          (a.tone === 'song' ? songPick(a) : '') +
+          (a.tone === 'shuffle' ? '<label class="ppp-f ppp-f-in"><span>Shuffled from</span><select data-ppa-set="toneFrom">' + opts([['', 'Everything']].concat(pls), a.toneFrom || '') + '</select></label>' : '') +
+          '<label class="ppp-tog ppa-loud' + (a.loud ? ' on' : '') + '"><span><b>' + svg('vol') + 'Super loud</b><small>For heavy sleepers. Full volume from the first second' + (nativeSound() ? ', with the phone’s alarm volume turned all the way up' : '') + ', and it keeps vibrating. ' + (nativeSound() ? 'It only plays on the speaker, never in headphones.' : 'Take your headphones off: in a browser it plays wherever the sound goes.') + '</small></span><input type="checkbox" data-ppa-set="loud"' + (a.loud ? ' checked' : '') + '></label>' +
+          (a.loud ? '' : '<label class="ppp-tog"><span><b>Gets louder</b><small>Starts quiet and rises over half a minute.</small></span><input type="checkbox" data-ppa-set="louder"' + (a.louder !== false ? ' checked' : '') + '></label>') +
+          (nativeSound() && !songTone(a.tone) && !a.loud ? '<div class="ppp-f"><span>Plays through</span>' + alSegS('out', [['speaker', 'Speaker, even with headphones in'], ['phones', 'Headphones when they’re in']], a.out === 'phones' ? 'phones' : 'speaker') + '</div>' : '') : '') +
+        (alWake(a) !== 'sound' ? '<label class="ppp-f"><span>' + (alWake(a) === 'both' ? 'Then the music (after 30 s)' : 'Music') + '</span><select data-ppa-set="music">' + opts([['', 'Everything, shuffled'], ['resume', 'What I last played'], ['song', 'One song (plays over and over)']].concat(pls), a.music === 'none' ? '' : a.music || '') + '</select></label>' +
+          (a.music === 'song' && a.tone !== 'song' || a.music === 'song' && alWake(a) === 'music' ? songPick(a) : '') +
+          (a.music && a.music !== 'none' && a.music !== 'resume' && a.music !== 'song' ? '<div class="ppp-f ppp-f-in"><span>The playlist plays</span>' + alSegS('shuf', [['', 'In order'], ['1', 'Shuffled']], a.shuf ? '1' : '') + '</div>' : '') +
           '<div class="ppp-f"><span>Music volume rises over</span>' + alSeg('fade', [[0, 'No fade'], [1, '1 min'], [3, '3 min'], [10, '10 min']], a.fade) + '</div>' : '') +
-        '<div class="ppp-f"><span>Snooze for</span>' + alSeg('snooze', [[5, '5 min'], [9, '9 min'], [10, '10 min'], [15, '15 min']], a.snooze) + '</div>' +
+        '<div class="ppp-f"><span>Stops by itself after</span>' + alSeg('ringFor', [[1, '1 min'], [5, '5 min'], [10, '10 min'], [20, '20 min'], [30, '30 min']], alRingMin(a)) +
+          alNum('ringFor', alRingMin(a), 1, 60, 'min') + '</div>' +
+        '<div class="ppp-f"><span>Snooze for</span>' + alSeg('snooze', [[5, '5 min'], [9, '9 min'], [10, '10 min'], [15, '15 min']], alSnoozeMin(a)) +
+          alNum('snooze', alSnoozeMin(a), 1, 120, 'min') + '</div>' +
+        '<div class="ppp-f"><span>Snoozes allowed</span>' + alSeg('snoozeMax', [['', 'No limit'], [0, 'None'], [1, '1'], [2, '2'], [3, '3']], a.snoozeMax) +
+          alNum('snoozeMax', a.snoozeMax, 0, 99, 'snoozes') + '</div>' +
         '<label class="ppp-tog"><span><b>Then start a Pomodoro</b><small>Stopping the alarm starts a focus session.</small></span><input type="checkbox" data-ppa-set="pomo"' + (a.pomo ? ' checked' : '') + '></label>' +
-        '<div class="ppa-ed-b"><button type="button" data-ppa="test">' + svg('play') + 'Try it</button><button type="button" class="pw-danger" data-ppa="del">' + svg('x') + 'Delete</button><button type="button" class="on" data-ppa="done">Done</button></div>' +
+        '<div class="ppa-ed-b"><button type="button" data-ppa="test">' + svg('play') + 'Try it</button><button type="button" data-ppa="dup">' + svg('copy') + 'Duplicate</button><button type="button" class="pw-danger" data-ppa="del">' + svg('x') + 'Delete</button><button type="button" class="on" data-ppa="done">Done</button></div>' +
       '</div>';
     }
     return h + '</div>';
   }
   function alSegS(k, list, cur){ return '<div class="pw-seg ppp-seg" data-ppa-segs="' + k + '">' + list.map(function(x){ return '<button type="button" data-v="' + x[0] + '"' + (cur === x[0] ? ' class="on"' : '') + '>' + x[1] + '</button>'; }).join('') + '</div>'; }
-  function alSeg(k, list, cur){ return '<div class="pw-seg ppp-seg" data-ppa-seg="' + k + '">' + list.map(function(x){ return '<button type="button" data-v="' + x[0] + '"' + (+cur === x[0] ? ' class="on"' : '') + '>' + x[1] + '</button>'; }).join('') + '</div>'; }
+  function alSeg(k, list, cur){ var c = cur == null || cur === '' ? '' : String(+cur); return '<div class="pw-seg ppp-seg" data-ppa-seg="' + k + '">' + list.map(function(x){ return '<button type="button" data-v="' + x[0] + '"' + (c === String(x[0]) ? ' class="on"' : '') + '>' + x[1] + '</button>'; }).join('') + '</div>'; }
+  // any number, for what the buttons above it don't offer
+  function alNum(k, cur, min, max, unit){ return '<label class="ppa-num"><span>Custom</span><input type="number" inputmode="numeric" data-ppa-num="' + k + '" min="' + min + '" max="' + max + '" step="1" value="' + (cur == null || cur === '' ? '' : +cur) + '" aria-label="Custom ' + ({ snooze: 'snooze length in minutes', ringFor: 'minutes before it stops by itself' }[k] || 'number of snoozes') + '"><small>' + esc(unit) + '</small></label>'; }
+  // choosing one song: the chosen one, and a search through your library
+  var songQ = {};
+  function songPick(a){
+    var nm = songName(a.song), q = songQ[a.id] || '';
+    return '<div class="ppp-f ppp-f-in ppa-song"><span>The song</span>' +
+      '<div class="ppa-song-now">' + svg('music') + '<b>' + esc(nm || 'No song chosen yet') + '</b></div>' +
+      '<input type="text" class="ppa-song-q" data-ppa-q="1" placeholder="Search your songs" value="' + esc(q) + '" aria-label="Search your songs">' +
+      '<div class="ppa-song-r">' + songResults(a, q) + '</div></div>';
+  }
+  function songResults(a, q){
+    var A = api(); if (!A) return '';
+    q = String(q || '').trim().toLowerCase(); if (!q) return '';
+    var t = A.tracks(), out = [];
+    for (var i = 0; i < t.length && out.length < 8; i++){
+      var x = t[i]; if (x.stem || x.kind === 'video' || x.dbId == null) continue;
+      var hay = ((x.title || x.name || '') + ' ' + (x.artist || '') + ' ' + (x.album || '')).toLowerCase();
+      if (hay.indexOf(q) >= 0) out.push('<button type="button" data-ppa="song" data-v="' + esc(String(x.dbId)) + '"' + (x.dbId === a.song ? ' class="on"' : '') + '><b>' + esc(x.title || x.name || 'Song') + '</b>' + (x.artist ? '<small>' + esc(x.artist) + '</small>' : '') + '</button>');
+    }
+    return out.length ? out.join('') : '<p class="ppa-song-e">No songs match.</p>';
+  }
   function alPaint(){
     // the tab
     var box = openPageId === POMO_ID ? pageEl.querySelector('.ppa') : null, nx = alSoonest();
@@ -466,11 +585,11 @@
       ring.hidden = !ra;
       if (ra && ring._id !== RING.id + RING.at){ ring._id = RING.id + RING.at;
         ring.innerHTML = '<div class="ppa-ring-i">' + svg('alarm') + '</div><b>' + esc(fmtTime(ra.time)) + '</b><span>' + esc(ra.label || 'Alarm') + '</span>' +
-          '<div class="ppa-ring-b"><button type="button" data-ppa="snooze">Snooze ' + (+ra.snooze || 9) + ' min</button><button type="button" class="on" data-ppa="stop">' + (ra.pomo ? 'Stop and focus' : 'Stop') + '</button></div>'; }
+          '<div class="ppa-ring-b">' + alSnoozeBtn(ra, 'data-ppa') + '<button type="button" class="on" data-ppa="stop">' + (ra.pomo ? 'Stop and focus' : 'Stop') + '</button></div>'; }
       if (!ra) ring._id = null;
       var list = box.querySelector('.ppa-list'), sig = JSON.stringify([AL, alOpen, Math.floor(Date.now() / 30000), poPlaylists().length]);
       if (list._sig !== sig){
-        var keep = document.activeElement && list.contains(document.activeElement) && document.activeElement.matches('input[type=text], input[type=time]');
+        var keep = document.activeElement && list.contains(document.activeElement) && document.activeElement.matches('input[type=text], input[type=time], input[type=number]');
         if (!keep){ list._sig = sig; list.innerHTML = AL.length ? AL.slice().sort(function(x, y){ return String(x.time).localeCompare(String(y.time)); }).map(alRowHTML).join('') : '<p class="ppa-empty">No alarms yet. Add one, and wake up to your music.</p>'; }
       }
       var N = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PPNotify;
@@ -493,7 +612,19 @@
     else if (op === 'day'){ var dv = +b.dataset.v, ds = a.days = (a.days || []).slice(), i = ds.indexOf(dv); if (i >= 0) ds.splice(i, 1); else ds.push(dv); a.last = Date.now(); }
     else if (op === 'days'){ a.days = { once: [], all: [0, 1, 2, 3, 4, 5, 6], wk: [1, 2, 3, 4, 5], we: [0, 6] }[b.dataset.v] || []; a.last = Date.now(); }
     else if (op === 'del'){ AL = AL.filter(function(x){ return x !== a; }); alOpen = null; toast('Alarm deleted.'); }
-    else if (op === 'test'){ alRing(a, Date.now()); return; }
+    else if (op === 'dup'){
+      // a copy with everything the same, just after it in the list; it opens so you can change the time
+      var c = JSON.parse(JSON.stringify(a)); c.id = 'a' + uid(); c.snoozeAt = null; c.snoozed = 0; c.last = Date.now();
+      c.label = ((a.label || 'Alarm') + ' (copy)').slice(0, 40);
+      AL.splice(AL.indexOf(a) + 1, 0, c); alOpen = c.id; alSave(); alPaint();
+      var cr = pageEl.querySelector('[data-al="' + c.id + '"]'); if (cr) cr.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      toast('Alarm duplicated.'); return;
+    }
+    else if (op === 'song'){
+      var A = api(), id = b.dataset.v, hit = A && A.tracks().filter(function(x){ return String(x.dbId) === id; })[0];
+      if (hit){ a.song = hit.dbId; songQ[a.id] = ''; if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); toast('🎵 ' + (hit.title || 'Song') + ' chosen.'); }
+    }
+    else if (op === 'test'){ a.snoozed = 0; alRing(a, Date.now()); return; }
     else if (op === 'hear'){
       var label = function(on){ b.innerHTML = svg(on ? 'pause' : 'play') + (on ? 'Stop' : 'Hear it'); };
       if (toneNow && toneNow.preview){ toneStop(); label(false); return; }
@@ -506,19 +637,37 @@
   document.addEventListener('click', function(e){
     var b = e.target.closest && e.target.closest('[data-ppa-segs] button'); if (!b) return;
     var a = alById(b.closest('[data-al]').dataset.al); if (!a) return;
-    a[b.parentNode.dataset.ppaSegs] = b.dataset.v; if (a.music === 'none') a.music = ''; alSave(); alPaint();
+    var k = b.parentNode.dataset.ppaSegs; a[k] = k === 'shuf' ? !!b.dataset.v : b.dataset.v; if (a.music === 'none') a.music = ''; alSave(); alPaint();
   });
   document.addEventListener('click', function(e){
     var b = e.target.closest && e.target.closest('[data-ppa-seg] button'); if (!b) return;
     var a = alById(b.closest('[data-al]').dataset.al); if (!a) return;
-    a[b.parentNode.dataset.ppaSeg] = +b.dataset.v; alSave(); alPaint();
+    a[b.parentNode.dataset.ppaSeg] = b.dataset.v === '' ? null : +b.dataset.v; alSave(); alPaint();
   });
   document.addEventListener('change', function(e){
     var x = e.target; if (!x.dataset || !x.dataset.ppaSet) return;
     var a = alById(x.closest('[data-al]').dataset.al); if (!a) return;
     var k = x.dataset.ppaSet; a[k] = x.type === 'checkbox' ? x.checked : x.value;
     if (k === 'time'){ a.on = true; a.last = Date.now(); a.snoozeAt = null; }
+    if (k === 'loud' && a.loud){
+      if (songTone(a.tone)){ a.tone = 'classic'; toast('Super loud plays an alarm sound, so it’s set to Classic beeps. Your music can still come after it.'); }
+      else toast('Super loud is on. Try it with the phone away from your ear.');
+    }
     alSave(); if (k !== 'label') { x.blur(); alPaint(); }
+  });
+  document.addEventListener('change', function(e){
+    var x = e.target; if (!x.dataset || !x.dataset.ppaNum) return;
+    var a = alById(x.closest('[data-al]').dataset.al); if (!a) return;
+    var k = x.dataset.ppaNum, v = x.value.trim(), n = Math.round(+v);
+    if (k === 'snooze') a.snooze = v === '' || isNaN(n) ? 9 : Math.max(1, Math.min(120, n));
+    else if (k === 'ringFor') a.ringFor = v === '' || isNaN(n) ? 10 : Math.max(1, Math.min(60, n));
+    else a.snoozeMax = v === '' || isNaN(n) ? null : Math.max(0, Math.min(99, n));
+    alSave(); x.blur(); alPaint();
+  });
+  document.addEventListener('input', function(e){
+    var x = e.target; if (!x.dataset || !x.dataset.ppaQ) return;
+    var row = x.closest('[data-al]'), a = row && alById(row.dataset.al); if (!a) return;
+    songQ[a.id] = x.value; var r = x.parentNode.querySelector('.ppa-song-r'); if (r) r.innerHTML = songResults(a, x.value);
   });
   document.addEventListener('input', function(e){ var x = e.target; if (x.dataset && x.dataset.ppaSet === 'label'){ var a = alById(x.closest('[data-al]').dataset.al); if (a){ a.label = x.value.slice(0, 40); clearTimeout(x._t); x._t = setTimeout(alSave, 400); } } });
 
@@ -531,7 +680,7 @@
       var sig = JSON.stringify([AL, !!ra, Math.floor(Date.now() / 30000)]); if (el._sig === sig) return; el._sig = sig;
       var h = '<div class="pw-alw-h"><div><b class="pw-alw-t">' + (nx ? esc(fmtTime(nx.a.time)) : 'No alarm') + '</b><small>' + (nx ? esc((nx.a.label || 'Alarm') + ' · in ' + fmtIn(nx.at - Date.now())) : 'Set one in the Pendulum tab') + '</small></div>' +
         '<button type="button" class="pw-po-open" data-pw-act="alarms" aria-label="Open the alarms">' + svg('chevr') + '</button></div>';
-      if (ra) h += '<div class="pw-sw-b"><button type="button" data-ppa="snooze">Snooze</button><button type="button" class="on" data-ppa="stop">Stop</button></div>';
+      if (ra) h += '<div class="pw-sw-b">' + (alSnoozeLeft(ra) ? '<button type="button" data-ppa="snooze">Snooze</button>' : '') + '<button type="button" class="on" data-ppa="stop">Stop</button></div>';
       if (n) h += AL.slice().sort(function(x, y){ return String(x.time).localeCompare(String(y.time)); }).slice(0, n).map(function(a){
         return '<div class="pw-alw-r" data-al="' + esc(a.id) + '"><span><b>' + esc(fmtTime(a.time)) + '</b><small>' + esc((a.label ? a.label + ' · ' : '') + daysText(a.days)) + '</small></span><button type="button" class="pw-al-sw" role="switch" aria-checked="' + !!a.on + '" data-ppa="tog" aria-label="Alarm on or off"><i></i></button></div>'; }).join('');
       el.innerHTML = h;
@@ -592,6 +741,10 @@
     toneStop(); o = o || {};
     if (key === 'phone' && phoneTone()){
       var N = window.Capacitor.Plugins.PPNotify, id = 'ring_' + (o.id || 'x');
+      if (o.loud && nativeSound()){   // super loud: the phone's alarm sound, played by the app on the speaker only
+        var NL = toneNow = { native: true, preview: !!o.preview };
+        nativeSound().playSound({ phone: true, loop: true, loud: true, maxMs: o.maxMs || 0 }).catch(function(){}); return;
+      }
       N.show({ id: id, title: '⏰ ' + (o.label || 'Alarm'), text: 'Tap to open Press Play.', kind: 'alarm' }).catch(function(){});
       toneNow = { phone: id, preview: !!o.preview }; return;
     }
@@ -599,17 +752,18 @@
     // on Android: the phone plays it, through the speaker or the headphones as chosen (see AlarmSound in JobsPlugin.kt)
     if (nativeSound()){
       var NT = toneNow = { native: true, preview: !!o.preview };
-      soundWav(TONE_PAT[key] ? key : 'classic').then(function(w){
+      soundWav((o.loud ? 'loud-' : '') + (TONE_PAT[key] ? key : 'classic')).then(function(w){
         if (toneNow !== NT || !w) return;
-        nativeSound().playSound({ wav: w, loop: true, speaker: o.speaker !== false, louder: !!(o.louder || key === 'rise') }).catch(function(){});
+        nativeSound().playSound({ wav: w, loop: true, speaker: o.speaker !== false, louder: !o.loud && !!(o.louder || key === 'rise'), loud: !!o.loud, maxMs: o.maxMs || 0 }).catch(function(){});
       });
       return;
     }
     var c = sfxCtx(); if (!c) return;
     var pat = TONE_PAT[key] || TONE_PAT.classic, out = c.createGain(), comp = c.createDynamicsCompressor();
     out.connect(comp); comp.connect(c.destination);
-    var full = 0.9, t0 = c.currentTime + 0.05;
-    if (o.louder || key === 'rise'){ out.gain.setValueAtTime(full * 0.25, t0); out.gain.linearRampToValueAtTime(full, t0 + 30); } else out.gain.value = full;
+    var full = o.loud ? 2.6 : 0.9, t0 = c.currentTime + 0.05;   // super loud: driven hard into the compressor, as loud as it goes
+    if (o.loud){ comp.threshold.value = -30; comp.ratio.value = 20; comp.attack.value = 0.002; out.gain.value = full; }
+    else if (o.louder || key === 'rise'){ out.gain.setValueAtTime(full * 0.25, t0); out.gain.linearRampToValueAtTime(full, t0 + 30); } else out.gain.value = full;
     var next = t0, T = toneNow = { out: out, preview: !!o.preview };
     var tick = function(){
       if (toneNow !== T) return;
@@ -633,10 +787,11 @@
   function soundWav(key){
     if (wavCache[key]) return wavCache[key];
     var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext; if (!OAC) return Promise.resolve(null);
-    var chime = key.indexOf('chime-') === 0, pat = TONE_PAT[key];
+    var chime = key.indexOf('chime-') === 0, loud = key.indexOf('loud-') === 0, pat = TONE_PAT[loud ? key.slice(5) : key];
     var sr = 32000, secs = chime ? 2 : pat[0] * Math.max(1, Math.ceil(5 / pat[0]));
     var c = new OAC(1, Math.round(sr * secs), sr), out = c.createGain(), comp = c.createDynamicsCompressor();
-    out.gain.value = chime ? 1 : 0.9; out.connect(comp); comp.connect(c.destination);
+    out.gain.value = chime ? 1 : loud ? 2.6 : 0.9; out.connect(comp); comp.connect(c.destination);
+    if (loud){ comp.threshold.value = -30; comp.ratio.value = 20; comp.attack.value = 0.002; }
     if (chime) chimeAt(c, out, 0.02, key === 'chime-down' ? 'focus' : 'short');
     else for (var t = 0; t < secs - 0.001; t += pat[0]) pat[1](c, out, t);
     wavCache[key] = c.startRendering().then(function(buf){ return wavBase64(buf.getChannelData(0), sr); }).catch(function(){ delete wavCache[key]; return null; });
@@ -686,8 +841,8 @@
     if (!RSNOW) return;
     var k = RSNOW.kind, ed = editing === 'ring', a = k === 'alarm' && RING ? alById(RING.id) : null, top = '', act = '';
     if (k === 'alarm' && a){
-      top = '<div class="prs-tag">' + svg('alarm') + '<b>' + esc(a.label || 'Alarm') + '</b><span>' + esc(fmtTime(a.time)) + '</span></div>';
-      act = '<button type="button" data-prs="snooze">Snooze ' + (+a.snooze || 9) + ' min</button><button type="button" class="on" data-prs="stop">' + (a.pomo ? 'Stop and focus' : 'Stop') + '</button>';
+      top = '<div class="prs-tag">' + svg(alLoud(a) ? 'vol' : 'alarm') + '<b>' + esc(a.label || 'Alarm') + '</b><span>' + esc(fmtTime(a.time)) + '</span></div><div class="prs-left"></div>';
+      act = alSnoozeBtn(a, 'data-prs') + '<button type="button" class="on" data-prs="stop">' + (a.pomo ? 'Stop and focus' : 'Stop') + '</button>';
     } else if (k === 'pomo'){
       var nx = PO.ph, word = nx === 'focus' ? 'Break over' : 'Focus done';
       top = '<div class="prs-tag prs-tag-po">' + svg('tomato') + '<b>' + word + '</b><span class="prs-po-t"></span></div>';
@@ -705,6 +860,7 @@
     startTick(); liveSoon(); rsTick();
   }
   function rsTick(){
+    if (RSNOW && RSNOW.kind === 'alarm' && RING && RING.until){ var lf = ringEl.querySelector('.prs-left'); if (lf) setText(lf, 'Stops by itself in ' + fmtClock(Math.max(0, RING.until - Date.now()))); return; }
     if (!RSNOW || RSNOW.kind !== 'pomo') return;
     var t = ringEl.querySelector('.prs-po-t'); if (t) setText(t, PO_NAME[PO.ph] + ' · ' + fmtClock(poLeft()) + (PO.run ? '' : ' (not started)'));
   }

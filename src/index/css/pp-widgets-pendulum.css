@@ -3,7 +3,9 @@
   .ppp[data-ph="short"], .pw-po[data-ph="short"]{ --po-c:#3ddc97; }
   .ppp[data-ph="long"], .pw-po[data-ph="long"]{ --po-c:#7cc4ff; }
   .ppd{ padding:0 var(--ph-r, 20px) 0 var(--ph-l, 20px); max-width:620px; margin:0 auto; color:var(--text); --po-c:#ff6b5e; }
-  .ppd[data-sec="alarms"]{ --po-c:#ffb547; }
+  /* Alarms take the app's own accent colour (and the theme's text-on-accent), like the rest of Press Play. The
+     Pomodoro keeps its phase colours (tomato red, break green, long-break blue): they say which phase it is. */
+  .ppd[data-sec="alarms"]{ --po-c:var(--accent, #ffb547); --po-ink:var(--on-accent, #14100f); }
   .ppp{ color:var(--text); }
   .ppp-h{ display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin-bottom:14px; }
   .ppp-h small{ display:block; font-size:12px; font-weight:750; letter-spacing:.08em; text-transform:uppercase; color:var(--po-c); }
@@ -14,7 +16,7 @@
   .ppp-today.ppp-won{ background:color-mix(in srgb, var(--po-c) 22%, transparent); }
   .ppp-phases{ display:flex; gap:4px; padding:4px; border-radius:999px; background:color-mix(in srgb, var(--text, #fff) 7%, transparent); }
   .ppp-phases button{ flex:1 1 0; min-width:0; height:36px; border:0; border-radius:999px; background:none; color:var(--text-dim); font:inherit; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .ppp-phases button.on{ background:var(--po-c); color:#14100f; }
+  .ppp-phases button.on{ background:var(--po-c); color:var(--po-ink, #14100f); }
   .ppp-phases button:disabled{ opacity:.4; cursor:default; }
   .ppp-ring, .pw-po-ring{ position:relative; aspect-ratio:1; }
   .ppp-ring{ width:min(78vw, 300px); margin:22px auto 14px; }
@@ -31,7 +33,7 @@
   .ppp-run .ppp-t{ animation:none; }
   .ppp-task{ display:block; width:100%; box-sizing:border-box; height:44px; padding:0 14px; border-radius:calc(12px*var(--ui-round,1)); border:1px solid var(--line); background:var(--bg-elev, #15171b); color:var(--text); font:inherit; font-size:15px; text-align:center; }
   .ppp-ctl{ display:flex; align-items:center; justify-content:center; gap:18px; margin:16px 0 6px; }
-  .ppp-go{ height:58px; min-width:170px; padding:0 26px; display:inline-flex; align-items:center; justify-content:center; gap:10px; border:0; border-radius:999px; background:var(--po-c); color:#14100f; font:inherit; font-size:17px; font-weight:800; cursor:pointer;
+  .ppp-go{ height:58px; min-width:170px; padding:0 26px; display:inline-flex; align-items:center; justify-content:center; gap:10px; border:0; border-radius:999px; background:var(--po-c); color:var(--po-ink, #14100f); font:inherit; font-size:17px; font-weight:800; cursor:pointer;
     box-shadow:0 8px 22px color-mix(in srgb, var(--po-c) 40%, transparent); }
   .ppp-go-i{ display:grid; } .ppp-go svg{ width:18px; height:18px; }
   .ppp-sm{ width:56px; display:flex; flex-direction:column; align-items:center; gap:3px; border:0; background:none; color:var(--text-dim); font:inherit; font-size:11px; font-weight:700; cursor:pointer; }
@@ -82,9 +84,9 @@
   .pw-po-h small{ font-size:12px; color:var(--text-dim); }
   .pw-po-task{ margin-top:3px; font-size:12.5px; color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .pw-po-task:empty{ display:none; }
-  .pw-po .pw-sw-b button.on{ background:var(--po-c); color:#14100f; }
+  .pw-po .pw-sw-b button.on{ background:var(--po-c); color:var(--po-ink, #14100f); }
   .pw-po-bar{ gap:12px; }
-  .pw-po-bar .pw-po-go{ flex:none; width:42px; height:42px; display:grid; place-items:center; border:0; border-radius:50%; background:var(--po-c); color:#14100f; cursor:pointer; padding:0; }
+  .pw-po-bar .pw-po-go{ flex:none; width:42px; height:42px; display:grid; place-items:center; border:0; border-radius:50%; background:var(--po-c); color:var(--po-ink, #14100f); cursor:pointer; padding:0; }
   .pw-po-bar .pw-po-go svg{ width:16px; height:16px; }
   .pw-po-m{ flex:1 1 auto; min-width:0; }
   .pw-po-l{ display:flex; align-items:baseline; gap:8px; }
@@ -121,13 +123,13 @@
   .ppa-ed input[type=time], .ppa-ed input[type=text]{ width:100%; box-sizing:border-box; height:42px; padding:0 12px; border-radius:calc(10px*var(--ui-round,1)); border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; font-size:15px; color-scheme:dark light; }
   .ppa-days{ display:flex; gap:6px; }
   .ppa-days button{ flex:1 1 0; aspect-ratio:1; max-width:44px; border-radius:50%; border:1px solid var(--line); background:var(--bg); color:var(--text-dim); font:inherit; font-size:13px; font-weight:750; cursor:pointer; padding:0; }
-  .ppa-days button.on{ background:var(--po-c); border-color:transparent; color:#14100f; }
+  .ppa-days button.on{ background:var(--po-c); border-color:transparent; color:var(--po-ink, #14100f); }
   .ppa-quick{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .ppa-quick button{ height:30px; padding:0 11px; border-radius:999px; border:1px solid var(--line); background:none; color:var(--text-dim); font:inherit; font-size:12px; font-weight:650; cursor:pointer; }
-  .ppa-ed-b{ display:flex; gap:8px; margin-top:12px; }
-  .ppa-ed-b button{ flex:1 1 0; height:40px; display:inline-flex; align-items:center; justify-content:center; gap:6px; border-radius:calc(10px*var(--ui-round,1)); border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; font-size:13px; font-weight:700; cursor:pointer; }
+  .ppa-ed-b{ display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+  .ppa-ed-b button{ flex:1 1 calc(50% - 4px); height:40px; display:inline-flex; align-items:center; justify-content:center; gap:6px; border-radius:calc(10px*var(--ui-round,1)); border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; font-size:13px; font-weight:700; cursor:pointer; }
   .ppa-ed-b button svg{ width:14px; height:14px; }
-  .ppa-ed-b button.on{ background:var(--po-c); color:#14100f; border-color:transparent; }
+  .ppa-ed-b button.on{ background:var(--po-c); color:var(--po-ink, #14100f); border-color:transparent; }
   .ppa-ed-b .pw-danger{ color:#ff6b6b; }
   .ppa-add{ width:100%; height:50px; margin-top:12px; display:inline-flex; align-items:center; justify-content:center; gap:8px; border-radius:16px; border:1.5px dashed color-mix(in srgb, var(--po-c) 55%, transparent); background:none; color:var(--po-c); font:inherit; font-size:14.5px; font-weight:750; cursor:pointer; }
   .ppa-add svg{ width:18px; height:18px; }
@@ -135,13 +137,13 @@
   .ppa-ring{ display:flex; flex-direction:column; align-items:center; gap:4px; margin-bottom:14px; padding:20px 16px; border-radius:20px; text-align:center;
     background:radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--po-c) 35%, var(--bg-elev, #15171b)), var(--bg-elev, #15171b)); animation:ppa-glow 1.6s ease-in-out infinite; }
   .ppa-ring[hidden]{ display:none; }
-  .ppa-ring-i{ width:52px; height:52px; display:grid; place-items:center; border-radius:50%; background:var(--po-c); color:#14100f; animation:ppa-shake .6s ease-in-out infinite; }
+  .ppa-ring-i{ width:52px; height:52px; display:grid; place-items:center; border-radius:50%; background:var(--po-c); color:var(--po-ink, #14100f); animation:ppa-shake .6s ease-in-out infinite; }
   .ppa-ring-i svg{ width:28px; height:28px; }
   .ppa-ring > b{ font-size:44px; font-weight:800; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
   .ppa-ring > span{ font-size:14px; color:var(--text-dim); }
   .ppa-ring-b{ display:flex; gap:10px; width:100%; margin-top:10px; }
   .ppa-ring-b button{ flex:1 1 0; height:52px; border-radius:16px; border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; font-size:15px; font-weight:800; cursor:pointer; }
-  .ppa-ring-b button.on{ background:var(--po-c); color:#14100f; border-color:transparent; }
+  .ppa-ring-b button.on{ background:var(--po-c); color:var(--po-ink, #14100f); border-color:transparent; }
   @keyframes ppa-shake{ 0%, 100%{ transform:rotate(0); } 25%{ transform:rotate(-14deg); } 75%{ transform:rotate(14deg); } }
   @keyframes ppa-glow{ 50%{ box-shadow:0 0 0 4px color-mix(in srgb, var(--po-c) 30%, transparent); } }
   @media (prefers-reduced-motion: reduce){ .ppa-ring, .ppa-ring-i{ animation:none; } }
@@ -150,17 +152,34 @@
   .pw-alw-h{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
   .pw-alw-t{ display:block; font-size:30px; font-weight:800; letter-spacing:-.02em; font-variant-numeric:tabular-nums; color:var(--pw-fg, var(--text)); line-height:1.05; }
   .pw-alw-h small{ font-size:12.5px; color:var(--text-dim); }
-  .pw-alw .pw-sw-b button.on{ background:#ffb547; color:#14100f; border-color:transparent; }
+  .pw-alw .pw-sw-b button.on{ background:var(--accent, #ffb547); color:var(--on-accent, #14100f); border-color:transparent; }
   .pw-alw-r{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 0 2px; margin-top:6px; border-top:1px solid var(--line); }
   .pw-alw-r span{ min-width:0; display:flex; flex-direction:column; }
   .pw-alw-r b{ font-size:16px; font-weight:750; font-variant-numeric:tabular-nums; color:var(--pw-fg, var(--text)); }
   .pw-alw-r small{ font-size:11.5px; color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .pw-alw-r .pw-al-sw{ transform:scale(.85); }
-  .pw-alw-r .pw-al-sw[aria-checked="true"]{ background:#ffb547; }
+  .pw-alw-r .pw-al-sw[aria-checked="true"]{ background:var(--accent, #ffb547); }
   .ppa-tone{ display:flex; gap:8px; }
   .ppa-tone select{ flex:1 1 auto; min-width:0; }
   .ppa-tone button{ flex:none; height:40px; padding:0 14px; display:inline-flex; align-items:center; gap:6px; border-radius:calc(10px*var(--ui-round,1)); border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; font-size:13px; font-weight:700; cursor:pointer; }
   .ppa-tone button svg{ width:13px; height:13px; }
+  /* a custom snooze length or limit, under its buttons */
+  .ppa-num{ display:flex; align-items:center; gap:8px; margin-top:8px; font-size:12.5px; color:var(--text-dim); }
+  .ppa-num span{ font-weight:650; }
+  .ppa-ed .ppa-num input{ width:76px; height:34px; padding:0 10px; box-sizing:border-box; border-radius:calc(10px*var(--ui-round,1)); border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; font-size:14px; font-variant-numeric:tabular-nums; color-scheme:dark light; }
+  /* choosing one song */
+  .ppa-song-now{ display:flex; align-items:center; gap:8px; min-width:0; margin-bottom:8px; padding:9px 12px; border-radius:calc(10px*var(--ui-round,1)); background:color-mix(in srgb, var(--po-c) 14%, transparent); }
+  .ppa-song-now svg{ flex:none; width:15px; height:15px; color:var(--po-c); }
+  .ppa-song-now b{ min-width:0; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ppa-song-r{ display:flex; flex-direction:column; gap:4px; margin-top:6px; }
+  .ppa-song-r:empty{ display:none; }
+  .ppa-song-r button{ display:flex; flex-direction:column; align-items:flex-start; min-width:0; padding:8px 12px; border-radius:calc(10px*var(--ui-round,1)); border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; text-align:left; cursor:pointer; }
+  .ppa-song-r button.on{ border-color:var(--po-c); }
+  .ppa-song-r b, .ppa-song-r small{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ppa-song-r b{ font-size:13.5px; font-weight:700; }
+  .ppa-song-r small{ font-size:11.5px; color:var(--text-dim); }
+  .ppa-song-e{ margin:4px 2px; font-size:12px; color:var(--text-dim); }
+  .ppa-ring-b button small, .prs-act button small{ font-weight:600; opacity:.75; }
 
   /* ===== the ringing screen ===== */
   #pp-ringscreen{ position:fixed; inset:0; z-index:100; overflow:hidden; overflow:clip; color:#fff; --text:#fff; --text-dim:rgba(255,255,255,.78); --line:rgba(255,255,255,.18); }
@@ -228,3 +247,12 @@
   .prs-sw.prs-bg-plain.on{ border-color:var(--po-c); }
   .prs-card .pw-range{ display:flex; align-items:center; gap:10px; } .prs-card .pw-range input{ flex:1 1 auto; accent-color:var(--po-c); }
   .ppp-f-in{ padding:8px 0 0; border-top:1px solid var(--line); }
+
+  /* super loud, the time limit on the ringing screen, and Lite (no Pendulum widgets) */
+  .ppa-loud b{ display:inline-flex; align-items:center; gap:6px; }
+  .ppa-loud b svg{ width:15px; height:15px; color:var(--po-c); }
+  .ppa-loud.on{ margin:0 -8px; padding-left:8px; padding-right:8px; border-radius:calc(10px*var(--ui-round,1)); background:color-mix(in srgb, #ff5a4f 14%, transparent); }
+  .ppa-loud.on b svg{ color:#ff5a4f; }
+  .prs-left{ align-self:center; margin-top:8px; font-size:12.5px; font-weight:600; color:var(--text-dim); font-variant-numeric:tabular-nums; text-shadow:0 1px 3px rgba(0,0,0,.4); }
+  .prs-left:empty{ display:none; }
+  body.pp-lite .pw-t-alarm, body.pp-lite .pw-t-focus, body.pp-lite .pw-add-tile[data-type="alarm"], body.pp-lite .pw-add-tile[data-type="focus"], body.pp-lite .pw-add-tile[data-addtab="page:__clock"]{ display:none !important; }
