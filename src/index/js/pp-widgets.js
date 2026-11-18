@@ -396,6 +396,7 @@
     var cv = el.querySelector('canvas'), g = cv.getContext('2d'), lv = new Float32Array(32), last = 0, col = '', colAt = 0;
     function onScreen(){
       if (document.hidden || !el.offsetParent) return false;
+      if (el.closest('#pp-ringscreen')) return true;
       var inPlayer = !!el.closest('#pw-player-zone, #pw-player-top, #pw-video-zone'), playerOpen = body.hasAttribute('data-pl-player');
       return inPlayer ? playerOpen : !playerOpen;
     }

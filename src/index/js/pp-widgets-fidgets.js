@@ -48,6 +48,7 @@
   // Drawing loop: one per fidget, only while it is on screen and (for the ones that can rest) while it moves.
   function fdVisible(el){
     if (document.hidden || !el.offsetParent) return false;
+    if (el.closest('#pp-ringscreen')) return true;   // the ringing screen covers everything (pp-widgets-pendulum.js)
     var inPlayer = !!el.closest('#pw-player-zone, #pw-player-top, #pw-video-zone'), playerOpen = body.hasAttribute('data-pl-player');
     return inPlayer ? playerOpen : !playerOpen;
   }

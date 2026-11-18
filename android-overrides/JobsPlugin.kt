@@ -162,6 +162,20 @@ class NotifyPlugin : Plugin() {
         AlarmSched.replace(context, (call.getArray("items") ?: JSArray()).toString())
         call.resolve(JSObject().put("exact", AlarmSched.exactAllowed(context)))
     }
+    /**
+     * Plays an alarm sound the page made (a WAV, base64): { wav, loop, speaker, louder }. speaker: on the alarm stream,
+     * which Android plays on the speaker even with headphones in (and at the alarm volume); otherwise on the media
+     * stream, which goes to the headphones when they are in. louder: starts at a quarter and rises over 30 seconds.
+     */
+    @PluginMethod fun playSound(call: PluginCall) {
+        val data = try { android.util.Base64.decode(call.getString("wav") ?: "", android.util.Base64.DEFAULT) } catch (e: Exception) { null }
+        if (data == null || data.isEmpty()) { call.reject("no sound"); return }
+        try {
+            AlarmSound.play(context, data, call.getBoolean("loop", true) ?: true, call.getBoolean("speaker", false) ?: false, call.getBoolean("louder", false) ?: false)
+            call.resolve()
+        } catch (e: Exception) { call.reject(e.message ?: "could not play") }
+    }
+    @PluginMethod fun stopSound(call: PluginCall) { AlarmSound.stop(); call.resolve() }
     /** Takes a ringing alarm's notification away (the app has started the music). */
     @PluginMethod fun dismiss(call: PluginCall) {
         NotificationManagerCompat.from(context).cancel(NotifyReceiver.notifId(call.getString("id") ?: ""))
@@ -282,5 +296,54 @@ object AlarmSched {
 class AlarmBootReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, i: Intent) {
         if (i.action == Intent.ACTION_BOOT_COMPLETED || i.action == Intent.ACTION_MY_PACKAGE_REPLACED) AlarmSched.scheduleAll(ctx)
+    }
+}
+
+/** The alarm and Pomodoro sounds, played on the alarm stream (speaker, even with headphones in) or the media stream. */
+object AlarmSound {
+    private var mp: android.media.MediaPlayer? = null
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    fun play(ctx: Context, data: ByteArray, loop: Boolean, speaker: Boolean, louder: Boolean) {
+        val f = java.io.File(ctx.cacheDir, "pp_alarm_sound.wav")
+        f.writeBytes(data)
+        main.post {
+            stopNow()
+            val p = android.media.MediaPlayer()
+            try {
+                p.setAudioAttributes(AudioAttributes.Builder()
+                    .setUsage(if (speaker) AudioAttributes.USAGE_ALARM else AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+                p.setDataSource(f.absolutePath)
+                p.isLooping = loop
+                p.setOnCompletionListener { if (!loop && mp === it) stopNow() }
+                p.prepare()
+                val v0 = if (louder) 0.25f else 1f
+                p.setVolume(v0, v0)
+                p.start()
+                mp = p
+                if (louder) {
+                    val t0 = android.os.SystemClock.uptimeMillis()
+                    main.postDelayed(object : Runnable {
+                        override fun run() {
+                            val m = mp ?: return
+                            if (m !== p) return
+                            val v = minOf(1f, 0.25f + 0.75f * (android.os.SystemClock.uptimeMillis() - t0) / 30000f)
+                            m.setVolume(v, v)
+                            if (v < 1f) main.postDelayed(this, 500)
+                        }
+                    }, 500)
+                }
+            } catch (e: Exception) {
+                try { p.release() } catch (x: Exception) {}
+            }
+        }
+    }
+    /** Stops it (on the main thread, where it was started). */
+    fun stop() { main.post { stopNow() } }
+    private fun stopNow() {
+        val p = mp ?: return
+        mp = null
+        try { p.stop() } catch (e: Exception) {}
+        try { p.release() } catch (e: Exception) {}
     }
 }

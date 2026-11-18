@@ -53,22 +53,27 @@
   function poAlert(next, focusDone){
     var t = poToday(), goal = +PO.s.goal || 0;
     var msg = next === 'focus' ? 'Break over. Back to it!' : (focusDone ? 'Nice work! ' + (goal && t.n === goal ? 'That’s your goal for today. ' : '') : '') + (next === 'long' ? 'Time for a long break.' : 'Take a short break.');
-    toast('🍅 ' + msg);
+    if (!(RS.pomo && !document.hidden)) toast('🍅 ' + msg);
     if (PO.s.buzz) try { navigator.vibrate && navigator.vibrate(next === 'focus' ? [120, 80, 120] : [250, 120, 250, 120, 250]); } catch(e){}
     if (PO.s.chime) poChime(next);
   }
   // a soft bell: up for a break, down to go back to work
-  function poChime(next){
-    var c = sfxCtx(); if (!c) return;
+  function chimeAt(c, out, t0, next){
     var notes = next === 'focus' ? [1046.5, 784, 659.3] : [659.3, 784, 1046.5];
     notes.forEach(function(f, k){
-      var t = c.currentTime + 0.05 + k * 0.22;
+      var t = t0 + k * 0.22;
       [1, 2.76].forEach(function(m, j){
         var o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.value = f * m;
         g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(j ? 0.05 : 0.22, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + (j ? 0.5 : 1.4));
-        o.connect(g); g.connect(sfxOut); o.start(t); o.stop(t + 1.5);
+        o.connect(g); g.connect(out); o.start(t); o.stop(t + 1.5);
       });
     });
+  }
+  function poChime(next){
+    // on Android it plays through the phone (speaker or headphones, Settings in the Pomodoro); here, in the page
+    if (nativeSound()){ soundWav('chime-' + (next === 'focus' ? 'down' : 'up')).then(function(w){ if (w) nativeSound().playSound({ wav: w, loop: false, speaker: PO.s.out === 'speaker', louder: false }).catch(function(){}); }); return; }
+    var c = sfxCtx(); if (!c) return;
+    chimeAt(c, sfxOut, c.currentTime + 0.05, next);
   }
 
   // ---------- music for each phase ----------
@@ -172,7 +177,8 @@
         '<div class="ppp-f"><span>Long break</span>' + seg('long', mins([10, 15, 20, 30]), s.long) + '</div>' +
         '<div class="ppp-f"><span>Long break after</span>' + seg('every', [[2, '2 rounds'], [3, '3'], [4, '4'], [5, '5'], [6, '6']], s.every) + '</div>' +
         '<div class="ppp-f"><span>Daily goal</span>' + seg('goal', [[0, 'None'], [4, '4'], [6, '6'], [8, '8'], [10, '10'], [12, '12']], s.goal) + '</div>' +
-        tog('auto', 'Start the next one by itself', 'A break starts when focus ends, and focus when the break ends.') + tog('chime', 'Chime') + tog('buzz', 'Vibrate') +
+        tog('auto', 'Start the next one by itself', 'A break starts when focus ends, and focus when the break ends.') + tog('chime', 'Chime') +
+        (nativeSound() ? '<div class="ppp-f ppp-f-in"><span>The chime plays through</span>' + seg('out', [['speaker', 'Speaker, even with headphones in'], ['phones', 'Headphones when they’re in']], PO.s.out || 'phones') + '</div>' : '') + tog('buzz', 'Vibrate') +
         tog('awake', 'Keep the screen on', 'While the timer runs and this tab is open.') + '</section>' +
       '<section class="ppp-card"><h2>' + svg('chart') + 'Progress</h2><div class="ppp-stats"></div><div class="ppp-week"></div><div class="ppp-hist"></div>' +
         '<button type="button" class="ppp-link" data-ppp="cycle">Start a new set of rounds</button></section>' +
@@ -222,7 +228,7 @@
   });
   document.addEventListener('click', function(e){
     var b = e.target.closest && e.target.closest('.ppp-seg[data-ppp-set] button'); if (!b) return;
-    var k = b.parentNode.dataset.pppSet; PO.s[k] = +b.dataset.v;
+    var k = b.parentNode.dataset.pppSet, v = b.dataset.v; PO.s[k] = v !== '' && !isNaN(+v) ? +v : v;
     b.parentNode.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x === b); });
     if (PO.left != null && (k === PO.ph)) PO.left = Math.min(PO.left, poLen(PO.ph));
     poSave(); var el = pageEl.querySelector('.ppp[data-ppp]'); if (el) el._pppSig = null; poPaint();
@@ -282,7 +288,7 @@
   var alOpen = null, RING = null;   // the alarm being edited in the tab; the alarm ringing now
   function alSave(){ try { localStorage.setItem(AL_KEY, JSON.stringify(AL)); } catch(e){} alNative(); }
   function alById(id){ return AL.filter(function(a){ return a.id === id; })[0] || null; }
-  function alNew(){ return { id: 'a' + uid(), on: true, time: '07:30', days: [1, 2, 3, 4, 5], label: '', wake: 'sound', tone: 'classic', louder: true, music: '', fade: 1, snooze: 9, pomo: false, last: Date.now() }; }
+  function alNew(){ return { id: 'a' + uid(), on: true, time: '07:30', days: [1, 2, 3, 4, 5], label: '', wake: 'sound', tone: 'classic', louder: true, out: 'speaker', music: '', fade: 1, snooze: 9, pomo: false, last: Date.now() }; }
   // what an alarm wakes you to: 'sound' (an alarm tone), 'both' (the tone, then music after 30 s) or 'music'
   // (alarms made before tones existed: music, or "just the alarm sound" for music 'none')
   function alWake(a){ return a.wake || (a.music === 'none' ? 'sound' : 'music'); }
@@ -364,11 +370,11 @@
     if (wake === 'music') startMusic();
     else {
       if (liveState().playing) click('play-btn');   // the alarm sound on its own, not over a song
-      if (!(a.tone === 'phone' && RING.native)) tonePlay(a.tone || 'classic', { louder: a.louder !== false, id: a.id, label: a.label });   // (the phone's own alarm is already ringing)
+      if (!(a.tone === 'phone' && RING.native)) tonePlay(a.tone || 'classic', { louder: a.louder !== false, id: a.id, label: a.label, speaker: a.out !== 'phones' });   // (the phone's own alarm is already ringing)
       if (wake === 'both') beepT = setTimeout(function(){ toneStop(); startMusic(); RING && (RING.music = true); alPaint(); }, 30000);
     }
     try { navigator.vibrate && navigator.vibrate([500, 250, 500, 250, 500]); } catch(e){}
-    toast('⏰ ' + (a.label || 'Alarm') + ' · ' + fmtTime(a.time));
+    if (!(RS.alarm && !document.hidden)) toast('⏰ ' + (a.label || 'Alarm') + ' · ' + fmtTime(a.time));   // the ringing screen says it already
     // show it: the Alarms part of the Pendulum tab, with Snooze and Stop
     if (!document.hidden){ pendSec = 'alarms'; if (openPageId !== POMO_ID) openPage(POMO_ID); else renderPage(); }
     alPaint();
@@ -437,7 +443,8 @@
         '<div class="ppp-f"><span>Wake up to</span>' + alSegS('wake', [['sound', 'Alarm sound'], ['both', 'Sound, then music'], ['music', 'Music']], alWake(a)) + '</div>' +
         (alWake(a) !== 'music' ? '<div class="ppp-f"><span>Alarm sound</span><div class="ppa-tone"><select data-ppa-set="tone">' + opts(TONES.concat(phoneTone() ? [['phone', 'The phone’s alarm sound']] : []), a.tone || 'classic') + '</select>' +
           '<button type="button" data-ppa="hear">' + svg('play') + 'Hear it</button></div></div>' +
-          '<label class="ppp-tog"><span><b>Gets louder</b><small>Starts quiet and rises over half a minute.</small></span><input type="checkbox" data-ppa-set="louder"' + (a.louder !== false ? ' checked' : '') + '></label>' : '') +
+          '<label class="ppp-tog"><span><b>Gets louder</b><small>Starts quiet and rises over half a minute.</small></span><input type="checkbox" data-ppa-set="louder"' + (a.louder !== false ? ' checked' : '') + '></label>' +
+          (nativeSound() ? '<div class="ppp-f"><span>Plays through</span>' + alSegS('out', [['speaker', 'Speaker, even with headphones in'], ['phones', 'Headphones when they’re in']], a.out === 'phones' ? 'phones' : 'speaker') + '</div>' : '') : '') +
         (alWake(a) !== 'sound' ? '<label class="ppp-f"><span>' + (alWake(a) === 'both' ? 'Then the music (after 30 s)' : 'Music') + '</span><select data-ppa-set="music">' + opts([['', 'Everything, shuffled'], ['resume', 'What I last played']].concat(pls), a.music === 'none' ? '' : a.music || '') + '</select></label>' +
           '<div class="ppp-f"><span>Music volume rises over</span>' + alSeg('fade', [[0, 'No fade'], [1, '1 min'], [3, '3 min'], [10, '10 min']], a.fade) + '</div>' : '') +
         '<div class="ppp-f"><span>Snooze for</span>' + alSeg('snooze', [[5, '5 min'], [9, '9 min'], [10, '10 min'], [15, '15 min']], a.snooze) + '</div>' +
@@ -490,7 +497,7 @@
     else if (op === 'hear'){
       var label = function(on){ b.innerHTML = svg(on ? 'pause' : 'play') + (on ? 'Stop' : 'Hear it'); };
       if (toneNow && toneNow.preview){ toneStop(); label(false); return; }
-      tonePlay(a.tone || 'classic', { preview: true, louder: false, id: a.id + '_try', label: a.label }); label(true);
+      tonePlay(a.tone || 'classic', { preview: true, louder: false, id: a.id + '_try', label: a.label, speaker: a.out !== 'phones' }); label(true);
       var mine = toneNow; setTimeout(function(){ if (toneNow === mine) toneStop(); if (b.isConnected) label(false); }, 4000);
       return;
     }
@@ -589,6 +596,15 @@
       toneNow = { phone: id, preview: !!o.preview }; return;
     }
     if (key === 'phone') key = 'classic';   // a preview, or no phone sound here: the classic beeps
+    // on Android: the phone plays it, through the speaker or the headphones as chosen (see AlarmSound in JobsPlugin.kt)
+    if (nativeSound()){
+      var NT = toneNow = { native: true, preview: !!o.preview };
+      soundWav(TONE_PAT[key] ? key : 'classic').then(function(w){
+        if (toneNow !== NT || !w) return;
+        nativeSound().playSound({ wav: w, loop: true, speaker: o.speaker !== false, louder: !!(o.louder || key === 'rise') }).catch(function(){});
+      });
+      return;
+    }
     var c = sfxCtx(); if (!c) return;
     var pat = TONE_PAT[key] || TONE_PAT.classic, out = c.createGain(), comp = c.createDynamicsCompressor();
     out.connect(comp); comp.connect(c.destination);
@@ -605,6 +621,165 @@
   function toneStop(){
     var T = toneNow; toneNow = null; if (!T) return;
     if (T.phone){ var N = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PPNotify; if (N && N.dismiss) N.dismiss({ id: T.phone }).catch(function(){}); return; }
+    if (T.native){ var NS = nativeSound(); if (NS) NS.stopSound().catch(function(){}); return; }
     clearTimeout(T.timer);
     try { var c = sfxCtx(); T.out.gain.cancelScheduledValues(c.currentTime); T.out.gain.setValueAtTime(T.out.gain.value, c.currentTime); T.out.gain.linearRampToValueAtTime(0, c.currentTime + 0.05); setTimeout(function(){ try { T.out.disconnect(); } catch(e){} }, 120); } catch(e){}
   }
+
+  // ---------- the sounds as WAV files, for the phone to play ----------
+  // Each tone is rendered once (a few rounds of its pattern, so it loops seamlessly) with an OfflineAudioContext.
+  function nativeSound(){ var N = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PPNotify; return N && N.playSound && N.stopSound ? N : null; }
+  var wavCache = {};
+  function soundWav(key){
+    if (wavCache[key]) return wavCache[key];
+    var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext; if (!OAC) return Promise.resolve(null);
+    var chime = key.indexOf('chime-') === 0, pat = TONE_PAT[key];
+    var sr = 32000, secs = chime ? 2 : pat[0] * Math.max(1, Math.ceil(5 / pat[0]));
+    var c = new OAC(1, Math.round(sr * secs), sr), out = c.createGain(), comp = c.createDynamicsCompressor();
+    out.gain.value = chime ? 1 : 0.9; out.connect(comp); comp.connect(c.destination);
+    if (chime) chimeAt(c, out, 0.02, key === 'chime-down' ? 'focus' : 'short');
+    else for (var t = 0; t < secs - 0.001; t += pat[0]) pat[1](c, out, t);
+    wavCache[key] = c.startRendering().then(function(buf){ return wavBase64(buf.getChannelData(0), sr); }).catch(function(){ delete wavCache[key]; return null; });
+    return wavCache[key];
+  }
+  function wavBase64(x, sr){
+    var n = x.length, b = new Uint8Array(44 + n * 2), v = new DataView(b.buffer);
+    var w = function(o, s){ for (var i = 0; i < s.length; i++) b[o + i] = s.charCodeAt(i); };
+    w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+    for (var i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, x[i])) * 32767, true);
+    var s = '', CH = 0x8000; for (i = 0; i < b.length; i += CH) s += String.fromCharCode.apply(null, b.subarray(i, i + CH));
+    return btoa(s);
+  }
+
+  // ===================== the ringing screen =====================
+  // A full screen that comes up when an alarm goes off or a Pomodoro phase ends (each can be switched off; both are on
+  // to start with). It is a blank slate: a background (a preset, the cover of what is playing, or your own picture) and
+  // what it needs (Snooze and Stop, or the next Pomodoro step), plus whatever widgets you put on it. Its widgets are the
+  // layout zone 'ring', edited like a page (Edit what's on it); its settings are kept in 'ppRingV1'.
+  var RS_KEY = 'ppRingV1', RS_IMG_KEY = 'ppRingImgV1';
+  var RS = (function(){ var r = {}; try { r = JSON.parse(localStorage.getItem(RS_KEY)) || {}; } catch(e){} return Object.assign({ alarm: true, pomo: true, bg: 'sunrise', dim: 20 }, r); })();
+  function rsSave(){ try { localStorage.setItem(RS_KEY, JSON.stringify(RS)); } catch(e){} }
+  function rsImg(){ try { return localStorage.getItem(RS_IMG_KEY) || ''; } catch(e){ return ''; } }
+  var RS_BGS = [['sunrise', 'Sunrise'], ['night', 'Night sky'], ['aurora', 'Aurora'], ['ocean', 'Ocean'], ['ember', 'Ember'], ['theme', 'Theme colour'], ['plain', 'Plain'], ['cover', 'Cover art'], ['custom', 'Your picture']];
+  var ringEl = document.createElement('div'); ringEl.id = 'pp-ringscreen'; ringEl.hidden = true; ringEl.setAttribute('role', 'dialog'); ringEl.setAttribute('aria-modal', 'true');
+  body.appendChild(ringEl);
+  var RSNOW = null;   // { kind: 'alarm' | 'pomo' | 'preview', next }
+  function rsOn(){ return !ringEl.hidden; }
+  function rsShow(kind, info){
+    RSNOW = Object.assign({ kind: kind }, info || {});
+    ringEl.hidden = false; body.classList.add('pp-ring-open');
+    rsRender();
+  }
+  function rsHide(kind){
+    if (kind && (!RSNOW || RSNOW.kind !== kind)) return;
+    if (editing === 'ring') return;      // still being edited: Done closes it
+    RSNOW = null; ringEl.hidden = true; body.classList.remove('pp-ring-open'); ringEl.innerHTML = '';
+  }
+  function rsBgHTML(){
+    var bg = RS.bg, st = '';
+    if (bg === 'custom'){ var im = rsImg(); if (im) st = ' style="background-image:url(&quot;' + esc(im) + '&quot;)"'; else bg = 'sunrise'; }
+    if (bg === 'cover'){ var t = liveState(), s = t.has ? thumbOf(t.t) : null; if (s) st = ' style="background-image:url(&quot;' + esc(s) + '&quot;)"'; else bg = 'night'; }
+    return '<div class="prs-bg prs-bg-' + bg + '"' + st + '><i></i><i></i><i></i></div><div class="prs-dim" style="opacity:' + (Math.max(0, Math.min(80, +RS.dim || 0)) / 100) + '"></div>';
+  }
+  function rsRender(){
+    if (!RSNOW) return;
+    var k = RSNOW.kind, ed = editing === 'ring', a = k === 'alarm' && RING ? alById(RING.id) : null, top = '', act = '';
+    if (k === 'alarm' && a){
+      top = '<div class="prs-tag">' + svg('alarm') + '<b>' + esc(a.label || 'Alarm') + '</b><span>' + esc(fmtTime(a.time)) + '</span></div>';
+      act = '<button type="button" data-prs="snooze">Snooze ' + (+a.snooze || 9) + ' min</button><button type="button" class="on" data-prs="stop">' + (a.pomo ? 'Stop and focus' : 'Stop') + '</button>';
+    } else if (k === 'pomo'){
+      var nx = PO.ph, word = nx === 'focus' ? 'Break over' : 'Focus done';
+      top = '<div class="prs-tag prs-tag-po">' + svg('tomato') + '<b>' + word + '</b><span class="prs-po-t"></span></div>';
+      act = PO.run ? '<button type="button" data-prs="skip">' + (nx === 'focus' ? 'Skip focus' : 'Skip the break') + '</button><button type="button" class="on" data-prs="close">Got it</button>'
+                   : '<button type="button" data-prs="close">Not now</button><button type="button" class="on" data-prs="go">' + (nx === 'focus' ? 'Start focus' : 'Start the break') + '</button>';
+    } else {
+      top = '<div class="prs-tag">' + svg('eye') + '<b>Preview</b><span>The ringing screen</span></div>';
+      act = ed ? '' : '<button type="button" data-prs="edit">' + svg('grid') + 'Edit what’s on it</button><button type="button" class="on" data-prs="close">Close</button>';
+    }
+    var items0 = zoneItems('ring', false) || [], empty = !items0.length;
+    ringEl.innerHTML = rsBgHTML() + '<div class="prs-in">' + top +
+      '<div class="prs-zone">' + renderZone('ring', null) + (empty && (k === 'preview' || ed) && !ed ? '<div class="prs-empty">' + svg('grid') + '<b>A blank slate</b><span>Put a clock, the date, pictures, Bloopy or anything else here with Edit what’s on it.</span></div>' : '') + '</div>' +
+      '<div class="prs-act">' + act + '</div></div>';
+    ringEl.scrollTop = 0;   // it never scrolls as a whole (only its middle does)
+    startTick(); liveSoon(); rsTick();
+  }
+  function rsTick(){
+    if (!RSNOW || RSNOW.kind !== 'pomo') return;
+    var t = ringEl.querySelector('.prs-po-t'); if (t) setText(t, PO_NAME[PO.ph] + ' · ' + fmtClock(poLeft()) + (PO.run ? '' : ' (not started)'));
+  }
+  setInterval(rsTick, 1000);
+  ringEl.addEventListener('click', function(e){
+    var b = e.target.closest('[data-prs]'); if (!b || editing) return;
+    var op = b.dataset.prs;
+    if (op === 'snooze' || op === 'stop'){ alStop(op === 'snooze'); return; }
+    if (op === 'close'){ rsHide(); return; }
+    if (op === 'skip'){ poDo('skip'); rsHide(); return; }
+    if (op === 'go'){ poDo('go'); rsHide(); return; }
+    if (op === 'edit'){ startEdit('ring'); return; }
+  });
+  // the alarm and the Pomodoro bring it up (when it is switched on for them)
+  (function(){
+    var ring0 = alRing;
+    alRing = function(a, at){
+      ring0(a, at);
+      if (RS.alarm && !document.hidden) rsShow('alarm');
+    };
+    var stop0 = alStop;
+    alStop = function(snooze){ stop0(snooze); rsHide('alarm'); };
+    var alert0 = poAlert;
+    poAlert = function(next, done){ alert0(next, done); if (RS.pomo && !document.hidden && !(RSNOW && RSNOW.kind === 'alarm')) rsShow('pomo', { next: next }); };
+  })();
+  // coming back to the app while an alarm rings: the screen is waiting
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden && RING && RS.alarm && !rsOn()) rsShow('alarm'); });
+
+  // ---------- its settings, in both parts of the Pendulum tab ----------
+  function rsCardHTML(){
+    var im = rsImg();
+    return '<section class="ppp-card prs-card"><h2>' + svg('image') + 'Ringing screen</h2>' +
+      '<p class="ppp-sub">A full screen when an alarm goes off or a Pomodoro round ends. It starts blank: put a clock, the date or anything else on it.</p>' +
+      '<label class="ppp-tog"><span><b>When an alarm goes off</b></span><input type="checkbox" data-prs-set="alarm"' + (RS.alarm ? ' checked' : '') + '></label>' +
+      '<label class="ppp-tog"><span><b>When a Pomodoro round ends</b></span><input type="checkbox" data-prs-set="pomo"' + (RS.pomo ? ' checked' : '') + '></label>' +
+      '<div class="ppp-f"><span>Background</span><div class="prs-bgs">' + RS_BGS.map(function(x){
+        var sty = x[0] === 'custom' && im ? ' style="background-image:url(&quot;' + esc(im) + '&quot;)"' : '';
+        return '<button type="button" class="prs-sw prs-bg-' + x[0] + (RS.bg === x[0] ? ' on' : '') + '" data-prs-bg="' + x[0] + '"' + sty + '><span>' + x[1] + '</span></button>'; }).join('') + '</div>' +
+        '</div>' +
+      (RS.bg === 'custom' ? '<div class="ppp-f"><button type="button" class="ppp-link" data-prs-pick="1">' + (im ? 'Change the picture' : 'Choose a picture') + '</button></div>' : '') +
+      '<div class="ppp-f"><span>Darken it</span><div class="pw-range"><input type="range" min="0" max="80" step="5" value="' + (+RS.dim || 0) + '" data-prs-set="dim"><output>' + (+RS.dim || 0) + '%</output></div></div>' +
+      '<div class="ppa-ed-b"><button type="button" data-prs-do="preview">' + svg('eye') + 'Preview</button><button type="button" class="on" data-prs-do="edit">' + svg('grid') + 'Edit what’s on it</button></div></section>';
+  }
+  (function(){
+    var a0 = alarmsSection; alarmsSection = function(el){ a0(el); el.insertAdjacentHTML('beforeend', rsCardHTML()); };
+    var p0 = pomoSection; pomoSection = function(el){ p0(el); var c = el.querySelector('.ppp'); (c || el).insertAdjacentHTML('beforeend', rsCardHTML()); };
+  })();
+  function rsCardRefresh(){ var c = pageEl.querySelector('.prs-card'); if (c){ var y = pageEl.scrollTop; c.outerHTML = rsCardHTML(); pageEl.scrollTop = y; } }
+  document.addEventListener('change', function(e){
+    var x = e.target; if (!x.dataset || !x.dataset.prsSet || x.type !== 'checkbox') return;
+    RS[x.dataset.prsSet] = x.checked; rsSave();
+  });
+  document.addEventListener('input', function(e){
+    var x = e.target; if (!x.dataset || x.dataset.prsSet !== 'dim') return;
+    RS.dim = +x.value; x.nextElementSibling.textContent = x.value + '%'; rsSave();
+    if (rsOn()){ var d = ringEl.querySelector('.prs-dim'); if (d) d.style.opacity = RS.dim / 100; }
+  });
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('[data-prs-bg], [data-prs-do], [data-prs-pick]'); if (!b || editing) return;
+    if (b.dataset.prsBg){
+      if (b.dataset.prsBg === 'custom' && !rsImg()){ rsFile.click(); return; }   // set once the picture is chosen
+      RS.bg = b.dataset.prsBg; rsSave();
+      rsCardRefresh(); if (rsOn()) rsRender(); return;
+    }
+    if (b.dataset.prsPick){ rsFile.click(); return; }
+    if (b.dataset.prsDo === 'preview') rsShow('preview');
+    else if (b.dataset.prsDo === 'edit'){ rsShow('preview'); startEdit('ring'); }
+  });
+  // one picker for the picture, kept on the page (the settings card is drawn again while it is open)
+  var rsFile = document.createElement('input'); rsFile.type = 'file'; rsFile.accept = 'image/*'; rsFile.hidden = true; body.appendChild(rsFile);
+  rsFile.addEventListener('change', function(){
+    var f = rsFile; if (!f.files || !f.files[0]) return;
+    shrinkImage(f.files[0], function(url){
+      f.value = '';
+      try { localStorage.setItem(RS_IMG_KEY, url); } catch(x){ toast('That picture is too big to keep. Try a smaller one.'); return; }
+      RS.bg = 'custom'; rsSave(); rsCardRefresh(); if (rsOn()) rsRender(); toast('Picture set for the ringing screen.');
+    });
+  });

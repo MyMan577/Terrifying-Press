@@ -716,10 +716,10 @@
 
   var ZNAMES = { home:'Home', player:'Above the controls', 'player-top':'Top of the player', video:'Over the video', playlists:'Top of Playlists', library:'Top of the Library',
     'lib-mid':'In the list', 'pls-mid':'Among your playlists', settings:'Settings', 'set-top':'Top of Settings', 'set-play':'After Playback', 'set-lib':'After Library & playlists',
-    'set-look':'After Appearance & layout', 'set-data':'After Backup & storage', 'set-fun':'After Rewards & games' };
+    'set-look':'After Appearance & layout', 'set-data':'After Backup & storage', 'set-fun':'After Rewards & games', ring:'the ringing screen' };
   function zoneName(z){ return ZNAMES[z] || ((pageById(z.slice(5)) || {}).name || 'Page'); }
   function sessionName(ed){ return ed === 'player' ? 'the player' : ed === 'video' ? 'the video overlay' : ed === 'library' ? 'the Library' : ed === 'playlists' ? 'Playlists' : ed === 'settings' ? 'Settings' : zoneName(ed); }
-  function currentZoneOnScreen(){ var K = kit(); return openPageId ? 'page:' + openPageId : body.hasAttribute('data-pl-player') ? (body.classList.contains('pl-video') ? 'video' : 'player') : K && K.view() === 'playlists' ? 'playlists' : K && K.view() === 'library' ? 'library' : K && K.view() === 'settings' ? 'settings' : 'home'; }
+  function currentZoneOnScreen(){ var K = kit(); return rsOn() ? 'ring' : openPageId ? 'page:' + openPageId : body.hasAttribute('data-pl-player') ? (body.classList.contains('pl-video') ? 'video' : 'player') : K && K.view() === 'playlists' ? 'playlists' : K && K.view() === 'library' ? 'library' : K && K.view() === 'settings' ? 'settings' : 'home'; }
   function startEdit(zone){
     var K = kit();
     if (!K || !K.on()){ toast('Layout editing works in the media player layout (Settings).'); return; }
@@ -738,6 +738,7 @@
     else if (zone === 'library'){ closePage(); K.setView('library'); }
     else if (zone === 'settings'){ closePage(); K.setView('settings'); }
     else if (zone === 'player' || zone === 'video'){ closePage(); K.openPlayer(); }
+    else if (zone === 'ring'){ if (!rsOn()) rsShow('preview'); }   // the ringing screen (pp-widgets-pendulum.js)
     else openPage(zone.slice(5));
     zonesOf(zone).forEach(function(z){ zoneItems(z, true); }); save();
     edZone = zone === 'player' ? 'player' : zone === 'settings' ? 'set-top' : zone;
@@ -755,8 +756,9 @@
   }
   function stopEdit(){
     if (!editing) return;
+    var wasRing = editing === 'ring';
     editing = null; edZone = null; body.classList.remove('pw-editing'); edBar.hidden = true; closeSheet();
-    refreshAll(); toast('Layout saved.');
+    refreshAll(); if (wasRing) rsRender(); toast('Layout saved.');
   }
   function refreshZone(){
     if (editing === 'home' || editing === 'playlists'){ var K = kit(); if (K) K.renderHome(true); if (editing === 'playlists') renderMid('pls-mid', true); }
@@ -764,6 +766,7 @@
     else if (editing === 'library'){ renderLibrary(); renderMid('lib-mid', true); }
     else if (editing === 'settings') renderSettingsZones();
     else if (editing === 'video') renderVideo();
+    else if (editing === 'ring') rsRender();
     else if (editing) renderPage();
   }
   function items(){ return zoneItems(edZone || editing, true); }
@@ -854,7 +857,7 @@
   document.addEventListener('pointercancel', endDrag, true);
 
   // ---- add sheet ----
-  function zoneKind(z){ return z.indexOf('page:') === 0 || z === 'playlists' || z === 'library' || z === 'lib-mid' || z === 'pls-mid' || z.indexOf('set-') === 0 ? 'page' : z === 'player-top' ? 'player' : z; }
+  function zoneKind(z){ return z === 'ring' || z.indexOf('page:') === 0 || z === 'playlists' || z === 'library' || z === 'lib-mid' || z === 'pls-mid' || z.indexOf('set-') === 0 ? 'page' : z === 'player-top' ? 'player' : z; }
   function addSheet(){
     if (!edZone || !isEd(edZone)) edZone = zonesOf(editing)[zonesOf(editing).length - 1];
     var zk = zoneKind(edZone), present = items().map(function(x){ return x.type; });
