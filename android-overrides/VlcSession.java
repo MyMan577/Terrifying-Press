@@ -122,13 +122,9 @@ public final class VlcSession {
         try { o = VlcEngine.open(app, lib, uri); }
         catch (Exception e) { end(false, "Could not open the file: " + e.getMessage()); return false; }
         IMedia m = o.media;
-        // Settings, Video decoder. Auto: hardware first, software when the phone's decoder cannot take it.
-        // Software only: VLC's own decoders. Hardware only: the phone's chip and nothing else (VLC's "force").
-        // The deinterlacer works on decoded pictures, so with it on decoding stays in software (the S24 does 1080i
-        // that way with ease).
-        String vdec = app.getSharedPreferences("pp_audio", Context.MODE_PRIVATE).getString("vdec", "auto");
-        if (deint || "soft".equals(vdec)) m.setHWDecoderEnabled(false, false);
-        else m.setHWDecoderEnabled(true, "hard".equals(vdec));
+        // Hardware first, software when the phone's decoder cannot take it. The deinterlacer works on decoded
+        // pictures, so with it on decoding stays in software (the S24 does 1080i that way with ease).
+        m.setHWDecoderEnabled(!deint, false);
         if (deint && isVideo) { m.addOption(":deinterlace=1"); m.addOption(":deinterlace-mode=yadif2x"); }
         if (startMs > 1000) m.addOption(":start-time=" + (startMs / 1000.0));
         if (stopMs > startMs) m.addOption(":stop-time=" + (stopMs / 1000.0));     // a CUE-sheet track ends here
