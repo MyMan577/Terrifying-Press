@@ -408,6 +408,7 @@
     let longPressTimer = null;
     let longPressFired = false;
     let startX = 0, startY = 0, startedOnControl = false;
+    let wandered = false;          // the finger strayed past the tap tolerance at some point during this press
     let lastTouchTime = 0;
     // pan-when-zoomed state (only active on the video surface)
     const canPan = wrapEl === videoWrap;
@@ -475,7 +476,7 @@
     function onStart(x, y, target){
       startedOnControl = isInteractive(target);
       if (startedOnControl) return;
-      startX = x; startY = y;
+      startX = x; startY = y; wandered = false;
       if (tapCount > 0){
         if (Date.now() - seqReleaseT > MULTI_MS || Math.hypot(x - seqX, y - seqY) > MULTI_SLOP_PX){
           // Too late or too far to be part of the pending taps: settle those now.
@@ -496,6 +497,12 @@
       }, LONGPRESS_MS);
     }
 
+    function movedPastTap(x, y){
+      const far = Math.hypot(x - startX, y - startY) > TAP_MOVE_TOLERANCE;
+      if (far) wandered = true;
+      return far;
+    }
+
     function onEnd(x, y){
       clearTimeout(longPressTimer);
       if (startedOnControl) return;
@@ -513,7 +520,8 @@
         }
         return;
       }
-      if (dist > TAP_MOVE_TOLERANCE){ cancelTapSequence(); return; } // an ambiguous drag, not a tap
+      // An ambiguous drag, or one that wandered off and came back: not a tap.
+      if (dist > TAP_MOVE_TOLERANCE || wandered){ cancelTapSequence(); return; }
 
       if (tapCount === 0){
         lastTapZone = zoneFromX(x);

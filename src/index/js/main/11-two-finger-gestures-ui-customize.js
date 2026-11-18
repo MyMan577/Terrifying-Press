@@ -73,9 +73,10 @@
     layer.addEventListener('touchmove', (e) => {
       if (multi){ moveMulti(e); return; }
       if (!startedOnControl && e.touches.length === 1 && panMove(e.touches[0].clientX, e.touches[0].clientY)) return;
-      // Any real movement cancels a pending long-press so scrolling/
-      // swiping doesn't also fire the press action.
-      if (!longPressFired) clearTimeout(longPressTimer);
+      // Real movement cancels a pending long-press so a swipe doesn't also
+      // fire the press action. A resting finger always jitters a few pixels,
+      // so only movement past the tap tolerance counts.
+      if (!longPressFired && e.touches.length === 1 && movedPastTap(e.touches[0].clientX, e.touches[0].clientY)) clearTimeout(longPressTimer);
     }, { passive: true });
     layer.addEventListener('touchcancel', () => {
       multi = false; clearTimeout(longPressTimer); panEnd(); cancelTapSequence();
@@ -124,7 +125,7 @@
     });
     layer.addEventListener('mousemove', (e) => {
       if (mouseDown && panMove(e.clientX, e.clientY)) return;
-      if (mouseDown && !longPressFired) clearTimeout(longPressTimer);
+      if (mouseDown && !longPressFired && movedPastTap(e.clientX, e.clientY)) clearTimeout(longPressTimer);
     });
   }
 
