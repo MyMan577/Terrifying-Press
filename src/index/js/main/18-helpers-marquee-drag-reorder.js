@@ -113,7 +113,7 @@
       const dragHandle = dragEnabled ? `<span class="track-drag-handle" title="Drag to reorder">⠿</span>` : '';
 
       if (detailedPlaylistMode){
-        const thumbInner = t.artUrl ? `<img src="${t.artUrl}" alt="">` : typeIcon;
+        const thumbInner = t.artUrl ? `<img src="${t.artUrl}" alt="" loading="lazy" decoding="async">` : typeIcon;
         const metaLine = buildTrackMetaLine(t);
         const removeTitle = filteringByPlaylist ? 'Remove from this playlist' : 'Remove';
         const hasPl = (t.playlistIds||[]).length > 0;
@@ -240,9 +240,22 @@
     }
   }
   var marqueePassQueued = false;   // var: the list can be drawn before this line is reached
-  // Measures every row first and only then changes them: measuring and changing row by row made the page lay itself
-  // out again for each row.
+  // Only rows that are (nearly) on screen are measured, when they get there: measuring a whole big library at once
+  // laid out every row of it, which took seconds on a phone at every start. Within a batch every row is measured
+  // first and only then changed: measuring and changing row by row made the page lay itself out again for each row.
+  var marqueeObserver = null, marqueeWaiting = new Set();
   function setupMarquees(list){
+    if (!('IntersectionObserver' in window)){ measureMarquees(Array.from(list)); return; }
+    if (!marqueeObserver) marqueeObserver = new IntersectionObserver(entries => {
+      const seen = entries.filter(e => e.isIntersecting).map(e => e.target);
+      seen.forEach(c => { marqueeObserver.unobserve(c); marqueeWaiting.delete(c); });
+      if (seen.length) measureMarquees(seen);
+    }, { rootMargin: '300px 0px' });
+    // Rows of an earlier drawing of the list that never came on screen: stop watching them.
+    marqueeWaiting.forEach(c => { if (!c.isConnected){ marqueeObserver.unobserve(c); marqueeWaiting.delete(c); } });
+    list.forEach(c => { marqueeWaiting.add(c); marqueeObserver.observe(c); });
+  }
+  function measureMarquees(list){
     const jobs = [];
     list.forEach(c => { const tr = c.querySelector('.marquee-track'); if (tr) jobs.push([c, tr.scrollWidth - c.clientWidth]); });
     jobs.forEach(j => applyMarquee(j[0], j[1]));

@@ -207,6 +207,29 @@
   };
   tabs.forEach(b => b.addEventListener('click', () => goTab(b.dataset.plView)));
 
+  // With the tab bar customised (pages of your own, tabs moved or hidden), a swipe follows the bar: onto a page, off
+  // it, or past it, sliding the same way as between the built-in tabs. Inside an open playlist or Home section the
+  // swipe still flips between those first. True when it handled the swipe (also at the ends, where nothing moves).
+  function swipeTabs(step){
+    const W = window.__ppPwSwipe; if (!W) return false;
+    const list = W.targets(), pg = W.pageOpen();
+    if (!pg && slideSub(step)) return true;
+    const cur = pg ? list.findIndex(x => x.page === pg) : list.findIndex(x => x.view === view);
+    if (cur < 0) return !!pg;                                  // a page that has no tab: stay
+    const nx = list[cur + step];
+    if (!nx) return true;
+    const outEl = pg ? W.pageEl : tabPane(view);
+    const anim = canSlide() && !slideBusy && outEl && outEl.animate;
+    if (nx.view){
+      const go = () => { W.closePage(); if (nx.view === 'playlists'){ openPlId = null; plSelIds = null; } setView(nx.view); };
+      if (!pg){ goTab(nx.view); return true; }
+      if (anim) slideRun(step, outEl, go, () => tabPane(nx.view)); else go();
+    } else {
+      const go = () => W.openPage(nx.page);
+      if (anim) slideRun(step, outEl, go, () => W.pageEl); else go();
+    }
+    return true;
+  }
   // Swipe sideways to move to the neighbouring tab (no wrap-around at the ends).
   { let tx = 0, ty = 0, tt = 0, ok = false;
     const blocked = el => {
@@ -219,6 +242,7 @@
     };
     document.addEventListener('touchstart', e => {
       ok = false;
+      if (e.ppNoTabSwipe) return;                               // a fidget took this touch (pp-widgets-fidgets.js)
       if (e.touches.length !== 1 || !canSlide() || slideBusy) return;
       if (blocked(e.target)) return;
       ok = true; tx = e.touches[0].clientX; ty = e.touches[0].clientY; tt = performance.now();
@@ -229,6 +253,7 @@
       const dx = t.clientX - tx, dy = t.clientY - ty, ax = Math.abs(dx), v = ax / Math.max(1, performance.now() - tt);
       if (ax < 40 || ax < Math.abs(dy) * 1.6 || (ax < 70 && v < 0.45)) return;   // must be a clear, deliberate sideways swipe
       const step = dx < 0 ? 1 : -1;
+      if (swipeTabs(step)) return;
       if (slideSub(step)) return;                               // on a sub page: move between playlists / sections instead of tabs
       const i = TAB_ORDER.indexOf(view), n = i + step;
       if (i < 0 || n < 0 || n >= TAB_ORDER.length) return;
@@ -425,7 +450,7 @@
     const src = t && thumbSrc(t);
     const d = showDur && t ? fmtDur(t.duration) : '';
     return '<div class="ph-thumb' + (src ? ' has-img' : '') + '" data-thumb-id="' + esc(t ? t.dbId : '') + '">' +
-      (src ? '<img src="' + esc(src) + '" alt="">' : '') +
+      (src ? '<img src="' + esc(src) + '" alt="" loading="lazy" decoding="async">' : '') +
       (t && t.kind === 'audio' ? IC_PH_AUDIO : IC_PH) +
       (d ? '<span class="ph-dur">' + d + '</span>' : '') + '</div>';
   }
@@ -437,7 +462,7 @@
   }
   // A playlist's own picture, else its first video's thumbnail (see plInfo)
   function plThumbHTML(pl, first){
-    if (pl && pl.thumb) return '<div class="ph-thumb has-img"><img src="' + esc(pl.thumb) + '" alt=""></div>';
+    if (pl && pl.thumb) return '<div class="ph-thumb has-img"><img src="' + esc(pl.thumb) + '" alt="" loading="lazy" decoding="async"></div>';
     return thumbHTML(first, false);
   }
   function sectionHTML(key, title, items, emptyMsg, extraBtn){

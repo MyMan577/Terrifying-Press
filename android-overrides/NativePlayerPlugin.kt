@@ -370,7 +370,11 @@ class NativePlayerPlugin : Plugin() {
         kind = call.getString("kind") ?: "audio"
         val startMs = call.data.optLong("startMs", 0L).coerceAtLeast(0)   // PluginCall.getLong ignores JSON ints (returns null), so every value < 2^31 became 0
         val autoplay = call.getBoolean("autoplay", false) ?: false
-        main.post { PlaybackService.instance?.clearMirror() }     // ExoPlayer owns the notification again
+        // companion: the soundtrack of a video the page's own <video> plays (its WebView cannot decode the sound). The
+        // page keeps the notification (mirror) and the audio focus; this player only makes the sound, with the EQ and
+        // effects, and the page keeps it in step with the picture.
+        val companion = call.getBoolean("companion", false) ?: false
+        if (!companion) main.post { PlaybackService.instance?.clearMirror() }     // ExoPlayer owns the notification again
         val gen = ++loadGen
         nextGen++                                   // any queued "next" belongs to the previous track
         srcOrig = orig; probedDurMs = -1L
@@ -388,7 +392,8 @@ class NativePlayerPlugin : Plugin() {
                     probeAsync(orig, play)
                     s.setMediaAudio(                       // audio focus is handled, except during a call (see syncFocus)
                         AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
-                            .setContentType(if (kind == "video") C.AUDIO_CONTENT_TYPE_MOVIE else C.AUDIO_CONTENT_TYPE_MUSIC).build())
+                            .setContentType(if (kind == "video" || companion) C.AUDIO_CONTENT_TYPE_MOVIE else C.AUDIO_CONTENT_TYPE_MUSIC).build(),
+                        !companion)
                     applyVideoTrack(s.player)
                     s.player.setMediaItem(item, startMs)
                     s.player.prepare()
@@ -405,7 +410,10 @@ class NativePlayerPlugin : Plugin() {
         val md = MediaMetadata.Builder()
             .setTitle(d.optString("title", "")).setArtist(d.optString("artist", ""))
             .setAlbumTitle(d.optString("album", ""))
-            .setExtras(Bundle().apply { putString("orig", orig); putString("kind", d.optString("kind", "")) })
+            .setExtras(Bundle().apply {
+                putString("orig", orig); putString("kind", d.optString("kind", ""))
+                if (d.optBoolean("companion", false)) putBoolean("companion", true)
+            })
         val art = d.optString("artUri", "")
         if (art.isNotEmpty()) md.setArtworkUri(Uri.parse(art))
         val b64 = d.optString("artBase64", "")

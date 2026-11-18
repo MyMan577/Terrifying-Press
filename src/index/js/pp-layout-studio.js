@@ -424,20 +424,49 @@
     }).join('') + '</div>';
   }
 
-  // ======================= the studio =======================
-  var cur = 'aud', open = false, keepUi = null;
+  // ======================= the studio: edited on the screen itself =======================
+  // Works like the page and tab editor: the bar at the top (Done, which screen, undo, presets), every part of the
+  // screen outlined with a dashed line and a tag, and a small sheet with just that part's choices when you tap it.
+  // The sheet has a tab to drag it down out of the way, so the change can be seen as it is made.
+  IC.undo = '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/>';
+  IC.grid = '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>';
+  // Where each part is on the screen: the elements it changes. wrap: it holds other parts (its tag goes on the left).
+  // first: only the first one on screen is outlined (a row's thumbnail), though a tap on any of them opens it.
+  var PART_EL = {
+    aud: { 'Title & artist':{ sel:['#now-playing'] }, 'Cover':{ sel:['#viz-wrap'] }, 'Seek bar':{ sel:['#seek-row'] }, 'Main buttons':{ sel:['#transport'] },
+           'Tools & volume':{ sel:['#extra-transport', '#controls-footer'] }, 'Controls panel':{ sel:['#controls-col'], wrap:true } },
+    vid: { 'Behind the controls':{ sel:['#controls-col'], wrap:true }, 'Top bar':{ sel:['#now-playing', '#video-tools'] }, 'Seek bar':{ sel:['#seek-row'] },
+           'Main buttons':{ sel:['#transport'] }, 'Tools & volume':{ sel:['#extra-transport', '#controls-footer'] } },
+    lib: { 'Rows':{ sel:['#playlist'], wrap:true }, 'Thumbnail':{ sel:['#playlist .track-thumb'], first:true }, 'Text & buttons':{ sel:['#playlist .track-info'], first:true },
+           'Top of the list':{ sel:['#browse-row', '#ppv-libhost', '#ppv-savedhost'] } },
+    pls: { 'Your playlists':{ sel:['#pl-home > .ph-sec'], wrap:true }, 'An open playlist':{ sel:['#pl-home .ph-detail-head'] },
+           'Song and video thumbnails':{ sel:['#pl-home .ph-trk .ph-thumb', '#pl-home .ph-pl-head .ph-thumb', '#pl-home .ph-card .ph-thumb'], first:true } },
+    set: { 'Groups':{ sel:['#pp-sg-root'], wrap:true }, 'Rows':{ sel:['#pp-sg-root .settings-row'], first:true } }
+  };
+  SURF.forEach(function(sf){ sf.parts.forEach(function(p){ p.at = (PART_EL[sf.id] || {})[p.name] || { sel:[] }; }); });
+
+  var cur = 'aud', open = false, keepUi = null, sheetKind = null, sheetPart = -1, undoS = [];
+
+  // the bar at the top, as in the page editor
+  var bar = document.createElement('div'); bar.id = 'ls-edbar'; bar.hidden = true;
+  bar.innerHTML = '<button type="button" class="pw-ed-done" data-lb="done">Done</button>' +
+    '<button type="button" class="ls-ed-title" data-lb="screens" aria-label="Which screen"><span></span>' + svg('down') + '</button>' +
+    '<button type="button" data-lb="hidden" aria-label="Hidden parts" hidden>' + svg('eye') + '</button>' +
+    '<button type="button" data-lb="arrange" aria-label="Arrange" hidden>' + svg('list') + '</button>' +
+    '<button type="button" data-lb="undo" aria-label="Undo">' + svg('undo') + '</button>' +
+    '<button type="button" class="pw-ed-add" data-lb="presets" aria-label="Presets">' + svg('grid') + '</button>';
+  body.appendChild(bar);
+
+  // the sheet: one part (or the presets, or the screens) at a time, never the whole studio at once
   var el = document.createElement('div'); el.id = 'ls-studio'; el.hidden = true;
-  el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Layout studio');
-  el.innerHTML = '<div class="ls-head"><b>' + svg('layers') + 'Layout studio</b><span class="ls-sp"></span>' +
-    '<button type="button" class="ls-ic" data-ls="peek" aria-label="Look at the whole screen">' + svg('eye') + '</button>' +
-    '<button type="button" class="ls-done" data-ls="done">Done</button></div>' +
-    '<div class="ls-tabs" role="tablist">' + SURF.map(function(s){ return '<button type="button" role="tab" data-ls-tab="' + s.id + '">' + svg(s.icon) + '<span>' + esc(s.name) + '</span></button>'; }).join('') + '</div>' +
-    '<div class="ls-body"></div>';
+  el.innerHTML = '<div class="pw-sheet-card ls-card" role="dialog" aria-label="Layout studio"><div class="pw-sheet-head"><b></b>' +
+    '<button type="button" class="pw-sheet-x" data-ls="x" aria-label="Close">' + svg('x') + '</button></div><div class="pw-sheet-body ls-body"></div></div>';
   body.appendChild(el);
-  var bodyEl = el.querySelector('.ls-body');
-  var peekBtn = document.createElement('button'); peekBtn.type = 'button'; peekBtn.id = 'ls-peekback'; peekBtn.hidden = true;
-  peekBtn.innerHTML = svg('layers') + 'Back to the studio'; body.appendChild(peekBtn);
-  peekBtn.addEventListener('click', function(){ peekBtn.hidden = true; el.hidden = false; });
+  var card = el.querySelector('.ls-card'), bodyEl = el.querySelector('.ls-body'), sheetTitle = el.querySelector('.pw-sheet-head b');
+  var sheetMove = window.PPSheetDrag ? window.PPSheetDrag(card, el, function(){ closeSheet(); }) : { reset: function(){} };
+
+  // the dashed outlines and their tags
+  var marks = document.createElement('div'); marks.id = 'ls-marks'; marks.hidden = true; body.appendChild(marks);
 
   function firstOf(kind){ var A = api(); if (!A) return -1; var t = A.tracks(); for (var i = 0; i < t.length; i++) if (kind === 'video' ? t[i].kind === 'video' : (t[i].kind !== 'video' && !t[i].stem)) return i; return -1; }
   function curKind(){ var A = api(), K = kit(); if (!A || !K || !K.hasTrack()) return null; var t = A.tracks()[A.currentIndex()]; return t ? (t.kind === 'video' ? 'video' : 'audio') : null; }
@@ -484,37 +513,149 @@
         (it.canHide ? '<button type="button" class="ls-ic' + (it.shown ? ' on' : '') + '" data-tg="' + esc(it.key) + '" aria-label="' + (it.shown ? 'Hide ' : 'Show ') + esc(it.label) + '">' + svg('eye') + '</button>' : '<span class="ls-ic ls-lock">' + svg('eye') + '</span>') +
         '</div>'; }).join('') + '</div></div>';
   }
-  function draw(){
-    var s = byId[cur], p = presetOf(s);
-    el.classList.toggle('ls-at-top', cur === 'aud' || cur === 'vid');
-    el.querySelectorAll('[data-ls-tab]').forEach(function(b){ var on = b.dataset.lsTab === cur; b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
-    var need = open ? showScreen() : '';
-    bodyEl.innerHTML = need +
-      '<div class="ls-pname">' + esc(s.title) + ' presets' + (p === 'custom' ? ' <em>· your own mix</em>' : '') + '</div>' +
-      '<div class="ls-presets">' + s.presets.map(function(x){
-        return '<button type="button" class="ls-pre' + (x.id === p ? ' on' : '') + '" data-pre="' + x.id + '">' + sketch(x.sk) + '<span>' + esc(x.name) + '</span></button>'; }).join('') + '</div>' +
-      s.parts.map(function(part){
-        var opts = part.opts.filter(function(o){ return shown(s, o); });
-        return '<div class="ls-part"><div class="ls-pname">' + esc(part.name) + '</div>' + opts.map(function(o){ return seg(s, o); }).join('') + '</div>';
-      }).join('') + orderHTML(s) +
-      (SPOTS[s.id] ? spotsHTML(s.id) : '') +
-      (s.id === 'lib' ? midHTML('lib-mid', 'Widgets in the list', 'A row of widgets partway down your songs and videos: a clock, buttons, a Setting widget, anything.', [[0,'At the top'],[1,'After 1'],[3,'After 3'],[5,'After 5'],[10,'After 10'],[25,'After 25']]) : '') +
-      (s.id === 'pls' ? midHTML('pls-mid', 'Widgets among your playlists', 'Widgets between your playlists, in the list or the grid.', [[0,'Before the first'],[1,'After 1'],[2,'After 2'],[4,'After 4'],[8,'After 8']]) : '') +
-      (s.id === 'set' ? setZonesHTML() + sectionsHTML() : '') +
-      '<div class="ls-foot"><button type="button" data-ls="reset"' + (S[s.id] || (S.spots && S.spots[s.id]) ? '' : ' disabled') + '>Back to the normal ' + esc(s.title.toLowerCase()) + '</button></div>';
-    keepVideoUi();
+
+  function visible(x){
+    if (x.checkVisibility) { if (!x.checkVisibility({ visibilityProperty: true, opacityProperty: false })) return false; }
+    else if (!x.offsetParent && getComputedStyle(x).position !== 'fixed') return false;
+    var r = x.getBoundingClientRect(); return r.width > 2 && r.height > 2;
   }
-  function change(){ save(); apply(); applySpots(); var top = bodyEl.scrollTop; draw(); bodyEl.scrollTop = top; }
+  /** The elements of part [p] that are showing. all: every one (to find which part a tap is in), not just the first. */
+  function partEls(p, all){
+    var out = [];
+    p.at.sel.forEach(function(q){ document.querySelectorAll(q).forEach(function(x){ if (out.indexOf(x) < 0 && visible(x)) out.push(x); }); });
+    if (p.at.first && !all){
+      var vh = window.innerHeight, on = out.filter(function(x){ var r = x.getBoundingClientRect(); return r.bottom > 70 && r.top < vh - 40; });
+      return on.slice(0, 1);
+    }
+    return out;
+  }
+  function hiddenParts(){ var sf = byId[cur]; return sf.parts.map(function(p, i){ return partEls(p, true).length ? -1 : i; }).filter(function(i){ return i >= 0; }); }
+
+  var marksQueued = false;
+  function marksSoon(){ if (!marksQueued && open){ marksQueued = true; requestAnimationFrame(function(){ marksQueued = false; drawMarks(); }); } }
+  function drawMarks(){
+    if (!open){ marks.hidden = true; return; }
+    var sf = byId[cur], vw = window.innerWidth, vh = window.innerHeight, html = '';
+    sf.parts.forEach(function(p, i){
+      var rs = partEls(p).map(function(x){ return x.getBoundingClientRect(); });
+      if (rs.length > 1)                                         // one part made of several pieces: one outline around them all
+        rs = [rs.reduce(function(a, r){ return { left: Math.min(a.left, r.left), top: Math.min(a.top, r.top), right: Math.max(a.right, r.right), bottom: Math.max(a.bottom, r.bottom) }; })];
+      rs.forEach(function(r){
+        if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) return;
+        var top = Math.max(2, r.top), bot = Math.min(vh - 2, r.bottom), left = Math.max(2, r.left), right = Math.min(vw - 2, r.right);
+        var tagIn = top < 70;                                   // too close to the top: the tag goes inside the outline
+        html += '<div class="ls-mark' + (p.at.wrap ? ' ls-wrap' : '') + (i === sheetPart && sheetKind === 'part' ? ' on' : '') + (tagIn ? ' ls-tag-in' : '') + '" style="left:' + left.toFixed(0) + 'px;top:' + top.toFixed(0) +
+          'px;width:' + Math.max(0, right - left).toFixed(0) + 'px;height:' + Math.max(0, bot - top).toFixed(0) + 'px">' +
+          '<button type="button" class="ls-tag" data-part="' + i + '">' + svg('sliders') + '<span>' + esc(p.name) + '</span></button></div>';
+      });
+    });
+    if (marks._h !== html){ marks.innerHTML = html; marks._h = html; }
+    marks.hidden = false;
+    var hb = bar.querySelector('[data-lb="hidden"]'), hp = hiddenParts(); hb.hidden = !hp.length;
+    hb.setAttribute('aria-label', hp.length + ' hidden part' + (hp.length === 1 ? '' : 's'));
+  }
+  window.addEventListener('scroll', marksSoon, true);
+  window.addEventListener('resize', marksSoon);
+  var marksTick = 0;
+
+  function openSheet(kind, title, html, part){
+    sheetKind = kind; sheetPart = part == null ? -1 : part;
+    sheetTitle.textContent = title; bodyEl.innerHTML = html; el.hidden = false; bodyEl.scrollTop = 0;
+    if (kind !== 'part' || !el._shown) sheetMove.reset();          // a tag tapped while the sheet is down keeps it down
+    el._shown = true;
+    marksSoon();
+  }
+  function closeSheet(){ el.hidden = true; el._shown = false; sheetKind = null; sheetPart = -1; bodyEl.innerHTML = ''; sheetMove.reset(); marksSoon(); }
+
+  function partHTML(i){
+    var sf = byId[cur], part = sf.parts[i]; if (!part) return '';
+    var opts = part.opts.filter(function(o){ return shown(sf, o); });
+    return opts.map(function(o){ return seg(sf, o); }).join('') + (partEls(part, true).length ? '' : '<p class="pw-note">Hidden on this screen right now. Pick a choice above to bring it back.</p>');
+  }
+  function presetsHTML(){
+    var sf = byId[cur], p = presetOf(sf);
+    return '<div class="ls-pname">' + esc(sf.title) + (p === 'custom' ? ' <em>· your own mix</em>' : '') + '</div>' +
+      '<div class="ls-presets">' + sf.presets.map(function(x){
+        return '<button type="button" class="ls-pre' + (x.id === p ? ' on' : '') + '" data-pre="' + x.id + '">' + sketch(x.sk) + '<span>' + esc(x.name) + '</span></button>'; }).join('') + '</div>' +
+      '<div class="ls-foot"><button type="button" data-ls="reset"' + (S[sf.id] || (S.spots && S.spots[sf.id]) ? '' : ' disabled') + '>Back to the normal ' + esc(sf.title.toLowerCase()) + '</button></div>';
+  }
+  function arrangeHTML(){
+    var sf = byId[cur];
+    return orderHTML(sf) + (SPOTS[sf.id] ? spotsHTML(sf.id) : '') +
+      (sf.id === 'lib' ? midHTML('lib-mid', 'Widgets in the list', 'A row of widgets partway down your songs and videos: a clock, buttons, a Setting widget, anything.', [[0,'At the top'],[1,'After 1'],[3,'After 3'],[5,'After 5'],[10,'After 10'],[25,'After 25']]) : '') +
+      (sf.id === 'pls' ? midHTML('pls-mid', 'Widgets among your playlists', 'Widgets between your playlists, in the list or the grid.', [[0,'Before the first'],[1,'After 1'],[2,'After 2'],[4,'After 4'],[8,'After 8']]) : '') +
+      (sf.id === 'set' ? setZonesHTML() + sectionsHTML() : '');
+  }
+  function screensHTML(){
+    return '<div class="pw-tabs ls-screens">' + SURF.map(function(sf){
+      return '<button type="button" class="pw-lp-row' + (sf.id === cur ? ' on' : '') + '" data-ls-tab="' + sf.id + '">' + svg(sf.icon) + '<b>' + esc(sf.title) + '</b></button>'; }).join('') + '</div>';
+  }
+  function hiddenHTML(){
+    var sf = byId[cur];
+    return '<p class="pw-note">These parts are hidden on this screen. Tap one to change it.</p><div class="pw-tabs ls-screens">' + hiddenParts().map(function(i){
+      return '<button type="button" class="pw-lp-row" data-part="' + i + '">' + svg('eye') + '<b>' + esc(sf.parts[i].name) + '</b></button>'; }).join('') + '</div>';
+  }
+  function redrawSheet(){
+    if (el.hidden || !sheetKind) return;
+    var top = bodyEl.scrollTop;
+    if (sheetKind === 'part') bodyEl.innerHTML = partHTML(sheetPart);
+    else if (sheetKind === 'presets') bodyEl.innerHTML = presetsHTML();
+    else if (sheetKind === 'arrange') bodyEl.innerHTML = arrangeHTML();
+    else if (sheetKind === 'screens') bodyEl.innerHTML = screensHTML();
+    else if (sheetKind === 'hidden'){ if (!hiddenParts().length){ closeSheet(); return; } bodyEl.innerHTML = hiddenHTML(); }
+    bodyEl.scrollTop = top;
+  }
+  function openPart(i){ var part = byId[cur].parts[i]; if (part) openSheet('part', part.name, partHTML(i), i); }
+  /** Puts the screen being edited behind the bar; when it cannot be shown (nothing to play) says why in a sheet. */
+  function enterScreen(){
+    var need = showScreen();
+    bar.querySelector('.ls-ed-title span').textContent = byId[cur].title;
+    bar.querySelector('[data-lb="arrange"]').hidden = !arrangeHTML();
+    keepVideoUi();
+    if (need) openSheet('need', byId[cur].title, need); else if (sheetKind === 'need' || sheetKind === 'screens') closeSheet();
+    setTimeout(marksSoon, 80); setTimeout(marksSoon, 450);
+  }
+  function remember(){ undoS.push(JSON.stringify(S)); if (undoS.length > 40) undoS.shift(); }
+  function change(){ save(); apply(); applySpots(); redrawSheet(); setTimeout(marksSoon, 60); setTimeout(marksSoon, 400); }
+
+  bar.addEventListener('click', function(e){
+    var b = e.target.closest('[data-lb]'); if (!b) return;
+    var k = b.dataset.lb;
+    if (k === 'done') close();
+    else if (k === 'screens') openSheet('screens', 'Which screen', screensHTML());
+    else if (k === 'presets') openSheet('presets', 'Presets', presetsHTML());
+    else if (k === 'arrange') openSheet('arrange', 'Arrange', arrangeHTML());
+    else if (k === 'hidden') openSheet('hidden', 'Hidden parts', hiddenHTML());
+    else if (k === 'undo'){
+      if (!undoS.length){ toast('Nothing to undo.'); return; }
+      S = JSON.parse(undoS.pop()); change();
+    }
+  });
+
+  // While the studio is open a tap on the screen picks the part under it (the innermost one) instead of doing what
+  // it normally does; scrolling still works, so long lists can be looked through.
+  document.addEventListener('click', function(e){
+    if (!open || !e.isTrusted) return; var t = e.target; if (!t || !t.closest) return;   // the app's own clicks (switching panes) go through
+    if (t.closest('#ls-edbar, #ls-studio, #pw-sheet, .modal-overlay.open')) return;
+    var tag = t.closest('.ls-tag');
+    e.preventDefault(); e.stopPropagation();
+    if (tag){ openPart(+tag.dataset.part); return; }
+    var sf = byId[cur], best = -1, area = Infinity;
+    sf.parts.forEach(function(p, i){ partEls(p, true).forEach(function(x){ if (x.contains(t)){ var r = x.getBoundingClientRect(), ar = r.width * r.height; if (ar < area){ area = ar; best = i; } } }); });
+    if (best >= 0) openPart(best);
+  }, true);
 
   el.addEventListener('click', function(e){
     var t = e.target, b;
-    if ((b = t.closest('[data-ls-tab]'))){ cur = b.dataset.lsTab; draw(); bodyEl.scrollTop = 0; return; }
+    if (t.closest('[data-ls="x"]')){ closeSheet(); return; }
+    if ((b = t.closest('[data-ls-tab]'))){ cur = b.dataset.lsTab; undoS = []; enterScreen(); if (sheetKind === 'screens') closeSheet(); return; }
+    if ((b = t.closest('[data-part]'))){ openPart(+b.dataset.part); return; }
     if ((b = t.closest('[data-pre]'))){
-      var s = byId[cur], pr = s.presets.find(function(x){ return x.id === b.dataset.pre; });
-      if (pr){ if (Object.keys(pr.v).length) S[s.id] = Object.assign({}, pr.v); else delete S[s.id]; change(); }
+      var sf = byId[cur], pr = sf.presets.find(function(x){ return x.id === b.dataset.pre; });
+      if (pr){ remember(); if (Object.keys(pr.v).length) S[sf.id] = Object.assign({}, pr.v); else delete S[sf.id]; change(); }
       return;
     }
-    if ((b = t.closest('.ls-seg button'))){ setVal(byId[cur], b.parentNode.dataset.k, b.dataset.v); change(); return; }
+    if ((b = t.closest('.ls-seg button'))){ remember(); setVal(byId[cur], b.parentNode.dataset.k, b.dataset.v); change(); return; }
     var A = window.PPWidgets && window.PPWidgets.arrange;
     if ((b = t.closest('[data-mv]')) && A){ var g = b.closest('[data-g]').dataset.g, m = b.dataset.mv.split(':'); A.move(g, +m[0], +m[1]); change(); return; }
     if ((b = t.closest('[data-tg]')) && A){ A.toggle(b.dataset.tg); change(); return; }
@@ -526,16 +667,14 @@
     if ((b = t.closest('[data-sec-reset]'))){ sArrSave({}); change(); toast('Every section is back in its place.'); return; }
     if (!(b = t.closest('[data-ls]'))) return;
     var k = b.dataset.ls;
-    if (k === 'done') close();
-    else if (k === 'peek'){ el.hidden = true; peekBtn.hidden = false; }
-    else if (k === 'play'){
+    if (k === 'play'){
       var kind = cur === 'vid' ? 'video' : 'audio', i = firstOf(kind), Ap = api();
       // play() needs the queue to walk next/previous through: every track of the same kind, as Home's rows do
       var q = Ap ? Ap.tracks().map(function(t, n){ return n; }).filter(function(n){ var t = Ap.tracks()[n]; return kind === 'video' ? t.kind === 'video' : (t.kind !== 'video' && !t.stem); }) : [];
-      if (i >= 0 && Ap){ Ap.play(i, q); setTimeout(function(){ var K = kit(); if (K && !K.playerOpen()) K.openPlayer(); draw(); }, 350); }
+      if (i >= 0 && Ap){ Ap.play(i, q); setTimeout(function(){ var K = kit(); if (K && !K.playerOpen()) K.openPlayer(); closeSheet(); enterScreen(); }, 350); }
     }
     else if (k === 'reset'){
-      var sr = byId[cur]; delete S[sr.id]; if (S.spots){ delete S.spots[sr.id]; applySpots(); }
+      var sr = byId[cur]; remember(); delete S[sr.id]; if (S.spots){ delete S.spots[sr.id]; applySpots(); }
       if (A && sr.order) A.reset(sr.order);
       change(); toast(sr.title + ' is back to normal.');
     }
@@ -543,7 +682,7 @@
 
   el.addEventListener('change', function(e){
     var t = e.target;
-    if (t.dataset.spotset){ var p = t.dataset.spotset.split('|'); S.spots = S.spots || {}; S.spots[p[0]] = Object.assign({}, S.spots[p[0]]);
+    if (t.dataset.spotset){ var p = t.dataset.spotset.split('|'); remember(); S.spots = S.spots || {}; S.spots[p[0]] = Object.assign({}, S.spots[p[0]]);
       if (t.value) S.spots[p[0]][p[1]] = t.value; else delete S.spots[p[0]][p[1]];
       if (!Object.keys(S.spots[p[0]]).length) delete S.spots[p[0]]; if (!Object.keys(S.spots).length) delete S.spots;
       save(); applySpots(); change(); return; }
@@ -557,15 +696,19 @@
     }
     var ov = document.getElementById('customize-modal-overlay'); if (ov) ov.classList.remove('open');
     if (!body.classList.contains('player-layout')){ toast('The layout studio needs the phone layout (Settings > Appearance).'); }
-    open = true; el.hidden = false; peekBtn.hidden = true; body.classList.add('ls-open');
-    draw(); bodyEl.scrollTop = 0;
+    if (window.PPWidgets && window.PPWidgets.stopEdit) window.PPWidgets.stopEdit();
+    open = true; undoS = []; bar.hidden = false; body.classList.add('ls-open', 'ls-editing');
+    enterScreen();
+    clearInterval(marksTick); marksTick = setInterval(marksSoon, 500);   // the screen moves by itself too (the video's controls, a list growing)
   }
   function close(){
-    open = false; el.hidden = true; peekBtn.hidden = true; body.classList.remove('ls-open'); bodyEl.innerHTML = '';
-    clearInterval(keepUi); keepUi = null;
+    open = false; bar.hidden = true; closeSheet(); marks.hidden = true; marks.innerHTML = ''; marks._h = '';
+    body.classList.remove('ls-open', 'ls-editing');
+    clearInterval(keepUi); keepUi = null; clearInterval(marksTick); marksTick = 0;
+    toast('Layout saved.');
   }
-  window.addEventListener('keydown', function(e){ if (e.key === 'Escape' && open){ if (!el.hidden) close(); else { el.hidden = false; peekBtn.hidden = true; } } });
-  // The phone's back button arrives as Escape in this app; while peeking it brings the studio back first.
+  window.addEventListener('keydown', function(e){ if (e.key === 'Escape' && open){ if (!el.hidden) closeSheet(); else close(); } });
+  // The phone's back button arrives as Escape in this app: it closes the sheet first, then the studio.
 
   // ---------- ways in ----------
   function entryRow(){

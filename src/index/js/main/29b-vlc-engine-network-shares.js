@@ -48,6 +48,7 @@
 
   /** Called by loadTrack: another track is starting, so a VLC playback or cast of an earlier one stops. */
   function ppVlcLeave(t){
+    if (snd.on && snd.t !== t) sndStop();
     if (PPVlc && vlcTrack && vlcTrack !== t){ PPVlc.close().catch(() => {}); }
   }
 
@@ -122,15 +123,170 @@
     };
   }
 
+  // ----- Sound companion: the web player shows the picture, the native player makes the sound -----
+  // The WebView has no decoder for Dolby (AC-3, E-AC-3, TrueHD) or DTS soundtracks, so a film with one plays silent
+  // in the web <video>. The native player has (the FFmpeg decoders), so it plays the soundtrack, with the equalizer,
+  // effects, boost and ReplayGain, while the <video> keeps the picture with every web picture feature. The <video>
+  // decides play / pause / seek / speed; the sound sets the clock, and the picture is nudged (a little faster or
+  // slower, or a jump for a big gap) to stay with it, as in web-audio mode. With the app in the background the
+  // picture rests and the sound carries on; coming back puts the picture where the sound is.
+  const SndP = (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.PPPlayer) || null;
+  const snd = { t: null, on: false, uri: '', want: false, cmdAt: 0, pos: 0, at: 0, playing: false, rate: 1, vol: -1,
+                lastSeek: 0, selfSeek: false, parked: false, timer: 0, gen: 0 };
+  function sndAvailable(){ return !!(SndP && window.PPNative && PPNative.enabled && !vlcNativeVideo()); }
+  function sndNowMs(){ return snd.playing ? snd.pos + (performance.now() - snd.at) * snd.rate : snd.pos; }
+  /** The sound's position while the picture rests in the background (for the notification), else null. */
+  function ppSndPos(){ return (snd.on && snd.parked && snd.t === tracks[currentIndex]) ? Math.round(sndNowMs()) : null; }
+  function sndCmd(fn){ snd.cmdAt = performance.now(); try { const p = fn(); if (p && p.catch) p.catch(() => {}); } catch(e){} }
+  function sndRawVideo(){ return PPNative.raw(videoEl); }
+
+  function sndStart(t){
+    if (!sndAvailable() || (snd.on && snd.t === t)) return;
+    sndStop();
+    const gen = ++snd.gen;
+    vlcUriFor(t).then(uri => {
+      if (gen !== snd.gen || tracks[currentIndex] !== t) return;
+      const v = sndRawVideo();
+      Object.assign(snd, { t, on: true, uri, want: false, pos: Math.round((v.currentTime || 0) * 1000), at: performance.now(),
+                           playing: false, rate: playbackSpeed || 1, vol: -1, parked: false, selfSeek: false });
+      t._snd = true;
+      try { PPNative.companionFx(true); } catch(e){}
+      return SndP.loadMedia({ id: 'snd:' + (t.dbId || uri), uri, kind: 'audio', companion: true, autoplay: false,
+                              title: t.title || '', artist: t.artist || '', startMs: snd.pos }).then(() => {
+        if (gen !== snd.gen) return;
+        sndCmd(() => SndP.setLoop({ loop: false }));
+        sndCmd(() => SndP.setRate({ rate: snd.rate, preservePitch: v.preservesPitch !== false, pitch: 1 }));
+        sndTick();
+        clearInterval(snd.timer); snd.timer = setInterval(sndTick, 250);
+      });
+    }).catch(e => { if (gen === snd.gen) sndFail(t, e); });
+  }
+
+  function sndStop(){
+    snd.gen++;
+    clearInterval(snd.timer); snd.timer = 0;
+    if (!snd.on) return;
+    snd.on = false; snd.t = null;
+    try { PPNative.companionFx(false); } catch(e){}
+    try { const v = sndRawVideo(); if (v.playbackRate !== playbackSpeed) v.playbackRate = playbackSpeed; } catch(e){}
+    if (!(window.PPNative && PPNative.active())) sndCmd(() => SndP.stop());
+  }
+
+  /** The native player could not play it either: the VLC player, as before. */
+  function sndFail(t, e){
+    sndStop();
+    if (!t || tracks[currentIndex] !== t) return;
+    t._sndFailed = true;
+    if (PPVlc && vlcAuto && vlcOk !== false && !t._vlc){ t._vlc = true; ppVlcOpen(t, "This video's sound format isn't supported here. Playing it in the VLC engine…"); }
+    else ppToast("This video's sound format isn't supported here" + (e && e.message ? ' (' + e.message + ')' : '') + '.');
+  }
+
+  function sndTick(){
+    if (!snd.on) return;
+    const t = snd.t;
+    if (tracks[currentIndex] !== t || t.kind !== 'video'){ sndStop(); return; }
+    if (snd.parked) return;                                  // background: the sound runs by itself
+    const v = sndRawVideo(), now = performance.now();
+    const wantPlay = !v.paused && !v.ended && !v.seeking && v.readyState >= 3;
+    if (wantPlay !== snd.want){ snd.want = wantPlay; sndCmd(() => wantPlay ? SndP.play() : SndP.pause()); }
+    const vol = v.muted ? 0 : v.volume;
+    if (vol !== snd.vol){ snd.vol = vol; sndCmd(() => SndP.setVolume({ volume: vol })); }
+    const sp = playbackSpeed || 1;
+    if (sp !== snd.rate){ snd.rate = sp; sndCmd(() => SndP.setRate({ rate: sp, preservePitch: v.preservesPitch !== false, pitch: 1 })); }
+    if (!wantPlay || !snd.playing){ if (Math.abs(v.playbackRate - sp) > 0.001) v.playbackRate = sp; return; }
+    // Keep the picture with the sound (the ear notices a jump, the eye does not notice 3% faster or slower).
+    const d = v.currentTime * 1000 - sndNowMs();
+    if (Math.abs(d) > 350){
+      if (now - snd.lastSeek > 1500){ snd.lastSeek = now; snd.selfSeek = true; try { v.currentTime = sndNowMs() / 1000; } catch(e){} }
+      return;
+    }
+    const want = Math.abs(d) < 40 ? sp : sp * (d > 0 ? 0.97 : 1.03);
+    if (Math.abs(v.playbackRate - want) > 0.001) v.playbackRate = want;
+  }
+
+  if (SndP){
+    // A seek on the <video> (the seek bar, gestures, chapters...) moves the sound too. The follower's own nudges don't.
+    PPNative.raw(videoEl).addEventListener('seeking', () => {
+      if (!snd.on || snd.t !== tracks[currentIndex]) return;
+      if (snd.selfSeek){ snd.selfSeek = false; return; }
+      const ms = Math.round(sndRawVideo().currentTime * 1000);
+      snd.pos = ms; snd.at = performance.now();
+      sndCmd(() => SndP.seek({ ms }));
+    });
+    const take = (s) => {
+      if (!snd.on || !s || (s.uri && snd.uri && !PPNative.sameUri(s.uri, snd.uri))) return false;
+      if (s.posMs != null){ snd.pos = s.posMs; snd.at = performance.now(); }
+      return true;
+    };
+    SndP.addListener('time', s => { if (take(s)) snd.playing = true; });
+    SndP.addListener('state', s => {
+      if (!take(s)) return;
+      snd.playing = !!s.playing;
+      if (s.rate) snd.rate = s.rate;
+      const t = snd.t;
+      if (s.state === 'ended' && snd.parked && t === tracks[currentIndex]){   // finished while the app was hidden
+        snd.parked = false;
+        if (rememberPlaybackPosition) savePlaybackPosition(t.dbId, null);
+        onEnded({ target: media() });
+        return;
+      }
+      // Paused from outside (headphones unplugged, Bluetooth gone): the film pauses too, instead of the sound
+      // coming back on the speaker at the next follower tick.
+      if (!s.playWhenReady && (snd.want || snd.parked) && performance.now() - snd.cmdAt > 1000 && s.state !== 'ended'){
+        snd.want = false;
+        if (isPlaying) togglePlay();
+      }
+    });
+    SndP.addListener('error', e => { if (snd.on) sndFail(snd.t, e); });
+    // Notification / lock-screen presses while the picture rests: the page handles them, the sound follows.
+    SndP.addListener('cmd', c => {
+      if (!snd.on || !snd.parked) return;
+      setTimeout(() => {
+        if (!snd.on || !snd.parked) return;
+        if (c && c.name === 'seek' && c.posMs != null){ snd.pos = c.posMs; snd.at = performance.now(); sndCmd(() => SndP.seek({ ms: c.posMs })); }
+        sndCmd(() => isPlaying ? SndP.play() : SndP.pause());
+        try { ppMirrorSync(); } catch(e){}
+      }, 0);
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden || !snd.on || !snd.parked) return;
+      snd.parked = false;
+      // Back on screen: put the picture where the sound is, then let the follower take over again.
+      SndP.getState().then(s => {
+        if (!snd.on) return;
+        take(s);
+        const v = sndRawVideo();
+        snd.selfSeek = true;
+        try { v.currentTime = sndNowMs() / 1000; } catch(e){}
+        if (isPlaying) v.play().catch(() => {});
+      }).catch(() => {});
+    });
+  }
+
+  /** enterBackgroundAudioMode asks first: true when the sound companion carries the sound in the background. */
+  function ppSndBackground(){
+    if (!snd.on || snd.t !== tracks[currentIndex]) return false;
+    snd.parked = true;
+    const v = sndRawVideo();
+    sndCmd(() => isPlaying ? SndP.play() : SndP.pause());
+    try { v.pause(); } catch(e){}                            // the picture rests while the app is hidden
+    try { ppMirrorSync(); } catch(e){}
+    return true;
+  }
+
   // The web <video> can also play "successfully" with no picture (a codec it cannot decode, e.g. 10-bit HEVC on some
-  // phones) or no sound (AC-3 / DTS / WMA in an MKV). Chromium counts decoded bytes, so a few seconds in, nothing
-  // decoded means a stream was dropped. VLC is asked whether the file really has that stream before switching.
+  // phones) or no sound (AC-3 / DTS / TrueHD / WMA in an MKV). Chromium counts decoded bytes, so a few seconds in,
+  // nothing decoded means a stream was dropped. No sound: the sound companion above plays it. No picture: the VLC
+  // engine, asked first whether the file really has that stream.
   let vlcSilentTimer = 0;
   videoEl.addEventListener('playing', () => {
     clearTimeout(vlcSilentTimer);
-    if (!PPVlc || !vlcAuto || vlcNativeVideo()) return;
+    if (vlcNativeVideo()) return;
     const t = tracks[currentIndex];
-    if (!t || t.kind !== 'video' || t._vlc || t._vlcChecked) return;
+    if (!t || t.kind !== 'video' || t._vlc) return;
+    if (t._snd && !t._sndFailed && sndAvailable()){ sndStart(t); return; }     // known: straight to the companion
+    if (t._vlcChecked) return;
+    if (!PPVlc && !sndAvailable()) return;
     const raw = PPNative.raw(videoEl);
     if (!('webkitAudioDecodedByteCount' in raw)) return;
     vlcSilentTimer = setTimeout(() => {
@@ -138,14 +294,21 @@
       const noSound = raw.webkitAudioDecodedByteCount === 0;
       const noPicture = raw.webkitVideoDecodedByteCount === 0 || !raw.videoWidth;
       if (!noSound && !noPicture){ t._vlcChecked = true; return; }
-      vlcAvailable().then(ok => ok ? vlcUriFor(t) : null).then(uri => uri && PPVlc.probe({ uri })).then(info => {
+      const decide = (info) => {
         t._vlcChecked = true;
-        if (!info || tracks[currentIndex] !== t) return;
-        const lost = (noSound && info.audio > 0) ? 'sound' : (noPicture && info.video > 0) ? 'picture' : '';
-        if (!lost) return;
-        t._vlc = true;
-        ppVlcOpen(t, 'This video\'s ' + lost + ' format (' + (info.codecs || 'unknown') + ") isn't supported here. Playing it in the VLC engine…");
-      }).catch(() => { t._vlcChecked = true; });
+        if (tracks[currentIndex] !== t) return;
+        const hasA = !info || info.audio > 0, hasV = !info || info.video > 0;
+        if (noPicture && hasV && info){
+          if (!PPVlc || !vlcAuto) return;
+          t._vlc = true;
+          ppVlcOpen(t, "This video's picture format (" + (info.codecs || 'unknown') + ") isn't supported here. Playing it in the VLC engine…");
+        } else if (noSound && hasA){
+          if (sndAvailable() && !t._sndFailed) sndStart(t);
+          else if (PPVlc && vlcAuto && info){ t._vlc = true; ppVlcOpen(t, "This video's sound format (" + (info.codecs || 'unknown') + ") isn't supported here. Playing it in the VLC engine…"); }
+        }
+      };
+      vlcAvailable().then(ok => ok ? vlcUriFor(t).then(uri => PPVlc.probe({ uri })) : null)
+        .then(decide).catch(() => decide(null));
     }, 3500);
   });
   videoEl.addEventListener('pause', () => clearTimeout(vlcSilentTimer));

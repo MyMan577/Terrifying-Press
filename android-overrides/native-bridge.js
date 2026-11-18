@@ -30,7 +30,7 @@
     N.sampleLuma = function () { return Promise.reject(new Error('not native')); };
     N.setMemc = function () {};
     N.memcStatus = null;
-    N.mirror = N.decorateAnalyser = N.setVizTrim = N.queueNext = N.nowPlaying = N.updateMeta = N.setFxProvider = N.setVideoFilterCss = N.screenOn = N.scheduleRect = N.resync = N.enterPip = function () {};
+    N.mirror = N.decorateAnalyser = N.setVizTrim = N.queueNext = N.nowPlaying = N.updateMeta = N.setFxProvider = N.companionFx = N.setVideoFilterCss = N.screenOn = N.scheduleRect = N.resync = N.enterPip = function () {};
     N.boot = function () { return Promise.resolve(); };
     N.pushCatalog = N.migrateAll = function () {};
     N.snapshot = function () { return Promise.reject(new Error('not native')); };
@@ -507,8 +507,16 @@
 
   // ---------- effects ----------
   var fxFn = null, fxLast = '';
+  // A web video's soundtrack played by the native player (the WebView cannot decode it, see 29b "sound companion"):
+  // the native player has no wrapper then, but the EQ and effects must still reach it.
+  var fxCompanion = false;
+  N.companionFx = function (on) {
+    fxCompanion = !!on;
+    if (fxCompanion) { fxLast = ''; pushFx(true); }
+    syncFxTimer();
+  };
   function pushFx(force) {
-    if (!fxFn || !cur || !cur.active) return;
+    if (!fxFn || !((cur && cur.active) || fxCompanion)) return;
     var f; try { f = fxFn(); } catch (e) { return; }
     var j = JSON.stringify(f);
     if (!force && j === fxLast) return;
@@ -521,7 +529,7 @@
   function fxTick() { pushFx(false); try { pollFilter(); } catch (e) {} if (N.hooks.tick) { try { N.hooks.tick(); } catch (e) {} } }
   function syncFxTimer() {
     if (!fxFn) return;
-    var want = !document.hidden || !!(cur && cur.active && (cur.playing || cur.pwr));
+    var want = !document.hidden || fxCompanion || !!(cur && cur.active && (cur.playing || cur.pwr));
     if (want && !fxTimer) { fxTimer = setInterval(fxTick, 400); fxTick(); }
     else if (!want && fxTimer) { clearInterval(fxTimer); fxTimer = 0; }
   }

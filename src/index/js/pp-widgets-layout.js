@@ -518,6 +518,23 @@
     bar.addEventListener('click', function(e){ if (lpFired){ lpFired = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
     bar.addEventListener('contextmenu', function(e){ if (e.target.closest('.pw-tab')) e.preventDefault(); });
   }
+  // Swiping between tabs (player-layout.js) goes through the tab bar as it is laid out: the built-in tabs and the
+  // pages, in the bar's order. Tabs that run an action (the player, games, a button) are stepped over.
+  window.__ppPwSwipe = {
+    pageEl: pageEl,
+    pageOpen: function(){ return openPageId; },
+    targets: function(){
+      var out = []; if (!bar) return out;
+      bar.querySelectorAll('button[data-pl-view], .pw-tab').forEach(function(b){
+        if (b.hidden) return;
+        if (b.dataset.plView){ out.push({ view: b.dataset.plView }); return; }
+        var t = tabList().find(function(x){ return x.id === b.dataset.pwTab; });
+        if (t && t.type === 'page' && pageById(t.page)) out.push({ page: t.page });
+      });
+      return out;
+    },
+    openPage: openPage, closePage: closePage
+  };
   function goView(v){
     closePage();
     var K = kit(); if (!K) return;
@@ -631,8 +648,55 @@
   sheet.innerHTML = '<div class="pw-sheet-card" role="dialog" aria-modal="true"><div class="pw-sheet-head"><b></b><button type="button" class="pw-sheet-x" aria-label="Close">' + svg('x') + '</button></div><div class="pw-sheet-body"></div></div>';
   body.appendChild(sheet);
   var sheetBody = sheet.querySelector('.pw-sheet-body'), sheetTitle = sheet.querySelector('.pw-sheet-head b');
-  function openSheet(title, html){ sheetTitle.textContent = title; sheetBody.innerHTML = html; sheet.hidden = false; sheetBody.scrollTop = 0; }
-  function closeSheet(){ sheet.hidden = true; sheetBody.innerHTML = ''; }
+
+  /**
+   * The tab on top of every editing sheet: drag the sheet down to see the screen behind it (it stops with its title
+   * still showing), back up for all of it, or flick it away to close it. A tap on the tab moves it between the two.
+   * While it is lowered the screen behind can be used. [wrap] gets 'pw-sheet-low' while lowered.
+   * Shared with the layout studio (window.PPSheetDrag).
+   */
+  function sheetDrag(card, wrap, onClose){
+    var grab = document.createElement('div'); grab.className = 'pw-grab'; grab.setAttribute('role', 'button'); grab.setAttribute('aria-label', 'Drag to move this panel'); grab.innerHTML = '<i></i>';
+    card.insertBefore(grab, card.firstChild);
+    var off = 0, drag = false, moved = false, pid = null, y0 = 0, start = 0, trail = [];
+    function maxOff(){ var h = card.querySelector('.pw-sheet-head'); return Math.max(0, card.offsetHeight - grab.offsetHeight - (h ? h.offsetHeight : 40)); }
+    function set(v, anim){
+      off = Math.max(0, Math.min(maxOff(), v));
+      card.style.transition = anim ? 'transform .24s cubic-bezier(.2,.8,.2,1)' : 'none';
+      card.style.transform = off > 0.5 ? 'translateY(' + off.toFixed(1) + 'px)' : '';
+      wrap.classList.toggle('pw-sheet-low', off > 8);
+    }
+    function down(e){
+      if (e.target.closest && e.target.closest('button:not(.pw-grab), input, select, textarea, a')) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      drag = true; moved = false; pid = e.pointerId; y0 = e.clientY; start = off; trail = [[performance.now(), e.clientY]];
+      try { e.currentTarget.setPointerCapture(pid); } catch(x){}
+    }
+    function move(e){
+      if (!drag || e.pointerId !== pid) return;
+      var dy = e.clientY - y0; if (Math.abs(dy) > 4) moved = true;
+      trail.push([performance.now(), e.clientY]); while (trail.length > 2 && performance.now() - trail[0][0] > 100) trail.shift();
+      set(start + dy, false);
+    }
+    function up(e){
+      if (!drag || e.pointerId !== pid) return; drag = false;
+      if (!moved) return;
+      var a = trail[0], b = trail[trail.length - 1], v = (b[1] - a[1]) / Math.max(16, b[0] - a[0]), m = maxOff();
+      if (v > 0.5 && start >= m - 2){ set(0, false); onClose(); return; }      // flicked down from the lowest spot: away
+      set(v > 0.45 ? m : v < -0.45 ? 0 : (off > m / 2 ? m : 0), true);
+    }
+    [grab, card.querySelector('.pw-sheet-head')].forEach(function(z){
+      if (!z) return; z.style.touchAction = 'none';
+      z.addEventListener('pointerdown', down); z.addEventListener('pointermove', move);
+      z.addEventListener('pointerup', up); z.addEventListener('pointercancel', up);
+    });
+    grab.addEventListener('click', function(){ if (moved){ moved = false; return; } set(off > 8 ? 0 : maxOff(), true); });
+    return { reset: function(){ set(0, false); }, low: function(){ return off > 8; } };
+  }
+  window.PPSheetDrag = sheetDrag;
+  var sheetMove = sheetDrag(sheet.querySelector('.pw-sheet-card'), sheet, function(){ closeSheet(); });
+  function openSheet(title, html){ sheetMove.reset(); sheetTitle.textContent = title; sheetBody.innerHTML = html; sheet.hidden = false; sheetBody.scrollTop = 0; }
+  function closeSheet(){ sheet.hidden = true; sheetBody.innerHTML = ''; sheetMove.reset(); }
   sheet.addEventListener('click', function(e){ if (e.target === sheet || e.target.closest('.pw-sheet-x')) closeSheet(); });
 
   var ZNAMES = { home:'Home', player:'Above the controls', 'player-top':'Top of the player', video:'Over the video', playlists:'Top of Playlists', library:'Top of the Library',
@@ -1201,6 +1265,7 @@
     renderZone: function(z){ startTick(); setTimeout(liveUpdate, 0); return renderZone(z, null); },
     onData: onData,
     edit: startEdit,
+    stopEdit: function(){ if (editing) stopEdit(); },
     editTabs: tabsSheet,
     openPage: openPage,
     closePage: closePage,

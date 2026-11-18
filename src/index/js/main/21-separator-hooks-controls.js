@@ -18,7 +18,7 @@
       return ok;
     },
     createPlaylist: name => createPlaylist(name),
-    setStemSections: on => { stemSections = !!on; try { localStorage.setItem('ppStemSections', on ? '1' : '0'); } catch(e){} renderPlaylist(); },
+    setStemSections: on => { if (stemSections === !!on) return; stemSections = !!on; try { localStorage.setItem('ppStemSections', on ? '1' : '0'); } catch(e){} renderPlaylist(); },   // unchanged (the splitter sets it at start): no redraw
     // Splitter entry point: adds stems as split tracks (kept out of All tracks, grouped under "Split tracks").
     // info: { srcId, srcTitle, makePlaylist, showInTab }
     addLibraryFiles: (files) => addFiles(files),   // a new ordinary library track (used by mashup save)

@@ -322,7 +322,7 @@
       var cards = pls.map(function(pl){
         var first = t.find(function(x){ return (x.playlistIds || []).includes(pl.id) && (x.kind === 'video' || x.artUrl); });
         var n = t.filter(function(x){ return (x.playlistIds || []).includes(pl.id); }).length;
-        var th = pl.thumb ? '<div class="ph-thumb has-img"><img src="' + esc(pl.thumb) + '" alt=""></div>' : K.thumbHTML(first, false);
+        var th = pl.thumb ? '<div class="ph-thumb has-img"><img src="' + esc(pl.thumb) + '" alt="" loading="lazy" decoding="async"></div>' : K.thumbHTML(first, false);
         return '<button type="button" class="ph-card pw-pl-card" data-pw-act="openpl" data-pl="' + esc(pl.id) + '">' + th +
           '<div class="ph-title">' + esc(pl.name) + '</div><div class="ph-sub">' + n + ' item' + (n === 1 ? '' : 's') + '</div></button>';
       });
@@ -369,7 +369,7 @@
 
   // ===================== more widgets =====================
   function thumbOf(t){ try { return t && window.__ppThumbSrc ? window.__ppThumbSrc(t) : null; } catch(e){ return null; } }
-  function artHTML(t, icon){ var s = thumbOf(t); return '<span class="pw-art">' + (s ? '<img alt="" src="' + esc(s) + '">' : svg(icon || (t && t.kind === 'video' ? 'video' : 'music'))) + '</span>'; }
+  function artHTML(t, icon){ var s = thumbOf(t); return '<span class="pw-art">' + (s ? '<img alt="" loading="lazy" decoding="async" src="' + esc(s) + '">' : svg(icon || (t && t.kind === 'video' ? 'video' : 'music'))) + '</span>'; }
 
   // Makes a new playlist of everything in a random order and opens it (this used to sit on the Playlists page by itself).
   T.shufpl = { name:'Shuffled playlist', icon:'shuffle', kind:'box', zones:['home','page','player'], w:'full', desc:'A button that makes a new playlist of everything in a random order',

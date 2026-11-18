@@ -3,24 +3,39 @@
      changed looks exactly as before. Player rules carry an extra attribute over the compact player's own rules
      (pp-compact-video.css) so they win without !important, except where that file uses it. */
 
-  /* ---------------- the studio panel ---------------- */
-  #ls-studio{
-    position:fixed; left:0; right:0; bottom:0; z-index:9000; display:flex; flex-direction:column;
-    max-height:min(54dvh, 520px); background:var(--bg-elev, #16171b); color:var(--text);
-    border-top:1px solid var(--line); border-radius:calc(18px*var(--ui-round,1)) calc(18px*var(--ui-round,1)) 0 0;
-    box-shadow:0 -12px 40px rgba(0,0,0,.55); padding-bottom:env(safe-area-inset-bottom, 0px);
-  }
+  /* ---------------- the studio: edited on the screen, like the page editor ----------------
+     The bar at the top and the sheet are the page editor's (#pw-edbar / #pw-sheet in pp-widgets.css); the parts of
+     the screen get the same dashed outline as widgets being edited, with a tag to open their choices. */
+  #ls-studio{ position:fixed; left:0; right:0; bottom:0; z-index:9000; display:flex; justify-content:center; pointer-events:none; }
   #ls-studio[hidden]{ display:none; }
-  /* on the players the controls are at the bottom, so the studio sits on top instead */
-  #ls-studio.ls-at-top{
-    top:0; bottom:auto; max-height:min(46dvh, 440px); padding-top:env(safe-area-inset-top, 0px); padding-bottom:0;
-    border-top:none; border-bottom:1px solid var(--line); border-radius:0 0 calc(18px*var(--ui-round,1)) calc(18px*var(--ui-round,1));
-    box-shadow:0 12px 40px rgba(0,0,0,.55);
-  }
+  #ls-studio .pw-sheet-card{ pointer-events:auto; max-height:min(56dvh, 560px); box-shadow:0 -12px 40px rgba(0,0,0,.55); }
   #ls-studio svg{ width:18px; height:18px; flex:0 0 auto; }
-  .ls-head{ display:flex; align-items:center; gap:8px; padding:10px 12px 6px 16px; }
-  .ls-head b{ display:flex; align-items:center; gap:8px; font-size:15px; }
-  .ls-head b svg{ color:var(--accent); }
+  #ls-edbar{ z-index:9001; }
+  .ls-ed-title{ flex:1; min-width:0; justify-content:flex-start; font-weight:700 !important; }
+  .ls-ed-title span{ flex:1; min-width:0; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ls-ed-title svg{ width:15px !important; height:15px !important; color:var(--text-dim); }
+  /* the outlines: drawn over the screen, they never take a touch themselves (only their tags do) */
+  #ls-marks{ position:fixed; inset:0; z-index:8990; pointer-events:none; }
+  #ls-marks[hidden]{ display:none; }
+  .ls-mark{ position:absolute; box-sizing:border-box; outline:1.5px dashed color-mix(in srgb, var(--accent) 60%, transparent); outline-offset:-1px;
+    border-radius:calc(10px*var(--ui-round,1)); }
+  .ls-mark.ls-wrap{ outline-color:color-mix(in srgb, var(--accent) 34%, transparent); }
+  .ls-mark.on{ outline:2px solid var(--accent); background:color-mix(in srgb, var(--accent) 8%, transparent); }
+  .ls-tag{ position:absolute; top:-12px; right:2px; pointer-events:auto; display:flex; align-items:center; gap:4px; height:26px; max-width:min(70%, 190px); padding:0 9px 0 7px;
+    border:0; border-radius:999px; background:var(--accent); color:var(--on-accent, #08110f); box-shadow:0 4px 12px rgba(0,0,0,.5);
+    font:700 11px inherit; font-family:inherit; cursor:pointer; }
+  .ls-tag svg{ width:13px !important; height:13px !important; flex:none; }
+  .ls-tag span{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ls-wrap > .ls-tag{ right:auto; left:2px; }
+  .ls-tag-in > .ls-tag{ top:4px; }
+  .ls-mark.on > .ls-tag{ box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent), 0 4px 12px rgba(0,0,0,.5); }
+  /* sliders on the screen being edited don't move: a tap on them picks their part */
+  body.ls-editing :is(#seek, #volume, #controls-col input[type=range]){ pointer-events:none; }
+  /* the page editor's bar gives way while the studio is open */
+  body.ls-open #pw-edbar{ display:none; }
+  .ls-screens .pw-lp-row{ width:100%; background:none; border:0; border-bottom:1px solid var(--line); color:var(--text); font:inherit; text-align:left; cursor:pointer; }
+  .ls-screens .pw-lp-row svg{ color:var(--accent); }
+  .ls-screens .pw-lp-row.on b{ color:var(--accent); }
   .ls-sp{ flex:1; }
   .ls-ic{
     display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; padding:0; flex:0 0 auto;
@@ -29,21 +44,7 @@
   .ls-ic.on{ color:var(--accent); border-color:var(--accent-dim); }
   .ls-ic:disabled{ opacity:.3; }
   .ls-ic.ls-lock{ opacity:.35; }
-  .ls-done{
-    background:var(--accent); color:var(--bg, #0c0d10); border:none; border-radius:calc(999px*var(--ui-round,1));
-    padding:8px 18px; font:700 13px inherit; font-family:inherit; cursor:pointer;
-  }
-  .ls-tabs{ display:flex; gap:6px; padding:4px 12px 8px; overflow-x:auto; scrollbar-width:none; flex:0 0 auto; }
-  .ls-tabs::-webkit-scrollbar{ display:none; }
-  .ls-tabs button{
-    display:inline-flex; align-items:center; gap:6px; flex:0 0 auto; padding:7px 12px;
-    background:none; border:1px solid var(--line); border-radius:calc(999px*var(--ui-round,1));
-    color:var(--text-dim); font:600 12.5px inherit; font-family:inherit; cursor:pointer;
-  }
-  .ls-tabs button svg{ width:15px !important; height:15px !important; }
-  .ls-tabs button.on{ color:var(--accent); border-color:var(--accent-dim); background:var(--accent-soft, #1a2422); }
-  .ls-body{ overflow-y:auto; overscroll-behavior:contain; padding:2px 12px 14px; flex:1 1 auto; min-height:0; }
-  .ls-pname{ font-size:11.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-dim); margin:12px 4px 8px; }
+  .ls-pname{ font-size:11.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-dim); margin:4px 4px 8px; }
   .ls-pname em{ font-style:normal; text-transform:none; letter-spacing:0; color:var(--accent); font-weight:600; }
   .ls-presets{ display:flex; gap:8px; overflow-x:auto; padding:0 2px 4px; scrollbar-width:none; }
   .ls-presets::-webkit-scrollbar{ display:none; }
@@ -74,15 +75,6 @@
   .ls-need{ display:flex; align-items:center; gap:10px; margin:6px 0 2px; padding:10px 12px; border-radius:calc(12px*var(--ui-round,1)); background:var(--accent-soft, #1a2422); font-size:12.5px; }
   .ls-need span{ flex:1; }
   .ls-need button{ background:var(--accent); color:var(--bg, #0c0d10); border:none; border-radius:calc(999px*var(--ui-round,1)); padding:7px 12px; font:700 12px inherit; font-family:inherit; cursor:pointer; }
-  #ls-peekback{
-    position:fixed; z-index:9000; left:50%; translate:-50% 0; top:calc(env(safe-area-inset-top, 0px) + 56px);
-    display:flex; align-items:center; gap:8px; padding:9px 16px; border:none; border-radius:calc(999px*var(--ui-round,1));
-    background:var(--accent); color:var(--bg, #0c0d10); font:700 13px inherit; font-family:inherit; box-shadow:0 6px 24px rgba(0,0,0,.5); cursor:pointer;
-  }
-  #ls-peekback[hidden]{ display:none; }
-  #ls-peekback svg{ width:16px; height:16px; }
-  /* the studio is above everything: the edit bar and the widget sheets give way */
-  body.ls-open #pw-edbar{ display:none; }
 
   /* the way in, at the top of Customize > Layout */
   .ls-entry{

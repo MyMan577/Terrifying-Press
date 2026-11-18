@@ -350,6 +350,9 @@
     // on whatever frame it paused on while audioEl kept the soundtrack
     // running - audio moving, video frozen. Leave PiP alone instead.
     if (document.pictureInPictureElement === videoEl) return;
+    // The native player is already making this film's sound (its soundtrack is one the WebView cannot decode, 29b):
+    // it simply carries on in the background, and the picture rests.
+    try { if (ppSndBackground()) return; } catch(e){}
     if (bgEnteringOp && bgEnteringOp === bgOpId) return;   // a handoff is already in flight
     const opId = ++bgOpId;
     bgEnteringOp = opId;

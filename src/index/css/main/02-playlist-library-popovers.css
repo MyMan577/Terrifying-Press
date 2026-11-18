@@ -156,6 +156,10 @@
   .track.dragging-row{ opacity:0.5; }
   .track.drag-target-before{ box-shadow: inset 0 2px 0 0 var(--accent); }
   .track.drag-target-after{ box-shadow: inset 0 -2px 0 0 var(--accent); }
+  /* Rows off screen are not laid out or painted until they come near it. Every measurement anywhere on the page
+     (a tab indicator, a button placed beside the header...) used to lay out the whole library list again: with a few
+     thousand tracks that was a large part of a 10-second start. "auto" keeps each row's real height once seen. */
+  #playlist .track{ content-visibility:auto; contain-intrinsic-size:auto 45px; }
   body.track-drag-active{ -webkit-user-select:none; user-select:none; }
 
   /* ---------- Track tag-edit popover ---------- */
