@@ -1,5 +1,5 @@
   var BUILTIN_ORDER = ['title','games','tagline','playground','tabs','hero','chips','videos','audio','history'];
-  var NEW_ORDER = ['nowplaying','cover','seekbar','upnext','queue','lyrics','singalong','stems','viz','volume','speed','trackinfo','stack','action','shufpl','mood','shortcuts','search','eq','sleeper','alarm','bookmarks','practice','level','sotd','onthisday','recap','bloopy','game',
+  var NEW_ORDER = ['nowplaying','cover','seekbar','upnext','queue','lyrics','singalong','stems','viz','volume','speed','trackinfo','stack','action','shufpl','mood','shortcuts','search','eq','sleeper','alarm','bookmarks','practice','level','sotd','onthisday','recap','bloopy','pet','game','guess','taptempo',
                    'clock','world','greeting','countdown','calendar','dayprog','stopwatch','focus','battery','todo','tally','dice','breathe','text','rotate','drawing','image','stats','storage',
                    'recent','most','random','cont','genre','playlist','playlists','pltiles','tagchips','setting','setsec','spacer','divider'];
 
