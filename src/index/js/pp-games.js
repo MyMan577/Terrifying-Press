@@ -87,10 +87,10 @@
   function appPlaying(){ var b = document.getElementById('play-btn'); return !!(b && b.classList.contains('is-playing')); }
   function syncGameMusic(){
     if (!current || !current.ownMusic || !frame) return;
-    try { var w = frame.contentWindow; if (w && w.__ppHostMute) w.__ppHostMute(appPlaying()); } catch(e){}
+    try { var w = frame.contentWindow; if (w && w.__ppHostMute) w.__ppHostMute(appPlaying()); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function gameMode(on){
-    try { var P = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.PPGameMode; if (P) (on ? P.enter() : P.exit()).catch(function(){}); } catch(e){}
+    try { var P = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.PPGameMode; if (P) (on ? P.enter() : P.exit()).catch(function(){}); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
 
   // ---- In-game now-playing card ------------------------------------------------------------

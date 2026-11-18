@@ -95,7 +95,7 @@
   document.addEventListener('click', (e) => { if (!pop.contains(e.target)) pop.style.display = 'none'; });
 
   ['loadedmetadata','emptied'].forEach(ev => V.addEventListener(ev, () => setTimeout(refresh, 150)));
-  try { V.audioTracks && V.audioTracks.addEventListener('addtrack', refresh); } catch(e){}
-  try { V.textTracks && V.textTracks.addEventListener('addtrack', refresh); } catch(e){}
+  try { V.audioTracks && V.audioTracks.addEventListener('addtrack', refresh); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+  try { V.textTracks && V.textTracks.addEventListener('addtrack', refresh); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   refresh();
 })();

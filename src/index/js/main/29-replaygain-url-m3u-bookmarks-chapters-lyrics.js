@@ -6,7 +6,7 @@
   // =====================================================================
   const PP_BM_KEY = 'playerBookmarksV1', PP_LRC_KEY = 'playerLyricsV1', PP_RG_KEY = 'playerReplayGainOn';
   const ppJson = (k) => { try { return JSON.parse(localStorage.getItem(k)) || {}; } catch(e){ return {}; } };
-  const ppSave = (k, o) => { try { localStorage.setItem(k, JSON.stringify(o)); } catch(e){} };
+  const ppSave = (k, o) => { try { localStorage.setItem(k, JSON.stringify(o)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
   const ppEl = (id) => document.getElementById(id);
   const ppToast = (m) => { try { showToast(m); } catch(e){} };
   var rgEnabled = localStorage.getItem(PP_RG_KEY) !== '0';
@@ -41,7 +41,7 @@
   ppEl('rg-toggle').checked = rgEnabled;
   ppEl('rg-toggle').addEventListener('change', (e) => {
     rgEnabled = e.target.checked;
-    try { localStorage.setItem(PP_RG_KEY, rgEnabled ? '1' : '0'); } catch(err){}
+    try { localStorage.setItem(PP_RG_KEY, rgEnabled ? '1' : '0'); } catch(err){ if (typeof ppCaught === "function") ppCaught(err); }
     const t = tracks[currentIndex];
     if (rgEnabled && t && !t.rgDone) ppLoadReplayGain(t); else if (currentIndex !== -1) applyTrackBoostToCurrentGraph();
   });
@@ -219,7 +219,7 @@
       const pi = ppFindByName(f.name, used);
       if (pi < 0){ notFound.push(f.name); continue; }
       const parent = tracks[pi];
-      if (!parent.nativeUri && window.PPNative && PPNative.ensureLocal){ try { await PPNative.ensureLocal(parent); } catch(e){} }
+      if (!parent.nativeUri && window.PPNative && PPNative.ensureLocal){ try { await PPNative.ensureLocal(parent); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       if (!parent.nativeUri){ ppToast('CUE sheets need the Android app (the album file has to be on the phone).'); return; }
       const list = f.tracks.filter(t => t.start != null).sort((a, b) => a.start - b.start);
       list.forEach((t, k) => {
@@ -548,7 +548,7 @@ async function ppMp4Chapters(blob){
   });
   // the same words are often saved twice (synced lyrics and subtitles): Remove takes both away
   ppEl('ly-clear').addEventListener('click', () => { const t = tracks[currentIndex]; if (!t) return; ppStoreLyrics(t.dbId, ''); ppLoadLyricsFor(t);
-    writeSubtitleEntry(t.dbId, null); if (t.kind === 'video') setSubtitleCues([]); try { const a = window.__ppApi; if (a && a.setSubtitles) a.setSubtitles(t.dbId, [], ''); } catch(e){} });
+    writeSubtitleEntry(t.dbId, null); if (t.kind === 'video') setSubtitleCues([]); try { const a = window.__ppApi; if (a && a.setSubtitles) a.setSubtitles(t.dbId, [], ''); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } });
   function ppSidecarLrc(track, file, fileList){
     const key = file.name.replace(/\.[^/.]+$/, '').toLowerCase();
     const lrc = fileList.find(f => /\.lrc$/i.test(f.name) && f.name.replace(/\.[^/.]+$/, '').toLowerCase() === key);
@@ -601,7 +601,7 @@ async function ppMp4Chapters(blob){
       set: (v) => {
         memcMaxIn = v.i; memcOutFps = v.o; memcStrength = v.s;
         if (memcQuality !== v.q){ memcQuality = v.q; memcResKey = ''; memcInvalidate(); }
-        try { localStorage.setItem(MEMC_IN_KEY, String(memcMaxIn)); localStorage.setItem(MEMC_OUT_KEY, String(memcOutFps)); localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); localStorage.setItem(MEMC_STR_KEY, String(Math.round(memcStrength * 100))); } catch (e){}
+        try { localStorage.setItem(MEMC_IN_KEY, String(memcMaxIn)); localStorage.setItem(MEMC_OUT_KEY, String(memcOutFps)); localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); localStorage.setItem(MEMC_STR_KEY, String(Math.round(memcStrength * 100))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         memcUpdateSliders(); memcUpdateStrength(); memcUpdateQualityUI();
         setMemcMode(v.m);
       }
@@ -613,7 +613,7 @@ async function ppMp4Chapters(blob){
         memcUpscale = v.u; enhSharp = v.sh; enhSharpSet = true; enhDeband = !!v.db; enhDeblock = !!v.dk; enhAnime = !!v.an;
         enhAI = ENH_AI_IDS.includes(v.ai) ? v.ai : 'off'; if (enhAI !== 'off') srEnsureLoaded().then(() => memcRepaint());
         enhMaster = v.on !== false;
-        try { localStorage.setItem(MEMC_UP_KEY, String(memcUpscale)); } catch (e){}
+        try { localStorage.setItem(MEMC_UP_KEY, String(memcUpscale)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         enhChanged(false);   // the song's own on/off, as saved
       }
     },
@@ -634,7 +634,7 @@ async function ppMp4Chapters(blob){
   let songOv = {}, songOvBase = {}, songOvTrack = null, songOvBooted = false;
   try { songOv = JSON.parse(localStorage.getItem(SONG_OV_KEY) || '{}') || {}; } catch (e){ songOv = {}; }
   try { songOvBase = JSON.parse(localStorage.getItem(SONG_OV_BASE_KEY) || '{}') || {}; } catch (e){ songOvBase = {}; }
-  const songOvSave = () => { try { localStorage.setItem(SONG_OV_KEY, JSON.stringify(songOv)); localStorage.setItem(SONG_OV_BASE_KEY, JSON.stringify(songOvBase)); } catch (e){} };
+  const songOvSave = () => { try { localStorage.setItem(SONG_OV_KEY, JSON.stringify(songOv)); localStorage.setItem(SONG_OV_BASE_KEY, JSON.stringify(songOvBase)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
   const songOvSafeSet = (g, v) => { try { songOvGroups[g].set(v); } catch (e){ console.warn('[song override]', g, e); } };
   function songOvActive(g){ const t = songOvTrack; return !!(t && songOv[t.dbId] && songOv[t.dbId][g]); }
   // Keep what was changed while this song played.
@@ -738,7 +738,7 @@ async function ppMp4Chapters(blob){
     clearTimeout(artIdleTimer);
     artIdleTimer = setTimeout(() => {
       if (!artCtx) return;
-      try { srFreeAll(artCtx); artCtx.gl.getExtension('WEBGL_lose_context').loseContext(); } catch (e){}
+      try { srFreeAll(artCtx); artCtx.gl.getExtension('WEBGL_lose_context').loseContext(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       artCtx = null;
     }, 20000);
   }
@@ -813,7 +813,7 @@ async function ppMp4Chapters(blob){
       tog.checked = artSharpOn;
       tog.addEventListener('change', () => {
         artSharpOn = tog.checked;
-        try { localStorage.setItem(ART_SHARP_KEY, artSharpOn ? '1' : '0'); } catch (e){}
+        try { localStorage.setItem(ART_SHARP_KEY, artSharpOn ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         // switched off: put the original pictures back
         if (!artSharpOn) document.querySelectorAll('img[data-sharp-of]').forEach(i => { if (i.getAttribute('src') === i.dataset.sharpUrl){ i.src = i.dataset.sharpOf; } delete i.dataset.sharpOf; delete i.dataset.sharpUrl; });
         else { if (art) artSharpImg(art); scan(home); scan(document); }

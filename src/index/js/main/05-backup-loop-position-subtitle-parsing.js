@@ -122,7 +122,7 @@
       origHeight: t.convertedFromVideo ? (t._origHeight || null) : undefined
     }));
     try { localStorage.setItem(PLAYLIST_KEY, JSON.stringify(meta)); } catch(e){ /* storage full or unavailable */ }
-    try { window.dispatchEvent(new Event('pp-library-saved')); } catch(e){}   // vocal-separator.js re-fetches lyrics for tracks whose title changed
+    try { window.dispatchEvent(new Event('pp-library-saved')); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // vocal-separator.js re-fetches lyrics for tracks whose title changed
   }
 
   async function restoreLibrary(){
@@ -239,7 +239,7 @@
     const all = loadABLoops();
     if (loop && loop.a != null && loop.b != null) all[dbId] = loop;
     else delete all[dbId];
-    try { localStorage.setItem(AB_LOOP_KEY, JSON.stringify(all)); } catch(e){}
+    try { localStorage.setItem(AB_LOOP_KEY, JSON.stringify(all)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function getSavedABLoop(dbId){
     return loadABLoops()[dbId] || null;

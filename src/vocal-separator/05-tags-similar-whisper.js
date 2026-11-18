@@ -11,7 +11,7 @@
       if (c.bpm && (c.bpm < 30 || c.bpm > 300)) { delete c.bpm; fixed = true; }
       if (c.v != null && (c.v > 100 || c.v < 0)) { c.v = Math.max(0, Math.min(100, c.v)); fixed = true; }
     });
-    if (fixed) try { localStorage.setItem(TAGS_KEY, JSON.stringify(tagStore)); } catch (e) {}
+    if (fixed) try { localStorage.setItem(TAGS_KEY, JSON.stringify(tagStore)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     return tagStore;
   };
   const saveTagStore = () => { tagVer++; try { localStorage.setItem(TAGS_KEY, JSON.stringify(tagStore)); return true; } catch (e) { return false; } };
@@ -133,8 +133,8 @@
       const sig = l1.length + ':' + l2.length;
       if (sig !== txtSig) {
         txtSig = sig; txtLyr.clear();
-        try { const o = JSON.parse(l1) || {}; for (const k in o) txtLyr.set(k, strip(o[k]).toLowerCase().slice(0, 8000)); } catch (e) {}
-        try { const o = JSON.parse(l2) || {}; for (const k in o) { const v = o[k], cues = Array.isArray(v) ? v.map(c => c.text) : (v && v.c ? v.c.map(c => c[2]) : []); txtLyr.set(k, ((txtLyr.get(k) || '') + ' ' + cues.join(' ').toLowerCase()).slice(0, 8000)); } } catch (e) {}
+        try { const o = JSON.parse(l1) || {}; for (const k in o) txtLyr.set(k, strip(o[k]).toLowerCase().slice(0, 8000)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+        try { const o = JSON.parse(l2) || {}; for (const k in o) { const v = o[k], cues = Array.isArray(v) ? v.map(c => c.text) : (v && v.c ? v.c.map(c => c[2]) : []); txtLyr.set(k, ((txtLyr.get(k) || '') + ' ' + cues.join(' ').toLowerCase()).slice(0, 8000)); } } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       }
       if (txtTagVer !== tagVer) { txtTagVer = tagVer; txtTags.clear(); }
     }
@@ -199,7 +199,7 @@
   async function getAsr(id, status) {
     const ent0 = Object.values(WH).find(v => v[0] === id), dev = wGpu() && !(ent0 && ent0[2] && ent0[2].noGpu) ? 'webgpu' : 'wasm', key = id + '|' + dev;   // the biggest models are too large for the GPU path
     if (asr && asrId === key) return asr;
-    if (asr) { try { await asr.dispose(); } catch (e) {} asr = null; asrId = ''; }
+    if (asr) { try { await asr.dispose(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } asr = null; asrId = ''; }
     if (!tfMod) { status('Loading Whisper…'); tfMod = await import(TF_URL); }
     const cb = p => { if (p && p.status === 'progress' && p.file) status('Downloading ' + p.file.split('/').pop() + ' ' + Math.round(p.progress || 0) + '%'); else if (p && p.status === 'ready') status('Whisper ready.'); };
     if (dev === 'webgpu') {
@@ -354,7 +354,7 @@
         if (r.lang) langId = r.lang;
         if (hasF && !gpuNote) {                                          // first window tells us where the encoder really ran
           gpuNote = r.accel === 'GPU' ? 'Subtitles: encoder is running on the phone GPU/NPU.' : 'The phone GPU was not faster than the CPU here, so the CPU is used. The GPU option was turned off.';
-          if (r.accel !== 'GPU') { try { localStorage.setItem('ppvWGpu', '0'); const cb = document.getElementById('ppv-wgpu'); if (cb) cb.checked = false; await NP.remove({ id: k + '_encf' }); } catch (e) {} }
+          if (r.accel !== 'GPU') { try { localStorage.setItem('ppvWGpu', '0'); const cb = document.getElementById('ppv-wgpu'); if (cb) cb.checked = false; await NP.remove({ id: k + '_encf' }); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
           status(gpuNote); await tick();
         }
         const segs = whParse(r.tokens || [], c.tsBegin), complete = segs.filter(g => g.e != null);

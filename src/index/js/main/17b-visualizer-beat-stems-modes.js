@@ -171,7 +171,7 @@
     catch(e){ return null; }
   }
   async function vsCachePut(key, val){
-    try { const db = await vsDb(); db.transaction('stems', 'readwrite').objectStore('stems').put(val, key); } catch(e){}
+    try { const db = await vsDb(); db.transaction('stems', 'readwrite').objectStore('stems').put(val, key); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   const vsYield = () => new Promise(r => setTimeout(r, 0));
   // loudness curve (0..255) of one channel-mixed signal: 40 ms RMS every 20 ms, in dB, scaled to the stem's own loud parts
@@ -234,7 +234,7 @@
     if (vs.forId !== t.dbId){ vs.forId = t.dbId; vs.curves = null; vs.status = 'none'; if (!vs.busy) vsLoad(t); }
     else if (!vs.curves && !vs.busy && vs.status === 'none' && vsStemsOf(t).length) vsLoad(t);   // split while playing
     if (!vs.curves) return null;
-    let time = 0; try { time = media().currentTime || 0; } catch(e){}
+    let time = 0; try { time = media().currentTime || 0; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     const C = vs.curves.curves, f = time * vs.curves.fps, i = Math.floor(f), fr = f - i;
     const at = (a) => { if (!a || i < 0 || i >= a.length - 1) return 0; return (a[i] * (1 - fr) + a[i + 1] * fr) / 255; };
     const raw = { vocals: at(C.vocals), drums: at(C.drums), kick: at(C.kick), bass: at(C.bass), other: at(C.other) };
@@ -249,7 +249,7 @@
     const tog = document.getElementById('viz-stem-toggle'), line = document.getElementById('viz-status');
     if (!tog) return;
     tog.checked = vizStemsOn;
-    tog.addEventListener('change', () => { vizStemsOn = tog.checked; try { localStorage.setItem('ppVizStems', vizStemsOn ? '1' : '0'); } catch(x){} });
+    tog.addEventListener('change', () => { vizStemsOn = tog.checked; try { localStorage.setItem('ppVizStems', vizStemsOn ? '1' : '0'); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); } });
     const dd = document.getElementById('viz-sens-dropdown');
     const names = { vocals: 'vocals', drums: 'drums', bass: 'bass', other: 'music' };
     setInterval(() => {
@@ -469,7 +469,7 @@
       return true;
     } catch(e){
       v3.failed = true; v3.gl = null;
-      try { console.warn('3D disc: ' + (e && e.message)); } catch(x){}
+      try { console.warn('3D disc: ' + (e && e.message)); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
       try { showToast('3D disc is not available on this device'); } catch(x){}
       return false;
     }
@@ -519,7 +519,7 @@
     const tog = document.getElementById('viz-tilt-toggle'), row = document.getElementById('viz-tilt-row'), seg = document.getElementById('viz-style-seg');
     if (!tog) return;
     tog.checked = v3TiltOn;
-    tog.addEventListener('change', () => { v3TiltOn = tog.checked; try { localStorage.setItem('ppViz3dTilt', v3TiltOn ? '1' : '0'); } catch(x){} if (!v3TiltOn) v3Tilt(false); vizIdle = false; });
+    tog.addEventListener('change', () => { v3TiltOn = tog.checked; try { localStorage.setItem('ppViz3dTilt', v3TiltOn ? '1' : '0'); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); } if (!v3TiltOn) v3Tilt(false); vizIdle = false; });
     const show = () => { row.style.display = vizStyle === 'disc3d' ? '' : 'none'; };
     if (seg) seg.addEventListener('click', () => setTimeout(show, 0));
     show();

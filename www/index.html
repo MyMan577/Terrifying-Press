@@ -70,6 +70,18 @@
       else fallback();
     } catch(e){ fallback(); }
   }
+  // Errors the app catches and carries on from. Each distinct one is noted once per session, so one that repeats on
+  // every frame cannot push everything else out of the log. The browser's routine refusals (a play() cut short, a
+  // permission the phone said no to) are not faults and are skipped.
+  var seen = {}, seenN = 0, SKIP = { AbortError: 1, NotAllowedError: 1, NotSupportedError: 1, SecurityError: 1 };
+  window.ppCaught = function(e){
+    try {
+      if (!e || SKIP[e.name] || seenN > 200) return;
+      var msg = (e && e.message) || String(e), at = e && e.stack ? String(e.stack).split('\n')[1] || '' : '';
+      var key = msg + '|' + at; if (seen[key]) return; seen[key] = 1; seenN++;
+      add('caught', msg + stack(e, 4));
+    } catch(x){}
+  };
   window.ppErrorLog = { add: add, text: text, clear: function(){ buf = []; try { localStorage.removeItem(KEY); } catch(e){} sync(); } };
   document.addEventListener('DOMContentLoaded', function(){
     var c = document.getElementById('errlog-copy-btn'), s = document.getElementById('errlog-share-btn'), x = document.getElementById('errlog-clear-btn');
@@ -150,14 +162,14 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
           const data = await nextB64;
           nextB64 = (off + CH0 < blob.size) ? toB64(blob.slice(off + CH0, off + 2 * CH0)) : null;   // encode the next piece while this one is written
           await P.PPBackup.write({ data });
-          if (onProgress){ try { onProgress(Math.min(1, (off + CH0) / blob.size), 'write'); } catch(e){} }
+          if (onProgress){ try { onProgress(Math.min(1, (off + CH0) / blob.size), 'write'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
         }
         const r = await P.PPBackup.end({});
         if (window.PPNative && PPNative.hooks && PPNative.hooks.toast) PPNative.hooks.toast('Saved to ' + ((r && r.location) || 'Downloads'));
         return true;
       } catch(e){
         console.warn('streaming save failed, using the cache route', e);
-        if (began){ try { await P.PPBackup.abort({}); } catch(e2){} }
+        if (began){ try { await P.PPBackup.abort({}); } catch(e2){ if (typeof ppCaught === "function") ppCaught(e2); } }
       }
     }
     if (P && P.Filesystem){
@@ -169,9 +181,9 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         nextB64 = (off + CH < blob.size) ? toB64(blob.slice(off + CH, off + 2 * CH)) : null;   // encode the next chunk while this one is written
         if (first) await P.Filesystem.writeFile({ path, data, directory: 'CACHE' });
         else await P.Filesystem.appendFile({ path, data, directory: 'CACHE' });
-        if (onProgress){ try { onProgress(Math.min(1, (off + CH) / Math.max(1, blob.size)), 'write'); } catch(e){} }
+        if (onProgress){ try { onProgress(Math.min(1, (off + CH) / Math.max(1, blob.size)), 'write'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       }
-      if (onProgress){ try { onProgress(1, 'finish'); } catch(e){} }
+      if (onProgress){ try { onProgress(1, 'finish'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       const { uri } = await P.Filesystem.getUri({ path, directory: 'CACHE' });
       if (window.PPNative && PPNative.lib){
         try {
@@ -220,8 +232,8 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
   var K='ppModeGateV1', MODE_KEYS={lite:'ppLiteMode',plus:'ppPlusMode',premium:'ppPremiumMode',playground:'ppPlaygroundMode',focus:'ppFocusMode'},
       PLAY_GOAL=3*3600000, PLUS_PASS=75, PREMIUM_PASS=90;
   function rd(k){try{return localStorage.getItem(k)}catch(e){return null}}
-  function wr(k,v){try{localStorage.setItem(k,v)}catch(e){}}
-  var st=null; try{st=JSON.parse(rd(K)||'null')}catch(e){}
+  function wr(k,v){try{localStorage.setItem(k,v)}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}
+  var st=null; try{st=JSON.parse(rd(K)||'null')}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   if(!st||typeof st!=='object'){
     var had=false;
     try{ for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i)||''; if(/^(player|pp|disc)/i.test(k)&&k!==K){had=true;break} } }catch(e){}
@@ -241,7 +253,7 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
     if(m==='premium')return marathonBest()>=PREMIUM_PASS;
     return false;
   }
-  function fire(m){try{window.dispatchEvent(new CustomEvent('ppgate',{detail:m}))}catch(e){}}
+  function fire(m){try{window.dispatchEvent(new CustomEvent('ppgate',{detail:m}))}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}
   var G=window.PPModeGate={
     state:function(){return st},
     legacy:function(){return !!st.legacy},
@@ -8752,7 +8764,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const pl = playlists.find(p => p.id === plId); if (!pl) return null;
     const ids = ppMembers(plId); if (ids.length < 2){ showToast('Nothing to shuffle yet'); return pl; }
     pl.order = ppShuffled(ids);
-    try { if (typeof sortViews === 'object' && sortViews[plId]){ delete sortViews[plId]; saveSortViews(); } } catch(e){}   // a title/artist sort would hide the new order
+    try { if (typeof sortViews === 'object' && sortViews[plId]){ delete sortViews[plId]; saveSortViews(); } } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // a title/artist sort would hide the new order
     savePlaylists(); renderPlaylist(); renderPlaylistsManager();
     showToast('Shuffled “' + pl.name + '”');
     return pl;
@@ -8809,7 +8821,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   function plIndices(pl){ const idxs = []; tracks.forEach((t, i) => { if ((t.playlistIds || []).includes(pl.id)) idxs.push(i); }); return orderIndicesForPlaylist(idxs, pl); }
   function afterBatchPl(){
     savePlaylists(); saveLibraryMeta(); renderPlaylistsManager(); renderPlaylist();
-    if (window.__ppRenderHomeNow){ try { window.__ppRenderHomeNow(); } catch(e){} }
+    if (window.__ppRenderHomeNow){ try { window.__ppRenderHomeNow(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   }
   function deletePlaylists(ids){
     const list = plByIds(ids); if (!list.length) return false;
@@ -8850,7 +8862,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     list.forEach(pl => {
       const members = ppMembers(pl.id); if (members.length < 2) return;
       pl.order = ppShuffled(members); n++;
-      try { if (typeof sortViews === 'object' && sortViews[pl.id]){ delete sortViews[pl.id]; saveSortViews(); } } catch(e){}
+      try { if (typeof sortViews === 'object' && sortViews[pl.id]){ delete sortViews[pl.id]; saveSortViews(); } } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     });
     if (!n){ showToast('Nothing to shuffle yet'); return false; }
     afterBatchPl();
@@ -9307,7 +9319,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   } catch (e){}
   if (enhMaster === null) enhMaster = memcEnhSettings();   // first time: on if something was already set up
   function enhSave(){
-    try { localStorage.setItem(ENH_KEY, JSON.stringify({ sharp: enhSharpSet ? enhSharp : undefined, deband: enhDeband, deblock: enhDeblock, anime: enhAnime, ai: enhAI, on: !!enhMaster })); } catch (e){}
+    try { localStorage.setItem(ENH_KEY, JSON.stringify({ sharp: enhSharpSet ? enhSharp : undefined, deband: enhDeband, deblock: enhDeblock, anime: enhAnime, ai: enhAI, on: !!enhMaster })); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function memcEnhSettings(){ return memcUpscale > 0 || enhSharp > 0 || enhDeband || enhDeblock || enhAnime || enhAI !== 'off'; }
   function memcEnhOn(){ return !!enhMaster && memcEnhSettings(); }
@@ -9426,7 +9438,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       applyEqAll();
       applyMasterBoostAll();
       applyTrackBoostToCurrentGraph();
-    } catch (e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     if (audioEl.getAttribute('src') !== t.url) audioEl.src = t.url;
     audioEl.loop = false;
     audioLeadBias = 0; audioLeadFixes = [];
@@ -10135,7 +10147,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       if (btn) btn.textContent = 'Finishing…';
       await zip.add('manifest.json', new TextEncoder().encode(JSON.stringify({ version: 2, playlists, tracks: manifest }, null, 2)));
       // Every setting and all progress too (per-song EQ, overrides, loops, subtitles, XP...), so one file restores everything.
-      try { await zip.add('settings.json', new TextEncoder().encode(JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), data: progressBackupData() }))); } catch(e){}
+      try { await zip.add('settings.json', new TextEncoder().encode(JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), data: progressBackupData() }))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       if (sz){
         const r = await sz.finish(); sz = null;
         if (window.PPNative && PPNative.hooks && PPNative.hooks.toast) PPNative.hooks.toast('Saved to ' + ((r && r.location) || 'Downloads'));
@@ -10305,7 +10317,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       // merged above, so those two are left alone. Applying needs a reload, so it asks first.
       if (zip.has('settings.json')){
         let sdata = null;
-        try { const sj = JSON.parse(await zip.text('settings.json')); sdata = sj && typeof sj.data === 'object' ? sj.data : null; } catch(e){}
+        try { const sj = JSON.parse(await zip.text('settings.json')); sdata = sj && typeof sj.data === 'object' ? sj.data : null; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         if (sdata && Object.keys(sdata).length && window.confirm('This backup also has your settings and progress (EQ, per-song settings, loops, XP and more). Restore those too? The app will reload.')){
           const n = progressBackupApply(sdata, [PLAYLIST_KEY, PLAYLISTS_KEY]);
           if (n){
@@ -10446,7 +10458,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       origHeight: t.convertedFromVideo ? (t._origHeight || null) : undefined
     }));
     try { localStorage.setItem(PLAYLIST_KEY, JSON.stringify(meta)); } catch(e){ /* storage full or unavailable */ }
-    try { window.dispatchEvent(new Event('pp-library-saved')); } catch(e){}   // vocal-separator.js re-fetches lyrics for tracks whose title changed
+    try { window.dispatchEvent(new Event('pp-library-saved')); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // vocal-separator.js re-fetches lyrics for tracks whose title changed
   }
 
   async function restoreLibrary(){
@@ -10563,7 +10575,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const all = loadABLoops();
     if (loop && loop.a != null && loop.b != null) all[dbId] = loop;
     else delete all[dbId];
-    try { localStorage.setItem(AB_LOOP_KEY, JSON.stringify(all)); } catch(e){}
+    try { localStorage.setItem(AB_LOOP_KEY, JSON.stringify(all)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function getSavedABLoop(dbId){
     return loadABLoops()[dbId] || null;
@@ -12358,7 +12370,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   function memcResNote(vw, vh, rw, rh, screenPx, smoothing){
     const long = Math.max(rw, rh), want = Math.min(Math.max(vw, vh), screenPx);
     if (long >= want * 0.97) return;
-    let id = ''; try { const t = tracks[currentIndex]; id = t ? (t.id || t.name || '') : ''; } catch (e){}
+    let id = ''; try { const t = tracks[currentIndex]; id = t ? (t.id || t.name || '') : ''; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     const k = id + '|' + vw + 'x' + vh + '|' + rw + 'x' + rh;
     if (k === memcResNoted) return;
     memcResNoted = k;
@@ -12391,7 +12403,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
           memcFreeResources();
           if (memcQuality > 0){
             memcQuality--;
-            try { localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); } catch (e){}
+            try { localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
             memcUpdateQualityUI();
           }
         }
@@ -12444,7 +12456,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (!full && gl.getError() === gl.OUT_OF_MEMORY && memcQuality > 0){
       memcFreeResources();
       memcQuality--;
-      try { localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); } catch (e){}
+      try { localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       memcUpdateQualityUI();
       return;
     }
@@ -12932,7 +12944,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     gl.bindFramebuffer(gl.FRAMEBUFFER, hr.fbo);
     gl.readPixels(0, 0, hr.w, hr.h, gl.RGBA, gl.UNSIGNED_BYTE, out);
     if (flipY){ const o = new Uint8Array(out.length), rw = hr.w * 4; for (let y = 0; y < hr.h; y++) o.set(out.subarray((hr.h - 1 - y) * rw, (hr.h - y) * rw), y * rw); out = o; }
-    try { gl.getExtension('WEBGL_lose_context').loseContext(); } catch (e){}
+    try { gl.getExtension('WEBGL_lose_context').loseContext(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     return { w: hr.w, h: hr.h, ms: performance.now() - t0, data: Array.from(out) };
   };
 
@@ -13060,7 +13072,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   // The media time of the frame on screen (frame step counts from it). Only while paused, when the picture holds still.
   // A seek while paused (frame step, dragging the seek bar) shows the frame it lands on. The ring would otherwise still hold
   // the older frames and the held picture is (position - latency), so frame step got stuck showing a frame from before.
-  videoEl.addEventListener('seeking', () => { if (memcActive && videoEl.paused) try { memcResetStream(); } catch (e){} });
+  videoEl.addEventListener('seeking', () => { if (memcActive && videoEl.paused) try { memcResetStream(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } });
   // ...and draws it once the seek is done: the per-frame callback does not always fire for a seek while paused.
   videoEl.addEventListener('seeked', () => { if (memcActive && videoEl.paused) memcCaptureNow(); });
   window.__ppShownFrameT = () => (memcActive && videoEl.paused && memcShownT != null && memcRing.length) ? memcShownT : null;
@@ -13145,7 +13157,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   // so the web decoder's +300 ms compensation doesn't apply.
   function nativeMemcPush(){
     if (!(window.PPNative && PPNative.videoActive && PPNative.videoActive() && PPNative.setMemc)) return;
-    let strength = 0.5; try { strength = memcStrength; } catch (e){}   // declared further down the file
+    let strength = 0.5; try { strength = memcStrength; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // declared further down the file
     PPNative.setMemc({
       mode: (memcMode !== 'off' && !perfLightActive()) ? memcMode : 'off',
       delayMs: Math.max(0, subtitleLatencyMs || 0),
@@ -13183,7 +13195,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   function setMemcMode(m){
     if (m !== 'off' && m !== 'blend' && m !== 'motion' && m !== 'ultra') m = 'off';
     memcMode = m;
-    try { localStorage.setItem(MEMC_KEY, m); } catch (e){}
+    try { localStorage.setItem(MEMC_KEY, m); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     memcBypass = false;
     memcResetStream();
     memcUpdateUI();
@@ -13199,7 +13211,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   memcThreshEl.addEventListener('input', () => {
     memcMaxIn = parseInt(memcThreshEl.value, 10) || 50;
     memcUpdateSliders();
-    try { localStorage.setItem(MEMC_IN_KEY, String(memcMaxIn)); } catch (e){}
+    try { localStorage.setItem(MEMC_IN_KEY, String(memcMaxIn)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     memcResetSource();
     refreshVideoDelayState();
   });
@@ -13207,7 +13219,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     memcOutFps = parseInt(memcOutEl.value, 10) || 120;
     memcUpdateSliders();
     memcLastKey = '';
-    try { localStorage.setItem(MEMC_OUT_KEY, String(memcOutFps)); } catch (e){}
+    try { localStorage.setItem(MEMC_OUT_KEY, String(memcOutFps)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     memcUpdateStatus();
   });
   memcUpdateSliders();
@@ -13216,7 +13228,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     memcSpeedEl.checked = memcSpeedAware;
     memcSpeedEl.addEventListener('change', () => {
       memcSpeedAware = memcSpeedEl.checked;
-      try { localStorage.setItem(MEMC_SPEED_KEY, memcSpeedAware ? '1' : '0'); } catch (e){}
+      try { localStorage.setItem(MEMC_SPEED_KEY, memcSpeedAware ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       memcBypass = false;       // re-judge the skip with the new rule
       memcLastKey = '';
       memcResetStream();
@@ -13237,8 +13249,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     memcStrength = (parseInt(memcStrEl.value, 10) || 0) / 100;
     memcUpdateStrength();
     memcLastKey = '';
-    try { localStorage.setItem(MEMC_STR_KEY, String(Math.round(memcStrength * 100))); } catch (e){}
-    if (memcActive && videoEl.paused) try { memcPresent(videoEl.currentTime, true); } catch (e){}
+    try { localStorage.setItem(MEMC_STR_KEY, String(Math.round(memcStrength * 100))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+    if (memcActive && videoEl.paused) try { memcPresent(videoEl.currentTime, true); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   });
   memcUpdateStrength();
 
@@ -13247,7 +13259,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     memcDelayTog.checked = memcDelayGL;
     memcDelayTog.addEventListener('change', () => {
       memcDelayGL = memcDelayTog.checked;
-      try { localStorage.setItem(MEMC_DELAY_KEY, memcDelayGL ? '1' : '0'); } catch (e){}
+      try { localStorage.setItem(MEMC_DELAY_KEY, memcDelayGL ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       refreshVideoDelayState();
     });
   }
@@ -13323,7 +13335,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     enhCompareX = Math.max(0.02, Math.min(0.98, (e.clientX - r.left - p.left) / Math.max(1, p.w)));
     enhSplitPaint();
     if (memcActive) memcRepaint();
-    try { nativeMemcPush(); } catch (x){}
+    try { nativeMemcPush(); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
   });
   const enhDragEnd = (e) => { if (!enhDrag) return; e.stopPropagation(); enhDrag = null; enhSplit.classList.remove('drag'); };
   enhSplit.addEventListener('pointerup', enhDragEnd);
@@ -13332,7 +13344,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   ['click', 'dblclick', 'touchstart', 'touchmove', 'touchend', 'mousedown'].forEach(n => enhSplit.addEventListener(n, (e) => e.stopPropagation(), { passive: n.startsWith('touch') }));
   window.addEventListener('resize', enhSplitPaint);
   document.addEventListener('fullscreenchange', () => setTimeout(enhSplitPaint, 60));
-  try { new ResizeObserver(enhSplitPaint).observe(videoWrap); } catch (e){}
+  try { new ResizeObserver(enhSplitPaint).observe(videoWrap); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   videoEl.addEventListener('loadedmetadata', enhSplitPaint);
 
   // Any enhance change: start/stop the GPU engine as needed, resize its output, and show the result (also while paused).
@@ -13345,18 +13357,18 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   }
   function memcRepaint(){
     memcLastKey = '';
-    if (memcActive && videoEl.paused) try { memcPresent(videoEl.currentTime, true); } catch (e){}
+    if (memcActive && videoEl.paused) try { memcPresent(videoEl.currentTime, true); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   memcQBtns.forEach(b => b.addEventListener('click', () => {
     memcQuality = parseInt(b.dataset.memcQ, 10) || 0;
-    try { localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); } catch (e){}
+    try { localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     memcUpdateQualityUI();
     memcResKey = ''; memcInvalidate();      // ring is rebuilt on the next captured frame
     if (memcActive) memcCaptureNow();
   }));
   memcUpBtns.forEach(b => b.addEventListener('click', () => {
     memcUpscale = parseInt(b.dataset.memcUp, 10) || 0;
-    try { localStorage.setItem(MEMC_UP_KEY, String(memcUpscale)); } catch (e){}
+    try { localStorage.setItem(MEMC_UP_KEY, String(memcUpscale)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     if (memcUpscale && !enhSharpSet){ enhSharp = 50; enhSharpSet = true; }   // upscaling on its own looks like nothing: start with some sharpening
     enhChanged();
   }));
@@ -13390,7 +13402,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
         cs.textContent = !sh ? '' : !s ? 'This video is already 4K or bigger.' : s < sh * 1.05 ? 'This video is already ' + sh + 'p: pick a bigger size.'
           : 'This video: ' + sh + 'p \u2192 ' + (s >= 2160 ? '4K' : s + 'p') + (s / sh > 2.05 ? ' (two AI passes, slower)' : '');
       };
-      csz.addEventListener('change', () => { try { localStorage.setItem('ppEnhCopySize', csz.value); } catch (e){} show(); });
+      csz.addEventListener('change', () => { try { localStorage.setItem('ppEnhCopySize', csz.value); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } show(); });
       document.getElementById('upscale-btn').addEventListener('click', () => setTimeout(show, 0));
     }
     if (cb){
@@ -13440,7 +13452,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       vuSel.value = videoUiMode;
       vuSel.addEventListener('change', () => {
         videoUiMode = vuSel.value;
-        try { localStorage.setItem(VIDEO_UI_KEY, videoUiMode); } catch (e){}
+        try { localStorage.setItem(VIDEO_UI_KEY, videoUiMode); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         applyVideoUi();
       });
     }
@@ -13456,7 +13468,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       alTog.checked = audioLeadOn;
       alTog.addEventListener('change', () => {
         audioLeadOn = alTog.checked;
-        try { localStorage.setItem(AUDIO_LEAD_KEY, audioLeadOn ? '1' : '0'); } catch (e){}
+        try { localStorage.setItem(AUDIO_LEAD_KEY, audioLeadOn ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         refreshVideoDelayState();
         memcLastKey = '';
       });
@@ -13469,7 +13481,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       llQSel.value = losslessQuality;
       llQSel.addEventListener('change', () => {
         losslessQuality = llQSel.value;
-        try { localStorage.setItem(LOSSLESS_Q_KEY, losslessQuality); } catch (e){}
+        try { localStorage.setItem(LOSSLESS_Q_KEY, losslessQuality); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         refreshVideoDelayState();
       });
     }
@@ -13479,7 +13491,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       llTog.addEventListener('change', () => {
         losslessLatency = llTog.checked;
         syncLlQ();
-        try { localStorage.setItem(LOSSLESS_LAT_KEY, losslessLatency ? '1' : '0'); } catch (e){}
+        try { localStorage.setItem(LOSSLESS_LAT_KEY, losslessLatency ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         refreshVideoDelayState();
         // Switching engines mid-playback: restart track capture so the worker starts fresh.
         if (VIDEO_DELAY_CAN_USE_TRACK && videoDelayActive()) restartVideoDelayCapture();
@@ -13505,7 +13517,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       sel.addEventListener('change', () => {
         perfMode = sel.value;
         perfAutoTripped = false;
-        try { localStorage.setItem(PERF_KEY, perfMode); } catch (e){}
+        try { localStorage.setItem(PERF_KEY, perfMode); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         applyPerf();
       });
     }
@@ -13727,13 +13739,13 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       fullTog.checked = full;
       fullTog.addEventListener('change', () => {
         full = fullTog.checked;
-        try { localStorage.setItem(FULL_KEY, full ? '1' : '0'); } catch (e){}
+        try { localStorage.setItem(FULL_KEY, full ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         if (on) render();
       });
     }
     tog.addEventListener('change', () => {
       on = tog.checked;
-      try { localStorage.setItem(KEY, on ? '1' : '0'); } catch (e){}
+      try { localStorage.setItem(KEY, on ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       if (on) start(); else stop();
     });
     videoEl.addEventListener('loadedmetadata', () => { vf = []; dropHist = []; dropBase = dropped(); });
@@ -13980,14 +13992,14 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     inp.title = o.title || 'Your preset';
     const paint = () => {
       btn.textContent = 'Use ' + fmt(preset);
-      let cur = 0; try { cur = +o.get() || 0; } catch (e){}
+      let cur = 0; try { cur = +o.get() || 0; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       btn.classList.toggle('toggled', same(cur, preset));
       btn.disabled = !!(o.enabled && !o.enabled());
     };
     inp.addEventListener('input', () => {
       const v = parseFloat(inp.value); if (!isFinite(v)) return;
       preset = clamp(v);
-      try { localStorage.setItem(o.key, String(preset)); } catch (e){}
+      try { localStorage.setItem(o.key, String(preset)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       paint();
     });
     inp.addEventListener('change', () => { inp.value = preset; });
@@ -14033,7 +14045,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (vs) return { x:(1 - vs.sx) / 2, y:(1 - vs.sy) / 2, w:vs.sx, h:vs.sy };
     const area = subtitleOverlay.parentElement, W = area.clientWidth, H = area.clientHeight, vw = videoEl.videoWidth, vh = videoEl.videoHeight;
     if (!W || !H || !vw || !vh) return { x:0, y:0, w:1, h:1 };           // audio or not loaded yet: the whole box
-    let cover = false; try { cover = getComputedStyle(window.PPNative && PPNative.raw ? PPNative.raw(videoEl) : videoEl).objectFit === 'cover'; } catch(err){}   // in native mode videoEl is a Proxy, which getComputedStyle rejects: use the real element
+    let cover = false; try { cover = getComputedStyle(window.PPNative && PPNative.raw ? PPNative.raw(videoEl) : videoEl).objectFit === 'cover'; } catch(err){ if (typeof ppCaught === "function") ppCaught(err); }   // in native mode videoEl is a Proxy, which getComputedStyle rejects: use the real element
     const sc = cover ? Math.max(W / vw, H / vh) : Math.min(W / vw, H / vh);
     const w = vw * sc / W, h = vh * sc / H;
     return { x:(1 - w) / 2, y:(1 - h) / 2, w, h };
@@ -14112,7 +14124,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
     // Rotation, fullscreen, window resize, or a new video all change the box and the picture inside it: put the line back on the same spot of the picture.
     const refit = () => { if (subtitlePos === 'custom' && !drag) applySubtitlePos(); };
-    try { new ResizeObserver(refit).observe(subtitleOverlay.parentElement); } catch(err){}
+    try { new ResizeObserver(refit).observe(subtitleOverlay.parentElement); } catch(err){ if (typeof ppCaught === "function") ppCaught(err); }
     videoEl.addEventListener('loadedmetadata', refit);
     videoEl.addEventListener('resize', refit);
     window.addEventListener('pp-viewscale', refit);
@@ -14356,7 +14368,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       if (!P) return null;
       if (P.ScreenOrientation) return P.ScreenOrientation;
       if (P.PPPlayer && typeof P.PPPlayer.lockOrientation === 'function') return { lock: o => P.PPPlayer.lockOrientation(o), unlock: () => P.PPPlayer.unlockOrientation() };
-    } catch(e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     return null;
   };
   async function lockOrientation(target){
@@ -14530,7 +14542,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   function saveGestureSettings(){
     try {
       localStorage.setItem(GESTURE_KEY, JSON.stringify({ gesturesEnabled, gesturePreset, gestureMap }));
-    } catch(e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
 
   const gesturesEnabledToggle = document.getElementById('gestures-enabled-toggle');
@@ -15143,7 +15155,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   }
 
   function saveCustomization(){
-    try { localStorage.setItem(CUSTOMIZE_KEY, JSON.stringify(uiCustomization)); } catch(e){}
+    try { localStorage.setItem(CUSTOMIZE_KEY, JSON.stringify(uiCustomization)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
 
   function loadCustomization(){
@@ -15924,7 +15936,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       const seq = o.filter(x => on.includes(x)), i = seq.indexOf(id), j = i + dir;
       if (i < 0 || j < 0 || j >= seq.length) return;
       const a = o.indexOf(seq[i]), b = o.indexOf(seq[j]); o[a] = seq[j]; o[b] = seq[i];
-      try { localStorage.setItem(QUICKBAR_ORDER_KEY, JSON.stringify(o)); } catch(e){}
+      try { localStorage.setItem(QUICKBAR_ORDER_KEY, JSON.stringify(o)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       renderQuickBar();
     },
     reset(){ try { localStorage.removeItem(QUICKBAR_ORDER_KEY); } catch(e){} renderQuickBar(); }
@@ -16002,14 +16014,14 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   async function quickSwitchKind(toAudio){
     const i = currentIndex, t = tracks[i];
     if (!t || (toAudio ? t.kind !== 'video' : !t.convertedFromVideo)) return;
-    let pos = 0; try { pos = media().currentTime || 0; } catch(e){}
+    let pos = 0; try { pos = media().currentTime || 0; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     if (document.pictureInPictureElement === videoEl){ try { await document.exitPictureInPicture(); } catch(e){} }
-    try { savePlaybackPosition(t.dbId, pos > 1 ? pos : null); } catch(e){}
+    try { savePlaybackPosition(t.dbId, pos > 1 ? pos : null); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     const target = toAudio ? audioEl : videoEl, from = toAudio ? videoEl : audioEl;
     // Converting can take a few seconds (the file is saved first) and the old element keeps playing meanwhile, so
     // the place to go back to is where it was when the new one started loading, not where it was at the tap.
     let at = pos, atT = performance.now();
-    target.addEventListener('loadstart', function f(){ target.removeEventListener('loadstart', f); try { at = from.currentTime || pos; } catch(e){} atT = performance.now(); });
+    target.addEventListener('loadstart', function f(){ target.removeEventListener('loadstart', f); try { at = from.currentTime || pos; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } atT = performance.now(); });
     // Put it back there once the other element has the file. Checked again a few times, because a fresh element
     // (or the native player) can report "loaded" before it accepts a seek, or start over from 0 after one.
     const want = () => at + (isPlaying ? (performance.now() - atT) / 1000 : 0);
@@ -16167,7 +16179,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (document.pictureInPictureElement === videoEl) return;
     // The native player is already making this film's sound (its soundtrack is one the WebView cannot decode, 29b):
     // it simply carries on in the background, and the picture rests.
-    try { if (ppSndBackground()) return; } catch(e){}
+    try { if (ppSndBackground()) return; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     if (bgEnteringOp && bgEnteringOp === bgOpId) return;   // a handoff is already in flight
     const opId = ++bgOpId;
     bgEnteringOp = opId;
@@ -16248,7 +16260,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       }
     } catch(e){
       bgLastError = (e && (e.name || e.message)) || String(e);
-      try { console.warn('Background audio handoff failed:', e); } catch(_){}
+      try { console.warn('Background audio handoff failed:', e); } catch(_){ if (typeof ppCaught === "function") ppCaught(_); }
       // audioEl couldn't take over (blocked autoplay while backgrounded,
       // an unsupported codec, or superseded mid-await) - make sure it isn't
       // left half-started. A rejected play() promise doesn't guarantee the
@@ -16293,7 +16305,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       if (!P || !P.keepAlive) return;
       bgKeepOn = on;
       P.keepAlive({ on, mode: 'play' }).catch(() => {});   // 'play' is tracked separately from a stem split, so one can't switch the other off
-    } catch(e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   window.ppIdleCheck = () => !isPlaying && !bgKeepOn;
 
@@ -16305,7 +16317,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     bgEl.loop = false;
     const userMuted = bgEl.muted;
     bgEl.pause();
-    try { bgEl.removeAttribute('src'); bgEl.load(); } catch(e){}   // wipe it so the next handoff starts clean
+    try { bgEl.removeAttribute('src'); bgEl.load(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // wipe it so the next handoff starts clean
     bgAudioActive = false;
     releaseWebAudioPicture(userMuted);
     setTimeout(() => { if (!bgAudioActive) setBgGraphLive(false); }, 400);   // let the last samples drain
@@ -16339,7 +16351,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
   // Tell the OS this page is media playback (Safari 16.4+): without it, Web Audio
   // output - which audioEl is routed through - is cut when the screen locks.
-  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch(e){}
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   function hookCtxState(){
     if (!audioCtx || audioCtx.__ppHooked) return;
     audioCtx.__ppHooked = true;
@@ -16539,7 +16551,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   function stuckRecover(stage, pos){
     const v = videoEl;
     if (stage === 1){
-      try { if (audioCtx && audioCtx.state !== 'running') audioCtx.resume().catch(()=>{}); } catch(e){}
+      try { if (audioCtx && audioCtx.state !== 'running') audioCtx.resume().catch(()=>{}); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       try { v.currentTime = pos; } catch(e){}
       v.play().catch(()=>{});
     } else if (stage === 2){
@@ -16626,17 +16638,17 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (!t || t.kind !== 'video' || (P.active && P.active())){ P.mirror(null); return; }
     const m = media();
     let dur = (m && isFinite(m.duration) && m.duration > 0) ? m.duration : (isFinite(videoEl.duration) ? videoEl.duration : 0);
-    let sndPos = null; try { sndPos = ppSndPos(); } catch(e){}   // the sound runs on while the picture rests (29b)
+    let sndPos = null; try { sndPos = ppSndPos(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // the sound runs on while the picture rests (29b)
     P.mirror({ track: t, playing: !!isPlaying, posMs: sndPos != null ? sndPos : Math.round(((m && m.currentTime) || 0) * 1000),
                durMs: Math.round((dur || 0) * 1000), rate: playbackSpeed || 1 });
   }
   let ppMirrorTimer = 0;
-  function ppMirrorSoon(){ clearTimeout(ppMirrorTimer); ppMirrorTimer = setTimeout(() => { try { ppMirrorSync(); } catch(e){} }, 250); }
+  function ppMirrorSoon(){ clearTimeout(ppMirrorTimer); ppMirrorTimer = setTimeout(() => { try { ppMirrorSync(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }, 250); }
   ['loadedmetadata', 'durationchange', 'seeked', 'ratechange'].forEach(ev => videoEl.addEventListener(ev, ppMirrorSoon));
   [bgPlainEl, bgFxEl].forEach(el => ['seeked', 'ratechange'].forEach(ev => el.addEventListener(ev, ppMirrorSoon)));
 
   function updateMediaSession(){
-    try { ppMirrorSync(); } catch(e){}
+    try { ppMirrorSync(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     if (!('mediaSession' in navigator) || currentIndex === -1) return;
     const t = tracks[currentIndex];
     if (window.PPNative) PPNative.updateMeta(t);
@@ -16725,7 +16737,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   }
   function setPitchFollows(on){
     pitchFollowsSpeed = !!on;
-    try { localStorage.setItem('ppPitchFollow', pitchFollowsSpeed ? '1' : '0'); } catch(e){}
+    try { localStorage.setItem('ppPitchFollow', pitchFollowsSpeed ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     applyPitchMode();
   }
   // Pitch slider: shifts the pitch by semitones without changing the speed (on top of "Pitch follows speed").
@@ -16743,7 +16755,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   }
   function setPitchSemis(v, save){
     pitchSemis = +v || 0; applyPitchShift();
-    if (save){ try { localStorage.setItem('ppPitchSemis', String(pitchSemis)); } catch(e){} }
+    if (save){ try { localStorage.setItem('ppPitchSemis', String(pitchSemis)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   }
   pitchSlider.addEventListener('input', () => setPitchSemis(pitchSlider.value, false));
   pitchSlider.addEventListener('change', () => { setPitchSemis(pitchSlider.value, true); refreshSpeedPresetUI(); });
@@ -16771,7 +16783,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     let prev = null;
     try { const v = localStorage.getItem('ppPresetPrevReverb'); if (v != null) prev = parseFloat(v); } catch(e){}
     if (p.reverb != null){
-      if (prev == null){ try { localStorage.setItem('ppPresetPrevReverb', String(reverbMix)); } catch(e){} }
+      if (prev == null){ try { localStorage.setItem('ppPresetPrevReverb', String(reverbMix)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       reverbMix = p.reverb;
     } else if (prev != null && isFinite(prev)){
       reverbMix = Math.max(0, Math.min(1, prev));
@@ -16794,16 +16806,16 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   const speedSongRemember = document.getElementById('speed-song-remember');
   let songSound = {}, songSoundBase = null, songSoundBooted = false;
   try { songSound = JSON.parse(localStorage.getItem('ppSongSound') || '{}') || {}; } catch(e){ songSound = {}; }
-  function songSoundSave(){ try { localStorage.setItem('ppSongSound', JSON.stringify(songSound)); } catch(e){} }
+  function songSoundSave(){ try { localStorage.setItem('ppSongSound', JSON.stringify(songSound)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   function songSoundSetBase(b){
     songSoundBase = b;
-    try { if (b) localStorage.setItem('ppSongSoundBase', JSON.stringify(b)); else localStorage.removeItem('ppSongSoundBase'); } catch(e){}
+    try { if (b) localStorage.setItem('ppSongSoundBase', JSON.stringify(b)); else localStorage.removeItem('ppSongSoundBase'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function songSoundNow(){ return { s: playbackSpeed, f: pitchFollowsSpeed, r: Math.round(reverbMix * 100) / 100, p: pitchSemis }; }
   function songSoundApply(o){
     if (!o) return;
     if (typeof o.s === 'number' && o.s >= SPEED_MIN && o.s <= SPEED_MAX) playbackSpeed = o.s;
-    if (typeof o.r === 'number' && o.r >= 0 && o.r <= 1 && Math.abs(o.r - reverbMix) > 0.001){ reverbMix = o.r; try { refreshFxUI(); applyFxAll(); } catch(e){} }
+    if (typeof o.r === 'number' && o.r >= 0 && o.r <= 1 && Math.abs(o.r - reverbMix) > 0.001){ reverbMix = o.r; try { refreshFxUI(); applyFxAll(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
     if (!!o.f !== pitchFollowsSpeed) setPitchFollows(!!o.f);
     const p = typeof o.p === 'number' ? o.p : 0; if (p !== pitchSemis) setPitchSemis(p, true);
   }
@@ -16962,7 +16974,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       v = isFinite(v) && v > 0 ? Math.min(hi, Math.max(lo, v)) : 0;
       if (k === 'count') v = Math.round(v);
       abOpts[k] = k === 'ramp' ? (v && v < 100 ? v / 100 : 0) : v;
-      try { localStorage.setItem(AB_OPTS_KEY, JSON.stringify(abOpts)); } catch(x){}
+      try { localStorage.setItem(AB_OPTS_KEY, JSON.stringify(abOpts)); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
       if (k === 'ramp' || k === 'count'){ abResetRun(); abRampSpeed(); }
       el.blur(); setABLabel();
     });
@@ -16993,7 +17005,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     } else back();
     setABLabel();
   }
-  setInterval(() => { if (isPlaying && abLoop.a != null && abLoop.b != null && currentIndex !== -1){ try { abTick(media()); } catch(e){} } }, 25);
+  setInterval(() => { if (isPlaying && abLoop.a != null && abLoop.b != null && currentIndex !== -1){ try { abTick(media()); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } }, 25);
 
   // ---------- Sleep timer ----------
   // Minutes (quick picks or any number), a clock time, the end of this track or after a few tracks, with an optional
@@ -17029,7 +17041,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   function sleepRemainingMs(){
     if (sleepTimer.mode === 'duration') return Math.max(0, sleepTimer.endAt - Date.now());
     if (sleepTimer.mode === 'track'){
-      try { const m = media(); if (isFinite(m.duration) && m.duration > 0) return Math.max(0, (m.duration - m.currentTime) / (playbackSpeed || 1) * 1000); } catch(e){}
+      try { const m = media(); if (isFinite(m.duration) && m.duration > 0) return Math.max(0, (m.duration - m.currentTime) / (playbackSpeed || 1) * 1000); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     }
     return Infinity;
   }
@@ -17111,7 +17123,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   document.getElementById('sleep-fade').addEventListener('change', (e) => {
     const v = parseFloat(e.target.value);
     sleepFade = isFinite(v) && v > 0 ? Math.min(900, Math.round(v)) : 0;
-    try { localStorage.setItem(SLEEP_FADE_KEY, String(sleepFade)); } catch(x){}
+    try { localStorage.setItem(SLEEP_FADE_KEY, String(sleepFade)); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
     if (!sleepFade) sleepUnfade();
     e.target.blur(); paintSleepPanel();
   });
@@ -17191,7 +17203,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const all = loadTrackEqOverrides();
     if (override == null) delete all[dbId];
     else all[dbId] = override;
-    try { localStorage.setItem(TRACK_EQ_KEY, JSON.stringify(all)); } catch(e){}
+    try { localStorage.setItem(TRACK_EQ_KEY, JSON.stringify(all)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function getSavedTrackEqOverride(dbId){
     const v = loadTrackEqOverrides()[dbId];
@@ -17216,7 +17228,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const all = loadTrackBoosts();
     if (value == null) delete all[dbId];
     else all[dbId] = value;
-    try { localStorage.setItem(TRACK_BOOST_KEY, JSON.stringify(all)); } catch(e){}
+    try { localStorage.setItem(TRACK_BOOST_KEY, JSON.stringify(all)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function getSavedTrackBoost(dbId){
     const v = loadTrackBoosts()[dbId];
@@ -17934,7 +17946,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     try {
       const ts = ctx.getOutputTimestamp && ctx.getOutputTimestamp();
       if (ts && ts.performanceTime > 0) return ts.performanceTime + (t - ts.contextTime) * 1000;
-    } catch (e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     return performance.now() + (t - ctx.currentTime + (ctx.outputLatency || ctx.baseLatency || 0)) * 1000;
   }
   function ltSchedule(){   // keeps the next ~0.4 s of beeps queued on the audio clock
@@ -18706,7 +18718,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
           const w = sidebarEl.getBoundingClientRect().width;
           localStorage.setItem(SIDEBAR_WIDTH_KEY, String(Math.round(w)));
         }
-      } catch(err){}
+      } catch(err){ if (typeof ppCaught === "function") ppCaught(err); }
     }
     handle.addEventListener('pointerup', endDrag);
     handle.addEventListener('pointercancel', endDrag);
@@ -18726,7 +18738,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const all = loadTrackVizSensitivities();
     if (value == null) delete all[dbId];
     else all[dbId] = value;
-    try { localStorage.setItem(TRACK_VIZ_SENS_KEY, JSON.stringify(all)); } catch(e){}
+    try { localStorage.setItem(TRACK_VIZ_SENS_KEY, JSON.stringify(all)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function getSavedTrackVizSens(dbId){
     const v = loadTrackVizSensitivities()[dbId];
@@ -18765,13 +18777,13 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       const b = e.target.closest('button'); if (!b) return;
       vizStyle = VIZ_STYLES.includes(b.dataset.v) ? b.dataset.v : 'bars';
       if (vizStyle === 'disc3d' && !v3Init()) vizStyle = 'bars';     // no WebGL: stay on the plain bars
-      try { localStorage.setItem('ppVizStyle', vizStyle); } catch(x){}
+      try { localStorage.setItem('ppVizStyle', vizStyle); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
       vizIdle = false;                                                // draw the new style even while paused
       paint();
     });
     hapSeg.addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
-      hapticBass = +b.dataset.v; try { localStorage.setItem('ppHapticBass', String(hapticBass)); } catch(x){}
+      hapticBass = +b.dataset.v; try { localStorage.setItem('ppHapticBass', String(hapticBass)); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
       paint();
       if (hapticBass && navigator.vibrate){ try { navigator.vibrate(hapticBass === 2 ? 30 : 14); } catch(x){} }   // feel what was picked
     });
@@ -18808,7 +18820,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     try {
       const m = /^#?([0-9a-f]{6})$/i.exec(getComputedStyle(document.body).getPropertyValue('--accent').trim());   // body: a theme sets it there
       if (m){ const n = parseInt(m[1], 16); vizRgb = [n >> 16, (n >> 8) & 255, n & 255]; }
-    } catch(e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     return vizRgb;
   }
   function vizSetDiscScale(s){
@@ -19211,7 +19223,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     catch(e){ return null; }
   }
   async function vsCachePut(key, val){
-    try { const db = await vsDb(); db.transaction('stems', 'readwrite').objectStore('stems').put(val, key); } catch(e){}
+    try { const db = await vsDb(); db.transaction('stems', 'readwrite').objectStore('stems').put(val, key); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   const vsYield = () => new Promise(r => setTimeout(r, 0));
   // loudness curve (0..255) of one channel-mixed signal: 40 ms RMS every 20 ms, in dB, scaled to the stem's own loud parts
@@ -19274,7 +19286,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (vs.forId !== t.dbId){ vs.forId = t.dbId; vs.curves = null; vs.status = 'none'; if (!vs.busy) vsLoad(t); }
     else if (!vs.curves && !vs.busy && vs.status === 'none' && vsStemsOf(t).length) vsLoad(t);   // split while playing
     if (!vs.curves) return null;
-    let time = 0; try { time = media().currentTime || 0; } catch(e){}
+    let time = 0; try { time = media().currentTime || 0; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     const C = vs.curves.curves, f = time * vs.curves.fps, i = Math.floor(f), fr = f - i;
     const at = (a) => { if (!a || i < 0 || i >= a.length - 1) return 0; return (a[i] * (1 - fr) + a[i + 1] * fr) / 255; };
     const raw = { vocals: at(C.vocals), drums: at(C.drums), kick: at(C.kick), bass: at(C.bass), other: at(C.other) };
@@ -19289,7 +19301,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const tog = document.getElementById('viz-stem-toggle'), line = document.getElementById('viz-status');
     if (!tog) return;
     tog.checked = vizStemsOn;
-    tog.addEventListener('change', () => { vizStemsOn = tog.checked; try { localStorage.setItem('ppVizStems', vizStemsOn ? '1' : '0'); } catch(x){} });
+    tog.addEventListener('change', () => { vizStemsOn = tog.checked; try { localStorage.setItem('ppVizStems', vizStemsOn ? '1' : '0'); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); } });
     const dd = document.getElementById('viz-sens-dropdown');
     const names = { vocals: 'vocals', drums: 'drums', bass: 'bass', other: 'music' };
     setInterval(() => {
@@ -19509,7 +19521,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       return true;
     } catch(e){
       v3.failed = true; v3.gl = null;
-      try { console.warn('3D disc: ' + (e && e.message)); } catch(x){}
+      try { console.warn('3D disc: ' + (e && e.message)); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
       try { showToast('3D disc is not available on this device'); } catch(x){}
       return false;
     }
@@ -19559,7 +19571,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const tog = document.getElementById('viz-tilt-toggle'), row = document.getElementById('viz-tilt-row'), seg = document.getElementById('viz-style-seg');
     if (!tog) return;
     tog.checked = v3TiltOn;
-    tog.addEventListener('change', () => { v3TiltOn = tog.checked; try { localStorage.setItem('ppViz3dTilt', v3TiltOn ? '1' : '0'); } catch(x){} if (!v3TiltOn) v3Tilt(false); vizIdle = false; });
+    tog.addEventListener('change', () => { v3TiltOn = tog.checked; try { localStorage.setItem('ppViz3dTilt', v3TiltOn ? '1' : '0'); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); } if (!v3TiltOn) v3Tilt(false); vizIdle = false; });
     const show = () => { row.style.display = vizStyle === 'disc3d' ? '' : 'none'; };
     if (seg) seg.addEventListener('click', () => setTimeout(show, 0));
     show();
@@ -20158,7 +20170,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   let selectMenuMode = null;       // 'add' | 'move' while the playlist menu is open
   let selectCtxPl = null;          // playlist id when selecting from a Home-screen playlist page
   function selFromPl(){ return selectCtxPl || activePlaylistView; }
-  function notifySelect(){ if (window.__ppOnSelect){ try { window.__ppOnSelect(); } catch(e){} } }
+  function notifySelect(){ if (window.__ppOnSelect){ try { window.__ppOnSelect(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } }
   const SELECT_LONGPRESS_MS = PPTouch.HOLD_MS;   // shared touch numbers (pp-touch.js)
   const SELECT_MOVE_TOLERANCE = PPTouch.SLOP;
   const selectBar = document.getElementById('select-bar');
@@ -20711,7 +20723,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       else if (!cur.artUrl) showFallbackArt();
       updateMediaSession();
     }
-    if (window.__ppRenderHomeNow){ try { window.__ppRenderHomeNow(); } catch (e){} }
+    if (window.__ppRenderHomeNow){ try { window.__ppRenderHomeNow(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   }
   function setCoverForTracks(list, blob){
     list.forEach(t => {
@@ -20866,7 +20878,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
   function showAudioView(){
     vizWrap.style.display = 'flex';
-    try { refreshToVideoBtn(); } catch(e){}
+    try { refreshToVideoBtn(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     videoWrap.style.display = 'none';
     refreshVideoDelayState();
     // If the window (or sidebar) was resized while a video was showing,
@@ -21019,7 +21031,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       return ok;
     },
     createPlaylist: name => createPlaylist(name),
-    setStemSections: on => { if (stemSections === !!on) return; stemSections = !!on; try { localStorage.setItem('ppStemSections', on ? '1' : '0'); } catch(e){} renderPlaylist(); },   // unchanged (the splitter sets it at start): no redraw
+    setStemSections: on => { if (stemSections === !!on) return; stemSections = !!on; try { localStorage.setItem('ppStemSections', on ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } renderPlaylist(); },   // unchanged (the splitter sets it at start): no redraw
     // Splitter entry point: adds stems as split tracks (kept out of All tracks, grouped under "Split tracks").
     // info: { srcId, srcTitle, makePlaylist, showInTab }
     addLibraryFiles: (files) => addFiles(files),   // a new ordinary library track (used by mashup save)
@@ -21107,7 +21119,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   function loadTrack(i, autoplay){
     if (i < 0 || i >= tracks.length) return;
     noteQueuePlay(i);
-    if (autoplay && window.__ppOnPlay){ try { window.__ppOnPlay(tracks[i]); } catch(e){} }
+    if (autoplay && window.__ppOnPlay){ try { window.__ppOnPlay(tracks[i]); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
     const _prevTrack = currentIndex !== -1 ? tracks[currentIndex] : null;
 
     // Remember where the track we're switching away from left off, so it
@@ -21161,7 +21173,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
 
     setABLabel();
     applySavedSubtitles(t.dbId);
-    try { songSoundSwitch(_prevTrack, t); } catch(e){}   // this song's own speed / pitch / reverb, if it has one
+    try { songSoundSwitch(_prevTrack, t); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // this song's own speed / pitch / reverb, if it has one
     try { songOvSwitch(_prevTrack, t); } catch(e){ console.warn('[song override]', e); }   // its own filters, visualizer, smoothing, enhance, FX, fit
     applySpeed();
     syncAudioLoop();
@@ -21326,9 +21338,9 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   }
   function saveUserQueue(){
     queueVer++;
-    try { localStorage.setItem('ppUserQueue', JSON.stringify({ ids: userQueue })); } catch(e){}
+    try { localStorage.setItem('ppUserQueue', JSON.stringify({ ids: userQueue })); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     clearTimeout(saveUserQueue.t);
-    saveUserQueue.t = setTimeout(() => { try { document.dispatchEvent(new CustomEvent('pp-queue')); } catch(e){} }, 0);
+    saveUserQueue.t = setTimeout(() => { try { document.dispatchEvent(new CustomEvent('pp-queue')); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }, 0);
   }
   // Called by loadTrack before currentIndex moves: a picked song that starts leaves the queue.
   function noteQueuePlay(i){
@@ -21619,7 +21631,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const rep = !!t && sleepTimer.mode !== 'track' && (repeatMode === 2 || (repeatMode === 1 && tracks.length === 1));
     const want = rep && t.kind !== 'video';
     if (audioEl.loop !== want) audioEl.loop = want;
-    let nv = false; try { nv = !!(window.PPNative && PPNative.enabled && PPNative.nativeVideoSetting && PPNative.nativeVideoSetting()); } catch(e){}
+    let nv = false; try { nv = !!(window.PPNative && PPNative.enabled && PPNative.nativeVideoSetting && PPNative.nativeVideoSetting()); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     const wantV = rep && t.kind === 'video' && nv;
     if (videoEl.loop !== wantV) videoEl.loop = wantV;
   }
@@ -21844,7 +21856,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   }
   window.addEventListener('resize', refreshViewTransform);
   document.addEventListener('fullscreenchange', refreshViewTransform);
-  try { new ResizeObserver(refreshViewTransform).observe(videoWrap); } catch(e){}
+  try { new ResizeObserver(refreshViewTransform).observe(videoWrap); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   function applyViewMode(){
     refreshViewSize();
     if (!viewIsZoomed()){ viewPanX = 0; viewPanY = 0; }
@@ -21861,7 +21873,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const fs = document.getElementById('view-fit-select'), rb = document.getElementById('view-reset-btn');
     if (fs && fs.value !== String(viewFitIdx)) fs.value = String(viewFitIdx);
     if (rb){ rb.style.opacity = isDefault ? '.5' : '1'; rb.style.borderColor = isDefault ? '' : 'var(--accent)'; }   // lit up whenever the picture is not in normal view
-    try { localStorage.setItem('playerViewFit', viewFitIdx); localStorage.setItem('playerViewZoom', viewZoomIdx); } catch(e){}
+    try { localStorage.setItem('playerViewFit', viewFitIdx); localStorage.setItem('playerViewZoom', viewZoomIdx); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function cycleViewFit(){
     viewFitIdx = (viewFitIdx + 1) % VIEW_FITS.length; applyViewMode();   // Fit, Fill, Stretch, then each aspect ratio, then back to Fit
@@ -21902,9 +21914,9 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     let auto = false; try { auto = localStorage.getItem('playerViewAutoReset') === '1'; } catch(e){}
     if (ar){
       ar.checked = auto;
-      ar.addEventListener('change', () => { auto = ar.checked; try { localStorage.setItem('playerViewAutoReset', auto ? '1' : '0'); } catch(e){} if (auto && (viewFitIdx || viewZoomIdx)) resetViewMode(); });
+      ar.addEventListener('change', () => { auto = ar.checked; try { localStorage.setItem('playerViewAutoReset', auto ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } if (auto && (viewFitIdx || viewZoomIdx)) resetViewMode(); });
     }
-    try { videoEl.addEventListener('loadedmetadata', () => { if (auto && (viewFitIdx || viewZoomIdx) && !songOvActive('view')) resetViewMode(true); }); } catch(e){}   // a video with its own fit (Override fit & zoom) keeps it
+    try { videoEl.addEventListener('loadedmetadata', () => { if (auto && (viewFitIdx || viewZoomIdx) && !songOvActive('view')) resetViewMode(true); }); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // a video with its own fit (Override fit & zoom) keeps it
   })();
   applyViewMode();
   document.addEventListener('keydown', (e) => {
@@ -22017,7 +22029,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       const cleanup = () => {
         if (finished) return;
         finished = true; clearTimeout(guard);
-        try { v.removeAttribute('src'); v.load(); } catch(e){}
+        try { v.removeAttribute('src'); v.load(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         v.remove();
       };
       v.addEventListener('loadedmetadata', () => {
@@ -22760,7 +22772,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       { mime: 'video/webm', ext: 'webm' }
     ];
     for (const c of candidates){
-      try { if (MediaRecorder.isTypeSupported(c.mime)) return c; } catch(e){}
+      try { if (MediaRecorder.isTypeSupported(c.mime)) return c; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     }
     return null;
   }
@@ -23144,7 +23156,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       Object.keys(cutterFxPick).forEach(k => { if (s.pick && typeof s.pick[k] === 'boolean') cutterFxPick[k] = s.pick[k]; });
     }
   } catch(e){}
-  function saveCutterFx(){ try { localStorage.setItem(CUTTER_FX_KEY, JSON.stringify({ on: cutterFxOn, pick: cutterFxPick })); } catch(e){} }
+  function saveCutterFx(){ try { localStorage.setItem(CUTTER_FX_KEY, JSON.stringify({ on: cutterFxOn, pick: cutterFxPick })); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
 
   function cutterFxLive(){
     return {
@@ -23295,7 +23307,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     try {
       if (ctx.audioWorklet && typeof AudioWorkletNode !== 'undefined'){
         if (ctx === audioCtx){
-          try { await bitcrusherWorkletReady; } catch(e){}
+          try { await bitcrusherWorkletReady; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
           if (bitcrusherWorkletResolved && !bitcrusherWorkletFailed){
             const n = new AudioWorkletNode(ctx, 'bitcrusher-processor', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
             n.parameters.get('amount').value = amt;
@@ -24169,7 +24181,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       if (onProgress) onProgress(1, 'Done');
       return new Blob([target.buffer], { type: 'video/mp4' });
     } finally {
-      closers.forEach(f => { try { f(); } catch(e){} });
+      closers.forEach(f => { try { f(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } });
       cutterExportAbort = null;
     }
   }
@@ -24213,7 +24225,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
         gl.uniform1i(uT, 0); gl.uniform2f(uOut, W, H);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
       },
-      close(){ try { srFreeAll(C); srFreeAll(C2); gl.getExtension('WEBGL_lose_context').loseContext(); } catch (e){} }
+      close(){ try { srFreeAll(C); srFreeAll(C2); gl.getExtension('WEBGL_lose_context').loseContext(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
     };
   }
 
@@ -24247,7 +24259,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const wasPlaying = !media().paused;
     media().pause();
     const stopKeepAlive = startExportKeepAlive();
-    const say = (txt) => { try { if (onStatus) onStatus(txt); } catch (e){} };
+    const say = (txt) => { try { if (onStatus) onStatus(txt); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     const t0 = performance.now();
     try {
       const blob = await PPNative.jobs.run('Enhancing ' + (t.title || 'video'), async (job) => {
@@ -24302,9 +24314,9 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       try { v.pause(); } catch(e){}
       try { if (audioSrc) audioSrc.disconnect(); } catch(e){}
       try { if (fxChain){ fxChain.oscs.forEach(o => { try { o.stop(); } catch(e){} }); fxChain.nodes.forEach(n => { try { n.disconnect(); } catch(e){} }); } } catch(e){}
-      try { if (delayQueue) delayQueue.forEach(q => { try { q.b.close(); } catch(e){} }); } catch(e){}
+      try { if (delayQueue) delayQueue.forEach(q => { try { q.b.close(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       v.removeAttribute('src');
-      try { v.load(); } catch(e){}
+      try { v.load(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       v.remove();
       cutterExportAbort = null;
     };
@@ -24529,7 +24541,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
           if (stopped) res(); else releaseLock = res;
         })).catch(() => {});
       }
-    } catch(e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     try {
       const ctx = ensureAudioCtx();
       // A suspended context plays nothing, so the keep-alive would do nothing. The click that
@@ -24546,7 +24558,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     } catch(e){ source = null; }
     return () => {
       stopped = true;
-      if (releaseLock){ try { releaseLock(); } catch(e){} releaseLock = null; }
+      if (releaseLock){ try { releaseLock(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } releaseLock = null; }
       try { if (source) source.stop(); } catch(e){}
     };
   }
@@ -24594,7 +24606,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     cutterNamePreview.textContent = 'Saves as: ' + cutterFileBase(track, cutterState.start, cutterState.end) + '.' + cutterFormatExt();
   }
   cutterNameStyle.addEventListener('change', () => {
-    try { localStorage.setItem(CUTTER_NAME_KEY, cutterNameStyle.value); } catch (e){}
+    try { localStorage.setItem(CUTTER_NAME_KEY, cutterNameStyle.value); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     if (cutterNameStyle.value === 'custom' && !cutterNameInput.value && cutterState){
       const tr = tracks[cutterState.trackIndex];
       if (tr) cutterNameInput.value = (tr.title || 'clip') + '_cut';
@@ -24951,10 +24963,10 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const need = items.filter(o => !ppHashes.has(o.key));
     const uris = need.filter(o => o.uri).map(o => o.uri);
     if (uris.length && PPNative.lib.hashFiles){
-      try { const r = await PPNative.lib.hashFiles(uris); const h = (r && r.hashes) || {}; for (const u of uris) if (h[u]) ppHashes.set(u, h[u]); } catch(e){}
+      try { const r = await PPNative.lib.hashFiles(uris); const h = (r && r.hashes) || {}; for (const u of uris) if (h[u]) ppHashes.set(u, h[u]); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     }
     for (const o of need) if (o.dbId){
-      try { const b = await dbGet(o.dbId); if (b) ppHashes.set(o.key, await ppHashBlob(b)); } catch(e){}
+      try { const b = await dbGet(o.dbId); if (b) ppHashes.set(o.key, await ppHashBlob(b)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     }
   }
   async function ppDropDuplicates(entries){
@@ -24995,7 +25007,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     try {
       const l = JSON.parse(localStorage.getItem(PP_FOLDERS_KEY) || '[]');
       if (l.indexOf(tree) < 0){ l.push(tree); localStorage.setItem(PP_FOLDERS_KEY, JSON.stringify(l)); }
-    } catch(e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   // Scanned files are checked one batch at a time, so a copy in one batch is caught against the batch before it.
   var ppAddChain = Promise.resolve();
@@ -25051,7 +25063,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
           const f = new File([r.text || ''], sc.name, { type: 'text/plain' });
           if (/\.lrc$/i.test(sc.name)) ppSidecarLrc(track, new File([], e.name || ''), [f]);
           else subFiles.push(f);
-        } catch(err){}
+        } catch(err){ if (typeof ppCaught === "function") ppCaught(err); }
       }
       if (track.kind === 'video') videoPairs.push({ track, file: new File([], e.name || '') });
     }
@@ -25101,7 +25113,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     ov.addEventListener('click', e => {
       const b = e.target.closest('[data-a]'); if (!b) return;
       const a = b.dataset.a;
-      if (ov.querySelector('input').checked){ try { localStorage.setItem(PP_OPEN_KEY, a); } catch(x){} ppOpenSettingSync(); }
+      if (ov.querySelector('input').checked){ try { localStorage.setItem(PP_OPEN_KEY, a); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); } ppOpenSettingSync(); }
       if (a === 'remove') ppOpenedRemove(); else ppOpened = null;
       ov.remove(); ppOpenAsking = false;
       showToast(a === 'remove' ? (one ? 'Removed from your library.' : 'Removed them from your library.') : (one ? 'Kept in your library.' : 'Kept them in your library.'));
@@ -25124,19 +25136,19 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   new MutationObserver(() => setTimeout(ppOpenedCheck, 50)).observe(document.body, { attributes: true, attributeFilter: ['data-pl-player'] });
   function ppOpenSettingSync(){ const s = document.getElementById('open-keep-select'); if (s) s.value = ppOpenPref(); }
   { const s = document.getElementById('open-keep-select');
-    if (s){ ppOpenSettingSync(); s.addEventListener('change', () => { try { localStorage.setItem(PP_OPEN_KEY, s.value); } catch(e){} }); } }
+    if (s){ ppOpenSettingSync(); s.addEventListener('change', () => { try { localStorage.setItem(PP_OPEN_KEY, s.value); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }); } }
 
   // Ends what is playing (Settings > Leaving the player > Stop the track, pp-leave.js): its place is saved, nothing is loaded.
   window.__ppCloseTrack = function(){
     if (currentIndex === -1) return;
-    try { if (rememberPlaybackPosition) savePlaybackPosition(tracks[currentIndex].dbId, media().currentTime); } catch(e){}
+    try { if (rememberPlaybackPosition) savePlaybackPosition(tracks[currentIndex].dbId, media().currentTime); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     try { audioEl.pause(); videoEl.pause(); } catch(e){}
-    try { if (PPNative.enabled && PPNative.closeTrack) PPNative.closeTrack(); } catch(e){}
+    try { if (PPNative.enabled && PPNative.closeTrack) PPNative.closeTrack(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     currentIndex = -1; isPlaying = false; updatePlayIcon();
     npTitle.classList.remove('marquee-active'); npTitleTrack.textContent = 'No track selected'; npArtist.textContent = '-'; showFallbackArt();
-    try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch(e){}
+    try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   };
-  window.__ppUpdateMediaSession = function(){ try { updateMediaSession(); } catch(e){} };
+  window.__ppUpdateMediaSession = function(){ try { updateMediaSession(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
 
   // What should play after the current track? Mirrors onEnded() so native can advance on its own.
   let ppNextSig = '';
@@ -25149,7 +25161,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
           if (ni >= 0 && ni !== currentIndex) n = tracks[ni];
         }
       }
-    } catch(e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     PPNative.queueNext(n);
   }
   if (window.PPNative && PPNative.available){
@@ -25162,7 +25174,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       else if (c === 'play'){ if (!isPlaying) togglePlay(); }      // from the video notification (see ppMirrorSync)
       else if (c === 'pause'){ if (isPlaying) togglePlay(); }
       else if (c === 'seek'){ if (ev && ev.posMs != null && currentIndex !== -1){ try { media().currentTime = ev.posMs / 1000; } catch(e){} } }
-      if (c === 'play' || c === 'pause' || c === 'seek') setTimeout(() => { try { ppMirrorSync(); } catch(e){} }, 700);   // confirm the real state back
+      if (c === 'play' || c === 'pause' || c === 'seek') setTimeout(() => { try { ppMirrorSync(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }, 700);   // confirm the real state back
     };
     // Play or pause pressed outside the page while the native engine plays (notification, widget, headset, car).
     // Without this the app still believed it was playing after a notification pause: coming back to it started the
@@ -25173,7 +25185,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
         cancelResumeOnReturn();   // paused on purpose: returning to the app must not restart it
         if (isPlaying){
           isPlaying = false; updatePlayIcon(); updateMediaSession();
-          try { if (rememberPlaybackPosition) savePlaybackPosition(tracks[currentIndex].dbId, media().currentTime); } catch(e){}
+          try { if (rememberPlaybackPosition) savePlaybackPosition(tracks[currentIndex].dbId, media().currentTime); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         }
       } else if (!isPlaying){ isPlaying = true; updatePlayIcon(); updateMediaSession(); }
     };
@@ -25248,7 +25260,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     backupSpeedSlider.addEventListener('input', () => {
       const v = parseInt(backupSpeedSlider.value, 10);
       showSpeed(v);
-      try { localStorage.setItem(BACKUP_SPEED_KEY, String(v)); } catch (e){}
+      try { localStorage.setItem(BACKUP_SPEED_KEY, String(v)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     });
   }
   if (storageImportBtn && libraryImportInput){
@@ -25476,7 +25488,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       if (selectMode) exitSelectMode();
       const hadGroup = b.key != null;
       b.mode = btn.dataset.browse; b.key = null; ppBrowseScroll = 0;
-      try { localStorage.setItem('ppBrowseMode', b.mode); } catch(e){}
+      try { localStorage.setItem('ppBrowseMode', b.mode); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       if (hadGroup && history.state && history.state.ppBrowse){ try { history.back(); } catch(e){} }
       renderPlaylist();
       playlistEl.scrollTop = 0;
@@ -25502,7 +25514,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (!uris.length) return;
     const l = ppIgnoredUris(), have = new Set(l);
     uris.forEach(u => { if (!have.has(u)){ have.add(u); l.push(u); } });
-    try { localStorage.setItem('ppIgnoredUris', JSON.stringify(l.slice(-4000))); } catch(e){}
+    try { localStorage.setItem('ppIgnoredUris', JSON.stringify(l.slice(-4000))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function ppFoundAdd(entries){
     const l = ppFoundList(), have = new Set(l.map(e => e.uri));
@@ -25525,7 +25537,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     const l = ppFoundList(), kept = l.filter(e => !lib.has(e.uri));
     if (kept.length !== l.length){ ppFound = kept; ppFoundSave(); }
     const ig = ppIgnoredUris(), ig2 = ig.filter(u => !lib.has(u));
-    if (ig2.length !== ig.length){ try { localStorage.setItem('ppIgnoredUris', JSON.stringify(ig2)); } catch(e){} }
+    if (ig2.length !== ig.length){ try { localStorage.setItem('ppIgnoredUris', JSON.stringify(ig2)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   }
   // What a file most likely is, from where it sits, what it is called, how long it runs and its tags. Only a guess.
   function ppGuessKind(e){
@@ -25607,7 +25619,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       saveLibraryMeta(); renderPlaylist(); renderPlaylistsManager();
       showToast('Removed ' + uris.size + ' from your library');
     } else {
-      try { localStorage.setItem('ppKeepMissing', JSON.stringify(ppKeptMissing().concat([...uris]).slice(-4000))); } catch(e){}
+      try { localStorage.setItem('ppKeepMissing', JSON.stringify(ppKeptMissing().concat([...uris]).slice(-4000))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     }
     ppMissing = ppMissing.filter(u => !uris.has(u));
     ppFoundSync();
@@ -25726,7 +25738,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     if (tg){
       tg.checked = ppAutoScanOn();
       tg.addEventListener('change', () => {
-        try { localStorage.setItem('ppAutoScan', tg.checked ? '1' : '0'); } catch(e){}
+        try { localStorage.setItem('ppAutoScan', tg.checked ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         if (tg.checked) ppAutoScan();
       });
     }
@@ -25745,13 +25757,13 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       ppInboxScans++;
       try {
         let l = []; try { l = JSON.parse(localStorage.getItem(PP_FOLDERS_KEY) || '[]'); } catch(e){}
-        for (const tree of l){ try { await PPNative.lib.rescan(tree, known()); } catch(e){} }
+        for (const tree of l){ try { await PPNative.lib.rescan(tree, known()); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
         if (ppFoundList().length < 2500){
           const a = await PPNative.lib.mediaAccess();
           if (a && (a.audio || a.video)) await PPNative.lib.scanDevice(known(), true);
         }
         await new Promise(r => setTimeout(r, 400));   // let the last batch of finds arrive
-      } catch(e){}
+      } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       finally { ppInboxScans--; ppAutoScanAt = Date.now(); ppAutoScanP = null; }
       const n = ppFoundList().length - before;
       if (n > 0) showToast(n + ' new file' + (n === 1 ? '' : 's') + ' on this phone. See New on this phone in the Library.');
@@ -25852,7 +25864,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   // =====================================================================
   const PP_BM_KEY = 'playerBookmarksV1', PP_LRC_KEY = 'playerLyricsV1', PP_RG_KEY = 'playerReplayGainOn';
   const ppJson = (k) => { try { return JSON.parse(localStorage.getItem(k)) || {}; } catch(e){ return {}; } };
-  const ppSave = (k, o) => { try { localStorage.setItem(k, JSON.stringify(o)); } catch(e){} };
+  const ppSave = (k, o) => { try { localStorage.setItem(k, JSON.stringify(o)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
   const ppEl = (id) => document.getElementById(id);
   const ppToast = (m) => { try { showToast(m); } catch(e){} };
   var rgEnabled = localStorage.getItem(PP_RG_KEY) !== '0';
@@ -25887,7 +25899,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   ppEl('rg-toggle').checked = rgEnabled;
   ppEl('rg-toggle').addEventListener('change', (e) => {
     rgEnabled = e.target.checked;
-    try { localStorage.setItem(PP_RG_KEY, rgEnabled ? '1' : '0'); } catch(err){}
+    try { localStorage.setItem(PP_RG_KEY, rgEnabled ? '1' : '0'); } catch(err){ if (typeof ppCaught === "function") ppCaught(err); }
     const t = tracks[currentIndex];
     if (rgEnabled && t && !t.rgDone) ppLoadReplayGain(t); else if (currentIndex !== -1) applyTrackBoostToCurrentGraph();
   });
@@ -26065,7 +26077,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       const pi = ppFindByName(f.name, used);
       if (pi < 0){ notFound.push(f.name); continue; }
       const parent = tracks[pi];
-      if (!parent.nativeUri && window.PPNative && PPNative.ensureLocal){ try { await PPNative.ensureLocal(parent); } catch(e){} }
+      if (!parent.nativeUri && window.PPNative && PPNative.ensureLocal){ try { await PPNative.ensureLocal(parent); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       if (!parent.nativeUri){ ppToast('CUE sheets need the Android app (the album file has to be on the phone).'); return; }
       const list = f.tracks.filter(t => t.start != null).sort((a, b) => a.start - b.start);
       list.forEach((t, k) => {
@@ -26394,7 +26406,7 @@ async function ppMp4Chapters(blob){
   });
   // the same words are often saved twice (synced lyrics and subtitles): Remove takes both away
   ppEl('ly-clear').addEventListener('click', () => { const t = tracks[currentIndex]; if (!t) return; ppStoreLyrics(t.dbId, ''); ppLoadLyricsFor(t);
-    writeSubtitleEntry(t.dbId, null); if (t.kind === 'video') setSubtitleCues([]); try { const a = window.__ppApi; if (a && a.setSubtitles) a.setSubtitles(t.dbId, [], ''); } catch(e){} });
+    writeSubtitleEntry(t.dbId, null); if (t.kind === 'video') setSubtitleCues([]); try { const a = window.__ppApi; if (a && a.setSubtitles) a.setSubtitles(t.dbId, [], ''); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } });
   function ppSidecarLrc(track, file, fileList){
     const key = file.name.replace(/\.[^/.]+$/, '').toLowerCase();
     const lrc = fileList.find(f => /\.lrc$/i.test(f.name) && f.name.replace(/\.[^/.]+$/, '').toLowerCase() === key);
@@ -26447,7 +26459,7 @@ async function ppMp4Chapters(blob){
       set: (v) => {
         memcMaxIn = v.i; memcOutFps = v.o; memcStrength = v.s;
         if (memcQuality !== v.q){ memcQuality = v.q; memcResKey = ''; memcInvalidate(); }
-        try { localStorage.setItem(MEMC_IN_KEY, String(memcMaxIn)); localStorage.setItem(MEMC_OUT_KEY, String(memcOutFps)); localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); localStorage.setItem(MEMC_STR_KEY, String(Math.round(memcStrength * 100))); } catch (e){}
+        try { localStorage.setItem(MEMC_IN_KEY, String(memcMaxIn)); localStorage.setItem(MEMC_OUT_KEY, String(memcOutFps)); localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); localStorage.setItem(MEMC_STR_KEY, String(Math.round(memcStrength * 100))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         memcUpdateSliders(); memcUpdateStrength(); memcUpdateQualityUI();
         setMemcMode(v.m);
       }
@@ -26459,7 +26471,7 @@ async function ppMp4Chapters(blob){
         memcUpscale = v.u; enhSharp = v.sh; enhSharpSet = true; enhDeband = !!v.db; enhDeblock = !!v.dk; enhAnime = !!v.an;
         enhAI = ENH_AI_IDS.includes(v.ai) ? v.ai : 'off'; if (enhAI !== 'off') srEnsureLoaded().then(() => memcRepaint());
         enhMaster = v.on !== false;
-        try { localStorage.setItem(MEMC_UP_KEY, String(memcUpscale)); } catch (e){}
+        try { localStorage.setItem(MEMC_UP_KEY, String(memcUpscale)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         enhChanged(false);   // the song's own on/off, as saved
       }
     },
@@ -26480,7 +26492,7 @@ async function ppMp4Chapters(blob){
   let songOv = {}, songOvBase = {}, songOvTrack = null, songOvBooted = false;
   try { songOv = JSON.parse(localStorage.getItem(SONG_OV_KEY) || '{}') || {}; } catch (e){ songOv = {}; }
   try { songOvBase = JSON.parse(localStorage.getItem(SONG_OV_BASE_KEY) || '{}') || {}; } catch (e){ songOvBase = {}; }
-  const songOvSave = () => { try { localStorage.setItem(SONG_OV_KEY, JSON.stringify(songOv)); localStorage.setItem(SONG_OV_BASE_KEY, JSON.stringify(songOvBase)); } catch (e){} };
+  const songOvSave = () => { try { localStorage.setItem(SONG_OV_KEY, JSON.stringify(songOv)); localStorage.setItem(SONG_OV_BASE_KEY, JSON.stringify(songOvBase)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
   const songOvSafeSet = (g, v) => { try { songOvGroups[g].set(v); } catch (e){ console.warn('[song override]', g, e); } };
   function songOvActive(g){ const t = songOvTrack; return !!(t && songOv[t.dbId] && songOv[t.dbId][g]); }
   // Keep what was changed while this song played.
@@ -26584,7 +26596,7 @@ async function ppMp4Chapters(blob){
     clearTimeout(artIdleTimer);
     artIdleTimer = setTimeout(() => {
       if (!artCtx) return;
-      try { srFreeAll(artCtx); artCtx.gl.getExtension('WEBGL_lose_context').loseContext(); } catch (e){}
+      try { srFreeAll(artCtx); artCtx.gl.getExtension('WEBGL_lose_context').loseContext(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       artCtx = null;
     }, 20000);
   }
@@ -26659,7 +26671,7 @@ async function ppMp4Chapters(blob){
       tog.checked = artSharpOn;
       tog.addEventListener('change', () => {
         artSharpOn = tog.checked;
-        try { localStorage.setItem(ART_SHARP_KEY, artSharpOn ? '1' : '0'); } catch (e){}
+        try { localStorage.setItem(ART_SHARP_KEY, artSharpOn ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         // switched off: put the original pictures back
         if (!artSharpOn) document.querySelectorAll('img[data-sharp-of]').forEach(i => { if (i.getAttribute('src') === i.dataset.sharpUrl){ i.src = i.dataset.sharpOf; } delete i.dataset.sharpOf; delete i.dataset.sharpUrl; });
         else { if (art) artSharpImg(art); scan(home); scan(document); }
@@ -26732,7 +26744,7 @@ async function ppMp4Chapters(blob){
 
   /** loadTrack's stand-in for setSrc when the track belongs to VLC: leave the element empty, open VLC if asked to play. */
   function ppVlcPark(el, t, autoplay){
-    try { const raw = PPNative.raw(el); raw.removeAttribute('src'); raw.load(); } catch(e){}
+    try { const raw = PPNative.raw(el); raw.removeAttribute('src'); raw.load(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     isPlaying = false; updatePlayIcon();
     if (autoplay) ppVlcOpen(t);
   }
@@ -26808,7 +26820,7 @@ async function ppMp4Chapters(blob){
   function sndNowMs(){ return snd.playing ? snd.pos + (performance.now() - snd.at) * snd.rate : snd.pos; }
   /** The sound's position while the picture rests in the background (for the notification), else null. */
   function ppSndPos(){ return (snd.on && snd.parked && snd.t === tracks[currentIndex]) ? Math.round(sndNowMs()) : null; }
-  function sndCmd(fn){ snd.cmdAt = performance.now(); try { const p = fn(); if (p && p.catch) p.catch(() => {}); } catch(e){} }
+  function sndCmd(fn){ snd.cmdAt = performance.now(); try { const p = fn(); if (p && p.catch) p.catch(() => {}); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   function sndRawVideo(){ return PPNative.raw(videoEl); }
 
   function sndStart(t){
@@ -26821,7 +26833,7 @@ async function ppMp4Chapters(blob){
       Object.assign(snd, { t, on: true, uri, want: false, pos: Math.round((v.currentTime || 0) * 1000), at: performance.now(),
                            playing: false, rate: playbackSpeed || 1, vol: -1, parked: false, selfSeek: false });
       t._snd = true;
-      try { PPNative.companionFx(true); } catch(e){}
+      try { PPNative.companionFx(true); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       return SndP.loadMedia({ id: 'snd:' + (t.dbId || uri), uri, kind: 'audio', companion: true, autoplay: false,
                               title: t.title || '', artist: t.artist || '', startMs: snd.pos }).then(() => {
         if (gen !== snd.gen) return;
@@ -26838,7 +26850,7 @@ async function ppMp4Chapters(blob){
     clearInterval(snd.timer); snd.timer = 0;
     if (!snd.on) return;
     snd.on = false; snd.t = null;
-    try { PPNative.companionFx(false); } catch(e){}
+    try { PPNative.companionFx(false); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     try { const v = sndRawVideo(); if (v.playbackRate !== playbackSpeed) v.playbackRate = playbackSpeed; } catch(e){}
     if (!(window.PPNative && PPNative.active())) sndCmd(() => SndP.stop());
   }
@@ -26916,7 +26928,7 @@ async function ppMp4Chapters(blob){
         if (!snd.on || !snd.parked) return;
         if (c && c.name === 'seek' && c.posMs != null){ snd.pos = c.posMs; snd.at = performance.now(); sndCmd(() => SndP.seek({ ms: c.posMs })); }
         sndCmd(() => isPlaying ? SndP.play() : SndP.pause());
-        try { ppMirrorSync(); } catch(e){}
+        try { ppMirrorSync(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       }, 0);
     });
     document.addEventListener('visibilitychange', () => {
@@ -26941,7 +26953,7 @@ async function ppMp4Chapters(blob){
     const v = sndRawVideo();
     sndCmd(() => isPlaying ? SndP.play() : SndP.pause());
     try { v.pause(); } catch(e){}                            // the picture rests while the app is hidden
-    try { ppMirrorSync(); } catch(e){}
+    try { ppMirrorSync(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     return true;
   }
 
@@ -27036,7 +27048,7 @@ async function ppMp4Chapters(blob){
     });
     tog.addEventListener('change', () => {
       vlcAuto = tog.checked;
-      try { localStorage.setItem(VLC_AUTO_KEY, vlcAuto ? '1' : '0'); } catch(e){}
+      try { localStorage.setItem(VLC_AUTO_KEY, vlcAuto ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     });
   })();
 
@@ -27048,10 +27060,10 @@ async function ppMp4Chapters(blob){
   function netSaveServer(uri, name){
     const list = netSaved().filter(s => s.uri !== uri);
     list.unshift({ uri, name: name || uri });
-    try { localStorage.setItem(NET_SERVERS_KEY, JSON.stringify(list.slice(0, 20))); } catch(e){}
+    try { localStorage.setItem(NET_SERVERS_KEY, JSON.stringify(list.slice(0, 20))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function netForget(uri){
-    try { localStorage.setItem(NET_SERVERS_KEY, JSON.stringify(netSaved().filter(s => s.uri !== uri))); } catch(e){}
+    try { localStorage.setItem(NET_SERVERS_KEY, JSON.stringify(netSaved().filter(s => s.uri !== uri))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
 
   function netEnsureUi(){
@@ -27714,7 +27726,7 @@ async function ppMp4Chapters(blob){
     discBtn.addEventListener('click', (e) => {
       const power = clickPower();
       state.grooves += power;
-      try { if (window.PPPlayground) window.PPPlayground.stat('clicks', 1); } catch(e2){}
+      try { if (window.PPPlayground) window.PPPlayground.stat('clicks', 1); } catch(e2){ if (typeof ppCaught === "function") ppCaught(e2); }
       discBtn.classList.remove('dc-wobble');
       void discBtn.offsetWidth; // restart animation
       discBtn.classList.add('dc-wobble');
@@ -30059,7 +30071,7 @@ async function ppMp4Chapters(blob){
 
       const ls = {
         get: k => { try { return localStorage.getItem(k); } catch(e){ return null; } },
-        set: (k, v) => { try { localStorage.setItem(k, v); } catch(e){} }
+        set: (k, v) => { try { localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       };
       const alreadyClaimed = () => !!state.quizBonusClaimed || !!ls.get(QUIZ_FLAG);
       function shuffle(a){
@@ -30336,7 +30348,7 @@ async function ppMp4Chapters(blob){
     on = next;
     body.classList.toggle('player-layout', on);
     if (window.__ppSyncTitle) window.__ppSyncTitle();
-    try { renderStrip(true); } catch(e){}
+    try { renderStrip(true); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     toggle.checked = !on;
     if (on){
       syncMini(); syncProgress();
@@ -30570,7 +30582,7 @@ async function ppMp4Chapters(blob){
   obs.observe(artImg, { attributes:true, attributeFilter:['src','style'] });
 
   toggle.addEventListener('change', () => {
-    try { localStorage.setItem(KEY, toggle.checked ? '0' : '1'); } catch(e){}
+    try { localStorage.setItem(KEY, toggle.checked ? '0' : '1'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     apply(!toggle.checked);
   });
 
@@ -30620,7 +30632,7 @@ async function ppMp4Chapters(blob){
       const v = document.createElement('video');
       v.muted = true; v.playsInline = true; v.preload = 'metadata';
       let done = false;
-      const fin = d => { if (done) return; done = true; try { v.removeAttribute('src'); v.load(); } catch(e){} resolve(d); };
+      const fin = d => { if (done) return; done = true; try { v.removeAttribute('src'); v.load(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } resolve(d); };
       v.onloadedmetadata = () => { try { v.currentTime = Math.min(1, (v.duration || 2) * 0.1); } catch(e){ fin(null); } };
       v.onseeked = () => {
         try {
@@ -30651,7 +30663,7 @@ async function ppMp4Chapters(blob){
       const t = thumbQueue.shift(); thumbRunning++;
       makeThumb(t.url).then(d => {
         thumbCache.set(t.dbId, d); thumbPending.delete(t.dbId);
-        try { syncMini(); } catch(e){}
+        try { syncMini(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         if (d) homeEl.querySelectorAll('.ph-thumb').forEach(el => {
           if (el.dataset.thumbId !== t.dbId || el.querySelector('img')) return;
           const img = document.createElement('img'); img.alt = ''; img.src = d;
@@ -30953,7 +30965,7 @@ async function ppMp4Chapters(blob){
     else if (act === 'home-tab'){ openSec = el.dataset.tab === 'all' ? null : el.dataset.tab; renderHome(true); }
     else if (act === 'clear-history'){
       playHistory = [];
-      try { localStorage.setItem(HKEY, '[]'); } catch(err){}
+      try { localStorage.setItem(HKEY, '[]'); } catch(err){ if (typeof ppCaught === "function") ppCaught(err); }
       renderHome(true);
     }
     else if (act === 'play-video'){
@@ -31118,7 +31130,7 @@ async function ppMp4Chapters(blob){
     observe: el => { if (thumbObserver) el.querySelectorAll('.ph-thumb:not(.has-img)').forEach(t => thumbObserver.observe(t)); },
     hasTrack: () => body.classList.contains('pl-has-track')
   };
-  window.__ppRenderHomeNow = () => { try { renderHome(true); } catch(e){} renderStrip(true); };
+  window.__ppRenderHomeNow = () => { try { renderHome(true); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } renderStrip(true); };
   window.__ppOnChange = scheduleHome;
   window.__ppOnPlay = t => {
     if (miniDismissed){ miniDismissed = null; syncMini(); }   // playing a track again brings the mini-player back
@@ -31126,7 +31138,7 @@ async function ppMp4Chapters(blob){
     playHistory = playHistory.filter(h => h.id !== t.dbId);
     playHistory.unshift({ id:t.dbId, at:Date.now(), kind:t.kind });
     playHistory = playHistory.slice(0, 60);
-    try { localStorage.setItem(HKEY, JSON.stringify(playHistory)); } catch(e){}
+    try { localStorage.setItem(HKEY, JSON.stringify(playHistory)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     scheduleHome();
   };
 
@@ -31174,7 +31186,7 @@ async function ppMp4Chapters(blob){
   function hideUi(){ body.classList.remove('pl-ui-show'); clearTimeout(uiTimer); }
   if (pinBtn) pinBtn.addEventListener('click', () => {
     uiMode = (uiMode + 1) % 3;
-    try { localStorage.setItem(PIN_KEY, String(uiMode)); } catch(e){}
+    try { localStorage.setItem(PIN_KEY, String(uiMode)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     syncPinBtn();
     if (uiMode === 2) hideUi();
     else showUi();   // mode 1 stays up; mode 0 resumes the normal timer
@@ -31255,7 +31267,7 @@ async function ppMp4Chapters(blob){
   } catch(e){}
   const pmList = document.getElementById('gesture-pm-list');
   const gConfig = document.getElementById('gestures-config');
-  function savePmMap(){ try { localStorage.setItem(PM_GKEY, JSON.stringify(pmMap)); } catch(e){} }
+  function savePmMap(){ try { localStorage.setItem(PM_GKEY, JSON.stringify(pmMap)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   function renderPmList(){
     const A = window.__ppApi; if (!A || !A.gestureActions) return;
     const actions = A.gestureActions();
@@ -31314,13 +31326,13 @@ async function ppMp4Chapters(blob){
   var DEF = { mini: true, leave: 'keep', bgAudio: true, bgVideo: true, notify: true, survive: true, other: 'pause', calls: 'keep' };
   var NAT = !!(window.PPNative && PPNative.available && PPNative.setPlaybackPrefs);
   function get(){ var o = {}; try { o = JSON.parse(localStorage.getItem(KEY)) || {}; } catch(e){} return Object.assign({}, DEF, o); }
-  function set(k, v){ var o = get(); o[k] = v; try { localStorage.setItem(KEY, JSON.stringify(o)); } catch(e){} apply(); }
+  function set(k, v){ var o = get(); o[k] = v; try { localStorage.setItem(KEY, JSON.stringify(o)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } apply(); }
 
   function apply(){
     var o = get();
     body.classList.toggle('pp-no-mini', !o.mini);
     window.__ppNoMediaNotif = !o.notify;            // read by updateMediaSession (the browser's own media controls)
-    if (!o.notify){ try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch(e){} }
+    if (!o.notify){ try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
     else if (window.__ppUpdateMediaSession) window.__ppUpdateMediaSession();
     if (NAT) PPNative.setPlaybackPrefs({ other: o.other, calls: o.calls, notify: !!o.notify, survive: !!o.survive });
     paint();
@@ -31393,7 +31405,7 @@ async function ppMp4Chapters(blob){
   var build = +window.PP_BUILD || 0, found = null, busy = false;
   var $ = function(id){ return document.getElementById(id); };
   var get = function(k){ try { return localStorage.getItem(k); } catch(e){ return null; } };
-  var set = function(k, v){ try { localStorage.setItem(k, v); } catch(e){} };
+  var set = function(k, v){ try { localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
   var enabled = function(){ return get('ppUpdateCheck') !== '0'; };
   var name = function(n){ return n ? '1.0.' + n : 'a local build'; };
 
@@ -31552,8 +31564,8 @@ async function ppMp4Chapters(blob){
   document.addEventListener('click', (e) => { if (!pop.contains(e.target)) pop.style.display = 'none'; });
 
   ['loadedmetadata','emptied'].forEach(ev => V.addEventListener(ev, () => setTimeout(refresh, 150)));
-  try { V.audioTracks && V.audioTracks.addEventListener('addtrack', refresh); } catch(e){}
-  try { V.textTracks && V.textTracks.addEventListener('addtrack', refresh); } catch(e){}
+  try { V.audioTracks && V.audioTracks.addEventListener('addtrack', refresh); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+  try { V.textTracks && V.textTracks.addEventListener('addtrack', refresh); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   refresh();
 })();
 </script>
@@ -31583,7 +31595,7 @@ async function ppMp4Chapters(blob){
   let cfg = { mode: 'off', secs: 5, album: true };
   try { Object.assign(cfg, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch(e){}
   cfg.secs = Math.max(1, Math.min(12, +cfg.secs || 5));
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch(e){} };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
 
   // ---- Settings UI ----
   const sec = document.createElement('div');
@@ -31729,10 +31741,10 @@ async function ppMp4Chapters(blob){
 (function(){
   const anchor = document.getElementById('storage-section');
   if (!anchor) return;
-  const ls = { g: k => { try { return localStorage.getItem(k); } catch(e){ return null; } }, s: (k, v) => { try { localStorage.setItem(k, v); } catch(e){} } };
+  const ls = { g: k => { try { return localStorage.getItem(k); } catch(e){ return null; } }, s: (k, v) => { try { localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } };
   window.__ppAssOn = ls.g('ppAssStyle') === '1';
   let keyOn = ls.g('ppKeysOn') === '1', map = {};
-  try { map = JSON.parse(ls.g('ppKeymap') || '{}'); } catch(e){}
+  try { map = JSON.parse(ls.g('ppKeymap') || '{}'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   const ACTIONS = [
     ['play','Play / pause',{code:'Space',key:' '}], ['seekFwd','Seek +5 s',{code:'ArrowRight',key:'ArrowRight'}], ['seekBack','Seek −5 s',{code:'ArrowLeft',key:'ArrowLeft'}],
     ['next','Next track',{code:'ArrowRight',key:'ArrowRight',shiftKey:true}], ['prev','Previous track',{code:'ArrowLeft',key:'ArrowLeft',shiftKey:true}],
@@ -31947,7 +31959,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   if(on)document.body.classList.add('pp-lite');
   function applyLiteBits(){
     if(!get())return;
-    try{var a=window.PPXpApi;if(a){window.__ppXpO=window.__ppXpO||{w:a.recordWatchTime,c:a.recordCompletion};a.recordWatchTime=function(){};a.recordCompletion=function(){};}}catch(e){}
+    try{var a=window.PPXpApi;if(a){window.__ppXpO=window.__ppXpO||{w:a.recordWatchTime,c:a.recordCompletion};a.recordWatchTime=function(){};a.recordCompletion=function(){};}}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     try{document.documentElement.style.removeProperty('--accent');document.documentElement.style.removeProperty('--accent-dim');}catch(e){}
     // make sure the extra EQ bands are usable regardless of level
     document.querySelectorAll('.eq-band-pro').forEach(function(b){b.classList.add('unlocked');});
@@ -31972,7 +31984,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
         localStorage.setItem(KEY,turningOn?'1':'0');
         if(turningOn){localStorage.setItem('ppPlusMode','0');localStorage.setItem('ppPremiumMode','0');}
         sessionStorage.setItem('ppLiteBanner',turningOn?'on':'off');
-      }catch(e){}
+      }catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       try{location.reload();}catch(e){}
       // fallback if reload is blocked by the host: apply live
       setTimeout(function(){
@@ -31985,7 +31997,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   }
   var HIDE_KEY='ppLiteHidden', SEEN_KEY='ppLiteFirstSeen', NEW_DAYS=7;
   function isHidden(){try{return localStorage.getItem(HIDE_KEY)==='1';}catch(e){return false;}}
-  function setHidden(v){try{if(v)localStorage.setItem(HIDE_KEY,'1');else localStorage.removeItem(HIDE_KEY);}catch(e){}}
+  function setHidden(v){try{if(v)localStorage.setItem(HIDE_KEY,'1');else localStorage.removeItem(HIDE_KEY);}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}
   function showNew(){
     try{
       var t=parseInt(localStorage.getItem(SEEN_KEY),10);
@@ -32051,7 +32063,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   function get(){return rd(KEY)==='1';}
   function liteOn(){return rd(LITE)==='1';}
   function hidden(){return rd(HIDE)==='1';}
-  function setHidden(v){try{if(v)localStorage.setItem(HIDE,'1');else localStorage.removeItem(HIDE);}catch(e){}}
+  function setHidden(v){try{if(v)localStorage.setItem(HIDE,'1');else localStorage.removeItem(HIDE);}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}
   function showNew(){
     try{
       var t=parseInt(localStorage.getItem(SEEN),10);
@@ -32083,7 +32095,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
         localStorage.setItem(KEY,turningOn?'1':'0');
         if(turningOn){localStorage.setItem(LITE,'0');localStorage.setItem('ppPremiumMode','0');}
         sessionStorage.setItem('ppPlusBanner',turningOn?'on':'off');
-      }catch(e){}
+      }catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       try{location.reload();}catch(e){}
       // fallback if reload is blocked by the host: apply live
       setTimeout(function(){
@@ -32091,7 +32103,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
         if(turningOn)document.body.classList.remove('pp-lite');
         var bt=document.getElementById('pp-plus-toggle');
         if(bt)bt.textContent=turningOn?'Turn off':'Turn on';
-        try{if(window.PPXpApi&&window.PPXpApi.refreshUnlocks)window.PPXpApi.refreshUnlocks();}catch(e){}
+        try{if(window.PPXpApi&&window.PPXpApi.refreshUnlocks)window.PPXpApi.refreshUnlocks();}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         banner();
       },800);
     });
@@ -32165,7 +32177,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     try{
       const c=document.createElement('canvas'); c.width=V.videoWidth; c.height=V.videoHeight;
       const x=c.getContext('2d'), f=getComputedStyle(V).filter;
-      if(f&&f!=='none'){try{x.filter=f;}catch(e){}}
+      if(f&&f!=='none'){try{x.filter=f;}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}
       x.drawImage(V,0,0,c.width,c.height);
       const t=((document.getElementById('np-title')||{}).textContent||'snapshot').replace(/[^\w\- ]+/g,'').trim().slice(0,60)||'snapshot';
       c.toBlob(b=>{
@@ -32188,10 +32200,10 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
 </script>
 <script id="pp-tools">
 (function(){
-  const $=id=>document.getElementById(id), ls={g:k=>{try{return localStorage.getItem(k)}catch(e){return null}},s:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
+  const $=id=>document.getElementById(id), ls={g:k=>{try{return localStorage.getItem(k)}catch(e){return null}},s:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}};
   const toast=(m,t)=>{try{window.ppToast(m,t)}catch(e){}};
   /* ---- Video adjustment sliders (filter dropdown) ---- */
-  const D={b:100,c:100,s:100,h:0}; try{Object.assign(D,JSON.parse(ls.g('ppVidAdj')||'{}'))}catch(e){}
+  const D={b:100,c:100,s:100,h:0}; try{Object.assign(D,JSON.parse(ls.g('ppVidAdj')||'{}'))}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   const adj=window.__ppAdj={...D}; const dd=$('filter-dropdown');
   const css=()=>{const a=window.__ppAdj,p=[]; if(a.b!=100)p.push('brightness('+a.b/100+')'); if(a.c!=100)p.push('contrast('+a.c/100+')'); if(a.s!=100)p.push('saturate('+a.s/100+')'); if(a.h!=0)p.push('hue-rotate('+a.h+'deg)'); return p.join(' ')};
   window.__ppAdjCss=css;
@@ -32210,7 +32222,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
 <script id="pp-premium">
 (function(){
   var KEYS={playground:'ppPlaygroundMode',lite:'ppLiteMode',plus:'ppPlusMode',premium:'ppPremiumMode',focus:'ppFocusMode'};
-  var ls={g:function(k){try{return localStorage.getItem(k)}catch(e){return null}},s:function(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+  var ls={g:function(k){try{return localStorage.getItem(k)}catch(e){return null}},s:function(k,v){try{localStorage.setItem(k,v)}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}};
   var toast=function(m){try{window.ppToast(m)}catch(e){}};
   var cur=function(){for(var k in KEYS){if(ls.g(KEYS[k])==='1')return k}return null};
   // Task gate (see pp-gate-core). If it somehow failed to load, nothing is locked.
@@ -32245,7 +32257,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
       +'<div style="margin-top:8px"><b style="color:var(--accent)">Nothing changes.</b> Existing data was found, so every mode except Playground stays unlocked, the new Focus mode included, and progress, levels and settings are untouched.</div>'
       +'<button type="button" id="pp-gate-ok" style="margin-top:12px;padding:8px 16px;border-radius:8px;border:1px solid var(--accent-dim,var(--line));background:transparent;color:var(--accent);font:600 12.5px system-ui,sans-serif;cursor:pointer">Got it</button>';
     document.body.appendChild(d);
-    d.querySelector('#pp-gate-ok').addEventListener('click',function(){G.state().notice=true;try{localStorage.setItem('ppModeGateV1',JSON.stringify(G.state()))}catch(e){}d.remove()});
+    d.querySelector('#pp-gate-ok').addEventListener('click',function(){G.state().notice=true;try{localStorage.setItem('ppModeGateV1',JSON.stringify(G.state()))}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }d.remove()});
   }
   setTimeout(notice,1500);
   var st=document.createElement('style');
@@ -32286,8 +32298,8 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   // switching: true when the user just picked the mode (at start-up a video player the user changed by hand is left alone).
   function power(on,switching){
     var was=!!window.ppSaver; window.ppSaver=!!on;
-    if(was!==!!on){try{window.dispatchEvent(new CustomEvent('ppfocus',{detail:!!on}))}catch(e){}}
-    try{var GM=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.PPGameMode; if(GM&&GM.cap)GM.cap({on:!!on}).catch(function(){})}catch(e){}
+    if(was!==!!on){try{window.dispatchEvent(new CustomEvent('ppfocus',{detail:!!on}))}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}
+    try{var GM=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.PPGameMode; if(GM&&GM.cap)GM.cap({on:!!on}).catch(function(){})}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     try{
       var N=window.PPNative, native=N&&N.setNativeVideo&&N.nativeVideoSetting&&window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform();
       if(!native)return false;
@@ -32333,8 +32345,8 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     for(var k in KEYS){ls.s(KEYS[k],k===m?'1':'0'); document.body.classList.toggle('pp-'+k,k===m);}
     window.ppFocus=m==='focus'; window.ppLite=m==='lite';
     xp(m==='lite'||m==='premium'||m==='focus');
-    try{window.PPXpApi&&window.PPXpApi.refreshUnlocks&&window.PPXpApi.refreshUnlocks()}catch(e){}
-    if(m==='playground'){try{window.PPClicker&&window.PPClicker.show()}catch(e){}}
+    try{window.PPXpApi&&window.PPXpApi.refreshUnlocks&&window.PPXpApi.refreshUnlocks()}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+    if(m==='playground'){try{window.PPClicker&&window.PPClicker.show()}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}
     if(m==='lite')liteLook();
     var slate=(m==='lite'||wasLite)?liteSlate(m==='lite'):false;
     if(power(m==='focus'||m==='lite',true))return true;
@@ -32366,7 +32378,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
       if(b.dataset.mode!==cur()&&!G.unlocked(b.dataset.mode)){toast('Locked: '+taskText(b.dataset.mode));return}
       var m=b.dataset.mode===cur()?null:b.dataset.mode;
       var reloading=apply(m); closeMenu(); refreshRow();
-      if(reloading){try{sessionStorage.setItem('ppModeBanner',m||'')}catch(e){}return}
+      if(reloading){try{sessionStorage.setItem('ppModeBanner',m||'')}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }return}
       if(m){banner(m)}else{toast('Standard mode.')}
     });
   }
@@ -32378,7 +32390,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     host.parentNode.appendChild(sec); refreshRow();
     sec.querySelector('#pp-mode-open').addEventListener('click',openMenu);
   }
-  var c0=cur(); if(c0){document.body.classList.add('pp-'+c0); if(c0==='premium'||c0==='focus'||c0==='lite')setTimeout(function(){xp(true);try{window.PPXpApi.refreshUnlocks()}catch(e){}},1000);}
+  var c0=cur(); if(c0){document.body.classList.add('pp-'+c0); if(c0==='premium'||c0==='focus'||c0==='lite')setTimeout(function(){xp(true);try{window.PPXpApi.refreshUnlocks()}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }},1000);}
   window.ppFocus=c0==='focus'; window.ppLite=c0==='lite';
   if(c0==='lite')liteLook();
   // A Lite that was switched on before the clean slate existed (or ended without one) is brought in line once.
@@ -32391,7 +32403,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
 <script id="pp-marathon">
 (function(){
   var BEST='ppMarathonBestV1', BG='ppMarathonBgV1', LEN=30, XP_N=6, SECS=10, BG_NEED=24, PREM_NEED=27;   // 24/30 = 80%, 27/30 = 90%
-  var ls={g:function(k){try{return localStorage.getItem(k)}catch(e){return null}},s:function(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+  var ls={g:function(k){try{return localStorage.getItem(k)}catch(e){return null}},s:function(k,v){try{localStorage.setItem(k,v)}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}};
   var toast=function(m){try{window.ppToast(m)}catch(e){}};
   var G=window.PPModeGate||{unlocked:function(){return true},legacy:function(){return true},check:function(){}};
   var css=document.createElement('style');
@@ -32500,11 +32512,11 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     if(pct>prev)ls.s(BEST,String(pct));
     var lines=[];
     if(right>=BG_NEED){
-      if(!bgHave()){ls.s(BG,'1');lines.push('Finish Line unlocked. Find it under Customize appearance \u2192 Unlockable presets.');toast('Finish Line background unlocked');try{window.PPXpApi&&window.PPXpApi.refreshUnlocks&&window.PPXpApi.refreshUnlocks()}catch(e){}}
+      if(!bgHave()){ls.s(BG,'1');lines.push('Finish Line unlocked. Find it under Customize appearance \u2192 Unlockable presets.');toast('Finish Line background unlocked');try{window.PPXpApi&&window.PPXpApi.refreshUnlocks&&window.PPXpApi.refreshUnlocks()}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}
       else lines.push('Finish Line background: already unlocked.');
     }else lines.push(BG_NEED+' of '+total+' (80%) needed for the Finish Line background.');
     if(pct>=90){
-      try{G.check()}catch(e){}
+      try{G.check()}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       lines.push(G.legacy()||was?'90% or better! Premium was already unlocked.':'90% or better! Press Play PREMIUM is unlocked. Find it under Settings \u2192 App mode.');
     }else lines.push(PREM_NEED+' of '+total+' (90%) earns Press Play PREMIUM.');
     body.innerHTML='';
@@ -32587,7 +32599,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     ['fun', 'Fun ones', 'Now and then, something silly.']
   ];
   function prefs(){ var p = {}; try { p = JSON.parse(localStorage.getItem(KEY)) || {}; } catch(e){} KINDS.forEach(function(k){ if (typeof p[k[0]] !== 'boolean') p[k[0]] = true; }); return p; }
-  function savePrefs(p){ try { localStorage.setItem(KEY, JSON.stringify(p)); } catch(e){} }
+  function savePrefs(p){ try { localStorage.setItem(KEY, JSON.stringify(p)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
 
   var DAY = 864e5;
   function at(dayOff, h, m){ var d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + dayOff); d.setHours(h, m || 0, 0, 0); return d.getTime(); }
@@ -32812,7 +32824,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   }
 
   var busy=false,queued=false;
-  function run(){ if(busy)return; busy=true; try{organize();clamp();}catch(e){} busy=false; }
+  function run(){ if(busy)return; busy=true; try{organize();clamp();}catch(e){ if (typeof ppCaught === "function") ppCaught(e); } busy=false; }
   function sched(){ if(queued)return; queued=true; setTimeout(function(){queued=false;run();},30); }
   run(); setTimeout(run,1000); setTimeout(run,3000);
   // Widgets placed in Settings update themselves often; their changes are not new settings, so they don't set off a pass.
@@ -32846,7 +32858,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   var fontsOrTimeout = Promise.race([fonts, new Promise(function(r){ setTimeout(r, 2500); })]);
   var lib = window.__ppLibReady || Promise.resolve();
   Promise.all([pageLoaded, fontsOrTimeout, lib]).then(function(){
-    try { if (window.__ppRenderHomeNow) window.__ppRenderHomeNow(); } catch(e){}
+    try { if (window.__ppRenderHomeNow) window.__ppRenderHomeNow(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     requestAnimationFrame(function(){ requestAnimationFrame(finish); });
   }, finish);
   setTimeout(finish, 12000);
@@ -33092,10 +33104,10 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   function appPlaying(){ var b = document.getElementById('play-btn'); return !!(b && b.classList.contains('is-playing')); }
   function syncGameMusic(){
     if (!current || !current.ownMusic || !frame) return;
-    try { var w = frame.contentWindow; if (w && w.__ppHostMute) w.__ppHostMute(appPlaying()); } catch(e){}
+    try { var w = frame.contentWindow; if (w && w.__ppHostMute) w.__ppHostMute(appPlaying()); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function gameMode(on){
-    try { var P = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.PPGameMode; if (P) (on ? P.enter() : P.exit()).catch(function(){}); } catch(e){}
+    try { var P = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.PPGameMode; if (P) (on ? P.enter() : P.exit()).catch(function(){}); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
 
   // ---- In-game now-playing card ------------------------------------------------------------
@@ -33414,7 +33426,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
 <script src="./pp-playground-album.js?v=20261108a"></script>
 <script src="./pp-playground-lab.js?v=20261108a"></script>   <!-- Press Play Playground (the fourth app mode): hub, orders, charms, wheel. Bump v= when it changes -->
 <script src="./pp-playground-stars.js?v=20261108a"></script>   <!-- Playground Star Shop: Stars for Points, boosts, shields, the vault -->
-<script src="./vocal-separator.js?v=20261118a" defer></script>
+<script src="./vocal-separator.js?v=20261118b" defer></script>
 <script src="./pp-mashup.js?v=20261114a" defer></script>   <!-- mashup mode -->   <!-- bump v= each time vocal-separator.js changes so phones fetch the new copy -->
 <script src="./pp-spatial.js?v=20261114b" defer></script>   <!-- headphone space: split ears, 360 orbit -->
 
@@ -33878,7 +33890,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     requestAnimationFrame(placeInd);
   }
   apply(want());
-  if (tg) tg.addEventListener('change', function(){ try { localStorage.setItem(KEY, tg.checked ? '1' : '0'); } catch(e){} apply(tg.checked); });
+  if (tg) tg.addEventListener('change', function(){ try { localStorage.setItem(KEY, tg.checked ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } apply(tg.checked); });
   if (bar){
     new MutationObserver(function(){ requestAnimationFrame(placeInd); }).observe(bar, { subtree: true, attributes: true, attributeFilter: ['class'] });
     window.addEventListener('resize', function(){ requestAnimationFrame(placeInd); });
@@ -34456,7 +34468,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     try {
       if (!t || isStock(t)){ localStorage.removeItem(KEY); localStorage.removeItem(CSS_KEY); localStorage.removeItem(BAR_KEY); }
       else { localStorage.setItem(KEY, JSON.stringify(t)); localStorage.setItem(CSS_KEY, buildCss(t)); localStorage.setItem(BAR_KEY, t.c.bg); }
-    } catch(e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
 
   var current = load();
@@ -36604,7 +36616,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     var up = el.querySelector('.pw-np-up');
     if (up){ var nx = has && st.W ? st.W.upNext(1)[0] : null, nt = nx != null ? st.A.tracks()[nx] : null; setText(up, nt ? 'Next: ' + nt.title : ''); }
     var img = el.querySelector('.pw-np-art img'), src = null; if (!img) return;
-    try { if (has && window.__ppThumbSrc) src = window.__ppThumbSrc(st.t); } catch(e){}
+    try { if (has && window.__ppThumbSrc) src = window.__ppThumbSrc(st.t); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     el.querySelector('.pw-np-art').classList.toggle('has-art', !!src);
     if (src && img.getAttribute('src') !== src) img.src = src;
   } };
@@ -36808,7 +36820,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     live:function(el, st){
       var raw = ''; try { raw = localStorage.getItem('playerBookmarksV1') || ''; } catch(e){}
       var sig = (st.has ? st.t.dbId : '') + ':' + raw.length + ':' + raw.slice(-40); if (el._sig === sig) return; el._sig = sig;
-      var list = []; if (st.has){ try { list = (JSON.parse(raw || '{}') || {})[st.t.dbId] || []; } catch(e){} }
+      var list = []; if (st.has){ try { list = (JSON.parse(raw || '{}') || {})[st.t.dbId] || []; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       el.querySelector('.pw-bm-l').innerHTML = !st.has ? '<div class="pw-empty">Play something to see its bookmarks.</div>' : !list.length ? '<div class="pw-empty">No bookmarks in this song yet.</div>'
         : list.map(function(b){ return '<button type="button" class="pw-li" data-pw-act="seek" data-s="' + (+b.t || 0) + '"><span class="pw-bm-t">' + fmtT(b.t) + '</span><span class="pw-li-t"><b>' + esc(b.label || 'Bookmark') + '</b></span></button>'; }).join('');
       liveHide(el, el.dataset.hide === '1' && !list.length);
@@ -36845,7 +36857,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
 
   // Rows of tracks: one genre from the smart tags, and what you stopped in the middle of.
   function genreMap(){
-    var V = window.PPVocals, tags = null; try { tags = V && V.loadTags ? V.loadTags() : null; } catch(e){}
+    var V = window.PPVocals, tags = null; try { tags = V && V.loadTags ? V.loadTags() : null; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     var A = api(), t = A ? A.tracks() : [], by = {};
     if (!tags) return by;
     playable().forEach(function(i){ var c = tags[String(t[i].dbId)], g = c && (c.gn || [])[0]; if (!g) return; var name = String(g[0]).split('---')[0].trim(); if (name) (by[name] = by[name] || []).push(i); });
@@ -37047,7 +37059,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   // Stopwatch. Keeps running (and keeps its time) when you leave the app.
   var SW_KEY = 'ppStopwatchV1';
   function swAll(){ try { return JSON.parse(localStorage.getItem(SW_KEY)) || {}; } catch(e){ return {}; } }
-  function swSave(a){ try { localStorage.setItem(SW_KEY, JSON.stringify(a)); } catch(e){} }
+  function swSave(a){ try { localStorage.setItem(SW_KEY, JSON.stringify(a)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   T.stopwatch = { name:'Stopwatch', icon:'clock', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Start, pause, reset',
     fields:[['tenths','Show tenths','toggle',false],['size','Size','seg',SIZES],['card','On a card','toggle',true]],
     render:function(o, c, ctx, it){
@@ -37065,7 +37077,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
 
   // Battery (the phone's).
   var batt = null;
-  if (navigator.getBattery) try { navigator.getBattery().then(function(b){ batt = b; ['levelchange','chargingchange'].forEach(function(ev){ b.addEventListener(ev, liveSoon); }); liveSoon(); }).catch(function(){}); } catch(e){}
+  if (navigator.getBattery) try { navigator.getBattery().then(function(b){ batt = b; ['levelchange','chargingchange'].forEach(function(ev){ b.addEventListener(ev, liveSoon); }); liveSoon(); }).catch(function(){}); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   T.battery = { name:'Battery', icon:'bolt', kind:'box', zones:['home','page','player','video'], w:'half', desc:'How much charge the phone has',
     fields:[['look','Look','seg',[['bar','Bar'],['ring','Ring'],['text','Just the number']]],['card','On a card','toggle',true]],
     // the look's class is pw-bat-l-*: "pw-bat-bar" is the bar inside, and the Bar look used to get that same class,
@@ -37112,7 +37124,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
       return card(o, '<div class="pw-text pw-rot pw-ts-' + (o.size || 'm') + (o.italic ? ' pw-italic' : '') + '" data-pw-live="rotate" data-every="' + esc(o.every || 'day') + '" data-lines="' + esc(JSON.stringify(lines)) + '"></div>');
     },
     live:function(el, st){
-      var lines = []; try { lines = JSON.parse(el.dataset.lines); } catch(e){}
+      var lines = []; try { lines = JSON.parse(el.dataset.lines); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       if (!lines.length) return;
       var ev = el.dataset.every, i;
       if (ev === 'day'){ var d = st.now; i = (d.getFullYear() * 372 + d.getMonth() * 31 + d.getDate()) % lines.length; }
@@ -37130,7 +37142,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   var FD_KEY = 'ppFidgetsV1', FDS = (function(){ try { return JSON.parse(localStorage.getItem(FD_KEY)) || {}; } catch(e){ return {}; } })(), fdSaveT = 0, FDM = {};
   function fdKeep(id, def){ if (!FDS[id] || typeof FDS[id] !== 'object') FDS[id] = def; return FDS[id]; }    // kept across restarts
   function fdMem(id, def){ if (!FDM[id]) FDM[id] = def; return FDM[id]; }                                    // kept across re-renders
-  function fdSave(){ clearTimeout(fdSaveT); fdSaveT = setTimeout(function(){ try { localStorage.setItem(FD_KEY, JSON.stringify(FDS)); } catch(e){} }, 700); }
+  function fdSave(){ clearTimeout(fdSaveT); fdSaveT = setTimeout(function(){ try { localStorage.setItem(FD_KEY, JSON.stringify(FDS)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }, 700); }
   function fdOpts(el){ try { return JSON.parse(el.dataset.o || '{}') || {}; } catch(e){ return {}; } }
   function fdData(it, o, keys){ var x = {}; keys.forEach(function(k){ if (o[k] != null && o[k] !== '') x[k] = o[k]; }); return ' data-id="' + esc(it ? it.id : 'x') + '" data-o="' + esc(JSON.stringify(x)) + '"'; }
   function fdBuzz(o, ms){ if (o.buzz === false || !navigator.vibrate) return; try { navigator.vibrate(ms); } catch(e){} }
@@ -37978,7 +37990,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
 
   // ===================== still more widgets =====================
   function kept(key){ try { return JSON.parse(localStorage.getItem(key)) || {}; } catch(e){ return {}; } }
-  function keep(key, v){ try { localStorage.setItem(key, JSON.stringify(v)); } catch(e){} }
+  function keep(key, v){ try { localStorage.setItem(key, JSON.stringify(v)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   function sameId(type, id, fn){ document.querySelectorAll('[data-pw-live="' + type + '"][data-id="' + id + '"]').forEach(fn); }
 
   // To-do list: tick things off, add them right on the widget.
@@ -38266,7 +38278,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     why = from === quiet ? 'You played it ' + plural(p.count, 'time') + ', last on ' + new Date(p.lastPlayed).toLocaleDateString(undefined, { day:'numeric', month:'short' }) + '.'
         : from === fresh ? 'You have never played this one.' : 'A pick from your library.';
     saved.id = String(t[i].dbId); saved.why = why; saved.seen.push(saved.id);
-    try { localStorage.setItem(SOTD_KEY, JSON.stringify(saved)); } catch(e){}
+    try { localStorage.setItem(SOTD_KEY, JSON.stringify(saved)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     return { i: i, why: why };
   }
   T.sotd = { name:'Song of the day', icon:'sparkle', kind:'box', zones:['home','page','player'], w:'full', desc:'One song a day you have not played in a while',
@@ -38345,7 +38357,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     return he == null ? be : be == null ? he : he * 0.55 + be * 0.45;
   }
   function moodQueue(stop){
-    var V = window.PPVocals, tags = null; try { tags = V && V.loadTags ? V.loadTags() : null; } catch(e){}
+    var V = window.PPVocals, tags = null; try { tags = V && V.loadTags ? V.loadTags() : null; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     var A = api(); if (!A || !tags) return null;
     var t = A.tracks(), rated = [];
     playable().forEach(function(i){ var e = energyOf(tags[String(t[i].dbId)]); if (e != null && t[i].kind !== 'video') rated.push([i, e]); });
@@ -38453,7 +38465,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     var was = MIX.on, pos = mixPos();
     MIX.on = false; clearInterval(MIX.sync);
     MIX.els.forEach(function(a){ try { a.pause(); } catch(e){} });
-    if (quiet){ MIX.els.forEach(function(a){ a.removeAttribute('src'); try { a.load(); } catch(e){} }); MIX.els = []; MIX.forId = null; }
+    if (quiet){ MIX.els.forEach(function(a){ a.removeAttribute('src'); try { a.load(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }); MIX.els = []; MIX.forId = null; }
     if (was && back){ var w = wapi(); if (w) w.seek(pos); MIX.own = Date.now(); if (!liveState().playing) click('play-btn'); }
     liveSoon();
   }
@@ -38689,13 +38701,13 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   // Genres and feels from the smart tags as chips; tap one to play those songs shuffled.
   var VIBE_NAMES = { chill:'Chill', party:'Party', happy:'Happy', sad:'Sad', energetic:'Energetic', aggressive:'Intense', instrumental:'Instrumental', vocals:'Vocals', dance:'Dance', focus:'Focus', romantic:'Romantic', dark:'Dark' };
   function tagSets(kind){
-    var V = window.PPVocals, tags = null; try { tags = V && V.loadTags ? V.loadTags() : null; } catch(e){}
+    var V = window.PPVocals, tags = null; try { tags = V && V.loadTags ? V.loadTags() : null; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     var A = api(), sets = {}; if (!A || !tags) return sets;
     var t = A.tracks();
     playable().forEach(function(i){
       var c = tags[String(t[i].dbId)]; if (!c) return;
       if (kind !== 'vibe'){ var g = (c.gn || [])[0]; if (g){ var n = String(g[0]).split('---')[0].replace(/ music$/i, '').trim(); if (n) (sets['g:' + n] = sets['g:' + n] || { name: n, ids: [] }).ids.push(i); } }
-      if (kind !== 'genre' && V.vibes){ var vb = []; try { vb = V.vibes(c) || []; } catch(x){}
+      if (kind !== 'genre' && V.vibes){ var vb = []; try { vb = V.vibes(c) || []; } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
         vb.forEach(function(v){ if (v === 'vocals' || v === 'speech') return; var nm = VIBE_NAMES[v] || (v.charAt(0).toUpperCase() + v.slice(1)); (sets['v:' + v] = sets['v:' + v] || { name: nm, ids: [], vibe: 1 }).ids.push(i); }); }
     });
     return sets;
@@ -38718,7 +38730,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   // How much room the library takes, split into videos and music, and the biggest files.
   function fmtBytes(n){ if (!n) return '0 MB'; var u = ['B','KB','MB','GB','TB'], i = Math.min(4, Math.floor(Math.log(n) / Math.log(1024))); return (n / Math.pow(1024, i)).toFixed(i >= 3 ? 1 : 0) + ' ' + u[i]; }
   var storeEst = null;
-  try { if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(function(e){ storeEst = e; liveSoon(); }).catch(function(){}); } catch(e){}
+  try { if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(function(e){ storeEst = e; liveSoon(); }).catch(function(){}); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   T.storage = { name:'Storage', icon:'folder', kind:'box', zones:['home','page'], w:'full', desc:'How much room your library takes, and its biggest files',
     fields:[['big','Show the biggest files','seg',[['0','None'],['','3'],['5','5']]],['card','On a card','toggle',true]],
     render:function(o){ return card(cardOn(o), '<div class="pw-sto" data-pw-live="storage" data-big="' + (o.big === '0' ? 0 : +o.big || 3) + '"></div>'); },
@@ -38891,7 +38903,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
       setText(el.querySelector('.pw-tt-s'), sb ? 'This song: ' + sb + ' BPM' + (m.bpm ? (Math.abs(m.bpm - sb) <= 3 || Math.abs(m.bpm * 2 - sb) <= 4 || Math.abs(m.bpm - sb * 2) <= 4 ? ' · spot on!' : '') : '') : m.taps.length === 1 ? 'Keep tapping…' : m.bpm ? m.taps.length + ' taps' : 'Tap at least four times.');
     } };
   function ttMatches(bpm){
-    var V = window.PPVocals, tags = null; try { tags = V && V.loadTags ? V.loadTags() : null; } catch(e){}
+    var V = window.PPVocals, tags = null; try { tags = V && V.loadTags ? V.loadTags() : null; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     var A = api(); if (!A || !tags) return [];
     var t = A.tracks();
     return playable().filter(function(i){ var c = tags[String(t[i].dbId)], b = c && +c.bpm; if (!b) return false; return [b, b * 2, b / 2].some(function(x){ return Math.abs(x - bpm) / bpm <= 0.05; }); });
@@ -38935,7 +38947,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
       '<div class="pw-gs-o">' + g.opts.map(function(i){ var cls = !done ? '' : i === g.ans ? ' ok' : i === g.pick ? ' no' : ' dim'; return '<button type="button" class="pw-gs-a' + cls + '" data-pw-gs="pick" data-i="' + i + '"' + (done ? ' disabled' : '') + '><b>' + esc(t[i].title) + '</b><small>' + esc(t[i].artist && t[i].artist !== 'Unknown artist' ? t[i].artist : '') + '</small></button>'; }).join('') + '</div>' +
       (done ? '<p class="pw-gs-res">' + (ok ? 'Yes! ' + (g.score > 1 ? g.score + ' in a row.' : '') : g.pick == null ? 'Time’s up.' : 'Not that one.') + '</p><div class="pw-sw-b"><button type="button" class="on" data-pw-gs="go">Next</button><button type="button" data-pw-gs="play" data-i="' + g.ans + '">Play it</button><button type="button" data-pw-gs="quit">Stop</button></div>' : '');
   }
-  function gsClip(stop){ if (GUESS.a){ try { GUESS.a.pause(); } catch(e){} if (stop){ GUESS.a.removeAttribute('src'); try { GUESS.a.load(); } catch(e){} GUESS.a = null; } } }
+  function gsClip(stop){ if (GUESS.a){ try { GUESS.a.pause(); } catch(e){} if (stop){ GUESS.a.removeAttribute('src'); try { GUESS.a.load(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } GUESS.a = null; } } }
   function gsRound(el){
     var g = fdMem('gs:' + el.dataset.id, { phase: 'start', score: 0 }), A = api(); if (!A) return;
     var t = A.tracks(), pool = playable().filter(function(i){ return t[i].kind !== 'video' && t[i].url; });
@@ -38962,7 +38974,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     else if (op === 'pick' && g.phase === 'ask'){
       g.pick = +b.dataset.i; var ok = g.pick === g.ans;
       g.phase = ok ? 'right' : 'wrong'; g.score = ok ? g.score + 1 : 0;
-      if (ok && g.score > gsBest()) try { localStorage.setItem(GUESS_KEY, JSON.stringify({ best: g.score })); } catch(x){}
+      if (ok && g.score > gsBest()) try { localStorage.setItem(GUESS_KEY, JSON.stringify({ best: g.score })); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
       try { navigator.vibrate && navigator.vibrate(ok ? [20, 40, 20] : 120); } catch(x){}
       gsDraw(el, g); el._ph = g.phase + g.round;
     }
@@ -39336,7 +39348,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     p.round = +p.round || 0; p.log = p.log || {}; p.hist = p.hist || []; p.task = p.task || '';
     return p;
   })();
-  function poSave(){ try { localStorage.setItem(PO_KEY, JSON.stringify(PO)); } catch(e){} }
+  function poSave(){ try { localStorage.setItem(PO_KEY, JSON.stringify(PO)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   function poLen(ph){ return Math.max(1, +PO.s[ph] || PO_DEF[ph]) * 60000; }
   function poLeft(){ return PO.run ? Math.max(0, PO.end - Date.now()) : PO.left != null ? PO.left : poLen(PO.ph); }
   function poToday(){ return PO.log[dayKey(new Date())] || { n: 0, ms: 0 }; }
@@ -39467,7 +39479,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   function opts(list, cur){ return list.map(function(x){ return '<option value="' + esc(x[0]) + '"' + (String(cur) === String(x[0]) ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; }).join(''); }
   var R = 46, CIRC = 2 * Math.PI * R;
   var PEND_SEC_KEY = 'ppPendSec', pendSec = (function(){ try { return localStorage.getItem(PEND_SEC_KEY) === 'pomo' ? 'pomo' : 'alarms'; } catch(e){ return 'alarms'; } })();
-  function pendGo(sec){ pendSec = sec; try { localStorage.setItem(PEND_SEC_KEY, sec); } catch(e){} if (openPageId === POMO_ID) renderPage(); else openPage(POMO_ID); }
+  function pendGo(sec){ pendSec = sec; try { localStorage.setItem(PEND_SEC_KEY, sec); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } if (openPageId === POMO_ID) renderPage(); else openPage(POMO_ID); }
   function pomoPage(el){
     el.innerHTML = '<div class="ppd" data-sec="' + pendSec + '"><header class="ppp-h"><div><small>Press Play</small><h1>Pendulum</h1></div>' +
       (pendSec === 'pomo' ? '<div class="ppp-today"><b class="ppp-tn">0</b><span class="ppp-tg"></span><small>today</small></div>' : '<div class="ppa-next-pill"></div>') + '</header>' +
@@ -39613,7 +39625,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   var AL_KEY = 'ppAlarmsV2', DAY_N = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
   var AL = (function(){ var a = []; try { a = JSON.parse(localStorage.getItem(AL_KEY)) || []; } catch(e){} return Array.isArray(a) ? a : []; })();
   var alOpen = null, RING = null;   // the alarm being edited in the tab; the alarm ringing now
-  function alSave(){ try { localStorage.setItem(AL_KEY, JSON.stringify(AL)); } catch(e){} alNative(); }
+  function alSave(){ try { localStorage.setItem(AL_KEY, JSON.stringify(AL)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } alNative(); }
   function alById(id){ return AL.filter(function(a){ return a.id === id; })[0] || null; }
   function alNew(){ return { id: 'a' + uid(), on: true, time: '07:30', days: [1, 2, 3, 4, 5], label: '', wake: 'sound', tone: 'classic', louder: true, out: 'speaker', music: '', fade: 1, snooze: 9, ringFor: 10, loud: false, pomo: false, last: Date.now() }; }
   // what an alarm wakes you to: 'sound' (an alarm tone), 'both' (the tone, then music after 30 s) or 'music'
@@ -40130,7 +40142,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   // layout zone 'ring', edited like a page (Edit what's on it); its settings are kept in 'ppRingV1'.
   var RS_KEY = 'ppRingV1', RS_IMG_KEY = 'ppRingImgV1';
   var RS = (function(){ var r = {}; try { r = JSON.parse(localStorage.getItem(RS_KEY)) || {}; } catch(e){} return Object.assign({ alarm: true, pomo: true, bg: 'sunrise', dim: 20 }, r); })();
-  function rsSave(){ try { localStorage.setItem(RS_KEY, JSON.stringify(RS)); } catch(e){} }
+  function rsSave(){ try { localStorage.setItem(RS_KEY, JSON.stringify(RS)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   function rsImg(){ try { return localStorage.getItem(RS_IMG_KEY) || ''; } catch(e){ return ''; } }
   var RS_BGS = [['sunrise', 'Sunrise'], ['night', 'Night sky'], ['aurora', 'Aurora'], ['ocean', 'Ocean'], ['ember', 'Ember'], ['theme', 'Theme colour'], ['plain', 'Plain'], ['cover', 'Cover art'], ['custom', 'Your picture']];
   var ringEl = document.createElement('div'); ringEl.id = 'pp-ringscreen'; ringEl.hidden = true; ringEl.setAttribute('role', 'dialog'); ringEl.setAttribute('aria-modal', 'true');
@@ -42255,7 +42267,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
   function load(k, d){ try { var x = JSON.parse(localStorage.getItem(k) || 'null'); return x && typeof x === 'object' ? x : d; } catch(e){ return d; } }
   var S = load(KEY, {});
-  function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} }
+  function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
 
   var IC = {
     music:'<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
@@ -42490,7 +42502,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
       saveFold();
     }
   });
-  function saveFold(){ try { localStorage.setItem(FOLD_KEY, JSON.stringify(folded)); } catch(e){} }
+  function saveFold(){ try { localStorage.setItem(FOLD_KEY, JSON.stringify(folded)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
 
   // ======================= button spots =======================
   // Fixed places on the players where the user chooses the button: two in the top bar, the two outer places in the
@@ -42601,7 +42613,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   // ======================= Settings sections: order, group, shown =======================
   var SA_KEY = 'ppSettingsArrV1';
   function sArr(){ var a = load(SA_KEY, {}); a.place = a.place || {}; a.order = a.order || {}; a.hide = a.hide || []; return a; }
-  function sArrSave(a){ try { localStorage.setItem(SA_KEY, JSON.stringify(a)); } catch(e){} if (window.__ppSettings) window.__ppSettings.run(); }
+  function sArrSave(a){ try { localStorage.setItem(SA_KEY, JSON.stringify(a)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } if (window.__ppSettings) window.__ppSettings.run(); }
   function secName(sec){
     var l = sec.querySelector('.settings-section-label'), t = sec.querySelector('.settings-row-title');
     var x = (l && l.textContent.trim()) || (t && t.textContent.replace(/\s+/g, ' ').trim()) || 'Section';

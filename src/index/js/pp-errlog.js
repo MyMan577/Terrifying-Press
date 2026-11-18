@@ -65,6 +65,18 @@
       else fallback();
     } catch(e){ fallback(); }
   }
+  // Errors the app catches and carries on from. Each distinct one is noted once per session, so one that repeats on
+  // every frame cannot push everything else out of the log. The browser's routine refusals (a play() cut short, a
+  // permission the phone said no to) are not faults and are skipped.
+  var seen = {}, seenN = 0, SKIP = { AbortError: 1, NotAllowedError: 1, NotSupportedError: 1, SecurityError: 1 };
+  window.ppCaught = function(e){
+    try {
+      if (!e || SKIP[e.name] || seenN > 200) return;
+      var msg = (e && e.message) || String(e), at = e && e.stack ? String(e.stack).split('\n')[1] || '' : '';
+      var key = msg + '|' + at; if (seen[key]) return; seen[key] = 1; seenN++;
+      add('caught', msg + stack(e, 4));
+    } catch(x){}
+  };
   window.ppErrorLog = { add: add, text: text, clear: function(){ buf = []; try { localStorage.removeItem(KEY); } catch(e){} sync(); } };
   document.addEventListener('DOMContentLoaded', function(){
     var c = document.getElementById('errlog-copy-btn'), s = document.getElementById('errlog-share-btn'), x = document.getElementById('errlog-clear-btn');

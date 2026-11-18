@@ -13,7 +13,7 @@
     ['fun', 'Fun ones', 'Now and then, something silly.']
   ];
   function prefs(){ var p = {}; try { p = JSON.parse(localStorage.getItem(KEY)) || {}; } catch(e){} KINDS.forEach(function(k){ if (typeof p[k[0]] !== 'boolean') p[k[0]] = true; }); return p; }
-  function savePrefs(p){ try { localStorage.setItem(KEY, JSON.stringify(p)); } catch(e){} }
+  function savePrefs(p){ try { localStorage.setItem(KEY, JSON.stringify(p)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
 
   var DAY = 864e5;
   function at(dayOff, h, m){ var d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + dayOff); d.setHours(h, m || 0, 0, 0); return d.getTime(); }

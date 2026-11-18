@@ -68,7 +68,7 @@
   function mediaDur(url) {
     return new Promise(res => {
       const a = document.createElement('audio'); let done = false;
-      const end = d => { if (done) return; done = true; clearTimeout(tm); a.removeAttribute('src'); try { a.load(); } catch (e) {} res(isFinite(d) && d > 0 ? d : 0); };
+      const end = d => { if (done) return; done = true; clearTimeout(tm); a.removeAttribute('src'); try { a.load(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } res(isFinite(d) && d > 0 ? d : 0); };
       const tm = setTimeout(() => end(0), 8000);
       a.preload = 'metadata'; a.onloadedmetadata = () => end(a.duration); a.onerror = () => end(0); a.src = url;
     });
@@ -103,7 +103,7 @@
       else out = await NP.separate(Object.assign({ kind: 'mdx', model: id, nfft: m.nfft, dimF: m.dimF, comp: m.comp }, base));
     } finally { h.remove(); }
     window.__ppLastSep = ' (' + Math.round(out.seconds) + ' s on ' + out.accel + ')';
-    try { localStorage.setItem(accKey, /nnapi|npu|gpu/i.test(String(out.accel)) ? 'nnapi' : 'cpu'); } catch (e) {}
+    try { localStorage.setItem(accKey, /nnapi|npu|gpu/i.test(String(out.accel)) ? 'nnapi' : 'cpu'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     if (nm) {
       window.__ppLastSep += await nativeMask(nm, out.files.Vocals, ['Instrumental', 'Other'].map(n => out.files[n]), status);
       if (hid) { NP.deleteFiles({ paths: [out.files.Vocals] }).catch(() => {}); delete out.files.Vocals; }
@@ -130,7 +130,7 @@
     window.__ppLastSep = '';
     const h = await SS.addListener('progress', e => { onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
     let out;
-    try { out = await SS.separate({ input: saved.path, sharp: opts.strength, nnapi: opts.nnapi !== false && ls0('ppvAccel_spleeter2') !== 'cpu' && !cpuOnly.has('spleeter2'), tune: false }); try { localStorage.setItem('ppvAccel_spleeter2', /nnapi|npu|gpu/i.test(String(out.accel)) ? 'nnapi' : 'cpu'); } catch (e) {} }
+    try { out = await SS.separate({ input: saved.path, sharp: opts.strength, nnapi: opts.nnapi !== false && ls0('ppvAccel_spleeter2') !== 'cpu' && !cpuOnly.has('spleeter2'), tune: false }); try { localStorage.setItem('ppvAccel_spleeter2', /nnapi|npu|gpu/i.test(String(out.accel)) ? 'nnapi' : 'cpu'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
     finally { h.remove(); }
     window.__ppLastSep = ' (' + Math.round(out.seconds) + ' s on ' + out.accel + ')';
     if (opts.nmask) window.__ppLastSep += await nativeMask(opts.nmask, out.vocals, [out.instrumental], status);
@@ -290,7 +290,7 @@
   ].map(([id, dir, label, kind, group, classes]) => ({ id, label, kind, group, classes, pos: 1, extra: true, base: dir + '-discogs-effnet-1', file: ESS + dir + '/' + dir + '-discogs-effnet-1.onnx', info: ESS + dir + '/' + dir + '-discogs-effnet-1.json' }));
   const HEAD_MISS = 'ppvHeadMiss', MISS_MS = 3 * 864e5;
   const headMiss = () => { try { return JSON.parse(localStorage.getItem(HEAD_MISS)) || {}; } catch (e) { return {}; } };
-  const setHeadMiss = (id, on) => { const m = headMiss(); if (on) m[id] = Date.now(); else delete m[id]; try { localStorage.setItem(HEAD_MISS, JSON.stringify(m)); } catch (e) {} };
+  const setHeadMiss = (id, on) => { const m = headMiss(); if (on) m[id] = Date.now(); else delete m[id]; try { localStorage.setItem(HEAD_MISS, JSON.stringify(m)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
   const moodsOn = () => { try { return localStorage.getItem('ppvMoods') !== '0'; } catch (e) { return true; } };
   // Fetch with a hard deadline (response start AND stalls mid-download), so a dead host can never freeze the app.
   async function fetchTimed(url, ms, onProgress) {
@@ -348,11 +348,11 @@
     const ok = new Array(LIST.length).fill(null); let got = 0;
     const one = async (b, k) => {
       try {
-        let h = null; try { const c = await idbGet('tghm_' + b.id); if (c) h = JSON.parse(c); } catch (e) {}
+        let h = null; try { const c = await idbGet('tghm_' + b.id); if (c) h = JSON.parse(c); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         if (!h || !(NATIVE ? (await NP.exists({ id: 'tgh_' + b.id })).ready : await idbGet('tgh_' + b.id))) {
           h = { id: b.id, label: b.label, kind: b.kind || 'binary', group: b.group || 'mood', pos: b.pos, classes: b.classes ? b.classes.slice() : null };
           const buf = NATIVE ? (await nativeHeadFetch(b), null) : await fetchHeadFile(b, 'onnx', 8000);
-          let j = null; try { j = JSON.parse(new TextDecoder().decode(await fetchHeadFile(b, 'json', 4000))); } catch (e) {}
+          let j = null; try { j = JSON.parse(new TextDecoder().decode(await fetchHeadFile(b, 'json', 4000))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
           if (j && Array.isArray(j.classes) && j.classes.length >= 2 && (h.kind === 'multi' || j.classes.length === 2)) h.classes = j.classes;
           if (h.kind === 'binary' && h.classes && h.classes.length === 2) { const p = h.classes.findIndex(c => !/^(non|not)[_ -]/i.test(c)); if (p >= 0) h.pos = p; }
           if (h.kind !== 'binary' && !h.classes) throw new Error('class names (.json) not found');
@@ -376,7 +376,7 @@
     if (enabled === false) return [];
     if (headsMemo) return headsMemo;
     let man = null;
-    try { const c = await idbGet('tg_manifest'); if (c) man = JSON.parse(c); } catch (e) {}
+    try { const c = await idbGet('tg_manifest'); if (c) man = JSON.parse(c); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     if (!man) {
       try { man = JSON.parse(new TextDecoder().decode(await fetchTimed(HF_BASE + 'tagger-heads.json', 6000))); await idbPut('tg_manifest', JSON.stringify(man)); } catch (e) { man = null; }
     }
@@ -395,7 +395,7 @@
   }
   async function resetHeads() {
     headsMemo = null; headsFailed = false;
-    try { const c = await idbGet('tg_manifest'); if (c) for (const h of (JSON.parse(c).heads || [])) await idbDel('tgh_' + h.id); } catch (e) {}
+    try { const c = await idbGet('tg_manifest'); if (c) for (const h of (JSON.parse(c).heads || [])) await idbDel('tgh_' + h.id); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     await idbDel('tg_manifest').catch(() => {});
     try { localStorage.removeItem(HEAD_MISS); } catch (e) {}
     for (const b of BUILTIN_HEADS.concat(EXTRA_HEADS)) { if (NATIVE) await NP.remove({ id: 'tgh_' + b.id }).catch(() => {}); await idbDel('tgh_' + b.id).catch(() => {}); await idbDel('tghm_' + b.id).catch(() => {}); }

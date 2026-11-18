@@ -43,14 +43,14 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
           const data = await nextB64;
           nextB64 = (off + CH0 < blob.size) ? toB64(blob.slice(off + CH0, off + 2 * CH0)) : null;   // encode the next piece while this one is written
           await P.PPBackup.write({ data });
-          if (onProgress){ try { onProgress(Math.min(1, (off + CH0) / blob.size), 'write'); } catch(e){} }
+          if (onProgress){ try { onProgress(Math.min(1, (off + CH0) / blob.size), 'write'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
         }
         const r = await P.PPBackup.end({});
         if (window.PPNative && PPNative.hooks && PPNative.hooks.toast) PPNative.hooks.toast('Saved to ' + ((r && r.location) || 'Downloads'));
         return true;
       } catch(e){
         console.warn('streaming save failed, using the cache route', e);
-        if (began){ try { await P.PPBackup.abort({}); } catch(e2){} }
+        if (began){ try { await P.PPBackup.abort({}); } catch(e2){ if (typeof ppCaught === "function") ppCaught(e2); } }
       }
     }
     if (P && P.Filesystem){
@@ -62,9 +62,9 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         nextB64 = (off + CH < blob.size) ? toB64(blob.slice(off + CH, off + 2 * CH)) : null;   // encode the next chunk while this one is written
         if (first) await P.Filesystem.writeFile({ path, data, directory: 'CACHE' });
         else await P.Filesystem.appendFile({ path, data, directory: 'CACHE' });
-        if (onProgress){ try { onProgress(Math.min(1, (off + CH) / Math.max(1, blob.size)), 'write'); } catch(e){} }
+        if (onProgress){ try { onProgress(Math.min(1, (off + CH) / Math.max(1, blob.size)), 'write'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       }
-      if (onProgress){ try { onProgress(1, 'finish'); } catch(e){} }
+      if (onProgress){ try { onProgress(1, 'finish'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       const { uri } = await P.Filesystem.getUri({ path, directory: 'CACHE' });
       if (window.PPNative && PPNative.lib){
         try {

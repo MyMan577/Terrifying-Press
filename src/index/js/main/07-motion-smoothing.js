@@ -794,7 +794,7 @@
   function memcResNote(vw, vh, rw, rh, screenPx, smoothing){
     const long = Math.max(rw, rh), want = Math.min(Math.max(vw, vh), screenPx);
     if (long >= want * 0.97) return;
-    let id = ''; try { const t = tracks[currentIndex]; id = t ? (t.id || t.name || '') : ''; } catch (e){}
+    let id = ''; try { const t = tracks[currentIndex]; id = t ? (t.id || t.name || '') : ''; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     const k = id + '|' + vw + 'x' + vh + '|' + rw + 'x' + rh;
     if (k === memcResNoted) return;
     memcResNoted = k;
@@ -827,7 +827,7 @@
           memcFreeResources();
           if (memcQuality > 0){
             memcQuality--;
-            try { localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); } catch (e){}
+            try { localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
             memcUpdateQualityUI();
           }
         }
@@ -880,7 +880,7 @@
     if (!full && gl.getError() === gl.OUT_OF_MEMORY && memcQuality > 0){
       memcFreeResources();
       memcQuality--;
-      try { localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); } catch (e){}
+      try { localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       memcUpdateQualityUI();
       return;
     }
@@ -1368,7 +1368,7 @@
     gl.bindFramebuffer(gl.FRAMEBUFFER, hr.fbo);
     gl.readPixels(0, 0, hr.w, hr.h, gl.RGBA, gl.UNSIGNED_BYTE, out);
     if (flipY){ const o = new Uint8Array(out.length), rw = hr.w * 4; for (let y = 0; y < hr.h; y++) o.set(out.subarray((hr.h - 1 - y) * rw, (hr.h - y) * rw), y * rw); out = o; }
-    try { gl.getExtension('WEBGL_lose_context').loseContext(); } catch (e){}
+    try { gl.getExtension('WEBGL_lose_context').loseContext(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     return { w: hr.w, h: hr.h, ms: performance.now() - t0, data: Array.from(out) };
   };
 
@@ -1496,7 +1496,7 @@
   // The media time of the frame on screen (frame step counts from it). Only while paused, when the picture holds still.
   // A seek while paused (frame step, dragging the seek bar) shows the frame it lands on. The ring would otherwise still hold
   // the older frames and the held picture is (position - latency), so frame step got stuck showing a frame from before.
-  videoEl.addEventListener('seeking', () => { if (memcActive && videoEl.paused) try { memcResetStream(); } catch (e){} });
+  videoEl.addEventListener('seeking', () => { if (memcActive && videoEl.paused) try { memcResetStream(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } });
   // ...and draws it once the seek is done: the per-frame callback does not always fire for a seek while paused.
   videoEl.addEventListener('seeked', () => { if (memcActive && videoEl.paused) memcCaptureNow(); });
   window.__ppShownFrameT = () => (memcActive && videoEl.paused && memcShownT != null && memcRing.length) ? memcShownT : null;
@@ -1581,7 +1581,7 @@
   // so the web decoder's +300 ms compensation doesn't apply.
   function nativeMemcPush(){
     if (!(window.PPNative && PPNative.videoActive && PPNative.videoActive() && PPNative.setMemc)) return;
-    let strength = 0.5; try { strength = memcStrength; } catch (e){}   // declared further down the file
+    let strength = 0.5; try { strength = memcStrength; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // declared further down the file
     PPNative.setMemc({
       mode: (memcMode !== 'off' && !perfLightActive()) ? memcMode : 'off',
       delayMs: Math.max(0, subtitleLatencyMs || 0),
@@ -1619,7 +1619,7 @@
   function setMemcMode(m){
     if (m !== 'off' && m !== 'blend' && m !== 'motion' && m !== 'ultra') m = 'off';
     memcMode = m;
-    try { localStorage.setItem(MEMC_KEY, m); } catch (e){}
+    try { localStorage.setItem(MEMC_KEY, m); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     memcBypass = false;
     memcResetStream();
     memcUpdateUI();
@@ -1635,7 +1635,7 @@
   memcThreshEl.addEventListener('input', () => {
     memcMaxIn = parseInt(memcThreshEl.value, 10) || 50;
     memcUpdateSliders();
-    try { localStorage.setItem(MEMC_IN_KEY, String(memcMaxIn)); } catch (e){}
+    try { localStorage.setItem(MEMC_IN_KEY, String(memcMaxIn)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     memcResetSource();
     refreshVideoDelayState();
   });
@@ -1643,7 +1643,7 @@
     memcOutFps = parseInt(memcOutEl.value, 10) || 120;
     memcUpdateSliders();
     memcLastKey = '';
-    try { localStorage.setItem(MEMC_OUT_KEY, String(memcOutFps)); } catch (e){}
+    try { localStorage.setItem(MEMC_OUT_KEY, String(memcOutFps)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     memcUpdateStatus();
   });
   memcUpdateSliders();
@@ -1652,7 +1652,7 @@
     memcSpeedEl.checked = memcSpeedAware;
     memcSpeedEl.addEventListener('change', () => {
       memcSpeedAware = memcSpeedEl.checked;
-      try { localStorage.setItem(MEMC_SPEED_KEY, memcSpeedAware ? '1' : '0'); } catch (e){}
+      try { localStorage.setItem(MEMC_SPEED_KEY, memcSpeedAware ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       memcBypass = false;       // re-judge the skip with the new rule
       memcLastKey = '';
       memcResetStream();
@@ -1673,8 +1673,8 @@
     memcStrength = (parseInt(memcStrEl.value, 10) || 0) / 100;
     memcUpdateStrength();
     memcLastKey = '';
-    try { localStorage.setItem(MEMC_STR_KEY, String(Math.round(memcStrength * 100))); } catch (e){}
-    if (memcActive && videoEl.paused) try { memcPresent(videoEl.currentTime, true); } catch (e){}
+    try { localStorage.setItem(MEMC_STR_KEY, String(Math.round(memcStrength * 100))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+    if (memcActive && videoEl.paused) try { memcPresent(videoEl.currentTime, true); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   });
   memcUpdateStrength();
 
@@ -1683,7 +1683,7 @@
     memcDelayTog.checked = memcDelayGL;
     memcDelayTog.addEventListener('change', () => {
       memcDelayGL = memcDelayTog.checked;
-      try { localStorage.setItem(MEMC_DELAY_KEY, memcDelayGL ? '1' : '0'); } catch (e){}
+      try { localStorage.setItem(MEMC_DELAY_KEY, memcDelayGL ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       refreshVideoDelayState();
     });
   }

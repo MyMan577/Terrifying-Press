@@ -13,7 +13,7 @@
     try{
       const c=document.createElement('canvas'); c.width=V.videoWidth; c.height=V.videoHeight;
       const x=c.getContext('2d'), f=getComputedStyle(V).filter;
-      if(f&&f!=='none'){try{x.filter=f;}catch(e){}}
+      if(f&&f!=='none'){try{x.filter=f;}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}
       x.drawImage(V,0,0,c.width,c.height);
       const t=((document.getElementById('np-title')||{}).textContent||'snapshot').replace(/[^\w\- ]+/g,'').trim().slice(0,60)||'snapshot';
       c.toBlob(b=>{

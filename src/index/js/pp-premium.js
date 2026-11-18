@@ -1,6 +1,6 @@
 (function(){
   var KEYS={playground:'ppPlaygroundMode',lite:'ppLiteMode',plus:'ppPlusMode',premium:'ppPremiumMode',focus:'ppFocusMode'};
-  var ls={g:function(k){try{return localStorage.getItem(k)}catch(e){return null}},s:function(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+  var ls={g:function(k){try{return localStorage.getItem(k)}catch(e){return null}},s:function(k,v){try{localStorage.setItem(k,v)}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}};
   var toast=function(m){try{window.ppToast(m)}catch(e){}};
   var cur=function(){for(var k in KEYS){if(ls.g(KEYS[k])==='1')return k}return null};
   // Task gate (see pp-gate-core). If it somehow failed to load, nothing is locked.
@@ -35,7 +35,7 @@
       +'<div style="margin-top:8px"><b style="color:var(--accent)">Nothing changes.</b> Existing data was found, so every mode except Playground stays unlocked, the new Focus mode included, and progress, levels and settings are untouched.</div>'
       +'<button type="button" id="pp-gate-ok" style="margin-top:12px;padding:8px 16px;border-radius:8px;border:1px solid var(--accent-dim,var(--line));background:transparent;color:var(--accent);font:600 12.5px system-ui,sans-serif;cursor:pointer">Got it</button>';
     document.body.appendChild(d);
-    d.querySelector('#pp-gate-ok').addEventListener('click',function(){G.state().notice=true;try{localStorage.setItem('ppModeGateV1',JSON.stringify(G.state()))}catch(e){}d.remove()});
+    d.querySelector('#pp-gate-ok').addEventListener('click',function(){G.state().notice=true;try{localStorage.setItem('ppModeGateV1',JSON.stringify(G.state()))}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }d.remove()});
   }
   setTimeout(notice,1500);
   var st=document.createElement('style');
@@ -76,8 +76,8 @@
   // switching: true when the user just picked the mode (at start-up a video player the user changed by hand is left alone).
   function power(on,switching){
     var was=!!window.ppSaver; window.ppSaver=!!on;
-    if(was!==!!on){try{window.dispatchEvent(new CustomEvent('ppfocus',{detail:!!on}))}catch(e){}}
-    try{var GM=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.PPGameMode; if(GM&&GM.cap)GM.cap({on:!!on}).catch(function(){})}catch(e){}
+    if(was!==!!on){try{window.dispatchEvent(new CustomEvent('ppfocus',{detail:!!on}))}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}
+    try{var GM=window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.PPGameMode; if(GM&&GM.cap)GM.cap({on:!!on}).catch(function(){})}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     try{
       var N=window.PPNative, native=N&&N.setNativeVideo&&N.nativeVideoSetting&&window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform();
       if(!native)return false;
@@ -123,8 +123,8 @@
     for(var k in KEYS){ls.s(KEYS[k],k===m?'1':'0'); document.body.classList.toggle('pp-'+k,k===m);}
     window.ppFocus=m==='focus'; window.ppLite=m==='lite';
     xp(m==='lite'||m==='premium'||m==='focus');
-    try{window.PPXpApi&&window.PPXpApi.refreshUnlocks&&window.PPXpApi.refreshUnlocks()}catch(e){}
-    if(m==='playground'){try{window.PPClicker&&window.PPClicker.show()}catch(e){}}
+    try{window.PPXpApi&&window.PPXpApi.refreshUnlocks&&window.PPXpApi.refreshUnlocks()}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+    if(m==='playground'){try{window.PPClicker&&window.PPClicker.show()}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}
     if(m==='lite')liteLook();
     var slate=(m==='lite'||wasLite)?liteSlate(m==='lite'):false;
     if(power(m==='focus'||m==='lite',true))return true;
@@ -156,7 +156,7 @@
       if(b.dataset.mode!==cur()&&!G.unlocked(b.dataset.mode)){toast('Locked: '+taskText(b.dataset.mode));return}
       var m=b.dataset.mode===cur()?null:b.dataset.mode;
       var reloading=apply(m); closeMenu(); refreshRow();
-      if(reloading){try{sessionStorage.setItem('ppModeBanner',m||'')}catch(e){}return}
+      if(reloading){try{sessionStorage.setItem('ppModeBanner',m||'')}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }return}
       if(m){banner(m)}else{toast('Standard mode.')}
     });
   }
@@ -168,7 +168,7 @@
     host.parentNode.appendChild(sec); refreshRow();
     sec.querySelector('#pp-mode-open').addEventListener('click',openMenu);
   }
-  var c0=cur(); if(c0){document.body.classList.add('pp-'+c0); if(c0==='premium'||c0==='focus'||c0==='lite')setTimeout(function(){xp(true);try{window.PPXpApi.refreshUnlocks()}catch(e){}},1000);}
+  var c0=cur(); if(c0){document.body.classList.add('pp-'+c0); if(c0==='premium'||c0==='focus'||c0==='lite')setTimeout(function(){xp(true);try{window.PPXpApi.refreshUnlocks()}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }},1000);}
   window.ppFocus=c0==='focus'; window.ppLite=c0==='lite';
   if(c0==='lite')liteLook();
   // A Lite that was switched on before the clean slate existed (or ended without one) is brought in line once.

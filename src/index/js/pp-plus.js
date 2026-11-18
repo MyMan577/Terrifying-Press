@@ -4,7 +4,7 @@
   function get(){return rd(KEY)==='1';}
   function liteOn(){return rd(LITE)==='1';}
   function hidden(){return rd(HIDE)==='1';}
-  function setHidden(v){try{if(v)localStorage.setItem(HIDE,'1');else localStorage.removeItem(HIDE);}catch(e){}}
+  function setHidden(v){try{if(v)localStorage.setItem(HIDE,'1');else localStorage.removeItem(HIDE);}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}
   function showNew(){
     try{
       var t=parseInt(localStorage.getItem(SEEN),10);
@@ -36,7 +36,7 @@
         localStorage.setItem(KEY,turningOn?'1':'0');
         if(turningOn){localStorage.setItem(LITE,'0');localStorage.setItem('ppPremiumMode','0');}
         sessionStorage.setItem('ppPlusBanner',turningOn?'on':'off');
-      }catch(e){}
+      }catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       try{location.reload();}catch(e){}
       // fallback if reload is blocked by the host: apply live
       setTimeout(function(){
@@ -44,7 +44,7 @@
         if(turningOn)document.body.classList.remove('pp-lite');
         var bt=document.getElementById('pp-plus-toggle');
         if(bt)bt.textContent=turningOn?'Turn off':'Turn on';
-        try{if(window.PPXpApi&&window.PPXpApi.refreshUnlocks)window.PPXpApi.refreshUnlocks();}catch(e){}
+        try{if(window.PPXpApi&&window.PPXpApi.refreshUnlocks)window.PPXpApi.refreshUnlocks();}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         banner();
       },800);
     });

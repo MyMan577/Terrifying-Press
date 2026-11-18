@@ -217,7 +217,7 @@
 
   // ===================== still more widgets =====================
   function kept(key){ try { return JSON.parse(localStorage.getItem(key)) || {}; } catch(e){ return {}; } }
-  function keep(key, v){ try { localStorage.setItem(key, JSON.stringify(v)); } catch(e){} }
+  function keep(key, v){ try { localStorage.setItem(key, JSON.stringify(v)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   function sameId(type, id, fn){ document.querySelectorAll('[data-pw-live="' + type + '"][data-id="' + id + '"]').forEach(fn); }
 
   // To-do list: tick things off, add them right on the widget.

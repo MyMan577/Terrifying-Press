@@ -33,9 +33,9 @@
         const o = tagged[rnd(tagged.length)], order = await similarTo(o.i, 'sound');
         const l = [o.t.dbId].concat(order.map(i => tr[i]).filter(t => t && !t.stem).slice(0, 19).map(t => t.dbId));
         if (l.length >= 8) themes.push({ key: 's:' + o.t.dbId, name: 'More like ' + o.t.title, ids: l });
-      } catch (e) {}
+      } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       if (!themes.length) return null;
-      let recent = []; try { recent = JSON.parse(ls('ppvSurpRecent')) || []; } catch (e) {}
+      let recent = []; try { recent = JSON.parse(ls('ppvSurpRecent')) || []; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       const pool = themes.filter(t => !recent.includes(t.key)), th = (pool.length ? pool : themes)[rnd((pool.length ? pool : themes).length)];
       recent.push(th.key); ls('ppvSurpRecent', JSON.stringify(recent.slice(-8)));
       return th;
@@ -94,7 +94,7 @@
       if (ls('ppLiteMode') === '1') return false;                     // Lite: no background AI work at all
       const focus = ls('ppFocusMode') === '1';                         // Focus mode: background AI work waits for the charger and for silence
       if ((ls('ppvBgPlay') !== '1' || focus) && mediaPlaying()) return false;
-      if ((ls('ppvBgChg') === '1' || focus) && navigator.getBattery) { try { const b = await navigator.getBattery(); if (!b.charging) return false; } catch (e) {} }
+      if ((ls('ppvBgChg') === '1' || focus) && navigator.getBattery) { try { const b = await navigator.getBattery(); if (!b.charging) return false; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       return true;
     }
     const freeBg = () => { if (bgCache) { Object.values(bgCache).forEach(s => s && s.release && s.release()); bgCache = null; } };
@@ -112,7 +112,7 @@
           setBg('Background: tagging ' + t.title + ' (' + list.filter(x => !tg[x.dbId] && !bgFailed.has(x.dbId)).length + ' left)\u2026');
           try { const r = await tagTrack(t.url, () => {}, lv, { deep: deep.checked, cache: lv ? null : bgCache, rest: 0.3 }); if (!r.emb && !r.genre) throw new Error('nothing detected'); await persistTags(t.dbId, r, aeq.checked); }
           catch (e) { console.warn('background tag failed', t.title, e); bgFailed.add(t.dbId); }
-          try { refreshCount(); } catch (e) {}
+          try { refreshCount(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
           await tick(); await ease(performance.now() - tb0, 0.3, 'bg');   // background work is deliberately gentle
         }
         if (ls('ppvSurp') === '1' && surpDue() && await isAway()) {
@@ -174,14 +174,14 @@
       try {
         const a = A(), t = cur(); if (!t) throw new Error('Play or select a track first.');
         const lyr = window.__ppLyrics;
-        { const m = WH[wsize.value][2]; if (m && m.big && localStorage.getItem('ppvWBig_' + wsize.value) !== '1') { if (!confirm('This model is a ~' + m.big + ' MB download and needs plenty of free memory. Continue?')) { busy(false); return; } try { localStorage.setItem('ppvWBig_' + wsize.value, '1'); } catch (e) {} } }
+        { const m = WH[wsize.value][2]; if (m && m.big && localStorage.getItem('ppvWBig_' + wsize.value) !== '1') { if (!confirm('This model is a ~' + m.big + ' MB download and needs plenty of free memory. Continue?')) { busy(false); return; } try { localStorage.setItem('ppvWBig_' + wsize.value, '1'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } }
         if (ls('ppvWClean') === null) wclean.checked = t.kind !== 'video';   // untouched: songs get their vocals separated first, videos do not
         if (t.kind !== 'video' && lyr && lyr.has(t.dbId) && !confirm('This track already has lyrics. Replace them?')) { busy(false); return; }
         document.querySelectorAll('.ppv-bar-wh i').forEach(e => e.style.width = '0');
         const wst = t => { h.status(t); const m = /(\d+)%/.exec(t); if (m) document.querySelectorAll('.ppv-bar-wh i').forEach(e => e.style.width = m[1] + '%'); };
         const cues = await transcribe(t, { size: wsize.value, lang: wlang.disabled ? '' : wlang.value, task: wtask.value, clean: wclean.checked, acc: +$('#ppv-wacc').value, model: h.sel.value, strength: +h.sl.value, lv: h.LV() }, wst);
         if (!cues.length) throw new Error('No speech found.');
-        if (t.kind === 'video' || !lyr) a.setSubtitles(t.dbId, cues, 'Whisper.srt'); else lyr.set(t.dbId, toLrc(cues)); if (t.kind !== 'video' && lyr) { try { a.setSubtitles(t.dbId, cues, 'Whisper.srt'); } catch (e) {} }
+        if (t.kind === 'video' || !lyr) a.setSubtitles(t.dbId, cues, 'Whisper.srt'); else lyr.set(t.dbId, toLrc(cues)); if (t.kind !== 'video' && lyr) { try { a.setSubtitles(t.dbId, cues, 'Whisper.srt'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
         lastSrt = { name: t.title, text: toSrt(cues) }; wsrt.style.display = '';
         wout.textContent = cues.length + ' lines added as ' + (t.kind === 'video' ? 'subtitles' : 'synced lyrics and subtitles (tap CC on the disc to show them)') + '.\n' + cues.slice(0, 4).map(c => mmss(c.start) + '  ' + c.text).join('\n');
         { const rp = window.__ppvRep; if (rp && (rp.fixed || rp.unsure)) wout.textContent += '\n' + (rp.fixed ? rp.fixed + ' repeated line' + (rp.fixed === 1 ? '' : 's') + ' made consistent. ' : '') + (rp.unsure ? rp.unsure + ' repeated line' + (rp.unsure === 1 ? ' is' : 's are') + ' still unsure: open the editor, Repeats tab, to choose the right wording.' : ''); }
@@ -197,7 +197,7 @@
         const t = cur(); if (!t) throw new Error('Play or select a track first.');
         const lyr = window.__ppLyrics, raw = t.kind !== 'video' && lyr && lyr.get ? lyr.get(t.dbId) : '';
         if (!raw || !/\[\d{1,3}:\d{1,2}/.test(raw)) throw new Error('This song has no synced lyrics yet. Find or load lyrics first (or use Transcribe). This button only times the words of lyrics the song already has.');
-        let sync = 0; try { sync = +JSON.parse(ls('ppvSongSync') || '{}')[t.dbId] || 0; } catch (e) {}
+        let sync = 0; try { sync = +JSON.parse(ls('ppvSongSync') || '{}')[t.dbId] || 0; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         const plan = wtLines(raw, sync); if (!plan.lines.length) throw new Error('No lyric lines with words to time.');
         if (ls('ppvWClean') === null) wclean.checked = true;          // untouched: listen to the vocals only
         { const m = WH[wsize.value] && WH[wsize.value][2]; if (m && m.big && ls('ppvWBig_' + wsize.value) !== '1') { if (!confirm('This model is a ~' + m.big + ' MB download and needs plenty of free memory. Continue?')) { busy(false); return; } ls('ppvWBig_' + wsize.value, '1'); } }
@@ -223,11 +223,11 @@
       a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 10000);
     };
     $('#ppv-wfree').onclick = async () => {
-      try { if (NATIVE) { const ids = PK_FILES.map(f => f[0]).concat(Object.values(WHN).flatMap(k => [k + '_enc', k + '_dec', k + '_encf'])); for (const id of ids) { try { await NP.remove({ id }); } catch (e) {} } } if (asr) { await asr.dispose(); asr = null; asrId = ''; } const ks = await caches.keys(); for (const k of ks) if (/transformers/i.test(k)) await caches.delete(k); h.status('Whisper download removed.'); } catch (e) { h.status('Error: ' + errText(e)); }
+      try { if (NATIVE) { const ids = PK_FILES.map(f => f[0]).concat(Object.values(WHN).flatMap(k => [k + '_enc', k + '_dec', k + '_encf'])); for (const id of ids) { try { await NP.remove({ id }); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } } if (asr) { await asr.dispose(); asr = null; asrId = ''; } const ks = await caches.keys(); for (const k of ks) if (/transformers/i.test(k)) await caches.delete(k); h.status('Whisper download removed.'); } catch (e) { h.status('Error: ' + errText(e)); }
     };
     // ---------- AI summary ----------
     { const ss = $('#ppv-sumstyle'); if (ss) ss.value = sumStyleKey(); }
-    { const sl = $('#ppv-sumlen'); sl.value = sumLenKey(); sl.onchange = () => { try { localStorage.setItem('ppvSumLen', sl.value); } catch (e) {} }; }
+    { const sl = $('#ppv-sumlen'); sl.value = sumLenKey(); sl.onchange = () => { try { localStorage.setItem('ppvSumLen', sl.value); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }; }
     $('#ppv-lyfix').onclick = () => { const a = window.__ppApi, i = a ? a.currentIndex() : -1; if (i < 0) { h.status('Play or select a track first.'); return; } if (h.mas && h.mas.lyricFix) h.mas.lyricFix(i); };
     $('#ppv-sumtalk').onclick = () => { const a = window.__ppApi, i = a ? a.currentIndex() : -1; if (i < 0) { h.status('Play or select a track first.'); return; } if (h.mas && h.mas.songTalk) h.mas.songTalk(i); };
     $('#ppv-sumgo').onclick = async () => {
@@ -415,9 +415,9 @@
         const t = edTrack || cur(); if (!t) { toast('Play or select a track first.'); return false; }
         const cues = toCues(); if (!cues.length) { toast('Nothing to save: add at least one line with text.'); return false; }
         const a = A(), lyr = window.__ppLyrics;
-        if (t.kind === 'video' || !lyr) a.setSubtitles(t.dbId, cues, 'Edited.srt'); else lyr.set(t.dbId, toLrc(cues)); if (t.kind !== 'video' && lyr) { try { a.setSubtitles(t.dbId, cues, 'Edited.srt'); } catch (e) {} }
+        if (t.kind === 'video' || !lyr) a.setSubtitles(t.dbId, cues, 'Edited.srt'); else lyr.set(t.dbId, toLrc(cues)); if (t.kind !== 'video' && lyr) { try { a.setSubtitles(t.dbId, cues, 'Edited.srt'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
         lastSrt = { name: t.title, text: toSrt(cues) }; wsrt.style.display = '';
-        edId = t.dbId; savedSnap = JSON.stringify(rows); try { rpAltsSave(t.dbId, rows.map(r => ({ s: r.s, alts: r.alts }))); } catch (e) {} upBar(); toast('Saved ' + cues.length + ' lines as ' + (t.kind === 'video' ? 'subtitles' : 'synced lyrics') + '.'); return true;
+        edId = t.dbId; savedSnap = JSON.stringify(rows); try { rpAltsSave(t.dbId, rows.map(r => ({ s: r.s, alts: r.alts }))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } upBar(); toast('Saved ' + cues.length + ' lines as ' + (t.kind === 'video' ? 'subtitles' : 'synced lyrics') + '.'); return true;
       };
       const dlFile = ext => {
         const t = edTrack || cur(); if (!t) return; const cues = toCues(); if (!cues.length) { toast('Nothing to download yet.'); return; }

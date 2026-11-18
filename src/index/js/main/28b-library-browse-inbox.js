@@ -187,7 +187,7 @@
       if (selectMode) exitSelectMode();
       const hadGroup = b.key != null;
       b.mode = btn.dataset.browse; b.key = null; ppBrowseScroll = 0;
-      try { localStorage.setItem('ppBrowseMode', b.mode); } catch(e){}
+      try { localStorage.setItem('ppBrowseMode', b.mode); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       if (hadGroup && history.state && history.state.ppBrowse){ try { history.back(); } catch(e){} }
       renderPlaylist();
       playlistEl.scrollTop = 0;
@@ -213,7 +213,7 @@
     if (!uris.length) return;
     const l = ppIgnoredUris(), have = new Set(l);
     uris.forEach(u => { if (!have.has(u)){ have.add(u); l.push(u); } });
-    try { localStorage.setItem('ppIgnoredUris', JSON.stringify(l.slice(-4000))); } catch(e){}
+    try { localStorage.setItem('ppIgnoredUris', JSON.stringify(l.slice(-4000))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function ppFoundAdd(entries){
     const l = ppFoundList(), have = new Set(l.map(e => e.uri));
@@ -236,7 +236,7 @@
     const l = ppFoundList(), kept = l.filter(e => !lib.has(e.uri));
     if (kept.length !== l.length){ ppFound = kept; ppFoundSave(); }
     const ig = ppIgnoredUris(), ig2 = ig.filter(u => !lib.has(u));
-    if (ig2.length !== ig.length){ try { localStorage.setItem('ppIgnoredUris', JSON.stringify(ig2)); } catch(e){} }
+    if (ig2.length !== ig.length){ try { localStorage.setItem('ppIgnoredUris', JSON.stringify(ig2)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   }
   // What a file most likely is, from where it sits, what it is called, how long it runs and its tags. Only a guess.
   function ppGuessKind(e){
@@ -318,7 +318,7 @@
       saveLibraryMeta(); renderPlaylist(); renderPlaylistsManager();
       showToast('Removed ' + uris.size + ' from your library');
     } else {
-      try { localStorage.setItem('ppKeepMissing', JSON.stringify(ppKeptMissing().concat([...uris]).slice(-4000))); } catch(e){}
+      try { localStorage.setItem('ppKeepMissing', JSON.stringify(ppKeptMissing().concat([...uris]).slice(-4000))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     }
     ppMissing = ppMissing.filter(u => !uris.has(u));
     ppFoundSync();
@@ -437,7 +437,7 @@
     if (tg){
       tg.checked = ppAutoScanOn();
       tg.addEventListener('change', () => {
-        try { localStorage.setItem('ppAutoScan', tg.checked ? '1' : '0'); } catch(e){}
+        try { localStorage.setItem('ppAutoScan', tg.checked ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         if (tg.checked) ppAutoScan();
       });
     }
@@ -456,13 +456,13 @@
       ppInboxScans++;
       try {
         let l = []; try { l = JSON.parse(localStorage.getItem(PP_FOLDERS_KEY) || '[]'); } catch(e){}
-        for (const tree of l){ try { await PPNative.lib.rescan(tree, known()); } catch(e){} }
+        for (const tree of l){ try { await PPNative.lib.rescan(tree, known()); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
         if (ppFoundList().length < 2500){
           const a = await PPNative.lib.mediaAccess();
           if (a && (a.audio || a.video)) await PPNative.lib.scanDevice(known(), true);
         }
         await new Promise(r => setTimeout(r, 400));   // let the last batch of finds arrive
-      } catch(e){}
+      } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       finally { ppInboxScans--; ppAutoScanAt = Date.now(); ppAutoScanP = null; }
       const n = ppFoundList().length - before;
       if (n > 0) showToast(n + ' new file' + (n === 1 ? '' : 's') + ' on this phone. See New on this phone in the Library.');

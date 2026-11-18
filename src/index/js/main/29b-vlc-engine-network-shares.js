@@ -61,7 +61,7 @@
 
   /** loadTrack's stand-in for setSrc when the track belongs to VLC: leave the element empty, open VLC if asked to play. */
   function ppVlcPark(el, t, autoplay){
-    try { const raw = PPNative.raw(el); raw.removeAttribute('src'); raw.load(); } catch(e){}
+    try { const raw = PPNative.raw(el); raw.removeAttribute('src'); raw.load(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     isPlaying = false; updatePlayIcon();
     if (autoplay) ppVlcOpen(t);
   }
@@ -137,7 +137,7 @@
   function sndNowMs(){ return snd.playing ? snd.pos + (performance.now() - snd.at) * snd.rate : snd.pos; }
   /** The sound's position while the picture rests in the background (for the notification), else null. */
   function ppSndPos(){ return (snd.on && snd.parked && snd.t === tracks[currentIndex]) ? Math.round(sndNowMs()) : null; }
-  function sndCmd(fn){ snd.cmdAt = performance.now(); try { const p = fn(); if (p && p.catch) p.catch(() => {}); } catch(e){} }
+  function sndCmd(fn){ snd.cmdAt = performance.now(); try { const p = fn(); if (p && p.catch) p.catch(() => {}); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   function sndRawVideo(){ return PPNative.raw(videoEl); }
 
   function sndStart(t){
@@ -150,7 +150,7 @@
       Object.assign(snd, { t, on: true, uri, want: false, pos: Math.round((v.currentTime || 0) * 1000), at: performance.now(),
                            playing: false, rate: playbackSpeed || 1, vol: -1, parked: false, selfSeek: false });
       t._snd = true;
-      try { PPNative.companionFx(true); } catch(e){}
+      try { PPNative.companionFx(true); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       return SndP.loadMedia({ id: 'snd:' + (t.dbId || uri), uri, kind: 'audio', companion: true, autoplay: false,
                               title: t.title || '', artist: t.artist || '', startMs: snd.pos }).then(() => {
         if (gen !== snd.gen) return;
@@ -167,7 +167,7 @@
     clearInterval(snd.timer); snd.timer = 0;
     if (!snd.on) return;
     snd.on = false; snd.t = null;
-    try { PPNative.companionFx(false); } catch(e){}
+    try { PPNative.companionFx(false); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     try { const v = sndRawVideo(); if (v.playbackRate !== playbackSpeed) v.playbackRate = playbackSpeed; } catch(e){}
     if (!(window.PPNative && PPNative.active())) sndCmd(() => SndP.stop());
   }
@@ -245,7 +245,7 @@
         if (!snd.on || !snd.parked) return;
         if (c && c.name === 'seek' && c.posMs != null){ snd.pos = c.posMs; snd.at = performance.now(); sndCmd(() => SndP.seek({ ms: c.posMs })); }
         sndCmd(() => isPlaying ? SndP.play() : SndP.pause());
-        try { ppMirrorSync(); } catch(e){}
+        try { ppMirrorSync(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       }, 0);
     });
     document.addEventListener('visibilitychange', () => {
@@ -270,7 +270,7 @@
     const v = sndRawVideo();
     sndCmd(() => isPlaying ? SndP.play() : SndP.pause());
     try { v.pause(); } catch(e){}                            // the picture rests while the app is hidden
-    try { ppMirrorSync(); } catch(e){}
+    try { ppMirrorSync(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     return true;
   }
 
@@ -365,7 +365,7 @@
     });
     tog.addEventListener('change', () => {
       vlcAuto = tog.checked;
-      try { localStorage.setItem(VLC_AUTO_KEY, vlcAuto ? '1' : '0'); } catch(e){}
+      try { localStorage.setItem(VLC_AUTO_KEY, vlcAuto ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     });
   })();
 
@@ -377,10 +377,10 @@
   function netSaveServer(uri, name){
     const list = netSaved().filter(s => s.uri !== uri);
     list.unshift({ uri, name: name || uri });
-    try { localStorage.setItem(NET_SERVERS_KEY, JSON.stringify(list.slice(0, 20))); } catch(e){}
+    try { localStorage.setItem(NET_SERVERS_KEY, JSON.stringify(list.slice(0, 20))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function netForget(uri){
-    try { localStorage.setItem(NET_SERVERS_KEY, JSON.stringify(netSaved().filter(s => s.uri !== uri))); } catch(e){}
+    try { localStorage.setItem(NET_SERVERS_KEY, JSON.stringify(netSaved().filter(s => s.uri !== uri))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
 
   function netEnsureUi(){

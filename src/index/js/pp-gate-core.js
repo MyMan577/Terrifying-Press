@@ -9,8 +9,8 @@
   var K='ppModeGateV1', MODE_KEYS={lite:'ppLiteMode',plus:'ppPlusMode',premium:'ppPremiumMode',playground:'ppPlaygroundMode',focus:'ppFocusMode'},
       PLAY_GOAL=3*3600000, PLUS_PASS=75, PREMIUM_PASS=90;
   function rd(k){try{return localStorage.getItem(k)}catch(e){return null}}
-  function wr(k,v){try{localStorage.setItem(k,v)}catch(e){}}
-  var st=null; try{st=JSON.parse(rd(K)||'null')}catch(e){}
+  function wr(k,v){try{localStorage.setItem(k,v)}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}
+  var st=null; try{st=JSON.parse(rd(K)||'null')}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   if(!st||typeof st!=='object'){
     var had=false;
     try{ for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i)||''; if(/^(player|pp|disc)/i.test(k)&&k!==K){had=true;break} } }catch(e){}
@@ -30,7 +30,7 @@
     if(m==='premium')return marathonBest()>=PREMIUM_PASS;
     return false;
   }
-  function fire(m){try{window.dispatchEvent(new CustomEvent('ppgate',{detail:m}))}catch(e){}}
+  function fire(m){try{window.dispatchEvent(new CustomEvent('ppgate',{detail:m}))}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}
   var G=window.PPModeGate={
     state:function(){return st},
     legacy:function(){return !!st.legacy},

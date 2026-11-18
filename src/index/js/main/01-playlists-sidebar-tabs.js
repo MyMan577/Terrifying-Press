@@ -373,7 +373,7 @@
     const pl = playlists.find(p => p.id === plId); if (!pl) return null;
     const ids = ppMembers(plId); if (ids.length < 2){ showToast('Nothing to shuffle yet'); return pl; }
     pl.order = ppShuffled(ids);
-    try { if (typeof sortViews === 'object' && sortViews[plId]){ delete sortViews[plId]; saveSortViews(); } } catch(e){}   // a title/artist sort would hide the new order
+    try { if (typeof sortViews === 'object' && sortViews[plId]){ delete sortViews[plId]; saveSortViews(); } } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // a title/artist sort would hide the new order
     savePlaylists(); renderPlaylist(); renderPlaylistsManager();
     showToast('Shuffled “' + pl.name + '”');
     return pl;
@@ -430,7 +430,7 @@
   function plIndices(pl){ const idxs = []; tracks.forEach((t, i) => { if ((t.playlistIds || []).includes(pl.id)) idxs.push(i); }); return orderIndicesForPlaylist(idxs, pl); }
   function afterBatchPl(){
     savePlaylists(); saveLibraryMeta(); renderPlaylistsManager(); renderPlaylist();
-    if (window.__ppRenderHomeNow){ try { window.__ppRenderHomeNow(); } catch(e){} }
+    if (window.__ppRenderHomeNow){ try { window.__ppRenderHomeNow(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   }
   function deletePlaylists(ids){
     const list = plByIds(ids); if (!list.length) return false;
@@ -471,7 +471,7 @@
     list.forEach(pl => {
       const members = ppMembers(pl.id); if (members.length < 2) return;
       pl.order = ppShuffled(members); n++;
-      try { if (typeof sortViews === 'object' && sortViews[pl.id]){ delete sortViews[pl.id]; saveSortViews(); } } catch(e){}
+      try { if (typeof sortViews === 'object' && sortViews[pl.id]){ delete sortViews[pl.id]; saveSortViews(); } } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     });
     if (!n){ showToast('Nothing to shuffle yet'); return false; }
     afterBatchPl();

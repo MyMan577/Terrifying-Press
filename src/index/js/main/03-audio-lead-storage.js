@@ -101,7 +101,7 @@
       applyEqAll();
       applyMasterBoostAll();
       applyTrackBoostToCurrentGraph();
-    } catch (e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     if (audioEl.getAttribute('src') !== t.url) audioEl.src = t.url;
     audioEl.loop = false;
     audioLeadBias = 0; audioLeadFixes = [];

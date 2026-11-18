@@ -55,7 +55,7 @@
       if (!P) return null;
       if (P.ScreenOrientation) return P.ScreenOrientation;
       if (P.PPPlayer && typeof P.PPPlayer.lockOrientation === 'function') return { lock: o => P.PPPlayer.lockOrientation(o), unlock: () => P.PPPlayer.unlockOrientation() };
-    } catch(e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     return null;
   };
   async function lockOrientation(target){
@@ -229,7 +229,7 @@
   function saveGestureSettings(){
     try {
       localStorage.setItem(GESTURE_KEY, JSON.stringify({ gesturesEnabled, gesturePreset, gestureMap }));
-    } catch(e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
 
   const gesturesEnabledToggle = document.getElementById('gestures-enabled-toggle');

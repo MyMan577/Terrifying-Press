@@ -20,7 +20,7 @@
     p.round = +p.round || 0; p.log = p.log || {}; p.hist = p.hist || []; p.task = p.task || '';
     return p;
   })();
-  function poSave(){ try { localStorage.setItem(PO_KEY, JSON.stringify(PO)); } catch(e){} }
+  function poSave(){ try { localStorage.setItem(PO_KEY, JSON.stringify(PO)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   function poLen(ph){ return Math.max(1, +PO.s[ph] || PO_DEF[ph]) * 60000; }
   function poLeft(){ return PO.run ? Math.max(0, PO.end - Date.now()) : PO.left != null ? PO.left : poLen(PO.ph); }
   function poToday(){ return PO.log[dayKey(new Date())] || { n: 0, ms: 0 }; }
@@ -151,7 +151,7 @@
   function opts(list, cur){ return list.map(function(x){ return '<option value="' + esc(x[0]) + '"' + (String(cur) === String(x[0]) ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; }).join(''); }
   var R = 46, CIRC = 2 * Math.PI * R;
   var PEND_SEC_KEY = 'ppPendSec', pendSec = (function(){ try { return localStorage.getItem(PEND_SEC_KEY) === 'pomo' ? 'pomo' : 'alarms'; } catch(e){ return 'alarms'; } })();
-  function pendGo(sec){ pendSec = sec; try { localStorage.setItem(PEND_SEC_KEY, sec); } catch(e){} if (openPageId === POMO_ID) renderPage(); else openPage(POMO_ID); }
+  function pendGo(sec){ pendSec = sec; try { localStorage.setItem(PEND_SEC_KEY, sec); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } if (openPageId === POMO_ID) renderPage(); else openPage(POMO_ID); }
   function pomoPage(el){
     el.innerHTML = '<div class="ppd" data-sec="' + pendSec + '"><header class="ppp-h"><div><small>Press Play</small><h1>Pendulum</h1></div>' +
       (pendSec === 'pomo' ? '<div class="ppp-today"><b class="ppp-tn">0</b><span class="ppp-tg"></span><small>today</small></div>' : '<div class="ppa-next-pill"></div>') + '</header>' +
@@ -297,7 +297,7 @@
   var AL_KEY = 'ppAlarmsV2', DAY_N = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
   var AL = (function(){ var a = []; try { a = JSON.parse(localStorage.getItem(AL_KEY)) || []; } catch(e){} return Array.isArray(a) ? a : []; })();
   var alOpen = null, RING = null;   // the alarm being edited in the tab; the alarm ringing now
-  function alSave(){ try { localStorage.setItem(AL_KEY, JSON.stringify(AL)); } catch(e){} alNative(); }
+  function alSave(){ try { localStorage.setItem(AL_KEY, JSON.stringify(AL)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } alNative(); }
   function alById(id){ return AL.filter(function(a){ return a.id === id; })[0] || null; }
   function alNew(){ return { id: 'a' + uid(), on: true, time: '07:30', days: [1, 2, 3, 4, 5], label: '', wake: 'sound', tone: 'classic', louder: true, out: 'speaker', music: '', fade: 1, snooze: 9, ringFor: 10, loud: false, pomo: false, last: Date.now() }; }
   // what an alarm wakes you to: 'sound' (an alarm tone), 'both' (the tone, then music after 30 s) or 'music'
@@ -814,7 +814,7 @@
   // layout zone 'ring', edited like a page (Edit what's on it); its settings are kept in 'ppRingV1'.
   var RS_KEY = 'ppRingV1', RS_IMG_KEY = 'ppRingImgV1';
   var RS = (function(){ var r = {}; try { r = JSON.parse(localStorage.getItem(RS_KEY)) || {}; } catch(e){} return Object.assign({ alarm: true, pomo: true, bg: 'sunrise', dim: 20 }, r); })();
-  function rsSave(){ try { localStorage.setItem(RS_KEY, JSON.stringify(RS)); } catch(e){} }
+  function rsSave(){ try { localStorage.setItem(RS_KEY, JSON.stringify(RS)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   function rsImg(){ try { return localStorage.getItem(RS_IMG_KEY) || ''; } catch(e){ return ''; } }
   var RS_BGS = [['sunrise', 'Sunrise'], ['night', 'Night sky'], ['aurora', 'Aurora'], ['ocean', 'Ocean'], ['ember', 'Ember'], ['theme', 'Theme colour'], ['plain', 'Plain'], ['cover', 'Cover art'], ['custom', 'Your picture']];
   var ringEl = document.createElement('div'); ringEl.id = 'pp-ringscreen'; ringEl.hidden = true; ringEl.setAttribute('role', 'dialog'); ringEl.setAttribute('aria-modal', 'true');

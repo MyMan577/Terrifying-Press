@@ -18,7 +18,7 @@
       return ok;
     },
     createPlaylist: name => createPlaylist(name),
-    setStemSections: on => { if (stemSections === !!on) return; stemSections = !!on; try { localStorage.setItem('ppStemSections', on ? '1' : '0'); } catch(e){} renderPlaylist(); },   // unchanged (the splitter sets it at start): no redraw
+    setStemSections: on => { if (stemSections === !!on) return; stemSections = !!on; try { localStorage.setItem('ppStemSections', on ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } renderPlaylist(); },   // unchanged (the splitter sets it at start): no redraw
     // Splitter entry point: adds stems as split tracks (kept out of All tracks, grouped under "Split tracks").
     // info: { srcId, srcTitle, makePlaylist, showInTab }
     addLibraryFiles: (files) => addFiles(files),   // a new ordinary library track (used by mashup save)
@@ -106,7 +106,7 @@
   function loadTrack(i, autoplay){
     if (i < 0 || i >= tracks.length) return;
     noteQueuePlay(i);
-    if (autoplay && window.__ppOnPlay){ try { window.__ppOnPlay(tracks[i]); } catch(e){} }
+    if (autoplay && window.__ppOnPlay){ try { window.__ppOnPlay(tracks[i]); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
     const _prevTrack = currentIndex !== -1 ? tracks[currentIndex] : null;
 
     // Remember where the track we're switching away from left off, so it
@@ -160,7 +160,7 @@
 
     setABLabel();
     applySavedSubtitles(t.dbId);
-    try { songSoundSwitch(_prevTrack, t); } catch(e){}   // this song's own speed / pitch / reverb, if it has one
+    try { songSoundSwitch(_prevTrack, t); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // this song's own speed / pitch / reverb, if it has one
     try { songOvSwitch(_prevTrack, t); } catch(e){ console.warn('[song override]', e); }   // its own filters, visualizer, smoothing, enhance, FX, fit
     applySpeed();
     syncAudioLoop();
@@ -325,9 +325,9 @@
   }
   function saveUserQueue(){
     queueVer++;
-    try { localStorage.setItem('ppUserQueue', JSON.stringify({ ids: userQueue })); } catch(e){}
+    try { localStorage.setItem('ppUserQueue', JSON.stringify({ ids: userQueue })); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     clearTimeout(saveUserQueue.t);
-    saveUserQueue.t = setTimeout(() => { try { document.dispatchEvent(new CustomEvent('pp-queue')); } catch(e){} }, 0);
+    saveUserQueue.t = setTimeout(() => { try { document.dispatchEvent(new CustomEvent('pp-queue')); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }, 0);
   }
   // Called by loadTrack before currentIndex moves: a picked song that starts leaves the queue.
   function noteQueuePlay(i){
@@ -618,7 +618,7 @@
     const rep = !!t && sleepTimer.mode !== 'track' && (repeatMode === 2 || (repeatMode === 1 && tracks.length === 1));
     const want = rep && t.kind !== 'video';
     if (audioEl.loop !== want) audioEl.loop = want;
-    let nv = false; try { nv = !!(window.PPNative && PPNative.enabled && PPNative.nativeVideoSetting && PPNative.nativeVideoSetting()); } catch(e){}
+    let nv = false; try { nv = !!(window.PPNative && PPNative.enabled && PPNative.nativeVideoSetting && PPNative.nativeVideoSetting()); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     const wantV = rep && t.kind === 'video' && nv;
     if (videoEl.loop !== wantV) videoEl.loop = wantV;
   }

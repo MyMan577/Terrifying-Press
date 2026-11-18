@@ -6,7 +6,7 @@
   var build = +window.PP_BUILD || 0, found = null, busy = false;
   var $ = function(id){ return document.getElementById(id); };
   var get = function(k){ try { return localStorage.getItem(k); } catch(e){ return null; } };
-  var set = function(k, v){ try { localStorage.setItem(k, v); } catch(e){} };
+  var set = function(k, v){ try { localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
   var enabled = function(){ return get('ppUpdateCheck') !== '0'; };
   var name = function(n){ return n ? '1.0.' + n : 'a local build'; };
 

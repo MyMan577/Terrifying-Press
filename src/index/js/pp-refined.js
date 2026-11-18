@@ -17,7 +17,7 @@
     requestAnimationFrame(placeInd);
   }
   apply(want());
-  if (tg) tg.addEventListener('change', function(){ try { localStorage.setItem(KEY, tg.checked ? '1' : '0'); } catch(e){} apply(tg.checked); });
+  if (tg) tg.addEventListener('change', function(){ try { localStorage.setItem(KEY, tg.checked ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } apply(tg.checked); });
   if (bar){
     new MutationObserver(function(){ requestAnimationFrame(placeInd); }).observe(bar, { subtree: true, attributes: true, attributeFilter: ['class'] });
     window.addEventListener('resize', function(){ requestAnimationFrame(placeInd); });

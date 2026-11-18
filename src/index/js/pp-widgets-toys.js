@@ -116,7 +116,7 @@
       setText(el.querySelector('.pw-tt-s'), sb ? 'This song: ' + sb + ' BPM' + (m.bpm ? (Math.abs(m.bpm - sb) <= 3 || Math.abs(m.bpm * 2 - sb) <= 4 || Math.abs(m.bpm - sb * 2) <= 4 ? ' · spot on!' : '') : '') : m.taps.length === 1 ? 'Keep tapping…' : m.bpm ? m.taps.length + ' taps' : 'Tap at least four times.');
     } };
   function ttMatches(bpm){
-    var V = window.PPVocals, tags = null; try { tags = V && V.loadTags ? V.loadTags() : null; } catch(e){}
+    var V = window.PPVocals, tags = null; try { tags = V && V.loadTags ? V.loadTags() : null; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     var A = api(); if (!A || !tags) return [];
     var t = A.tracks();
     return playable().filter(function(i){ var c = tags[String(t[i].dbId)], b = c && +c.bpm; if (!b) return false; return [b, b * 2, b / 2].some(function(x){ return Math.abs(x - bpm) / bpm <= 0.05; }); });
@@ -160,7 +160,7 @@
       '<div class="pw-gs-o">' + g.opts.map(function(i){ var cls = !done ? '' : i === g.ans ? ' ok' : i === g.pick ? ' no' : ' dim'; return '<button type="button" class="pw-gs-a' + cls + '" data-pw-gs="pick" data-i="' + i + '"' + (done ? ' disabled' : '') + '><b>' + esc(t[i].title) + '</b><small>' + esc(t[i].artist && t[i].artist !== 'Unknown artist' ? t[i].artist : '') + '</small></button>'; }).join('') + '</div>' +
       (done ? '<p class="pw-gs-res">' + (ok ? 'Yes! ' + (g.score > 1 ? g.score + ' in a row.' : '') : g.pick == null ? 'Time’s up.' : 'Not that one.') + '</p><div class="pw-sw-b"><button type="button" class="on" data-pw-gs="go">Next</button><button type="button" data-pw-gs="play" data-i="' + g.ans + '">Play it</button><button type="button" data-pw-gs="quit">Stop</button></div>' : '');
   }
-  function gsClip(stop){ if (GUESS.a){ try { GUESS.a.pause(); } catch(e){} if (stop){ GUESS.a.removeAttribute('src'); try { GUESS.a.load(); } catch(e){} GUESS.a = null; } } }
+  function gsClip(stop){ if (GUESS.a){ try { GUESS.a.pause(); } catch(e){} if (stop){ GUESS.a.removeAttribute('src'); try { GUESS.a.load(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } GUESS.a = null; } } }
   function gsRound(el){
     var g = fdMem('gs:' + el.dataset.id, { phase: 'start', score: 0 }), A = api(); if (!A) return;
     var t = A.tracks(), pool = playable().filter(function(i){ return t[i].kind !== 'video' && t[i].url; });
@@ -187,7 +187,7 @@
     else if (op === 'pick' && g.phase === 'ask'){
       g.pick = +b.dataset.i; var ok = g.pick === g.ans;
       g.phase = ok ? 'right' : 'wrong'; g.score = ok ? g.score + 1 : 0;
-      if (ok && g.score > gsBest()) try { localStorage.setItem(GUESS_KEY, JSON.stringify({ best: g.score })); } catch(x){}
+      if (ok && g.score > gsBest()) try { localStorage.setItem(GUESS_KEY, JSON.stringify({ best: g.score })); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
       try { navigator.vibrate && navigator.vibrate(ok ? [20, 40, 20] : 120); } catch(x){}
       gsDraw(el, g); el._ph = g.phase + g.round;
     }

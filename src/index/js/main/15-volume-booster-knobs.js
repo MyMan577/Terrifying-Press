@@ -16,7 +16,7 @@
     const all = loadTrackBoosts();
     if (value == null) delete all[dbId];
     else all[dbId] = value;
-    try { localStorage.setItem(TRACK_BOOST_KEY, JSON.stringify(all)); } catch(e){}
+    try { localStorage.setItem(TRACK_BOOST_KEY, JSON.stringify(all)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function getSavedTrackBoost(dbId){
     const v = loadTrackBoosts()[dbId];

@@ -418,7 +418,7 @@
   } catch (e){}
   if (enhMaster === null) enhMaster = memcEnhSettings();   // first time: on if something was already set up
   function enhSave(){
-    try { localStorage.setItem(ENH_KEY, JSON.stringify({ sharp: enhSharpSet ? enhSharp : undefined, deband: enhDeband, deblock: enhDeblock, anime: enhAnime, ai: enhAI, on: !!enhMaster })); } catch (e){}
+    try { localStorage.setItem(ENH_KEY, JSON.stringify({ sharp: enhSharpSet ? enhSharp : undefined, deband: enhDeband, deblock: enhDeblock, anime: enhAnime, ai: enhAI, on: !!enhMaster })); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function memcEnhSettings(){ return memcUpscale > 0 || enhSharp > 0 || enhDeband || enhDeblock || enhAnime || enhAI !== 'off'; }
   function memcEnhOn(){ return !!enhMaster && memcEnhSettings(); }

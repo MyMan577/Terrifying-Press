@@ -1,8 +1,8 @@
 (function(){
-  const $=id=>document.getElementById(id), ls={g:k=>{try{return localStorage.getItem(k)}catch(e){return null}},s:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
+  const $=id=>document.getElementById(id), ls={g:k=>{try{return localStorage.getItem(k)}catch(e){return null}},s:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}};
   const toast=(m,t)=>{try{window.ppToast(m,t)}catch(e){}};
   /* ---- Video adjustment sliders (filter dropdown) ---- */
-  const D={b:100,c:100,s:100,h:0}; try{Object.assign(D,JSON.parse(ls.g('ppVidAdj')||'{}'))}catch(e){}
+  const D={b:100,c:100,s:100,h:0}; try{Object.assign(D,JSON.parse(ls.g('ppVidAdj')||'{}'))}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   const adj=window.__ppAdj={...D}; const dd=$('filter-dropdown');
   const css=()=>{const a=window.__ppAdj,p=[]; if(a.b!=100)p.push('brightness('+a.b/100+')'); if(a.c!=100)p.push('contrast('+a.c/100+')'); if(a.s!=100)p.push('saturate('+a.s/100+')'); if(a.h!=0)p.push('hue-rotate('+a.h+'deg)'); return p.join(' ')};
   window.__ppAdjCss=css;

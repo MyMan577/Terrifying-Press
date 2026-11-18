@@ -135,7 +135,7 @@
 
       const ls = {
         get: k => { try { return localStorage.getItem(k); } catch(e){ return null; } },
-        set: (k, v) => { try { localStorage.setItem(k, v); } catch(e){} }
+        set: (k, v) => { try { localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       };
       const alreadyClaimed = () => !!state.quizBonusClaimed || !!ls.get(QUIZ_FLAG);
       function shuffle(a){

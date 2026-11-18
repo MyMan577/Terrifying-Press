@@ -69,7 +69,7 @@
     enhCompareX = Math.max(0.02, Math.min(0.98, (e.clientX - r.left - p.left) / Math.max(1, p.w)));
     enhSplitPaint();
     if (memcActive) memcRepaint();
-    try { nativeMemcPush(); } catch (x){}
+    try { nativeMemcPush(); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
   });
   const enhDragEnd = (e) => { if (!enhDrag) return; e.stopPropagation(); enhDrag = null; enhSplit.classList.remove('drag'); };
   enhSplit.addEventListener('pointerup', enhDragEnd);
@@ -78,7 +78,7 @@
   ['click', 'dblclick', 'touchstart', 'touchmove', 'touchend', 'mousedown'].forEach(n => enhSplit.addEventListener(n, (e) => e.stopPropagation(), { passive: n.startsWith('touch') }));
   window.addEventListener('resize', enhSplitPaint);
   document.addEventListener('fullscreenchange', () => setTimeout(enhSplitPaint, 60));
-  try { new ResizeObserver(enhSplitPaint).observe(videoWrap); } catch (e){}
+  try { new ResizeObserver(enhSplitPaint).observe(videoWrap); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   videoEl.addEventListener('loadedmetadata', enhSplitPaint);
 
   // Any enhance change: start/stop the GPU engine as needed, resize its output, and show the result (also while paused).
@@ -91,18 +91,18 @@
   }
   function memcRepaint(){
     memcLastKey = '';
-    if (memcActive && videoEl.paused) try { memcPresent(videoEl.currentTime, true); } catch (e){}
+    if (memcActive && videoEl.paused) try { memcPresent(videoEl.currentTime, true); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   memcQBtns.forEach(b => b.addEventListener('click', () => {
     memcQuality = parseInt(b.dataset.memcQ, 10) || 0;
-    try { localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); } catch (e){}
+    try { localStorage.setItem(MEMC_Q_KEY, String(memcQuality)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     memcUpdateQualityUI();
     memcResKey = ''; memcInvalidate();      // ring is rebuilt on the next captured frame
     if (memcActive) memcCaptureNow();
   }));
   memcUpBtns.forEach(b => b.addEventListener('click', () => {
     memcUpscale = parseInt(b.dataset.memcUp, 10) || 0;
-    try { localStorage.setItem(MEMC_UP_KEY, String(memcUpscale)); } catch (e){}
+    try { localStorage.setItem(MEMC_UP_KEY, String(memcUpscale)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     if (memcUpscale && !enhSharpSet){ enhSharp = 50; enhSharpSet = true; }   // upscaling on its own looks like nothing: start with some sharpening
     enhChanged();
   }));
@@ -136,7 +136,7 @@
         cs.textContent = !sh ? '' : !s ? 'This video is already 4K or bigger.' : s < sh * 1.05 ? 'This video is already ' + sh + 'p: pick a bigger size.'
           : 'This video: ' + sh + 'p \u2192 ' + (s >= 2160 ? '4K' : s + 'p') + (s / sh > 2.05 ? ' (two AI passes, slower)' : '');
       };
-      csz.addEventListener('change', () => { try { localStorage.setItem('ppEnhCopySize', csz.value); } catch (e){} show(); });
+      csz.addEventListener('change', () => { try { localStorage.setItem('ppEnhCopySize', csz.value); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } show(); });
       document.getElementById('upscale-btn').addEventListener('click', () => setTimeout(show, 0));
     }
     if (cb){
@@ -186,7 +186,7 @@
       vuSel.value = videoUiMode;
       vuSel.addEventListener('change', () => {
         videoUiMode = vuSel.value;
-        try { localStorage.setItem(VIDEO_UI_KEY, videoUiMode); } catch (e){}
+        try { localStorage.setItem(VIDEO_UI_KEY, videoUiMode); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         applyVideoUi();
       });
     }
@@ -202,7 +202,7 @@
       alTog.checked = audioLeadOn;
       alTog.addEventListener('change', () => {
         audioLeadOn = alTog.checked;
-        try { localStorage.setItem(AUDIO_LEAD_KEY, audioLeadOn ? '1' : '0'); } catch (e){}
+        try { localStorage.setItem(AUDIO_LEAD_KEY, audioLeadOn ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         refreshVideoDelayState();
         memcLastKey = '';
       });
@@ -215,7 +215,7 @@
       llQSel.value = losslessQuality;
       llQSel.addEventListener('change', () => {
         losslessQuality = llQSel.value;
-        try { localStorage.setItem(LOSSLESS_Q_KEY, losslessQuality); } catch (e){}
+        try { localStorage.setItem(LOSSLESS_Q_KEY, losslessQuality); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         refreshVideoDelayState();
       });
     }
@@ -225,7 +225,7 @@
       llTog.addEventListener('change', () => {
         losslessLatency = llTog.checked;
         syncLlQ();
-        try { localStorage.setItem(LOSSLESS_LAT_KEY, losslessLatency ? '1' : '0'); } catch (e){}
+        try { localStorage.setItem(LOSSLESS_LAT_KEY, losslessLatency ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         refreshVideoDelayState();
         // Switching engines mid-playback: restart track capture so the worker starts fresh.
         if (VIDEO_DELAY_CAN_USE_TRACK && videoDelayActive()) restartVideoDelayCapture();
@@ -251,7 +251,7 @@
       sel.addEventListener('change', () => {
         perfMode = sel.value;
         perfAutoTripped = false;
-        try { localStorage.setItem(PERF_KEY, perfMode); } catch (e){}
+        try { localStorage.setItem(PERF_KEY, perfMode); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         applyPerf();
       });
     }
@@ -473,13 +473,13 @@
       fullTog.checked = full;
       fullTog.addEventListener('change', () => {
         full = fullTog.checked;
-        try { localStorage.setItem(FULL_KEY, full ? '1' : '0'); } catch (e){}
+        try { localStorage.setItem(FULL_KEY, full ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         if (on) render();
       });
     }
     tog.addEventListener('change', () => {
       on = tog.checked;
-      try { localStorage.setItem(KEY, on ? '1' : '0'); } catch (e){}
+      try { localStorage.setItem(KEY, on ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       if (on) start(); else stop();
     });
     videoEl.addEventListener('loadedmetadata', () => { vf = []; dropHist = []; dropBase = dropped(); });

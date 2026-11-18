@@ -211,14 +211,14 @@
     inp.title = o.title || 'Your preset';
     const paint = () => {
       btn.textContent = 'Use ' + fmt(preset);
-      let cur = 0; try { cur = +o.get() || 0; } catch (e){}
+      let cur = 0; try { cur = +o.get() || 0; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       btn.classList.toggle('toggled', same(cur, preset));
       btn.disabled = !!(o.enabled && !o.enabled());
     };
     inp.addEventListener('input', () => {
       const v = parseFloat(inp.value); if (!isFinite(v)) return;
       preset = clamp(v);
-      try { localStorage.setItem(o.key, String(preset)); } catch (e){}
+      try { localStorage.setItem(o.key, String(preset)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       paint();
     });
     inp.addEventListener('change', () => { inp.value = preset; });
@@ -264,7 +264,7 @@
     if (vs) return { x:(1 - vs.sx) / 2, y:(1 - vs.sy) / 2, w:vs.sx, h:vs.sy };
     const area = subtitleOverlay.parentElement, W = area.clientWidth, H = area.clientHeight, vw = videoEl.videoWidth, vh = videoEl.videoHeight;
     if (!W || !H || !vw || !vh) return { x:0, y:0, w:1, h:1 };           // audio or not loaded yet: the whole box
-    let cover = false; try { cover = getComputedStyle(window.PPNative && PPNative.raw ? PPNative.raw(videoEl) : videoEl).objectFit === 'cover'; } catch(err){}   // in native mode videoEl is a Proxy, which getComputedStyle rejects: use the real element
+    let cover = false; try { cover = getComputedStyle(window.PPNative && PPNative.raw ? PPNative.raw(videoEl) : videoEl).objectFit === 'cover'; } catch(err){ if (typeof ppCaught === "function") ppCaught(err); }   // in native mode videoEl is a Proxy, which getComputedStyle rejects: use the real element
     const sc = cover ? Math.max(W / vw, H / vh) : Math.min(W / vw, H / vh);
     const w = vw * sc / W, h = vh * sc / H;
     return { x:(1 - w) / 2, y:(1 - h) / 2, w, h };
@@ -343,7 +343,7 @@
 
     // Rotation, fullscreen, window resize, or a new video all change the box and the picture inside it: put the line back on the same spot of the picture.
     const refit = () => { if (subtitlePos === 'custom' && !drag) applySubtitlePos(); };
-    try { new ResizeObserver(refit).observe(subtitleOverlay.parentElement); } catch(err){}
+    try { new ResizeObserver(refit).observe(subtitleOverlay.parentElement); } catch(err){ if (typeof ppCaught === "function") ppCaught(err); }
     videoEl.addEventListener('loadedmetadata', refit);
     videoEl.addEventListener('resize', refit);
     window.addEventListener('pp-viewscale', refit);

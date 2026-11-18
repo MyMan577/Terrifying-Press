@@ -365,7 +365,7 @@
     var up = el.querySelector('.pw-np-up');
     if (up){ var nx = has && st.W ? st.W.upNext(1)[0] : null, nt = nx != null ? st.A.tracks()[nx] : null; setText(up, nt ? 'Next: ' + nt.title : ''); }
     var img = el.querySelector('.pw-np-art img'), src = null; if (!img) return;
-    try { if (has && window.__ppThumbSrc) src = window.__ppThumbSrc(st.t); } catch(e){}
+    try { if (has && window.__ppThumbSrc) src = window.__ppThumbSrc(st.t); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     el.querySelector('.pw-np-art').classList.toggle('has-art', !!src);
     if (src && img.getAttribute('src') !== src) img.src = src;
   } };
@@ -569,7 +569,7 @@
     live:function(el, st){
       var raw = ''; try { raw = localStorage.getItem('playerBookmarksV1') || ''; } catch(e){}
       var sig = (st.has ? st.t.dbId : '') + ':' + raw.length + ':' + raw.slice(-40); if (el._sig === sig) return; el._sig = sig;
-      var list = []; if (st.has){ try { list = (JSON.parse(raw || '{}') || {})[st.t.dbId] || []; } catch(e){} }
+      var list = []; if (st.has){ try { list = (JSON.parse(raw || '{}') || {})[st.t.dbId] || []; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       el.querySelector('.pw-bm-l').innerHTML = !st.has ? '<div class="pw-empty">Play something to see its bookmarks.</div>' : !list.length ? '<div class="pw-empty">No bookmarks in this song yet.</div>'
         : list.map(function(b){ return '<button type="button" class="pw-li" data-pw-act="seek" data-s="' + (+b.t || 0) + '"><span class="pw-bm-t">' + fmtT(b.t) + '</span><span class="pw-li-t"><b>' + esc(b.label || 'Bookmark') + '</b></span></button>'; }).join('');
       liveHide(el, el.dataset.hide === '1' && !list.length);
@@ -606,7 +606,7 @@
 
   // Rows of tracks: one genre from the smart tags, and what you stopped in the middle of.
   function genreMap(){
-    var V = window.PPVocals, tags = null; try { tags = V && V.loadTags ? V.loadTags() : null; } catch(e){}
+    var V = window.PPVocals, tags = null; try { tags = V && V.loadTags ? V.loadTags() : null; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     var A = api(), t = A ? A.tracks() : [], by = {};
     if (!tags) return by;
     playable().forEach(function(i){ var c = tags[String(t[i].dbId)], g = c && (c.gn || [])[0]; if (!g) return; var name = String(g[0]).split('---')[0].trim(); if (name) (by[name] = by[name] || []).push(i); });
@@ -808,7 +808,7 @@
   // Stopwatch. Keeps running (and keeps its time) when you leave the app.
   var SW_KEY = 'ppStopwatchV1';
   function swAll(){ try { return JSON.parse(localStorage.getItem(SW_KEY)) || {}; } catch(e){ return {}; } }
-  function swSave(a){ try { localStorage.setItem(SW_KEY, JSON.stringify(a)); } catch(e){} }
+  function swSave(a){ try { localStorage.setItem(SW_KEY, JSON.stringify(a)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   T.stopwatch = { name:'Stopwatch', icon:'clock', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Start, pause, reset',
     fields:[['tenths','Show tenths','toggle',false],['size','Size','seg',SIZES],['card','On a card','toggle',true]],
     render:function(o, c, ctx, it){
@@ -826,7 +826,7 @@
 
   // Battery (the phone's).
   var batt = null;
-  if (navigator.getBattery) try { navigator.getBattery().then(function(b){ batt = b; ['levelchange','chargingchange'].forEach(function(ev){ b.addEventListener(ev, liveSoon); }); liveSoon(); }).catch(function(){}); } catch(e){}
+  if (navigator.getBattery) try { navigator.getBattery().then(function(b){ batt = b; ['levelchange','chargingchange'].forEach(function(ev){ b.addEventListener(ev, liveSoon); }); liveSoon(); }).catch(function(){}); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   T.battery = { name:'Battery', icon:'bolt', kind:'box', zones:['home','page','player','video'], w:'half', desc:'How much charge the phone has',
     fields:[['look','Look','seg',[['bar','Bar'],['ring','Ring'],['text','Just the number']]],['card','On a card','toggle',true]],
     // the look's class is pw-bat-l-*: "pw-bat-bar" is the bar inside, and the Bar look used to get that same class,
@@ -873,7 +873,7 @@
       return card(o, '<div class="pw-text pw-rot pw-ts-' + (o.size || 'm') + (o.italic ? ' pw-italic' : '') + '" data-pw-live="rotate" data-every="' + esc(o.every || 'day') + '" data-lines="' + esc(JSON.stringify(lines)) + '"></div>');
     },
     live:function(el, st){
-      var lines = []; try { lines = JSON.parse(el.dataset.lines); } catch(e){}
+      var lines = []; try { lines = JSON.parse(el.dataset.lines); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       if (!lines.length) return;
       var ev = el.dataset.every, i;
       if (ev === 'day'){ var d = st.now; i = (d.getFullYear() * 372 + d.getMonth() * 31 + d.getDate()) % lines.length; }
