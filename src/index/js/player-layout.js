@@ -250,8 +250,8 @@
     document.addEventListener('touchend', e => {
       if (!ok) return; ok = false;
       const t = e.changedTouches[0]; if (!t) return;
-      const dx = t.clientX - tx, dy = t.clientY - ty, ax = Math.abs(dx), v = ax / Math.max(1, performance.now() - tt);
-      if (ax < 40 || ax < Math.abs(dy) * 1.6 || (ax < 70 && v < 0.45)) return;   // must be a clear, deliberate sideways swipe
+      const dx = t.clientX - tx, dy = t.clientY - ty, ax = Math.abs(dx);
+      if (ax < Math.abs(dy) * 1.6 || !PPTouch.isSwipe(ax, performance.now() - tt)) return;   // must be a clear, deliberate sideways swipe
       const step = dx < 0 ? 1 : -1;
       if (swipeTabs(step)) return;
       if (slideSub(step)) return;                               // on a sub page: move between playlists / sections instead of tabs
@@ -290,7 +290,7 @@
       const dx = e.clientX - sx, dy = e.clientY - sy, now = performance.now();
       trail.push([now, e.clientX, e.clientY]); while (trail.length > 2 && now - trail[0][0] > 100) trail.shift();   // the last 0.1 s, for the flick speed
       if (!locked){
-        if (Math.hypot(dx, dy) < 6) return;
+        if (!PPTouch.moved(0, 0, dx, dy)) return;   // a tap that wobbles a little is still a tap
         locked = true; try { mini.setPointerCapture(e.pointerId); } catch(err){}
         mini.style.transition = 'none';
       }
@@ -324,10 +324,10 @@
       const a = trail[0], z = trail[trail.length - 1], dt = Math.max(16, z[0] - a[0]), fresh = performance.now() - z[0] < 80;
       const vx = fresh ? (z[1] - a[1]) / dt : 0, vy = fresh ? (z[2] - a[2]) / dt : 0;
       const far = side ? Math.abs(dx) > mini.offsetWidth * 0.33 : dy > 55;
-      const flick = side ? Math.abs(vx) > 0.6 && Math.sign(vx) === Math.sign(dx) && Math.abs(dx) > 24 : vy > 0.5 && dy > 18;
+      const flick = side ? Math.abs(vx) > PPTouch.FLICK && Math.sign(vx) === Math.sign(dx) && Math.abs(dx) > 24 : vy > PPTouch.FLICK && dy > 18;
       const QB = window.__ppQueueBoard;
       // Swipe up: flip over to Up next, or back to the player when already flipped. Swipe down on the flipped side flips back too.
-      if (QB && !side && (dy < -34 || (vy < -0.45 && dy < -16))){
+      if (QB && !side && (dy < -34 || (vy < -PPTouch.FLICK && dy < -16))){
         mini.style.transition = 'none'; mini.style.transform = ''; mini.style.opacity = '';
         requestAnimationFrame(() => { mini.style.transition = ''; });
         QB.miniUp(); return;
@@ -851,10 +851,10 @@
       const t = A.tracks()[+el.dataset.idx]; if (!t) return;
       selFired = true;
       A.sel.enter(t, selContextPl());
-    }, 450);
+    }, PPTouch.HOLD_MS);
   });
   homeEl.addEventListener('pointermove', e => {
-    if (selTimer && Math.hypot(e.clientX - selX, e.clientY - selY) > 10) selCancel();
+    if (selTimer && PPTouch.moved(selX, selY, e.clientX, e.clientY)) selCancel();
   });
   homeEl.addEventListener('pointerup', () => {
     if (selFired){ selSuppressUntil = performance.now() + 400; selFired = false; }

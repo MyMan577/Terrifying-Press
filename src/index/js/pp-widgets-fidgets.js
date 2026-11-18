@@ -104,7 +104,7 @@
       if (!tDecided && t){
         var dx = t.clientX - tx, dy = t.clientY - ty;
         if (f.scrollVertical){
-          if (Math.hypot(dx, dy) < 8) return;               // not yet clear which way: decide on the next move
+          if (!PPTouch.moved(0, 0, dx, dy)) return;               // not yet clear which way: decide on the next move
           tDecided = true;
           if (Math.abs(dy) > Math.abs(dx) * 1.3){ tOwn = false; return; }   // a scroll: the page takes it
         } else tDecided = true;
@@ -263,7 +263,7 @@
     f.scrollVertical = true;
     var N = look === 'fire' ? { low: 22, '': 40, high: 70 }[o.dens || ''] : { low: 70, '': 130, high: 220 }[o.dens || ''];
     var pal = o.pal === 'theme' ? null : NEB_PAL[o.pal || ''] || NEB_PAL[''], cols = [], sprites = [];
-    var path = 0, swirled = false, lastDown = 0, lastDownP = null, prevP = null, lastRingP = null;
+    var path = 0, swirled = false, lastUp = 0, lastTap = false, lastDownP = null, prevP = null, lastRingP = null;
     function makeSprites(){
       var base = pal ? pal.map(rgbOf2) : (function(c){ return [c, rgbOf2(mixC(c, WHITE, 0.5)), rgbOf2(mixC(c, [255, 95, 216], 0.5)), WHITE]; })(fdCol(el));
       cols = base; sprites = base.map(function(c){
@@ -284,8 +284,9 @@
     fdPointer(f, {
       down: function(p){
         var now = performance.now();
-        if (lastDownP && now - lastDown < 320 && Math.hypot(p.x - lastDownP.x, p.y - lastDownP.y) < 40 * f.dpr) fdFire(el, o.ontap2, 'tap2');
-        lastDown = now; lastDownP = p; ptr = p; prevP = p; path = 0; swirled = false;
+        // Double tap, timed like everywhere else (pp-touch.js): from the first tap's release to the second press.
+        if (lastTap && lastDownP && now - lastUp < PPTouch.MULTI_GAP_MS && Math.hypot(p.x - lastDownP.x, p.y - lastDownP.y) < PPTouch.MULTI_SLOP * f.dpr){ fdFire(el, o.ontap2, 'tap2'); lastTap = false; lastDownP = null; }
+        else lastDownP = p; ptr = p; prevP = p; path = 0; swirled = false;
         if (look === 'rip'){ rings.push({ x: p.x, y: p.y, r: 0, a: 1, c: Math.floor(Math.random() * 4) }); lastRingP = p; }
       },
       move: function(p){
@@ -295,7 +296,7 @@
         if (look === 'rip' && Math.hypot(p.x - lastRingP.x, p.y - lastRingP.y) > 26 * f.dpr){ rings.push({ x: p.x, y: p.y, r: 0, a: 0.8, c: Math.floor(Math.random() * 4) }); lastRingP = p; }
         else if (look === '' && parts.length < N + 90){ for (var i = 0; i < 2; i++) parts.push(spawn(null, true, p)); }
       },
-      up: function(){ ptr = null; }
+      up: function(){ if (ptr){ lastUp = performance.now(); lastTap = path <= PPTouch.SLOP; } ptr = null; }
     });
     function step(dt, ts){
       var g = f.g, w = f.w, h = f.h, dpr = f.dpr;

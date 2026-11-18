@@ -84,6 +84,26 @@
   });
 })();
 </script>
+<script id="pp-touch">
+/* Touch feel: the numbers every touch handler in the app uses, so a tap, a hold, a flick and a swipe feel the same on
+   every screen. Loaded early so any script can read window.PPTouch. Distances are CSS px, speeds px per ms. */
+(function(){
+  var T = {
+    SLOP: 10,           // a finger may wander this far and still be tapping or holding (Android's touch slop is 8 dp)
+    HOLD_MS: 450,       // how long a press must last to count as a long-press / hold
+    FLICK: 0.5,         // release speed that counts as a flick
+    SWIPE_MIN: 40,      // shortest movement that can be a swipe at all; a swipe this short must also be a flick
+    SWIPE_SURE: 70,     // a movement this long is a swipe at any speed
+    MULTI_GAP_MS: 320,  // double / triple tap: longest wait from a release to the next press
+    MULTI_SLOP: 90,     // double / triple tap: how far a follow-up tap may land from the first
+    /** True once (x, y) is further than SLOP from (x0, y0). */
+    moved: function(x0, y0, x, y){ return Math.hypot(x - x0, y - y0) > T.SLOP; },
+    /** Is a movement of `dist` px over `ms` a swipe? Long enough at any speed, or short but quick. */
+    isSwipe: function(dist, ms){ return dist >= T.SWIPE_SURE || (dist >= T.SWIPE_MIN && dist / Math.max(1, ms) >= T.FLICK); }
+  };
+  window.PPTouch = T;
+})();
+</script>
 <script>
 /* One shared 1 s heartbeat for the small periodic checks, so they wake the CPU together instead of six separate times a second. */
 window.ppEvery = (function(){
@@ -14673,11 +14693,13 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     // tap into two singles. Follow-up taps only need to land near the first
     // one; they count toward the first tap's zone even if they drift across
     // a zone border.
-    const MULTI_MS = 320;          // max gap between a release and the next press
-    const MULTI_SLOP_PX = 90;      // how far a follow-up tap may land from the first
-    const LONGPRESS_MS = 550;
-    const SWIPE_MIN_PX = 40;
-    const TAP_MOVE_TOLERANCE = 12;
+    // The shared touch numbers (pp-touch.js), so these surfaces feel like the rest of the app.
+    const TOUCH = window.PPTouch;
+    const MULTI_MS = TOUCH.MULTI_GAP_MS;    // max gap between a release and the next press
+    const MULTI_SLOP_PX = TOUCH.MULTI_SLOP; // how far a follow-up tap may land from the first
+    const LONGPRESS_MS = TOUCH.HOLD_MS;
+    const SWIPE_MIN_PX = TOUCH.SWIPE_MIN;
+    const TAP_MOVE_TOLERANCE = TOUCH.SLOP;
     const PINCH_STEP = 1.28;       // finger-distance ratio that counts as one pinch step
     const TWO_TAP_MAX_MS = 350;
 
@@ -14688,7 +14710,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     let seqReleaseT = 0;           // when the last tap of the current sequence lifted
     let longPressTimer = null;
     let longPressFired = false;
-    let startX = 0, startY = 0, startedOnControl = false;
+    let startX = 0, startY = 0, startT = 0, startedOnControl = false;
     let wandered = false;          // the finger strayed past the tap tolerance at some point during this press
     let lastTouchTime = 0;
     // pan-when-zoomed state (only active on the video surface)
@@ -14757,7 +14779,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     function onStart(x, y, target){
       startedOnControl = isInteractive(target);
       if (startedOnControl) return;
-      startX = x; startY = y; wandered = false;
+      startX = x; startY = y; startT = performance.now(); wandered = false;
       if (tapCount > 0){
         if (Date.now() - seqReleaseT > MULTI_MS || Math.hypot(x - seqX, y - seqY) > MULTI_SLOP_PX){
           // Too late or too far to be part of the pending taps: settle those now.
@@ -14792,7 +14814,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       const dist = Math.hypot(dx, dy);
       if (longPressFired) return; // already handled on the timer
 
-      if (dist > SWIPE_MIN_PX){
+      // Same rule as swiping between tabs: long enough, or short but quick. A slow, short drag is nothing.
+      if (TOUCH.isSwipe(dist, performance.now() - startT)){
         cancelTapSequence();
         if (Math.abs(dx) > Math.abs(dy)){
           runGesture(wrapEl, dx > 0 ? 'swipeRight' : 'swipeLeft', 'any');
@@ -14866,7 +14889,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       if (mPinched || mPanned) return;
       const dt = Date.now() - mStartT;
       const dx = mCx - mStartCx, dy = mCy - mStartCy;
-      if (mMaxMove > SWIPE_MIN_PX && mMaxDistDelta < 50){
+      if (TOUCH.isSwipe(mMaxMove, dt) && mMaxDistDelta < 50){
         if (Math.abs(dx) > Math.abs(dy)) runGesture(wrapEl, dx > 0 ? 'twoSwipeRight' : 'twoSwipeLeft', 'any');
         else runGesture(wrapEl, dy > 0 ? 'twoSwipeDown' : 'twoSwipeUp', 'any');
       } else if (dt < TWO_TAP_MAX_MS && mMaxMove < TAP_MOVE_TOLERANCE * 1.5 && mMaxDistDelta < 24){
@@ -20136,8 +20159,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   let selectCtxPl = null;          // playlist id when selecting from a Home-screen playlist page
   function selFromPl(){ return selectCtxPl || activePlaylistView; }
   function notifySelect(){ if (window.__ppOnSelect){ try { window.__ppOnSelect(); } catch(e){} } }
-  const SELECT_LONGPRESS_MS = 450;
-  const SELECT_MOVE_TOLERANCE = 10;
+  const SELECT_LONGPRESS_MS = PPTouch.HOLD_MS;   // shared touch numbers (pp-touch.js)
+  const SELECT_MOVE_TOLERANCE = PPTouch.SLOP;
   const selectBar = document.getElementById('select-bar');
   const selectCountEl = document.getElementById('select-count');
   const selectAllBtn = document.getElementById('select-all-btn');
@@ -30446,8 +30469,8 @@ async function ppMp4Chapters(blob){
     document.addEventListener('touchend', e => {
       if (!ok) return; ok = false;
       const t = e.changedTouches[0]; if (!t) return;
-      const dx = t.clientX - tx, dy = t.clientY - ty, ax = Math.abs(dx), v = ax / Math.max(1, performance.now() - tt);
-      if (ax < 40 || ax < Math.abs(dy) * 1.6 || (ax < 70 && v < 0.45)) return;   // must be a clear, deliberate sideways swipe
+      const dx = t.clientX - tx, dy = t.clientY - ty, ax = Math.abs(dx);
+      if (ax < Math.abs(dy) * 1.6 || !PPTouch.isSwipe(ax, performance.now() - tt)) return;   // must be a clear, deliberate sideways swipe
       const step = dx < 0 ? 1 : -1;
       if (swipeTabs(step)) return;
       if (slideSub(step)) return;                               // on a sub page: move between playlists / sections instead of tabs
@@ -30486,7 +30509,7 @@ async function ppMp4Chapters(blob){
       const dx = e.clientX - sx, dy = e.clientY - sy, now = performance.now();
       trail.push([now, e.clientX, e.clientY]); while (trail.length > 2 && now - trail[0][0] > 100) trail.shift();   // the last 0.1 s, for the flick speed
       if (!locked){
-        if (Math.hypot(dx, dy) < 6) return;
+        if (!PPTouch.moved(0, 0, dx, dy)) return;   // a tap that wobbles a little is still a tap
         locked = true; try { mini.setPointerCapture(e.pointerId); } catch(err){}
         mini.style.transition = 'none';
       }
@@ -30520,10 +30543,10 @@ async function ppMp4Chapters(blob){
       const a = trail[0], z = trail[trail.length - 1], dt = Math.max(16, z[0] - a[0]), fresh = performance.now() - z[0] < 80;
       const vx = fresh ? (z[1] - a[1]) / dt : 0, vy = fresh ? (z[2] - a[2]) / dt : 0;
       const far = side ? Math.abs(dx) > mini.offsetWidth * 0.33 : dy > 55;
-      const flick = side ? Math.abs(vx) > 0.6 && Math.sign(vx) === Math.sign(dx) && Math.abs(dx) > 24 : vy > 0.5 && dy > 18;
+      const flick = side ? Math.abs(vx) > PPTouch.FLICK && Math.sign(vx) === Math.sign(dx) && Math.abs(dx) > 24 : vy > PPTouch.FLICK && dy > 18;
       const QB = window.__ppQueueBoard;
       // Swipe up: flip over to Up next, or back to the player when already flipped. Swipe down on the flipped side flips back too.
-      if (QB && !side && (dy < -34 || (vy < -0.45 && dy < -16))){
+      if (QB && !side && (dy < -34 || (vy < -PPTouch.FLICK && dy < -16))){
         mini.style.transition = 'none'; mini.style.transform = ''; mini.style.opacity = '';
         requestAnimationFrame(() => { mini.style.transition = ''; });
         QB.miniUp(); return;
@@ -31047,10 +31070,10 @@ async function ppMp4Chapters(blob){
       const t = A.tracks()[+el.dataset.idx]; if (!t) return;
       selFired = true;
       A.sel.enter(t, selContextPl());
-    }, 450);
+    }, PPTouch.HOLD_MS);
   });
   homeEl.addEventListener('pointermove', e => {
-    if (selTimer && Math.hypot(e.clientX - selX, e.clientY - selY) > 10) selCancel();
+    if (selTimer && PPTouch.moved(selX, selY, e.clientX, e.clientY)) selCancel();
   });
   homeEl.addEventListener('pointerup', () => {
     if (selFired){ selSuppressUntil = performance.now() + 400; selFired = false; }
@@ -33391,7 +33414,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
 <script src="./pp-playground-album.js?v=20261108a"></script>
 <script src="./pp-playground-lab.js?v=20261108a"></script>   <!-- Press Play Playground (the fourth app mode): hub, orders, charms, wheel. Bump v= when it changes -->
 <script src="./pp-playground-stars.js?v=20261108a"></script>   <!-- Playground Star Shop: Stars for Points, boosts, shields, the vault -->
-<script src="./vocal-separator.js?v=20261030a" defer></script>
+<script src="./vocal-separator.js?v=20261118a" defer></script>
 <script src="./pp-mashup.js?v=20261114a" defer></script>   <!-- mashup mode -->   <!-- bump v= each time vocal-separator.js changes so phones fetch the new copy -->
 <script src="./pp-spatial.js?v=20261114b" defer></script>   <!-- headphone space: split ears, 360 orbit -->
 
@@ -34174,7 +34197,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   window.addEventListener('blur', end(true));
   // a finger that slides well off its starting point is dragging, not tapping
   document.addEventListener('pointermove', function(e){
-    if (press && e.pointerId === press.id && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 14 && press.big){ var p = press; press = null; pressUp(p, true); }
+    if (press && e.pointerId === press.id && PPTouch.moved(press.x, press.y, e.clientX, e.clientY) && press.big){ var p = press; press = null; pressUp(p, true); }
   }, { capture: true, passive: true });
 })();
 </script>
@@ -37204,7 +37227,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
       if (!tDecided && t){
         var dx = t.clientX - tx, dy = t.clientY - ty;
         if (f.scrollVertical){
-          if (Math.hypot(dx, dy) < 8) return;               // not yet clear which way: decide on the next move
+          if (!PPTouch.moved(0, 0, dx, dy)) return;               // not yet clear which way: decide on the next move
           tDecided = true;
           if (Math.abs(dy) > Math.abs(dx) * 1.3){ tOwn = false; return; }   // a scroll: the page takes it
         } else tDecided = true;
@@ -37363,7 +37386,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     f.scrollVertical = true;
     var N = look === 'fire' ? { low: 22, '': 40, high: 70 }[o.dens || ''] : { low: 70, '': 130, high: 220 }[o.dens || ''];
     var pal = o.pal === 'theme' ? null : NEB_PAL[o.pal || ''] || NEB_PAL[''], cols = [], sprites = [];
-    var path = 0, swirled = false, lastDown = 0, lastDownP = null, prevP = null, lastRingP = null;
+    var path = 0, swirled = false, lastUp = 0, lastTap = false, lastDownP = null, prevP = null, lastRingP = null;
     function makeSprites(){
       var base = pal ? pal.map(rgbOf2) : (function(c){ return [c, rgbOf2(mixC(c, WHITE, 0.5)), rgbOf2(mixC(c, [255, 95, 216], 0.5)), WHITE]; })(fdCol(el));
       cols = base; sprites = base.map(function(c){
@@ -37384,8 +37407,9 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     fdPointer(f, {
       down: function(p){
         var now = performance.now();
-        if (lastDownP && now - lastDown < 320 && Math.hypot(p.x - lastDownP.x, p.y - lastDownP.y) < 40 * f.dpr) fdFire(el, o.ontap2, 'tap2');
-        lastDown = now; lastDownP = p; ptr = p; prevP = p; path = 0; swirled = false;
+        // Double tap, timed like everywhere else (pp-touch.js): from the first tap's release to the second press.
+        if (lastTap && lastDownP && now - lastUp < PPTouch.MULTI_GAP_MS && Math.hypot(p.x - lastDownP.x, p.y - lastDownP.y) < PPTouch.MULTI_SLOP * f.dpr){ fdFire(el, o.ontap2, 'tap2'); lastTap = false; lastDownP = null; }
+        else lastDownP = p; ptr = p; prevP = p; path = 0; swirled = false;
         if (look === 'rip'){ rings.push({ x: p.x, y: p.y, r: 0, a: 1, c: Math.floor(Math.random() * 4) }); lastRingP = p; }
       },
       move: function(p){
@@ -37395,7 +37419,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
         if (look === 'rip' && Math.hypot(p.x - lastRingP.x, p.y - lastRingP.y) > 26 * f.dpr){ rings.push({ x: p.x, y: p.y, r: 0, a: 0.8, c: Math.floor(Math.random() * 4) }); lastRingP = p; }
         else if (look === '' && parts.length < N + 90){ for (var i = 0; i < 2; i++) parts.push(spawn(null, true, p)); }
       },
-      up: function(){ ptr = null; }
+      up: function(){ if (ptr){ lastUp = performance.now(); lastTap = path <= PPTouch.SLOP; } ptr = null; }
     });
     function step(dt, ts){
       var g = f.g, w = f.w, h = f.h, dpr = f.dpr;
@@ -40890,14 +40914,15 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     else if (t.type === 'action') runAction(t.action, t);
   }, true);
   // Long-press a page's tab: open it in edit mode.
-  var lpTimer = 0, lpFired = false;
+  var lpTimer = 0, lpFired = false, lpX = 0, lpY = 0;
   if (bar){
     bar.addEventListener('pointerdown', function(e){
       var b = e.target.closest('.pw-tab'); if (!b) return;
       var t = tabList().find(function(x){ return x.id === b.dataset.pwTab; }); if (!t || t.type !== 'page' || t.page === POMO_ID) return;
-      lpFired = false; clearTimeout(lpTimer);
-      lpTimer = setTimeout(function(){ lpFired = true; if (navigator.vibrate) try { navigator.vibrate(15); } catch(err){} startEdit('page:' + t.page); }, 550);
+      lpFired = false; clearTimeout(lpTimer); lpX = e.clientX; lpY = e.clientY;
+      lpTimer = setTimeout(function(){ lpFired = true; if (navigator.vibrate) try { navigator.vibrate(15); } catch(err){} startEdit('page:' + t.page); }, PPTouch.HOLD_MS);
     });
+    bar.addEventListener('pointermove', function(e){ if (PPTouch.moved(lpX, lpY, e.clientX, e.clientY)) clearTimeout(lpTimer); });
     ['pointerup','pointercancel','pointerleave'].forEach(function(ev){ bar.addEventListener(ev, function(){ clearTimeout(lpTimer); }); });
     bar.addEventListener('scroll', function(){ clearTimeout(lpTimer); }, { passive:true });
     bar.addEventListener('click', function(e){ if (lpFired){ lpFired = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
@@ -41001,9 +41026,9 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
       var b = holdEl; holdEl = null; ateClick = Date.now();
       try { if (navigator.vibrate) navigator.vibrate(12); } catch(err){}
       runTap(b, 'hold');
-    }, 520);
+    }, PPTouch.HOLD_MS);
   }, true);
-  document.addEventListener('pointermove', function(e){ if (holdEl && Math.hypot(e.clientX - holdX, e.clientY - holdY) > 10){ holdEl = null; clearTimeout(holdT); } }, true);
+  document.addEventListener('pointermove', function(e){ if (holdEl && PPTouch.moved(holdX, holdY, e.clientX, e.clientY)){ holdEl = null; clearTimeout(holdT); } }, true);
   ['pointerup', 'pointercancel'].forEach(function(ev){ document.addEventListener(ev, function(){ holdEl = null; clearTimeout(holdT); }, true); });
   document.addEventListener('contextmenu', function(e){ if (!editing && e.target.closest && e.target.closest('[data-pw-hold]')) e.preventDefault(); }, true);
   // Rows on a page / in the player play through Home's own handler, which these zones aren't inside.
@@ -41069,8 +41094,8 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
       if (!drag || e.pointerId !== pid) return; drag = false;
       if (!moved) return;
       var a = trail[0], b = trail[trail.length - 1], v = (b[1] - a[1]) / Math.max(16, b[0] - a[0]), m = maxOff();
-      if (v > 0.5 && start >= m - 2){ set(0, false); onClose(); return; }      // flicked down from the lowest spot: away
-      set(v > 0.45 ? m : v < -0.45 ? 0 : (off > m / 2 ? m : 0), true);
+      if (v > PPTouch.FLICK && start >= m - 2){ set(0, false); onClose(); return; }      // flicked down from the lowest spot: away
+      set(v > PPTouch.FLICK ? m : v < -PPTouch.FLICK ? 0 : (off > m / 2 ? m : 0), true);
     }
     [grab, card.querySelector('.pw-sheet-head')].forEach(function(z){
       if (!z) return; z.style.touchAction = 'none';
@@ -43387,7 +43412,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
   // row). Its rows are the children with data-pq-row. A row drags at once from its .pq-grip, or after a
   // long-press anywhere on it. Dropping calls the list's owner: the live queue moves the song in playback.
   var Sortable = (function(){
-    var LONG = 360, drag = null, pend = null, suppressUntil = 0;
+    var LONG = PPTouch.HOLD_MS, drag = null, pend = null, suppressUntil = 0;
     function rowsOf(list){ return [].slice.call(list.children).filter(function(el){ return el.hasAttribute('data-pq-row'); }); }
     function scroller(el, axis){
       for (var n = el.parentElement; n && n !== document.body; n = n.parentElement){
@@ -43457,7 +43482,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     document.addEventListener('pointermove', function(e){
       if (pend && e.pointerId === pend.id){
         pend.ev = e;
-        if (Math.hypot(e.clientX - pend.x, e.clientY - pend.y) > 9){ clearTimeout(pend.t); pend = null; }
+        if (PPTouch.moved(pend.x, pend.y, e.clientX, e.clientY)){ clearTimeout(pend.t); pend = null; }
         return;
       }
       if (drag && e.pointerId === drag.id) move(e);
@@ -43740,7 +43765,7 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     function end(){
       if (!on) return; on = false;
       var v = dy / Math.max(1, performance.now() - t0);
-      if (dy > 120 || (v > 0.6 && dy > 30)){ requestClose(); return; }
+      if (dy > 120 || (v > PPTouch.FLICK && dy > 30)){ requestClose(); return; }
       panel.style.transition = 'transform .3s cubic-bezier(.3,1.4,.5,1)'; panel.style.transform = '';
       setTimeout(function(){ panel.style.transition = ''; }, 320);
     }

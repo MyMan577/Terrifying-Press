@@ -69,7 +69,7 @@
   // row). Its rows are the children with data-pq-row. A row drags at once from its .pq-grip, or after a
   // long-press anywhere on it. Dropping calls the list's owner: the live queue moves the song in playback.
   var Sortable = (function(){
-    var LONG = 360, drag = null, pend = null, suppressUntil = 0;
+    var LONG = PPTouch.HOLD_MS, drag = null, pend = null, suppressUntil = 0;
     function rowsOf(list){ return [].slice.call(list.children).filter(function(el){ return el.hasAttribute('data-pq-row'); }); }
     function scroller(el, axis){
       for (var n = el.parentElement; n && n !== document.body; n = n.parentElement){
@@ -139,7 +139,7 @@
     document.addEventListener('pointermove', function(e){
       if (pend && e.pointerId === pend.id){
         pend.ev = e;
-        if (Math.hypot(e.clientX - pend.x, e.clientY - pend.y) > 9){ clearTimeout(pend.t); pend = null; }
+        if (PPTouch.moved(pend.x, pend.y, e.clientX, e.clientY)){ clearTimeout(pend.t); pend = null; }
         return;
       }
       if (drag && e.pointerId === drag.id) move(e);
@@ -422,7 +422,7 @@
     function end(){
       if (!on) return; on = false;
       var v = dy / Math.max(1, performance.now() - t0);
-      if (dy > 120 || (v > 0.6 && dy > 30)){ requestClose(); return; }
+      if (dy > 120 || (v > PPTouch.FLICK && dy > 30)){ requestClose(); return; }
       panel.style.transition = 'transform .3s cubic-bezier(.3,1.4,.5,1)'; panel.style.transform = '';
       setTimeout(function(){ panel.style.transition = ''; }, 320);
     }

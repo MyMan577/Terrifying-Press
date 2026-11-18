@@ -336,6 +336,6 @@
   window.addEventListener('blur', end(true));
   // a finger that slides well off its starting point is dragging, not tapping
   document.addEventListener('pointermove', function(e){
-    if (press && e.pointerId === press.id && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 14 && press.big){ var p = press; press = null; pressUp(p, true); }
+    if (press && e.pointerId === press.id && PPTouch.moved(press.x, press.y, e.clientX, e.clientY) && press.big){ var p = press; press = null; pressUp(p, true); }
   }, { capture: true, passive: true });
 })();

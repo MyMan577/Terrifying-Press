@@ -10,8 +10,8 @@
   let selectCtxPl = null;          // playlist id when selecting from a Home-screen playlist page
   function selFromPl(){ return selectCtxPl || activePlaylistView; }
   function notifySelect(){ if (window.__ppOnSelect){ try { window.__ppOnSelect(); } catch(e){} } }
-  const SELECT_LONGPRESS_MS = 450;
-  const SELECT_MOVE_TOLERANCE = 10;
+  const SELECT_LONGPRESS_MS = PPTouch.HOLD_MS;   // shared touch numbers (pp-touch.js)
+  const SELECT_MOVE_TOLERANCE = PPTouch.SLOP;
   const selectBar = document.getElementById('select-bar');
   const selectCountEl = document.getElementById('select-count');
   const selectAllBtn = document.getElementById('select-all-btn');
