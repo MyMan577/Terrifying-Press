@@ -13,7 +13,7 @@
   #pq-back .pq-b-title span{ color:var(--text-dim, #999); }
   #pq-back .pq-b-more{ flex:none; font-size:12px; font-weight:700; padding:3px 8px; border-radius:999px; background:color-mix(in srgb, var(--accent, #4fd1c5) 20%, transparent); color:var(--accent, #4fd1c5); }
   #pq-back .pq-b-more[hidden]{ display:none; }
-  #pq-back .pq-b-open{ flex:none; width:30px; height:30px; display:grid; place-items:center; color:var(--text-dim, #999); animation:pq-nudge 2.4s ease-in-out infinite; }
+  #pq-back .pq-b-open{ flex:none; width:30px; height:30px; display:grid; place-items:center; color:var(--text-dim, #999); }
   #pq-back .pq-b-open svg{ width:20px; height:20px; }
   @keyframes pq-nudge{ 0%,70%,100%{ transform:none; } 80%{ transform:translateY(-3px); } 90%{ transform:translateY(1px); } }
 

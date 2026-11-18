@@ -326,7 +326,7 @@
       const far = side ? Math.abs(dx) > mini.offsetWidth * 0.33 : dy > 55;
       const flick = side ? Math.abs(vx) > 0.6 && Math.sign(vx) === Math.sign(dx) && Math.abs(dx) > 24 : vy > 0.5 && dy > 18;
       const QB = window.__ppQueueBoard;
-      // Swipe up: flip over to Up next (or, already flipped, open the queue board). Swipe down on the flipped side flips back.
+      // Swipe up: flip over to Up next, or back to the player when already flipped. Swipe down on the flipped side flips back too.
       if (QB && !side && (dy < -34 || (vy < -0.45 && dy < -16))){
         mini.style.transition = 'none'; mini.style.transform = ''; mini.style.opacity = '';
         requestAnimationFrame(() => { mini.style.transition = ''; });

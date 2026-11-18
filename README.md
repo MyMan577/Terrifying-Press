@@ -53,7 +53,7 @@ Press Play has a lot of settings, and most of them are things other players leav
 - Network shares: + Add, Network shares finds Windows/SMB shares, UPnP/DLNA media servers and NFS exports on your Wi-Fi, and you can connect to SMB, FTP, SFTP and NFS servers by address. Play a file straight from a share, or add a whole folder to your library.
 
 **Queue**
-- Swipe up on the mini player and it flips over to show what plays next. Tap it (or swipe up again) and the queue board grows out of it; swipe down flips it back.
+- Swipe up on the mini player and it flips over to show what plays next; swipe up again (or down) to flip back to the player. Tap the flipped side and the queue board grows out of it.
 - The board is one list in play order: the songs you picked (marked "Added by you") mixed in with what follows from the playlist you were playing. Drag any song anywhere, by its handle or with a long-press: a picked song can go after playlist songs and a playlist song can go before picked ones. Tap a song to jump to it, x to take it out.
 - Long-press songs in Home or the Library and choose Play next or Add to queue, or use Add songs on the board to search your library.
 - Swipe sideways on the board for your saved queues (Save queue keeps the current one) and presets: Shuffle everything, Recently added, Most played and Videos. Their songs drag too. Play starts one, Add to queue tacks it on.
