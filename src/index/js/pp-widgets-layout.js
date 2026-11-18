@@ -205,6 +205,16 @@
   ['pointerdown', 'touchstart'].forEach(function(ev){
     document.addEventListener(ev, function(e){ var stk = e.target.closest && e.target.closest('.pw-stk'); if (stk) stk._pwTouched = Date.now(); }, { capture:true, passive:true });
   });
+  // a tap on a dot goes to that page; a tap on a fidget page's edge goes one page along
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('.pw-stk [data-stk-go], .pw-stk [data-stk-to]'); if (!b || editing) return;
+    var stk = b.closest('.pw-stk'), tr = stk.querySelector('.pw-stk-tr'); if (!tr) return;
+    var n = tr.children.length, cur = Math.round(tr.scrollLeft / Math.max(1, tr.clientWidth));
+    var to = b.dataset.stkTo != null ? +b.dataset.stkTo : cur + (+b.dataset.stkGo);
+    to = Math.max(0, Math.min(n - 1, to)); stk._pwTouched = Date.now();
+    tr.scrollTo({ left: to * tr.clientWidth, behavior: 'smooth' });
+    e.preventDefault(); e.stopPropagation();
+  }, true);
 
   // ---------- zones on screen ----------
   var homeEl = document.getElementById('pl-home');

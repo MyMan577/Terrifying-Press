@@ -631,4 +631,5 @@
   }
 
   var FIDGET_ORDER = ['spinner','nebula','popit','switches','knob','squishy'];
+  FIDGET_ORDER.forEach(function(k){ if (T[k]) T[k].fidget = true; });   // a stack gives these pages edges to swipe on (pp-widgets.js)
 
