@@ -74,7 +74,27 @@
       sleepFor: min => startSleepTimer(min),
       sleepEnd: () => startSleepAtEndOfTrack(),
       sleepOff: () => clearSleepTimer(),
-      positions: () => loadPlaybackPositions()
+      positions: () => loadPlaybackPositions(),
+      // the queue builder widget: put a track right after the one playing, or take one out, without stopping the music
+      playNext: i => {
+        if (i < 0 || i >= tracks.length || currentIndex < 0 || i === currentIndex) return false;
+        const q = activeQueue().filter(x => x !== i), p = q.indexOf(currentIndex);
+        q.splice(p + 1, 0, i); playQueue = q;
+        if (shuffleOn){
+          if (!shuffleOrder.length) buildShuffleOrder();
+          const so = shuffleOrder.filter(x => x !== i), sp = so.indexOf(currentIndex);
+          so.splice(sp < 0 ? 0 : sp + 1, 0, i); shuffleOrder = so;
+        }
+        try { ppNextSig = ''; } catch(e){}   // the native player works out its next track again
+        return true;
+      },
+      unqueue: i => {
+        if (i === currentIndex) return false;
+        playQueue = activeQueue().filter(x => x !== i);
+        if (shuffleOn) shuffleOrder = shuffleOrder.filter(x => x !== i);
+        try { ppNextSig = ''; } catch(e){}
+        return true;
+      }
     },
     sel: {
       active: () => selectMode,

@@ -1,7 +1,7 @@
   var BUILTIN_ORDER = ['title','games','tagline','playground','tabs','hero','chips','videos','audio','history'];
-  var NEW_ORDER = ['nowplaying','cover','seekbar','upnext','lyrics','singalong','stems','viz','volume','speed','trackinfo','stack','action','shufpl','mood','shortcuts','search','eq','sleeper','bookmarks','level','sotd','onthisday','recap','bloopy','game',
-                   'clock','world','greeting','countdown','calendar','dayprog','stopwatch','focus','battery','todo','tally','dice','breathe','text','rotate','drawing','image','stats',
-                   'recent','most','random','cont','genre','playlist','playlists','setting','setsec','spacer','divider'];
+  var NEW_ORDER = ['nowplaying','cover','seekbar','upnext','queue','lyrics','singalong','stems','viz','volume','speed','trackinfo','stack','action','shufpl','mood','shortcuts','search','eq','sleeper','alarm','bookmarks','practice','level','sotd','onthisday','recap','bloopy','game',
+                   'clock','world','greeting','countdown','calendar','dayprog','stopwatch','focus','battery','todo','tally','dice','breathe','text','rotate','drawing','image','stats','storage',
+                   'recent','most','random','cont','genre','playlist','playlists','pltiles','tagchips','setting','setsec','spacer','divider'];
 
   function subOf(t){ return t.kind === 'video' ? (t.height ? t.height + 'p' : (t.ext || '').toUpperCase()) : ((t.artist && t.artist !== 'Unknown artist') ? t.artist : (t.ext || '').toUpperCase()); }
   // Home hands its lists over; other zones work them out the same way.
@@ -908,6 +908,8 @@
     if (type === 'setting') return stPickHTML(k, v, label);
     if (type === 'setsec') return stSecPickHTML(k, v, label);
     if (type === 'page') return row('<select data-k="' + k + '"><option value="">Choose a page…</option>' + L.pages.map(function(p){ return '<option value="' + p.id + '"' + (v === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>');
+    if (type === 'playlist0'){ var A0 = api(), pls0 = A0 ? A0.playlists().filter(function(p){ return !p.libOnly && !p.stemOf; }) : [];
+      return row('<select data-k="' + k + '"><option value="">Everything, shuffled</option><option value="resume"' + (v === 'resume' ? ' selected' : '') + '>What I last played</option>' + pls0.map(function(p){ return '<option value="' + esc(p.id) + '"' + (v === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>'); }
     if (type === 'playlist'){ var A = api(), pls = A ? A.playlists().filter(function(p){ return !p.libOnly; }) : [];
       return row('<select data-k="' + k + '"><option value="">Choose a playlist…</option>' + pls.map(function(p){ return '<option value="' + esc(p.id) + '"' + (v === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>'); }
     if (type === 'icon') return row('<div class="pw-icons" data-k="' + k + '"><button type="button" data-v=""' + (!v ? ' class="on"' : '') + '>Auto</button>' + ICON_CHOICES.map(function(n){ return '<button type="button" data-v="' + n + '"' + (v === n ? ' class="on"' : '') + ' aria-label="' + n + '">' + svg(n) + '</button>'; }).join('') + '</div>');
