@@ -386,7 +386,14 @@
     const layer = wrapEl.querySelector('.gesture-layer');
     if (!layer) return;
 
-    const MULTI_MS = 300;          // max gap between taps in a double / triple tap
+    // Double / triple taps. The gap is timed from one tap's release to the
+    // next finger landing (not release to release), and the timer is paused
+    // while a finger is down, so a slightly slow press can't split a double
+    // tap into two singles. Follow-up taps only need to land near the first
+    // one; they count toward the first tap's zone even if they drift across
+    // a zone border.
+    const MULTI_MS = 320;          // max gap between a release and the next press
+    const MULTI_SLOP_PX = 90;      // how far a follow-up tap may land from the first
     const LONGPRESS_MS = 550;
     const SWIPE_MIN_PX = 40;
     const TAP_MOVE_TOLERANCE = 12;
@@ -396,6 +403,8 @@
     let tapCount = 0;
     let lastTapZone = null;
     let tapTimer = null;
+    let seqX = 0, seqY = 0;        // where the first tap of the current sequence landed
+    let seqReleaseT = 0;           // when the last tap of the current sequence lifted
     let longPressTimer = null;
     let longPressFired = false;
     let startX = 0, startY = 0, startedOnControl = false;
@@ -450,15 +459,34 @@
     }
 
     function cancelTapSequence(){
-      clearTimeout(tapTimer);
+      clearTimeout(tapTimer); tapTimer = null;
       tapCount = 0;
       lastTapZone = null;
+    }
+
+    function fireTaps(n, zone){
+      clearTimeout(tapTimer); tapTimer = null;
+      tapCount = 0; lastTapZone = null;
+      const zoneCap = zone.charAt(0).toUpperCase() + zone.slice(1);
+      const id = (n >= 3 ? 'triple' : n === 2 ? 'double' : 'tap') + zoneCap;
+      runGesture(wrapEl, id, zone);
     }
 
     function onStart(x, y, target){
       startedOnControl = isInteractive(target);
       if (startedOnControl) return;
       startX = x; startY = y;
+      if (tapCount > 0){
+        if (Date.now() - seqReleaseT > MULTI_MS || Math.hypot(x - seqX, y - seqY) > MULTI_SLOP_PX){
+          // Too late or too far to be part of the pending taps: settle those now.
+          // (Checking the clock here, not just relying on the timer, keeps the
+          // result the same when the page is busy and the timer runs late.)
+          fireTaps(tapCount, lastTapZone);
+        } else {
+          // A follow-up press arrived in time: hold the sequence open until it lifts.
+          clearTimeout(tapTimer); tapTimer = null;
+        }
+      }
       panBegin(x, y);
       longPressFired = false;
       longPressTimer = setTimeout(() => {
@@ -485,30 +513,26 @@
         }
         return;
       }
-      if (dist > TAP_MOVE_TOLERANCE) return; // an ambiguous drag, not a tap
+      if (dist > TAP_MOVE_TOLERANCE){ cancelTapSequence(); return; } // an ambiguous drag, not a tap
 
-      const zone = zoneFromX(x);
+      if (tapCount === 0){
+        lastTapZone = zoneFromX(x);
+        seqX = x; seqY = y;
+      }
+      const zone = lastTapZone;
       const zoneCap = zone.charAt(0).toUpperCase() + zone.slice(1);
-      // Taps in a different zone restart the count.
-      if (lastTapZone !== zone) tapCount = 0;
-      lastTapZone = zone;
       tapCount++;
-      clearTimeout(tapTimer);
+      seqReleaseT = Date.now();
+      clearTimeout(tapTimer); tapTimer = null;
 
+      const hasDouble = slotAction('double' + zoneCap) !== 'none';
       const hasTriple = slotAction('triple' + zoneCap) !== 'none';
-      const fire = (n) => {
-        const id = (n >= 3 ? 'triple' : n === 2 ? 'double' : 'tap') + zoneCap;
-        tapCount = 0; lastTapZone = null;
-        runGesture(wrapEl, id, zone);
-      };
 
-      if (tapCount >= 3){
-        fire(3);
-      } else if (tapCount === 2 && !hasTriple){
-        fire(2); // nothing is bound to a triple tap here, so keep double-tap instant
+      if (tapCount >= 3 || (tapCount === 2 && !hasTriple) || (tapCount === 1 && !hasDouble && !hasTriple)){
+        // Nothing longer is bound in this zone, so don't wait for more taps.
+        fireTaps(tapCount, zone);
       } else {
-        const n = tapCount;
-        tapTimer = setTimeout(() => fire(n), MULTI_MS);
+        tapTimer = setTimeout(() => fireTaps(tapCount, zone), MULTI_MS);
       }
     }
 

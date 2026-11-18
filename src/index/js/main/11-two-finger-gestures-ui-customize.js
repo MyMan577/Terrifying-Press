@@ -78,7 +78,7 @@
       if (!longPressFired) clearTimeout(longPressTimer);
     }, { passive: true });
     layer.addEventListener('touchcancel', () => {
-      multi = false; clearTimeout(longPressTimer); panEnd();
+      multi = false; clearTimeout(longPressTimer); panEnd(); cancelTapSequence();
     }, { passive: true });
     // iOS Safari reports pinches as proprietary gesture events and would
     // otherwise zoom the whole page.
