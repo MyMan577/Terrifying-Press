@@ -1,6 +1,6 @@
   var BUILTIN_ORDER = ['title','games','tagline','playground','tabs','hero','chips','videos','audio','history'];
   var NEW_ORDER = ['nowplaying','cover','seekbar','upnext','lyrics','viz','volume','speed','trackinfo','stack','action','shufpl','shortcuts','search','eq','sleeper','bookmarks','level','bloopy','game',
-                   'clock','greeting','countdown','calendar','dayprog','stopwatch','battery','text','rotate','drawing','image','stats',
+                   'clock','world','greeting','countdown','calendar','dayprog','stopwatch','focus','battery','todo','tally','dice','breathe','text','rotate','drawing','image','stats',
                    'recent','most','random','cont','genre','playlist','playlists','setting','setsec','spacer','divider'];
 
   function subOf(t){ return t.kind === 'video' ? (t.height ? t.height + 'p' : (t.ext || '').toUpperCase()) : ((t.artist && t.artist !== 'Unknown artist') ? t.artist : (t.ext || '').toUpperCase()); }
@@ -607,7 +607,7 @@
   // A tap or long press on a widget can run an action of its own (Settings > Every widget). The widget's own
   // buttons, rows and fields keep working: a tap on them is theirs.
   var holdT = 0, holdEl = null, holdX = 0, holdY = 0, ateClick = 0;
-  function ownControl(t, box){ var c = t.closest('button, a, input, select, textarea, label, form, [data-pw-act], [data-act], .ph-card, .ph-row, .ph-list, canvas'); return c && box.contains(c) ? c : null; }
+  function ownControl(t, box){ var c = t.closest('button, a, input, select, textarea, label, form, [data-pw-act], [data-act], .ph-card, .ph-row, .ph-list, canvas, .pw-ifx-obj, .pw-tdo, .pw-tc, .pw-dice'); return c && box.contains(c) ? c : null; }
   function runTap(box, kind){ var a = box.getAttribute('data-pw-' + kind), pg = box.getAttribute('data-pw-' + (kind === 'tap' ? 'tpage' : 'hpage')); if (a) runAction(a, { page: pg }); }
   document.addEventListener('click', function(e){
     if (Date.now() - ateClick < 700){ ateClick = 0; e.preventDefault(); e.stopPropagation(); return; }
@@ -915,7 +915,7 @@
     if (type === 'image') return row('<div class="pw-colrow"><button type="button" class="pw-mini" data-pick="' + k + '">' + (v ? 'Change picture…' : 'Choose picture…') + '</button>' + (v ? '<button type="button" class="pw-mini" data-clear="' + k + '">Remove</button>' : '') + '<input type="file" accept="image/*" hidden data-file="' + k + '"></div>');
     return '';
   }
-  function rangeLabel(unit, val){ return unit === 'all' && !+val ? 'All' : unit === 'autopx' ? (+val ? val + 'px' : 'Auto') : val + (unit && unit !== 'all' ? unit : ''); }
+  function rangeLabel(unit, val){ return unit === 'goal' ? (+val ? String(val) : 'None') : unit === 'all' && !+val ? 'All' : unit === 'autopx' ? (+val ? val + 'px' : 'Auto') : val + (unit && unit !== 'all' ? unit : ''); }
   // Where a widget is: in the zone itself, or a page of a stack in the zone.
   function locate(id){
     var a = items();
@@ -1069,7 +1069,9 @@
         var s = Math.min(1, 1280 / Math.max(img.width, img.height)), c = document.createElement('canvas');
         c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
         c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        try { cb(c.toDataURL('image/jpeg', 0.84)); } catch(e){ cb(r.result); }
+        // pictures that can be see-through (PNG, WebP, GIF) stay see-through, so a cut-out spins as a cut-out (picture fidgets)
+        var alpha = /png|webp|gif/i.test(file.type || ''), url;
+        try { url = alpha ? c.toDataURL('image/webp', 0.9) : c.toDataURL('image/jpeg', 0.84); if (alpha && url.indexOf('data:image/webp') !== 0) url = c.toDataURL('image/png'); cb(url); } catch(e){ cb(r.result); }
       };
       img.onerror = function(){ toast('That picture could not be opened.'); };
       img.src = r.result;

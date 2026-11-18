@@ -47,6 +47,7 @@
     text:'<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/>',
     image:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
     minus:'<line x1="4" y1="12" x2="20" y2="12"/>',
+    check:'<polyline points="20 6 9 17 4 12"/>',
     space:'<line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 12 3 16 7"/><polyline points="8 17 12 21 16 17"/>',
     sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     history:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/>',
@@ -592,7 +593,7 @@
         var h = itemHTML(k, c, ctx);
         if (!h){ if (!editing) return; h = '<div class="pw-hidden-note">' + esc(d.name) + '</div>'; }
         var sty = styleOf(k.o || {});
-        pages.push('<div class="pw-stk-pg pw-t-' + k.type + sty.cls + '"' + sty.style + (editing ? '' : sty.data) + '>' + h + (d.fidget ? EDGES : '') + '</div>');
+        pages.push('<div class="pw-stk-pg pw-t-' + k.type + sty.cls + '"' + sty.style + (editing ? '' : sty.data) + '>' + h + (d.fidget || (k.o && FX_WORD[k.o.fx] && (k.type === 'image' || k.type === 'drawing')) ? EDGES : '') + '</div>');
       });
       if (pages.length < 2 || editing) pages = pages.map(function(x){ return x.replace(EDGES, ''); });
       if (!pages.length) return editing ? '<div class="pw-empty">An empty stack. Open its settings to put widgets in it.</div>' : '';
