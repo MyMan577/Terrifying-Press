@@ -40,6 +40,7 @@
     if(id==='playback-position-section'||id==='audio-quality-section'||sec.querySelector('#xf-mode'))return 'play';
     if(id==='extras-settings-section'||id==='playlists-manager-section'||sec.querySelector('#detailed-mode-toggle')||/^Keep MP3 conversions/.test(ft))return 'lib';
     if(id==='auto-scan-section')return 'lib';
+    if(id==='leave-section')return 'play';
     if(id==='storage-section'||id==='progress-section'||id==='update-section'||id==='errlog-section')return 'data';
     if(id==='pw-customize-section'||/^Retro layout/.test(ft)||id==='pp-refined-section'||id==='ppxp-accent-section'||id==='pp-modes-section')return 'look';
     return 'fun';
