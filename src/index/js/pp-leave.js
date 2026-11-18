@@ -9,7 +9,7 @@
 (function(){
   'use strict';
   var KEY = 'ppLeaveV1', body = document.body;
-  var DEF = { mini: true, leave: 'keep', notify: true, survive: true, other: 'pause', calls: 'keep' };
+  var DEF = { mini: true, leave: 'keep', bgAudio: true, bgVideo: true, notify: true, survive: true, other: 'pause', calls: 'keep' };
   var NAT = !!(window.PPNative && PPNative.available && PPNative.setPlaybackPrefs);
   function get(){ var o = {}; try { o = JSON.parse(localStorage.getItem(KEY)) || {}; } catch(e){} return Object.assign({}, DEF, o); }
   function set(k, v){ var o = get(); o[k] = v; try { localStorage.setItem(KEY, JSON.stringify(o)); } catch(e){} apply(); }
@@ -55,6 +55,8 @@
       sw('mini', 'Mini player', 'The bar above the tabs with what is playing.', o.mini) +
       sel('leave', 'When you leave the player', 'Keep playing: tap the song in Home or the Library to get back to it. Stop: leaving ends the track.', o.leave,
         [['keep', 'Keep playing'], ['stop', 'Stop the track']], ' pp-leave-sub') +
+      sw('bgAudio', 'Songs keep playing in the background', 'Off: leaving the app or turning the screen off pauses the song. It carries on when you come back.', o.bgAudio) +
+      sw('bgVideo', 'Videos keep playing in the background', 'As sound only. Off: leaving the app or turning the screen off pauses the video. It carries on when you come back.', o.bgVideo) +
       (NAT ?
         sw('notify', 'Media controls notification', 'Controls in the notification shade and on the lock screen. Without it, Android may stop the music a while after you leave the app.', o.notify) +
         sel('other', 'When other apps play sound', 'A video in another app, a voice message, a game.', o.other,
