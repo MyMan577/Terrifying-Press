@@ -460,7 +460,7 @@
       '<div class="ph-title">' + esc(t.title) + '</div>' +
       '<div class="ph-sub">' + esc(sub) + '</div></button>';
   }
-  // A playlist's own picture, else its first video's thumbnail (see plInfo)
+  // A playlist's own picture, else the first song or video in it with a picture (see plInfo)
   function plThumbHTML(pl, first){
     if (pl && pl.thumb) return '<div class="ph-thumb has-img"><img src="' + esc(pl.thumb) + '" alt="" loading="lazy" decoding="async"></div>';
     return thumbHTML(first, false);
@@ -578,7 +578,8 @@
     function plInfo(idxs){
       const vc = idxs.filter(i => tracks[i].kind === 'video').length, ac = idxs.length - vc;
       const total = idxs.reduce((a, i) => a + (isFinite(tracks[i].duration) ? tracks[i].duration : 0), 0);
-      const first = idxs.map(i => tracks[i]).find(t => t.kind === 'video') || idxs.map(i => tracks[i]).find(t => t.artUrl) || (idxs.length ? tracks[idxs[0]] : null);
+      // the cover: the first track in the playlist with a picture, a song's cover art as much as a video's frame
+      const first = idxs.map(i => tracks[i]).find(t => t.kind === 'video' || t.artUrl) || (idxs.length ? tracks[idxs[0]] : null);
       const counts = '<div class="ph-pl-counts"><span title="Videos">' + IC_VID + vc + ' video' + (vc === 1 ? '' : 's') + '</span><span title="Audio tracks">' + IC_AUD + ac + ' audio</span></div>';
       return { total, first, counts };
     }

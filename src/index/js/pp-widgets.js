@@ -320,7 +320,9 @@
       var A = api(), K = kit(); if (!A || !K) return '';
       var t = A.tracks(), pls = A.playlists().filter(function(p){ return !p.libOnly; });
       var cards = pls.map(function(pl){
-        var first = t.find(function(x){ return (x.playlistIds || []).includes(pl.id) && (x.kind === 'video' || x.artUrl); });
+        var mine = t.map(function(x, i){ return (x.playlistIds || []).includes(pl.id) ? i : -1; }).filter(function(i){ return i >= 0; });
+        var ord = A.orderFor ? A.orderFor(mine, pl.id) : mine;          // the playlist's own order, so the cover is its first song or video with a picture
+        var first = (Array.isArray(ord) ? ord : mine).map(function(i){ return t[i]; }).find(function(x){ return x && (x.kind === 'video' || x.artUrl); });
         var n = t.filter(function(x){ return (x.playlistIds || []).includes(pl.id); }).length;
         var th = pl.thumb ? '<div class="ph-thumb has-img"><img src="' + esc(pl.thumb) + '" alt="" loading="lazy" decoding="async"></div>' : K.thumbHTML(first, false);
         return '<button type="button" class="ph-card pw-pl-card" data-pw-act="openpl" data-pl="' + esc(pl.id) + '">' + th +
@@ -393,7 +395,7 @@
     var cv = el.querySelector('canvas'), g = cv.getContext('2d'), lv = new Float32Array(32), last = 0, col = '', colAt = 0;
     function onScreen(){
       if (document.hidden || !el.offsetParent) return false;
-      var inPlayer = !!el.closest('#pw-player-zone'), playerOpen = body.hasAttribute('data-pl-player');
+      var inPlayer = !!el.closest('#pw-player-zone, #pw-player-top, #pw-video-zone'), playerOpen = body.hasAttribute('data-pl-player');
       return inPlayer ? playerOpen : !playerOpen;
     }
     function frame(ts){

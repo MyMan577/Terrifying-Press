@@ -268,7 +268,7 @@
         thumbBtn.title = 'Change playlist thumbnail';
         const reset = document.createElement('button');
         reset.type = 'button'; reset.className = 'pl-manager-btn'; reset.textContent = '\u21ba';
-        reset.title = "Use the first video's thumbnail instead";
+        reset.title = "Use the first song or video's picture instead";
         reset.addEventListener('click', () => clearPlaylistThumb(pl.id));
         row.insertBefore(reset, row.querySelector('.pl-manager-shuf'));
       }
