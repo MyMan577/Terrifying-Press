@@ -483,7 +483,18 @@
       playQueue = idxs.slice(); shuffleOrder = [];
       loadTrack(idxs[Math.max(0, Math.min(idxs.length - 1, startAt || 0))], true);
     },
-    version: () => queueVer
+    version: () => queueVer,
+    // What really follows when this song ends, by the same rules as onEnded(): -1 for repeat one, the end of the
+    // queue with repeat off, the sleep timer stopping after this track, or an A-B loop. Used by Transitions.
+    peekNext: () => {
+      if (currentIndex === -1 || repeatMode === 2) return -1;
+      if (sleepTimer && sleepTimer.mode === 'track') return -1;
+      if (abLoop && abLoop.a != null && abLoop.b != null) return -1;
+      if (repeatMode === 0 && atQueueEnd()) return -1;
+      const n = nextTrackIndex();
+      return n >= 0 && n !== currentIndex ? n : -1;
+    },
+    current: () => currentIndex
   };
 
   // ---------- Controls ----------

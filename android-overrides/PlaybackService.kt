@@ -257,7 +257,13 @@ class PlaybackService : MediaLibraryService() {
     // the app's own volume, and the turning down while another app plays ("duck")
     private var userVolume = 1f
     private var duckMul = 1f
-    fun setUserVolume(v: Float) { userVolume = v; if (::player.isInitialized) player.volume = userVolume * duckMul }
+    fun setUserVolume(v: Float) { userVolume = v; applyVolume() }
+    /** The player's volume: your volume, turned down while another app talks (duck), and faded in during a crossfade. */
+    private fun applyVolume() {
+        if (!::player.isInitialized) return
+        player.volume = userVolume * duckMul * xfIn
+        tail?.volume = userVolume * duckMul * xfOut
+    }
     private var duckReq: Any? = null   // an AudioFocusRequest (Android 8+)
     private fun ownDuckFocus(on: Boolean) {
         if (Build.VERSION.SDK_INT < 26) return
@@ -268,14 +274,14 @@ class PlaybackService : MediaLibraryService() {
                 .setWillPauseWhenDucked(false)
                 .setOnAudioFocusChangeListener({ c ->
                     duckMul = if (c == AudioManager.AUDIOFOCUS_GAIN) 1f else 0.25f
-                    player.volume = userVolume * duckMul
+                    applyVolume()
                 }, main)
                 .build()
             duckReq = r
             try { audioManager.requestAudioFocus(r) } catch (_: Exception) {}
         } else if (!on && duckReq != null) {
             try { audioManager.abandonAudioFocusRequest(duckReq as android.media.AudioFocusRequest) } catch (_: Exception) {}
-            duckReq = null; duckMul = 1f; player.volume = userVolume
+            duckReq = null; duckMul = 1f; applyVolume()
         }
     }
     private var callWas = false
@@ -335,8 +341,118 @@ class PlaybackService : MediaLibraryService() {
         ownDuckFocus(wantFocus && !call && other == "duck" && player.playWhenReady)
     }
 
+    // ---------- crossfade (Settings > Transitions) ----------
+    // ExoPlayer plays one item at a time, so the end of the old song is played by a second, short-lived player
+    // ("tail") while the main player moves on to the queued next item and fades it in. The tail opens the same item
+    // a little ahead of the main player, waits, and starts at the exact moment the main player reaches that point,
+    // so the two line up. It runs the same effects (EQ, boost...) as the song had, and follows pause and play.
+    // Gapless needs none of this: ExoPlayer already goes from one queued item to the next without a gap.
+    private var tail: ExoPlayer? = null
+    private var xfIn = 1f
+    private var xfOut = 0f
+    /** Set while the main player is moved on by a crossfade, so the plugin reports it like an automatic advance. */
+    @Volatile var xfAdvancing = false
+    private var xfStartAt = 0L          // position in the old song where the fade starts
+    private var xfLenMs = 0L
+    private var xfFading = false
+    private var xfElapsed = 0L
+    private var xfLast = 0L
+    private var xfDeadline = 0L
+    private val xfTick = object : Runnable {
+        override fun run() {
+            val t = tail ?: return
+            val p = player
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (!xfFading) {
+                // Waiting for the main player to reach the point where the tail is parked.
+                val pos = p.currentPosition
+                if (!p.isPlaying) xfDeadline = now + (xfStartAt - pos).coerceAtLeast(0L) + 4000   // paused: keep waiting
+                if (p.currentMediaItemIndex != 0 || p.mediaItemCount < 2 || now > xfDeadline || pos > xfStartAt + 250) { cancelCrossfade(); return }
+                if (t.playbackState == Player.STATE_READY && pos >= xfStartAt - 15) {
+                    t.playWhenReady = p.playWhenReady
+                    xfFading = true; xfElapsed = 0L; xfLast = now
+                    xfIn = 0f; xfOut = 1f
+                    xfAdvancing = true
+                    p.seekToNextMediaItem()
+                    xfAdvancing = false
+                    applyVolume()
+                }
+                main.postDelayed(this, 8)
+                return
+            }
+            if (p.isPlaying) xfElapsed += now - xfLast
+            xfLast = now
+            t.playWhenReady = p.playWhenReady
+            val f = (xfElapsed.toFloat() / xfLenMs.coerceAtLeast(1L)).coerceIn(0f, 1f)
+            // equal-power curves: the overall loudness holds steady through the middle of the fade
+            xfIn = kotlin.math.sin(f * Math.PI / 2).toFloat()
+            xfOut = kotlin.math.cos(f * Math.PI / 2).toFloat()
+            applyVolume()
+            if (f >= 1f || t.playbackState == Player.STATE_ENDED) { finishCrossfade(); return }
+            main.postDelayed(this, 30)
+        }
+    }
+
+    /**
+     * Fade from the playing item into the queued next one over [ms], starting [ms] before the end of the song.
+     * False when there is nothing queued or the song is too short; then the normal (gapless) advance happens.
+     */
+    fun startCrossfade(ms: Long): Boolean {
+        if (!::player.isInitialized) return false
+        val p = player
+        if (p.mediaItemCount < 2 || p.currentMediaItemIndex != 0 || !p.playWhenReady) return false
+        val item = p.currentMediaItem ?: return false
+        val dur = p.duration
+        if (dur == C.TIME_UNSET || dur <= 0) return false
+        cancelCrossfade()
+        val pos = p.currentPosition
+        // The fade starts [ms] before the end, but never sooner than the tail can be ready (it needs a moment to open).
+        val startAt = maxOf(dur - ms, pos + 600)
+        val len = dur - startAt
+        if (len < 400) return false
+        val fx2 = FxAudioProcessor().also { it.params = fx.params }
+        val rf = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
+                DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(fx2)).build()
+        }
+        rf.setEnableDecoderFallback(true)
+        val t = try {
+            ExoPlayer.Builder(this, rf)
+                .setMediaSourceFactory(DefaultMediaSourceFactory(this, DefaultExtractorsFactory()
+                    .setConstantBitrateSeekingEnabled(true).setConstantBitrateSeekingAlwaysEnabled(true)))
+                .build()
+        } catch (e: Exception) { return false }
+        // No audio focus of its own: asking for it would pause the main player.
+        t.setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), false)
+        t.trackSelectionParameters = t.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true).setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
+        t.playbackParameters = p.playbackParameters
+        t.volume = 0f
+        t.setMediaItem(item, startAt)
+        t.playWhenReady = false
+        t.prepare()
+        tail = t
+        xfStartAt = startAt; xfLenMs = len; xfFading = false; xfIn = 1f; xfOut = 0f
+        xfDeadline = android.os.SystemClock.elapsedRealtime() + (startAt - pos) + 4000
+        main.removeCallbacks(xfTick)
+        main.post(xfTick)
+        return true
+    }
+
+    private fun finishCrossfade() {
+        main.removeCallbacks(xfTick)
+        tail?.let { try { it.release() } catch (_: Exception) {} }
+        tail = null; xfFading = false; xfIn = 1f; xfOut = 0f
+        applyVolume()
+    }
+
+    /** Stop a crossfade at once (a new song was picked, playback stopped...). The main player is left at full volume. */
+    fun cancelCrossfade() { if (tail != null || xfIn != 1f) finishCrossfade() }
+    fun crossfading() = tail != null
+
     override fun onDestroy() {
         instance = null
+        cancelCrossfade()
         main.removeCallbacks(focusTick)
         ownDuckFocus(false)
         if (Build.VERSION.SDK_INT >= 31) (modeListener as? AudioManager.OnModeChangedListener)?.let { try { audioManager.removeOnModeChangedListener(it) } catch (_: Exception) {} }

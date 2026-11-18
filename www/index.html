@@ -21428,7 +21428,18 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       playQueue = idxs.slice(); shuffleOrder = [];
       loadTrack(idxs[Math.max(0, Math.min(idxs.length - 1, startAt || 0))], true);
     },
-    version: () => queueVer
+    version: () => queueVer,
+    // What really follows when this song ends, by the same rules as onEnded(): -1 for repeat one, the end of the
+    // queue with repeat off, the sleep timer stopping after this track, or an A-B loop. Used by Transitions.
+    peekNext: () => {
+      if (currentIndex === -1 || repeatMode === 2) return -1;
+      if (sleepTimer && sleepTimer.mode === 'track') return -1;
+      if (abLoop && abLoop.a != null && abLoop.b != null) return -1;
+      if (repeatMode === 0 && atQueueEnd()) return -1;
+      const n = nextTrackIndex();
+      return n >= 0 && n !== currentIndex ? n : -1;
+    },
+    current: () => currentIndex
   };
 
   // ---------- Controls ----------
@@ -31479,15 +31490,31 @@ async function ppMp4Chapters(blob){
 })();
 </script>
 <script id="pp-transitions">
-/* Press Play addon: optional gapless / crossfade between audio tracks (Settings > Transitions) */
+/* Press Play addon: gapless / crossfade between songs (Settings > Transitions)
+ *
+ * The rule every path follows: a transition only happens when a song really follows this one, by the same rules as
+ * the end of a song (window.__ppQueue.peekNext): never with repeat one (the song just loops), never at the end of the
+ * queue with repeat off, never when the sleep timer stops after this track or an A-B loop is set. And only from a
+ * song to a song: videos keep their normal cut.
+ *
+ * On the phone (native engine) ExoPlayer plays the songs:
+ *  - Gapless: nothing to do here. The next song is queued in ExoPlayer (ppQueueNext in main) and it runs straight
+ *    on from the last sample of this one.
+ *  - Crossfade: a little before the fade is due this asks ExoPlayer to do it (PPNative.crossfade). The old song's
+ *    ending keeps playing on its own, with the same effects, while the next one fades in over it.
+ * In a browser (or with the native engine off) the page plays the songs itself:
+ *  - Gapless: the next song is started the moment this one ends (main's onEnded); no tricks that clip the ending.
+ *  - Crossfade: the ending is carried by a hidden player that is opened and parked at the fade point ahead of time,
+ *    started exactly when the song reaches it, while the next song starts and fades in.
+ */
 (function(){
-  const A = document.getElementById('audio'), V = document.getElementById('video-el');
-  const nextBtn = document.querySelector('button[title="Next"]');
+  const nextBtn = document.getElementById('next-btn') || document.querySelector('button[title="Next"]');
   const anchor = document.getElementById('storage-section');
-  if (!A || !nextBtn || !anchor) return;
+  if (!nextBtn || !anchor) return;
   const KEY = 'ppTransition';
-  let cfg = { mode: 'off', secs: 5 };
+  let cfg = { mode: 'off', secs: 5, album: true };
   try { Object.assign(cfg, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch(e){}
+  cfg.secs = Math.max(1, Math.min(12, +cfg.secs || 5));
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch(e){} };
 
   // ---- Settings UI ----
@@ -31497,105 +31524,136 @@ async function ppMp4Chapters(blob){
     '<div class="settings-section-label">Transitions</div>' +
     '<div class="settings-row"><div class="settings-row-text">' +
       '<div class="settings-row-title">Between songs</div>' +
-      '<div class="settings-row-sub">Off: normal. Gapless: no pause between songs. Crossfade: one song fades out as the next fades in.</div>' +
+      '<div class="settings-row-sub">Off: normal. Gapless: the next song starts the instant this one ends. Crossfade: this song fades out as the next fades in. Repeat one, the end of the queue and the sleep timer are always respected.</div>' +
     '</div><select id="xf-mode"><option value="off">Off</option><option value="gapless">Gapless</option><option value="crossfade">Crossfade</option></select></div>' +
     '<div class="settings-row" id="xf-secs-row" style="margin-top:12px;"><div class="settings-row-text">' +
       '<div class="settings-row-title">Crossfade length <span id="xf-secs-val"></span></div></div>' +
-      '<input type="range" id="xf-secs" min="1" max="12" step="1"></div>';
+      '<input type="range" id="xf-secs" min="1" max="12" step="1"></div>' +
+    '<div class="settings-row" id="xf-album-row" style="margin-top:12px;"><div class="settings-row-text">' +
+      '<div class="settings-row-title">Keep albums gapless</div>' +
+      '<div class="settings-row-sub">No crossfade between songs of the same album, so live albums and DJ mixes flow as recorded.</div></div>' +
+      '<label class="settings-switch"><input type="checkbox" id="xf-album"><span class="settings-switch-track"><span class="settings-switch-thumb"></span></span></label></div>';
   anchor.parentNode.insertBefore(sec, anchor);
-  const selMode = sec.querySelector('#xf-mode'), rng = sec.querySelector('#xf-secs'),
-        val = sec.querySelector('#xf-secs-val'), rrow = sec.querySelector('#xf-secs-row');
-  const paint = () => { selMode.value = cfg.mode; rng.value = cfg.secs; val.textContent = cfg.secs + ' s'; rrow.style.display = cfg.mode === 'crossfade' ? '' : 'none'; };
-  selMode.onchange = () => { cfg.mode = selMode.value; save(); paint(); };
-  rng.oninput = () => { cfg.secs = +rng.value; save(); paint(); };
+  const selMode = sec.querySelector('#xf-mode'), rng = sec.querySelector('#xf-secs'), val = sec.querySelector('#xf-secs-val'),
+        rrow = sec.querySelector('#xf-secs-row'), arow = sec.querySelector('#xf-album-row'), alb = sec.querySelector('#xf-album');
+  const paint = () => {
+    selMode.value = cfg.mode; rng.value = cfg.secs; val.textContent = cfg.secs + ' s'; alb.checked = cfg.album !== false;
+    rrow.style.display = arow.style.display = cfg.mode === 'crossfade' ? '' : 'none';
+  };
+  selMode.onchange = () => { cfg.mode = selMode.value; save(); paint(); reset(); };
+  rng.oninput = () => { cfg.secs = +rng.value; save(); paint(); reset(); };
+  alb.onchange = () => { cfg.album = alb.checked; save(); reset(); };
   paint();
 
-    // ---- Engine (audio + video) ----
-  let armed = true, helper = null, rampTimer = null, tok = 0;
-  // Gapless timing: how long (s) the device takes from pressing Next to the new song actually playing. Learned and saved.
-  let lat = 0.5; try { const v = parseFloat(localStorage.getItem('ppGapLat')); if (v > 0.05 && v < 3) lat = v; } catch(e){}
-  const activeEl = () => {
-    if (V && V.currentSrc && V.videoWidth > 0 && !V.paused) return V;
-    if (!A.paused && A.currentSrc) return A;
-    return null;
-  };
-  const killHelper = () => { if (helper){ try { helper.pause(); helper.removeAttribute('src'); helper.load(); helper.remove(); } catch(e){} helper = null; } };
-  const ramp = (el, from, to, secs, done) => {
-    const t0 = performance.now(), id = ++tok;
-    clearInterval(rampTimer);
-    rampTimer = setInterval(() => {
-      if (id !== tok) return clearInterval(rampTimer);
-      const p = Math.min(1, (performance.now() - t0) / (secs * 1000));
-      el.volume = Math.max(0, Math.min(1, from + (to - from) * p));
-      if (p >= 1){ clearInterval(rampTimer); done && done(); }
-    }, 30);
-  };
+  // ---- What plays, and what comes next ----
+  const N = window.PPNative;
+  const Q = () => window.__ppQueue;
+  const tracks = () => (window.__ppApi ? window.__ppApi.tracks() : []);
+  const audio = () => document.getElementById('audio');          // the native facade on the phone, the page's <audio> otherwise
+  const native = () => !!(N && N.active && N.active());
+  // The song after this one if a crossfade should lead into it, else null.
+  function fadeTarget(){
+    const q = Q(); if (!q || !q.peekNext) return null;
+    const i = q.current(), j = q.peekNext(), t = tracks();
+    const a = t[i], b = t[j];
+    if (!a || !b || a.kind === 'video' || b.kind === 'video') return null;
+    if (cfg.album !== false && a.album && b.album && a.album === b.album) return null;   // keep albums gapless
+    return { i, j, a, b };
+  }
+  const remaining = el => (el.duration - el.currentTime) / (el.playbackRate || 1);
 
-  function start(cur){
-    armed = false;
-    const tA = A.volume, tV = V ? V.volume : 1, target = cur.volume, oldA = A.currentSrc, oldV = V ? V.currentSrc : '';
-    const rem = (cur.duration - cur.currentTime) / (cur.playbackRate || 1);
-    const plannedEnd = performance.now() + rem * 1000;   // when the old song's tail finishes
-    const fade = cfg.mode === 'crossfade' ? Math.min(cfg.secs, rem) : 0;
-    // The old song's/video's sound continues on a hidden helper; for video the picture cuts to the next item.
-    killHelper();
-    const h = helper = document.createElement('video');
-    h.style.display = 'none'; h.setAttribute('playsinline', ''); document.body.appendChild(h);
-    h.src = cur.currentSrc; h.currentTime = cur.currentTime; h.playbackRate = cur.playbackRate; h.volume = cur.muted ? 0 : target;
-    h.play().catch(() => {});
-    h.onended = () => { if (helper === h) killHelper(); };
-    if (fade > 0){
-      const hid = setInterval(() => {
-        if (helper !== h) return clearInterval(hid);
-        const left = (h.duration - h.currentTime) / (h.playbackRate || 1);
-        h.volume = Math.max(0, Math.min(target, target * (left / fade)));
-      }, 30);
+  // ---- Phone: ExoPlayer does the fade ----
+  let askedFor = '';      // the song (index:dbId) a fade was asked for, so it is asked once
+  function nativeStep(el){
+    if (cfg.mode !== 'crossfade') return 1000;
+    if (el.paused || !isFinite(el.duration) || el.duration <= 0) return 500;
+    const tg = fadeTarget(), key = tg ? tg.i + ':' + tg.a.dbId : '';
+    const rem = remaining(el), lead = cfg.secs;
+    if (rem > lead + 4 && askedFor){ askedFor = ''; }                       // seeked back: ask again later
+    if (!tg){ if (askedFor){ N.cancelCrossfade(); askedFor = ''; } return 500; }
+    if (el.duration < lead * 2 + 2) return 1000;                          // too short to fade
+    if (askedFor !== key && rem <= lead + 2.5 && rem > 0.6){
+      askedFor = key;
+      N.crossfade(lead * 1000);   // if it can't be set up, ExoPlayer just runs on into the next song gaplessly
     }
-    A.volume = 0; if (V) V.volume = 0;
-    nextBtn.click();
-    const restore = () => { A.volume = tA; if (V) V.volume = tV; };
-    // If nothing changed (e.g. last track), undo.
-    setTimeout(() => { if (A.currentSrc === oldA && (!V || V.currentSrc === oldV)){ killHelper(); restore(); tok++; } }, 900);
-    const onPlaying = (ev) => {
-      const el = ev.target;
-      if ((el === A && A.currentSrc === oldA) || (el === V && V.currentSrc === oldV)) return;
-      A.removeEventListener('playing', onPlaying); if (V) V.removeEventListener('playing', onPlaying);
-      if (cfg.mode === 'gapless'){ const e = performance.now() - plannedEnd; if (Math.abs(e) < 3000){ lat = Math.min(3, Math.max(0.1, lat + 0.7 * e / 1000)); try { localStorage.setItem('ppGapLat', String(lat)); } catch(x){} } }
-      const tgt = el === A ? tA : tV;
-      if (el !== A) A.volume = tA; else if (V) V.volume = tV;
-      if (fade > 0) ramp(el, 0, tgt, fade); else el.volume = tgt;
-    };
-    A.addEventListener('playing', onPlaying); if (V) V.addEventListener('playing', onPlaying);
-    setTimeout(() => { if (!A.muted && A.volume === 0 && V && V.volume === 0) restore(); else { if (A.volume === 0) A.volume = tA; if (V && V.volume === 0) V.volume = tV; } }, (fade + 4) * 1000);
+    return rem > lead + 4 ? Math.max(200, Math.min(1000, (rem - lead - 3) * 1000)) : 150;
   }
 
-  // Adaptive poll: sleeps 1 s when the feature is off, up to 0.5 s while the end is far away,
-  // and only runs at 40 ms in the last moments before the fade/handoff is due.
-  (function xfPoll(){
+  // ---- Browser: a hidden player carries the ending ----
+  let web = null;         // { h, key, startAt, phase: 'park' | 'fade', t0, len, target }
+  function webStop(){
+    if (!web) return;
+    const w = web; web = null;
+    clearInterval(w.timer);
+    try { w.h.pause(); w.h.removeAttribute('src'); w.h.load(); w.h.remove(); } catch(e){}
+    const el = audio(); if (el && w.target != null && el.volume < w.target) el.volume = w.target;
+  }
+  function webStep(el){
+    if (cfg.mode !== 'crossfade'){ webStop(); return 1000; }
+    if (web && web.phase === 'fade') return 200;                          // the fade runs on its own timer
+    if (el.paused || !isFinite(el.duration) || el.duration <= 0){ if (web) web.h.pause(); return 500; }
+    const tg = fadeTarget(), lead = cfg.secs, rem = remaining(el);
+    const key = tg ? tg.i + ':' + tg.a.dbId : '';
+    if (web && (web.key !== key || el.currentTime > web.startAt + 0.3 || el.currentTime < web.startAt - lead - 6)) webStop();
+    if (!tg || el.duration < lead * 2 + 2) return 500;
+    if (!web && rem <= lead + 4 && rem > lead * 0.5){
+      // Open the same song in a hidden player and park it where the fade starts.
+      const h = document.createElement('audio');
+      h.preload = 'auto'; h.style.display = 'none'; document.body.appendChild(h);
+      const startAt = Math.max(el.currentTime + 1, el.duration - lead);
+      h.src = el.currentSrc || el.src; h.playbackRate = el.playbackRate || 1; h.volume = 0;
+      try { h.preservesPitch = el.preservesPitch; } catch(e){}
+      h.addEventListener('loadedmetadata', () => { try { h.currentTime = startAt; } catch(e){} }, { once: true });
+      web = { h, key, startAt, phase: 'park', target: el.volume, timer: 0 };
+    }
+    if (web && web.phase === 'park'){
+      const ready = web.h.readyState >= 3 && !web.h.seeking && Math.abs(web.h.currentTime - web.startAt) < 0.25;
+      if (ready && el.currentTime >= web.startAt - 0.02) webFade(el);
+      return 15;
+    }
+    return rem > lead + 5 ? Math.max(200, Math.min(1000, (rem - lead - 4.5) * 1000)) : 60;
+  }
+  function webFade(el){
+    const w = web, target = el.volume, len = Math.max(0.5, (el.duration - w.startAt) / (el.playbackRate || 1)) * 1000;
+    w.phase = 'fade'; w.target = target;
+    w.h.volume = el.muted ? 0 : target;
+    w.h.play().catch(() => {});
+    el.volume = 0;
+    nextBtn.click();                     // the app's own next: the same song peekNext promised
+    let elapsed = 0, last = performance.now();
+    w.timer = setInterval(() => {
+      if (web !== w){ clearInterval(w.timer); return; }
+      const cur = audio(), now = performance.now();
+      if (cur && !cur.paused) elapsed += now - last;
+      last = now;
+      if (cur && cur.paused !== w.h.paused){ if (cur.paused) w.h.pause(); else w.h.play().catch(() => {}); }
+      const f = Math.min(1, elapsed / len);
+      const vin = Math.sin(f * Math.PI / 2), vout = Math.cos(f * Math.PI / 2);   // equal power: steady loudness
+      if (cur) cur.volume = Math.max(0, Math.min(1, target * vin));
+      w.h.volume = Math.max(0, Math.min(1, (cur && cur.muted ? 0 : target) * vout));
+      if (f >= 1 || w.h.ended) webStop();
+    }, 30);
+  }
+
+  function reset(){ askedFor = ''; webStop(); if (native() && N.cancelCrossfade) N.cancelCrossfade(); }
+
+  // ---- The loop: sleeps while far from the end, ticks fast only around the fade point ----
+  (function poll(){
     let wait = 1000;
     try {
-      if (cfg.mode !== 'off'){
-        const cur = activeEl();
-        wait = 500;
-        if (cur && isFinite(cur.duration) && cur.duration >= 4){
-          const rem = (cur.duration - cur.currentTime) / (cur.playbackRate || 1);
-          const lead = cfg.mode === 'crossfade' ? Math.min(cfg.secs, cur.duration / 2) : Math.min(lat, cur.duration / 2);
-          if (rem > lead + 1) armed = true;
-          if (armed && rem <= lead && rem > 0.05) start(cur);
-          if (!cur.paused) wait = rem > lead + 1.5 ? Math.max(40, Math.min(500, (rem - lead - 1) * 1000)) : 40;
-        }
-      }
-    } catch (e) { wait = 1000; }
-    setTimeout(xfPoll, wait);
+      const el = audio();
+      if (cfg.mode !== 'off' && el){
+        wait = native() ? nativeStep(el) : webStep(el);
+      } else if (web) webStop();
+    } catch(e){ wait = 1000; }
+    setTimeout(poll, wait);
   })();
 
-  A.addEventListener('loadedmetadata', () => { armed = true; });
-  if (V) V.addEventListener('loadedmetadata', () => { armed = true; });
-  const syncP = () => { if (helper) helper.pause(); }, syncR = () => { if (helper) helper.play().catch(() => {}); };
-  [A, V].forEach(el => { if (el){ el.addEventListener('pause', syncP); el.addEventListener('play', syncR); } });
-  nextBtn.addEventListener('click', (e) => { if (e.isTrusted) killHelper(); }, true);
-  const prev = document.querySelector('button[title="Previous"]');
-  if (prev) prev.addEventListener('click', (e) => { if (e.isTrusted) killHelper(); }, true);
+  // Picking another song (Next, Previous, a tap in a list) during a browser fade ends the old song's tail at once.
+  document.addEventListener('click', e => {
+    if (!e.isTrusted || !web || web.phase !== 'fade') return;
+    if (e.target.closest && e.target.closest('#next-btn, #prev-btn, #pl-mini-next, #pl-mini-prev, [data-idx], .pq-row, [data-pw-act="qjump"], [data-pw-act="jump"]')) webStop();
+  }, true);
 })();
 </script>
 <script id="pp-addons2">

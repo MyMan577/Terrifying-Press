@@ -33,7 +33,7 @@ Press Play has a lot of settings, and most of them are things other players leav
 **Sound**
 - A full equalizer with presets (bass, treble, vocal, v-shape, acoustic, pop, rock, jazz, classical, electronic, hip hop, loudness, podcast, late night and flat) as well as manual bands.
 - Bass and reverb controls, and playback speed.
-- Choose how songs join: normal, gapless with no pause between tracks, or crossfade with a length you set.
+- Choose how songs join: normal, gapless with no pause between tracks, or crossfade with a length you set. Crossfade really overlaps the two songs, with your EQ and effects on both, and can leave albums gapless so live albums and mixes flow as recorded. Neither one ever overrides repeat one, the end of the queue or the sleep timer.
 - ReplayGain keeps songs at a similar loudness so you are not reaching for the volume between tracks.
 - Hi-res output plays 24-bit and 32-bit files at full depth, with the equalizer, effects, boost, ReplayGain, speed and visualizer all still working on them, and the player shows each track's format, bit depth and sample rate. You can also force software-only or hardware-only decoding, for audio and for video, like VLC's hardware acceleration setting; Auto picks the best decoder for each file.
 
