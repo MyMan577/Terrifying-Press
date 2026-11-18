@@ -353,8 +353,9 @@
     if (kind === 'folder') showToast('Scanning folder…');
     return true;
   }
-  // "Scan phone": asks for media access if needed, then adds every song and video the phone's media library knows about
-  // straight to the library (never to New on this phone), leaving out duplicates and byte-for-byte copies.
+  // "Scan phone": asks for media access if needed, then looks for every song and video the phone's media library knows
+  // about. What is new waits in New on this phone (as the background looks do), so the owner chooses what goes in.
+  // Unlike the background looks it also brings back files that were dismissed or removed before.
   var ppManualScan = false, ppScanBusy = false, ppScanStats = { added: 0, skipped: 0 };
   async function ppScanDevice(){
     if (!(window.PPNative && PPNative.enabled && PPNative.lib && PPNative.lib.scanDevice)) return;
@@ -369,20 +370,16 @@
         showToast('Media access is off. Allow it in Android Settings under Apps, Press Play, Permissions, or add files with Files or Folder.', 'error');
         return;
       }
-      if (ppAutoScanP) await ppAutoScanP;   // a background look was already running: let it finish (its finds are taken below)
+      if (ppAutoScanP) await ppAutoScanP;   // a background look was already running: let it finish
       ppManualScan = true;
-      ppScanStats = { added: 0, skipped: 0 };
       showToast('Scanning this phone…');
-      // Whatever was already waiting in New on this phone goes straight in too.
-      const waiting = ppFoundList().slice();
-      if (waiting.length){ ppFound = []; ppFoundSave(); ppAddNative(waiting, 'scan'); }
+      const before = ppFoundList().length;
       await PPNative.lib.scanDevice(tracks.map(t => t.nativeUri).filter(Boolean), true);
       await new Promise(r => setTimeout(r, 400));   // let the last batch of finds arrive
-      await ppAddChain;                              // and finish the duplicate checks
       ppFoundPrune();
-      const { added, skipped } = ppScanStats;
-      const dup = skipped ? (skipped + ' duplicate' + (skipped === 1 ? '' : 's') + ' skipped') : '';
-      showToast(added ? ('Added ' + added + ' new file' + (added === 1 ? '' : 's') + (dup ? ', ' + dup : '')) : ('No new music or videos found' + (dup ? ' (' + dup + ')' : '')));
+      const found = ppFoundList().length - before, total = ppFoundList().length;
+      showToast(found > 0 ? (found + ' new file' + (found === 1 ? '' : 's') + ' in New on this phone. Add the ones you want from there.')
+        : total ? ('Nothing new. ' + total + ' file' + (total === 1 ? ' is' : 's are') + ' still waiting in New on this phone.') : 'No new music or videos found.');
     } catch(e){ showToast('Could not scan: ' + ((e && e.message) || e), 'error'); }
     finally { ppManualScan = false; ppScanBusy = false; }
   }
@@ -451,7 +448,7 @@
   var ppAddChain = Promise.resolve();
   function ppAddNative(entries, src){
     if (!entries || !entries.length) return ppAddChain;
-    if (src === 'scan' && ppInboxScans > 0 && !ppManualScan){ ppFoundAdd(entries); return ppAddChain; }   // found by a background look: wait in the inbox
+    if (src === 'scan' && (ppInboxScans > 0 || ppManualScan)){ ppFoundAdd(entries); return ppAddChain; }   // found by a look at the phone (background or Scan phone): wait in the inbox
     if (src !== 'scan' && src !== 'inbox') return ppAddNativeNow(entries, src);
     const manual = ppManualScan;
     ppAddChain = ppAddChain.then(async () => {

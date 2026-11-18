@@ -632,16 +632,34 @@
   .pw-sw-b{ display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
   .pw-sw-b button{ flex:1 1 auto; min-width:0; height:36px; padding:0 12px; border-radius:calc(10px*var(--ui-round,1)); border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; font-size:13px; font-weight:650; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .pw-sw-b button.on{ background:var(--accent); color:var(--on-accent, #08110f); border-color:transparent; }
-  .pw-bat-v{ font-weight:800; font-size:22px; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .pw-bat-bar{ height:10px; border-radius:5px; background:var(--line); overflow:hidden; margin-top:8px; }
-  .pw-bat-bar i{ display:block; height:100%; width:var(--p, 0%); background:var(--accent); border-radius:5px; transition:width .6s; }
+  /* Battery. Bar: a battery drawn as one (body, fill and the little cap), as wide as its box allows. Ring: a ring around
+     the number. Just the number: the number. Each is centred in its box and grows with it. */
+  .pw-bat{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; width:100%; min-width:0; margin:auto 0; }
+  .pw-bat-v{ font-weight:800; font-size:clamp(20px, 13cqw, 40px); line-height:1.15; font-variant-numeric:tabular-nums; white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+  .pw-bat-bar{ position:relative; box-sizing:border-box; width:min(100%, 240px); height:clamp(26px, 16cqw, 46px); padding:3px; margin-right:6px;
+    border:2px solid color-mix(in srgb, var(--text) 45%, transparent); border-radius:calc(9px*var(--ui-round,1)); }
+  .pw-bat-bar::after{ content:''; position:absolute; right:-7px; top:50%; width:4px; height:40%; transform:translateY(-50%); border-radius:0 3px 3px 0;
+    background:color-mix(in srgb, var(--text) 45%, transparent); }
+  .pw-bat-bar i{ display:block; height:100%; width:var(--p, 0%); background:var(--accent); border-radius:calc(5px*var(--ui-round,1)); transition:width .6s; }
+  .pw-bat-chg .pw-bat-bar i{ background:linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #fff)); }
   .pw-bat-low .pw-bat-bar i{ background:var(--danger, #e0667a); } .pw-bat-low .pw-bat-v{ color:var(--danger, #e0667a); }
-  .pw-bat-text .pw-bat-bar{ display:none; }
-  .pw-bat-ring{ position:relative; display:flex; align-items:center; justify-content:center; width:min(110px, 100%); aspect-ratio:1; margin:0 auto; border-radius:50%;
+  .pw-bat-v{ display:flex; align-items:baseline; justify-content:center; }
+  .pw-bat-v small{ font-size:.55em; font-weight:700; margin-left:.06em; color:var(--text-dim); }
+  .pw-bat-bolt{ width:.6em; height:.6em; margin-left:.15em; align-self:center; color:var(--accent); }
+  .pw-bat-low .pw-bat-v small{ color:inherit; opacity:.75; }
+  .pw-bat-cap{ display:none; }
+  /* Just the number: the number large, with a small line under it that says what it is */
+  .pw-bat-l-text{ gap:2px; }
+  .pw-bat-l-text .pw-bat-bar{ display:none; }
+  .pw-bat-l-text .pw-bat-v{ font-size:clamp(34px, 24cqw, 84px); line-height:1; letter-spacing:-.02em; }
+  .pw-bat-l-text .pw-bat-cap{ display:block; font-size:clamp(11px, 5cqw, 14px); font-weight:650; letter-spacing:.08em; text-transform:uppercase; color:var(--text-dim); }
+  .pw-bat-l-text.pw-bat-chg .pw-bat-cap{ color:var(--accent); }
+  .pw-bat-l-text.pw-bat-low .pw-bat-cap{ color:var(--danger, #e0667a); }
+  .pw-bat-l-ring{ position:relative; width:min(150px, 100%); aspect-ratio:1; margin:0 auto; border-radius:50%; gap:0;
     background:conic-gradient(var(--accent) var(--p, 0%), var(--line) 0); }
-  .pw-bat-ring::before{ content:''; position:absolute; inset:9px; border-radius:50%; background:var(--bg-elev); }
-  .pw-bat-ring.pw-bat-low{ background:conic-gradient(var(--danger, #e0667a) var(--p, 0%), var(--line) 0); }
-  .pw-bat-ring .pw-bat-bar{ display:none; } .pw-bat-ring .pw-bat-v{ position:relative; font-size:18px; }
+  .pw-bat-l-ring::before{ content:''; position:absolute; inset:9px; border-radius:50%; background:var(--bg-elev); }
+  .pw-bat-l-ring.pw-bat-low{ background:conic-gradient(var(--danger, #e0667a) var(--p, 0%), var(--line) 0); }
+  .pw-bat-l-ring .pw-bat-bar{ display:none; } .pw-bat-l-ring .pw-bat-v{ position:relative; font-size:clamp(16px, 9cqw, 26px); }
   @keyframes pwRotIn{ from{ opacity:0; transform:translateY(4px); } to{ opacity:1; transform:none; } }
   .pw-rot-in{ animation:pwRotIn .45s ease both; }
   @container (max-width: 150px){
@@ -650,7 +668,6 @@
     .pw-sk-t{ font-size:10px; }
     .pw-cal-g{ font-size:10px; } .pw-cal-g i{ font-size:9px; }
     .pw-sw-b button{ padding:0 4px; font-size:12px; }
-    .pw-bat-v{ font-size:16px; }
   }
 
   /* ===== Drawing: pictures made only of CSS shapes. --dc is the drawing's colour. =====
