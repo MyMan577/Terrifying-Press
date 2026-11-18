@@ -1,19 +1,23 @@
 package com.pressplay.media
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Bundle
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -116,4 +120,80 @@ class JobService : Service() {
     }
 
     override fun onDestroy() { wake?.let { if (it.isHeld) it.release() }; super.onDestroy() }
+}
+
+/**
+ * Reminders, tips and rewards (pp-notify.js decides what and when; Settings > Notifications turns each kind off).
+ * They are scheduled with AlarmManager, so they arrive with the app closed. Inexact on purpose: no exact-alarm
+ * permission, and Android may batch them by a few minutes to save battery. A reboot clears them; the page schedules
+ * them again every time the app is opened or left.
+ */
+@CapacitorPlugin(name = "PPNotify")
+class NotifyPlugin : Plugin() {
+    /** Cancels every scheduled one, then schedules items: [{ id, at (ms), title, text, kind: "tip" | "reward" }]. */
+    @PluginMethod fun replace(call: PluginCall) {
+        val list = call.getArray("items") ?: JSArray()
+        NotifyReceiver.cancelAll(context)
+        val ids = HashSet<String>(); val now = System.currentTimeMillis()
+        for (i in 0 until list.length()) {
+            val o = list.optJSONObject(i) ?: continue
+            val id = o.optString("id"); val at = o.optLong("at")
+            if (id.isEmpty() || at <= now) continue
+            NotifyReceiver.schedule(context, id, at, o.optString("title"), o.optString("text"), o.optString("kind", "tip"))
+            ids.add(id)
+        }
+        context.getSharedPreferences(NotifyReceiver.PREFS, 0).edit().putStringSet("ids", ids).apply()
+        call.resolve(JSObject().put("scheduled", ids.size))
+    }
+    /** Shows one now (the Preview button in Settings). */
+    @PluginMethod fun show(call: PluginCall) {
+        NotifyReceiver.post(context, call.getString("id") ?: "now", call.getString("title") ?: "", call.getString("text") ?: "", call.getString("kind") ?: "tip")
+        call.resolve()
+    }
+    /** Whether Android lets the app show notifications at all (the person can switch them off for the app). */
+    @PluginMethod fun status(call: PluginCall) {
+        call.resolve(JSObject().put("enabled", NotificationManagerCompat.from(context).areNotificationsEnabled()))
+    }
+}
+
+class NotifyReceiver : BroadcastReceiver() {
+    companion object {
+        const val PREFS = "pp_notify"
+        private const val CH_TIPS = "pp_tips"; private const val CH_REWARDS = "pp_rewards"
+        // one PendingIntent per id: the action carries the id (extras do not count when Android matches them)
+        private fun pending(ctx: Context, id: String, extras: Bundle?): PendingIntent {
+            val i = Intent(ctx, NotifyReceiver::class.java).setAction("pp.notify.$id")
+            if (extras != null) i.putExtras(extras)
+            return PendingIntent.getBroadcast(ctx, id.hashCode(), i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        }
+        fun schedule(ctx: Context, id: String, at: Long, title: String, text: String, kind: String) {
+            val b = Bundle().apply { putString("id", id); putString("title", title); putString("text", text); putString("kind", kind) }
+            val am = ctx.getSystemService(AlarmManager::class.java) ?: return
+            if (Build.VERSION.SDK_INT >= 23) am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending(ctx, id, b))
+            else am.set(AlarmManager.RTC_WAKEUP, at, pending(ctx, id, b))
+        }
+        fun cancelAll(ctx: Context) {
+            val am = ctx.getSystemService(AlarmManager::class.java) ?: return
+            for (id in ctx.getSharedPreferences(PREFS, 0).getStringSet("ids", emptySet()) ?: emptySet()) am.cancel(pending(ctx, id, null))
+        }
+        fun post(ctx: Context, id: String, title: String, text: String, kind: String) {
+            if (title.isEmpty() || !NotificationManagerCompat.from(ctx).areNotificationsEnabled()) return
+            val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+            if (Build.VERSION.SDK_INT >= 26) {
+                nm.createNotificationChannel(NotificationChannel(CH_TIPS, "Reminders and tips", NotificationManager.IMPORTANCE_DEFAULT))
+                nm.createNotificationChannel(NotificationChannel(CH_REWARDS, "Rewards", NotificationManager.IMPORTANCE_DEFAULT))
+            }
+            val open = PendingIntent.getActivity(ctx, 7, Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            val n = NotificationCompat.Builder(ctx, if (kind == "reward") CH_REWARDS else CH_TIPS)
+                .setSmallIcon(R.drawable.pp_w_note)
+                .setContentTitle(title).setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .setAutoCancel(true).setContentIntent(open).build()
+            nm.notify(0x5000 + (id.hashCode() and 0xfff), n)
+        }
+    }
+    override fun onReceive(ctx: Context, i: Intent) {
+        post(ctx, i.getStringExtra("id") ?: "n", i.getStringExtra("title") ?: "", i.getStringExtra("text") ?: "", i.getStringExtra("kind") ?: "tip")
+    }
 }
