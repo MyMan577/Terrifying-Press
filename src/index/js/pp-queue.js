@@ -1,7 +1,7 @@
 (function(){
   // The queue board.
   //  - Swipe up on the mini player: it flips over and shows what plays next ("Up next").
-  //  - Tap the flipped side (or swipe up again): the board grows up out of the mini player.
+  //  - Swipe up again (or down) flips it back to the player. Tap the flipped side: the board grows up out of it.
   //  - The board's pages swipe sideways: the live queue first, then saved queues, then presets.
   //  - The live page is one list: songs you picked and the songs that follow from where you were playing,
   //    in play order. Every song can be dragged anywhere (the grip, or a long-press on the row).
@@ -179,7 +179,7 @@
   back.id = 'pq-back';
   back.setAttribute('aria-hidden', 'true');
   back.innerHTML = '<div class="pq-b-art"></div><div class="pq-b-text"><div class="pq-b-lbl">Up next</div><div class="pq-b-title"></div></div>' +
-    '<span class="pq-b-more"></span><span class="pq-b-open">' + I.up + '</span>';
+    '<span class="pq-b-more"></span><span class="pq-b-open" title="Tap to open the queue">' + I.queue + '</span>';
   if (mini) mini.appendChild(back);
 
   function syncBack(){
@@ -573,7 +573,7 @@
   window.__ppQueueBoard = {
     flipped: function(){ return flippedOn; },
     flip: flip,
-    miniUp: function(){ if (flippedOn) open(); else flip(true); },
+    miniUp: function(){ flip(!flippedOn); },   // swipe up flips either way: to Up next, and back to the player
     open: open,
     close: requestClose,
     dragging: function(){ return Sortable.active(); }
