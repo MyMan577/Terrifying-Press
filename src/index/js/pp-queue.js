@@ -3,9 +3,10 @@
   //  - Swipe up on the mini player: it flips over and shows what plays next ("Up next").
   //  - Tap the flipped side (or swipe up again): the board grows up out of the mini player.
   //  - The board's pages swipe sideways: the live queue first, then saved queues, then presets.
-  //  - The live page shows the song playing, the songs you queued by hand (drag to reorder, x to remove),
-  //    then what follows from where you were playing. "Add songs" searches the library.
-  // Playback itself (what plays next, hand-queued songs) lives in main (window.__ppQueue).
+  //  - The live page is one list: songs you picked and the songs that follow from where you were playing,
+  //    in play order. Every song can be dragged anywhere (the grip, or a long-press on the row).
+  //  - Lists in the queue widgets drag the same way (see Sortable below).
+  // Playback itself (what plays next, picked songs) lives in main (window.__ppQueue).
   var Q = function(){ return window.__ppQueue; };
   var A = function(){ return window.__ppApi; };
   var SAVES_KEY = 'ppQueueSaves';
@@ -25,7 +26,6 @@
     grip: SVG('<circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/>', true),
     note: SVG('<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'),
     plus: SVG('<path d="M12 5v14M5 12h14"/>'),
-    next: SVG('<path d="M4 6h10M4 12h10M4 18h6"/><path d="M16 15l5 3-5 3z" fill="currentColor"/>'),
     play: SVG('<path d="M7 4.5v15l13-7.5z"/>', true),
     save: SVG('<path d="M6 3h12v18l-6-4-6 4z"/>'),
     shuffle: SVG('<path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>'),
@@ -64,6 +64,114 @@
     ];
   }
 
+  // ---------- Sortable: drag any row of any queue list ----------
+  // A list is an element with data-pq-sort ("live", "save:<id>" or "preset:<id>"; data-pq-axis="x" for a sideways
+  // row). Its rows are the children with data-pq-row. A row drags at once from its .pq-grip, or after a
+  // long-press anywhere on it. Dropping calls the list's owner: the live queue moves the song in playback.
+  var Sortable = (function(){
+    var LONG = 360, drag = null, pend = null, suppressUntil = 0;
+    function rowsOf(list){ return [].slice.call(list.children).filter(function(el){ return el.hasAttribute('data-pq-row'); }); }
+    function scroller(el, axis){
+      for (var n = el.parentElement; n && n !== document.body; n = n.parentElement){
+        var cs = getComputedStyle(n), o = axis === 'x' ? cs.overflowX : cs.overflowY;
+        if ((o === 'auto' || o === 'scroll') && (axis === 'x' ? n.scrollWidth > n.clientWidth : n.scrollHeight > n.clientHeight)) return n;
+      }
+      return document.scrollingElement || document.documentElement;
+    }
+    function begin(row, list, e){
+      var rows = rowsOf(list), from = rows.indexOf(row); if (from < 0) return;
+      var axis = list.dataset.pqAxis === 'x' ? 'x' : 'y';
+      var r0 = rows[0].getBoundingClientRect(), r1 = rows[1] ? rows[1].getBoundingClientRect() : null, rr = row.getBoundingClientRect();
+      var step = r1 ? (axis === 'x' ? r1.left - r0.left : r1.top - r0.top) : (axis === 'x' ? rr.width : rr.height);
+      drag = { row: row, list: list, rows: rows, from: from, to: from, axis: axis, step: step || 1, p0: axis === 'x' ? e.clientX : e.clientY, id: e.pointerId, sc: scroller(list, axis), auto: 0, last: e };
+      row.classList.add('pq-dragging'); list.classList.add('pq-sorting');
+      document.body.classList.add('pq-drag-on');
+      buzz();
+      autoScroll();
+    }
+    function move(e){
+      var d = drag; if (!d) return;
+      d.last = e;
+      var delta = (d.axis === 'x' ? e.clientX : e.clientY) - d.p0 + d.scrolled();
+      d.row.style.transform = d.axis === 'x' ? 'translateX(' + delta + 'px) scale(1.04)' : 'translateY(' + delta + 'px) scale(1.02)';
+      var to = Math.max(0, Math.min(d.rows.length - 1, d.from + Math.round(delta / d.step)));
+      if (to === d.to) return;
+      d.to = to;
+      d.rows.forEach(function(el, k){
+        if (el === d.row) return;
+        var s = (d.from < to && k > d.from && k <= to) ? -d.step : (d.from > to && k >= to && k < d.from) ? d.step : 0;
+        el.style.transform = s ? (d.axis === 'x' ? 'translateX(' : 'translateY(') + s + 'px)' : '';
+      });
+      try { if (navigator.vibrate) navigator.vibrate(4); } catch(err){}
+    }
+    function autoScroll(){
+      var d = drag; if (!d) return;
+      var sc = d.sc, start = d.axis === 'x' ? sc.scrollLeft : sc.scrollTop;
+      d.scrolled = function(){ return (d.axis === 'x' ? sc.scrollLeft : sc.scrollTop) - start; };
+      (function loop(){
+        if (drag !== d) return;
+        var e = d.last, r = sc === document.scrollingElement || sc === document.documentElement ? { top: 0, bottom: innerHeight, left: 0, right: innerWidth } : sc.getBoundingClientRect();
+        var p = d.axis === 'x' ? e.clientX : e.clientY, lo = d.axis === 'x' ? r.left : r.top, hi = d.axis === 'x' ? r.right : r.bottom, v = 0;
+        if (p < lo + 50) v = -Math.ceil((lo + 50 - p) / 6); else if (p > hi - 50) v = Math.ceil((p - hi + 50) / 6);
+        if (v){ if (d.axis === 'x') sc.scrollLeft += v; else sc.scrollTop += v; move(e); }
+        requestAnimationFrame(loop);
+      })();
+    }
+    function finish(cancel){
+      var d = drag; if (!d) return; drag = null;
+      d.rows.forEach(function(el){ el.style.transform = ''; });
+      d.row.classList.remove('pq-dragging'); d.list.classList.remove('pq-sorting');
+      document.body.classList.remove('pq-drag-on');
+      suppressUntil = performance.now() + 400;
+      if (!cancel && d.to !== d.from) dropped(d.list, d.from, d.to, d.rows.length);
+    }
+    document.addEventListener('pointerdown', function(e){
+      if (drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      var row = e.target.closest && e.target.closest('[data-pq-row]'); if (!row) return;
+      var list = row.parentElement; if (!list || !list.hasAttribute('data-pq-sort')) return;
+      if (document.body.classList.contains('pw-editing') && !list.closest('#pq-root')) return;   // the layout editor moves widgets
+      if (rowsOf(list).length < 2) return;
+      if (e.target.closest('.pq-grip')){ e.preventDefault(); begin(row, list, e); return; }
+      if (e.target.closest('.pq-rm, .pq-pill, .pq-plus, input')) return;
+      pend = { row: row, list: list, x: e.clientX, y: e.clientY, id: e.pointerId, ev: e,
+        t: setTimeout(function(){ var p = pend; pend = null; if (p && p.row.isConnected) begin(p.row, p.list, p.ev); }, LONG) };
+    }, true);
+    document.addEventListener('pointermove', function(e){
+      if (pend && e.pointerId === pend.id){
+        pend.ev = e;
+        if (Math.hypot(e.clientX - pend.x, e.clientY - pend.y) > 9){ clearTimeout(pend.t); pend = null; }
+        return;
+      }
+      if (drag && e.pointerId === drag.id) move(e);
+    }, true);
+    function up(e){
+      if (pend && e.pointerId === pend.id){ clearTimeout(pend.t); pend = null; }
+      if (drag && e.pointerId === drag.id) finish(e.type === 'pointercancel');
+    }
+    document.addEventListener('pointerup', up, true);
+    document.addEventListener('pointercancel', up, true);
+    // While dragging by long-press, the page must not scroll under the finger.
+    document.addEventListener('touchmove', function(e){ if (drag) e.preventDefault(); }, { passive: false, capture: true });
+    // The tap that ends a drag must not also play the song.
+    document.addEventListener('click', function(e){ if (performance.now() < suppressUntil && e.target.closest && e.target.closest('[data-pq-sort]')){ e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+    document.addEventListener('contextmenu', function(e){ if (e.target.closest && e.target.closest('[data-pq-sort] [data-pq-row]')) e.preventDefault(); }, true);
+    return { active: function(){ return !!drag; } };
+  })();
+  function dropped(list, from, to, n){
+    var key = list.dataset.pqSort || '';
+    if (key === 'live'){ var q = Q(); if (q) q.moveAt(from, to, n); return; }
+    if (key.indexOf('save:') === 0){
+      var id = key.slice(5), saves = loadSaves(), s = saves.find(function(x){ return x.id === id; }); if (!s) return;
+      var t = tracks(), ids = idxsOf(s.ids).map(function(i){ return t[i].dbId; });   // songs no longer in the library drop out
+      var m = ids.splice(from, 1)[0]; ids.splice(to, 0, m);
+      s.ids = ids; storeSaves(saves); render(true); return;
+    }
+    if (key.indexOf('preset:') === 0 && presetCache){
+      var p = presetCache.find(function(x){ return x.id === key.slice(7); }); if (!p) return;
+      var v = p.idxs.splice(from, 1)[0]; p.idxs.splice(to, 0, v); render(true);
+    }
+  }
+
   // ---------- The flipped mini player ----------
   var mini = document.getElementById('pl-mini');
   var flippedOn = false, flipBusy = false;
@@ -74,21 +182,16 @@
     '<span class="pq-b-more"></span><span class="pq-b-open">' + I.up + '</span>';
   if (mini) mini.appendChild(back);
 
-  function nextInfo(){
-    var q = Q(); if (!q) return null;
-    var s = q.state(400), t = tracks(), list = s.added.concat(s.ctx);
-    return { t: list.length ? t[list[0]] : null, more: Math.max(0, list.length - 1), s: s };
-  }
   function syncBack(){
     if (!mini) return;
-    var n = nextInfo(), art = back.querySelector('.pq-b-art'), title = back.querySelector('.pq-b-title'), more = back.querySelector('.pq-b-more');
-    var t = n && n.t;
-    if (n && n.s.repeat === 2){ title.textContent = 'This song again (repeat one)'; }
-    else title.innerHTML = t ? '<b>' + esc(t.title || 'Untitled') + '</b>' + (t.artist ? '<span> · ' + esc(t.artist) + '</span>' : '') : '<span>Nothing after this. Tap to add songs</span>';
-    var src = t ? thumb(t) : null;
+    var q = Q(), s = q ? q.state(400) : null, t = tracks(), first = s && s.up[0] ? t[s.up[0].i] : null, more = s ? Math.max(0, s.up.length - 1) : 0;
+    var art = back.querySelector('.pq-b-art'), title = back.querySelector('.pq-b-title'), moreEl = back.querySelector('.pq-b-more');
+    if (s && s.repeat === 2 && !(s.up[0] && s.up[0].k != null)) title.textContent = 'This song again (repeat one)';
+    else title.innerHTML = first ? '<b>' + esc(first.title || 'Untitled') + '</b>' + (first.artist ? '<span> · ' + esc(first.artist) + '</span>' : '') : '<span>Nothing after this. Tap to add songs</span>';
+    var src = first ? thumb(first) : null;
     art.innerHTML = src ? '<img alt="" src="' + esc(src) + '">' : I.note;
-    more.textContent = n && n.more ? '+' + n.more : '';
-    more.hidden = !(n && n.more);
+    moreEl.textContent = more ? '+' + more : '';
+    moreEl.hidden = !more;
     mini.setAttribute('aria-label', flippedOn ? 'Open the queue' : 'Open player');
   }
   function flip(on){
@@ -139,7 +242,7 @@
   var titleEl = root.querySelector('.pq-title'), kickerEl = root.querySelector('.pq-kicker');
   var addBox = root.querySelector('.pq-add'), addInput = addBox.querySelector('input'), addList = addBox.querySelector('.pq-add-list');
 
-  var pages = [], pageIdx = 0, isOpen = false, presetCache = null, editing = null;   // editing: {kind:'save'|'rename', id}
+  var pages = [], pageIdx = 0, isOpen = false, presetCache = null, editing = null;   // editing: {kind:'save'|'rename', page, id, value}
 
   function buildPages(){
     var saves = loadSaves();
@@ -149,50 +252,50 @@
       .concat(presetCache);
   }
 
+  // opts: pos (place in the list), act (tap), remove (x action), picked (added by you)
   function rowHtml(i, opts){
     var t = tracks()[i]; if (!t) return '';
     var src = thumb(t);
-    return '<div class="pq-row' + (opts.cls ? ' ' + opts.cls : '') + '" role="listitem" data-i="' + i + '"' + (opts.k != null ? ' data-k="' + opts.k + '"' : '') + '>' +
-      (opts.grip ? '<span class="pq-grip" aria-label="Drag to reorder">' + I.grip + '</span>' : '') +
-      '<span class="pq-art">' + (src ? '<img alt="" loading="lazy" src="' + esc(src) + '">' : I.note) + '</span>' +
-      '<button type="button" class="pq-main" data-act="' + opts.act + '"><span class="pq-t">' + esc(t.title || 'Untitled') + '</span><span class="pq-a">' + esc(t.artist || (t.kind === 'video' ? 'Video' : 'Unknown artist')) + '</span></button>' +
+    return '<div class="pq-row' + (opts.picked ? ' pq-picked' : '') + '" role="listitem" data-pq-row data-i="' + i + '" data-pos="' + opts.pos + '">' +
+      '<span class="pq-grip" aria-hidden="true">' + I.grip + '</span>' +
+      '<span class="pq-art">' + (src ? '<img alt="" loading="lazy" draggable="false" src="' + esc(src) + '">' : I.note) + '</span>' +
+      '<button type="button" class="pq-main" data-act="' + opts.act + '"><span class="pq-t">' + esc(t.title || 'Untitled') + '</span><span class="pq-a">' +
+        (opts.picked ? '<em>Added by you</em> · ' : '') + esc(t.artist || (t.kind === 'video' ? 'Video' : 'Unknown artist')) + '</span></button>' +
       (opts.remove ? '<button type="button" class="pq-iconbtn pq-rm" data-act="' + opts.remove + '" aria-label="Remove ' + esc(t.title || 'song') + ' from the queue">' + I.x + '</button>' : '') +
     '</div>';
   }
   function moreHtml(n){ return n > 0 ? '<div class="pq-more">and ' + n + ' more</div>' : ''; }
 
   function livePage(){
-    var q = Q(), s = q ? q.state(400) : { cur:-1, added:[], ctx:[] }, t = tracks(), h = '';
+    var q = Q(), s = q ? q.state(LIST_MAX + 400) : { cur:-1, up:[], picked:0 }, t = tracks(), h = '';
     var cur = s.cur >= 0 ? t[s.cur] : null;
     if (cur){
       var src = thumb(cur);
       h += '<div class="pq-now"><span class="pq-art pq-art-big">' + (src ? '<img alt="" src="' + esc(src) + '">' : I.note) + '</span>' +
-        '<div class="pq-now-text"><div class="pq-lbl">' + (s.playing ? '<span class="pq-eq" aria-hidden="true"><i></i><i></i><i></i></span>Playing' : 'Paused') + (s.playingQueued ? ' · from your queue' : '') + '</div>' +
+        '<div class="pq-now-text"><div class="pq-lbl">' + (s.playing ? '<span class="pq-eq" aria-hidden="true"><i></i><i></i><i></i></span>Playing' : 'Paused') + (s.playingQueued ? ' · picked by you' : '') + '</div>' +
         '<div class="pq-t">' + esc(cur.title || 'Untitled') + '</div><div class="pq-a">' + esc(cur.artist || '') + '</div></div></div>';
     } else {
       h += '<div class="pq-empty">Nothing is playing. Add songs below and they start straight away.</div>';
     }
-    h += '<div class="pq-sec"><div class="pq-sec-h"><span>Added by you</span><small>' + (s.added.length ? s.added.length + (s.added.length === 1 ? ' song' : ' songs') : '') + '</small>' +
-      (s.added.length ? '<button type="button" class="pq-link" data-act="clear">Clear</button>' : '') + '</div>';
-    if (s.added.length){
-      h += '<div class="pq-list pq-added" role="list">' + s.added.slice(0, LIST_MAX).map(function(i, k){ return rowHtml(i, { k:k, act:'jump-added', remove:'rm-added', grip:true }); }).join('') + '</div>' + moreHtml(s.added.length - LIST_MAX);
-    } else {
-      h += '<div class="pq-hint">Songs you add play before the rest. Long-press songs in Home or the Library, then Play next or Add to queue, or use Add songs below.</div>';
-    }
-    h += '</div>';
     var how = s.repeat === 2 ? 'repeat one is on' : s.shuffle ? 'shuffled' : s.repeat === 1 ? 'repeats' : '';
-    h += '<div class="pq-sec"><div class="pq-sec-h"><span>Then</span><small>' + esc(how) + '</small></div>';
-    if (s.ctx.length) h += '<div class="pq-list" role="list">' + s.ctx.slice(0, LIST_MAX).map(function(i){ return rowHtml(i, { act:'jump-ctx', remove:'rm-ctx' }); }).join('') + '</div>' + moreHtml(s.ctx.length - LIST_MAX);
-    else h += '<div class="pq-hint">' + (cur ? 'Nothing else after this. Playback stops at the end.' : 'Pick a saved queue or a preset by swiping left.') + '</div>';
-    h += '</div>';
-    return h;
+    h += '<div class="pq-sec"><div class="pq-sec-h"><span>Up next</span><small>' + esc([s.up.length ? s.up.length + (s.up.length >= LIST_MAX + 400 ? '+' : '') + (s.up.length === 1 ? ' song' : ' songs') : '', how].filter(Boolean).join(' · ')) + '</small>' +
+      (s.picked ? '<button type="button" class="pq-link" data-act="clear">Clear picked</button>' : '') + '</div>';
+    if (s.up.length){
+      h += '<div class="pq-list" role="list" data-pq-sort="live">' + s.up.slice(0, LIST_MAX).map(function(e, pos){ return rowHtml(e.i, { pos: pos, act: 'jump', remove: 'rm', picked: e.k != null }); }).join('') + '</div>' + moreHtml(s.up.length - LIST_MAX);
+      if (!s.picked) h += '<div class="pq-hint">Drag any song to move it. Long-press songs in Home or the Library and choose Play next or Add to queue, or use Add songs below.</div>';
+    } else {
+      h += '<div class="pq-hint">' + (cur ? 'Nothing else after this. Playback stops at the end.' : 'Swipe left for saved queues and presets.') + '</div>';
+    }
+    return h + '</div>';
   }
   function listPage(p){
     var idxs = p.kind === 'save' ? idxsOf(p.save.ids) : p.idxs, h = '';
     var sub = p.kind === 'save' ? (idxs.length + (idxs.length === 1 ? ' song' : ' songs') + (p.save.ts ? ' · saved ' + new Date(p.save.ts).toLocaleDateString() : '')) : p.sub + ' · ' + idxs.length + (idxs.length === 1 ? ' song' : ' songs');
     h += '<div class="pq-sub">' + esc(sub) + '</div>';
     if (!idxs.length) return h + '<div class="pq-empty">' + esc(p.kind === 'save' ? 'None of these songs are in your library any more.' : p.empty) + '</div>';
-    return h + '<div class="pq-list" role="list">' + idxs.slice(0, LIST_MAX).map(function(i, k){ return rowHtml(i, { k:k, act:'play-from' }); }).join('') + '</div>' + moreHtml(idxs.length - LIST_MAX);
+    var key = p.kind === 'save' ? 'save:' + p.save.id : 'preset:' + p.id;
+    // Only fully drawn lists can be dragged: moving a row of a cut-off list would leave the rest behind.
+    return h + '<div class="pq-list" role="list"' + (idxs.length <= LIST_MAX ? ' data-pq-sort="' + esc(key) + '"' : '') + '>' + idxs.slice(0, LIST_MAX).map(function(i, k){ return rowHtml(i, { pos: k, act: 'play-from' }); }).join('') + '</div>' + moreHtml(idxs.length - LIST_MAX);
   }
   function footHtml(p){
     if (editing && editing.page === p.id){
@@ -249,28 +352,31 @@
   chips.addEventListener('click', function(e){ var c = e.target.closest('.pq-chip'); if (c) setPage(+c.dataset.page); });
 
   // ---------- Open / close ----------
-  function open(){
+  function clipFrom(r, pr, round){ return 'inset(' + Math.max(0, r.top - pr.top) + 'px ' + Math.max(0, pr.right - r.right) + 'px ' + Math.max(0, pr.bottom - r.bottom) + 'px ' + Math.max(0, r.left - pr.left) + 'px round ' + round + 'px)'; }
+  // opts.from: an element to grow out of (defaults to the mini player); opts.add: go straight to Add songs.
+  function open(opts){
+    opts = opts && opts.nodeType ? {} : (opts || {});
     var q = Q(); if (!q) return;
-    if (isOpen) return;
+    if (isOpen){ if (opts.add) openAdd(); return; }
     isOpen = true; presetCache = null; editing = null; pageIdx = 0;
     root.hidden = false;
     document.body.classList.add('pq-open');
     try { history.pushState({ ppQueue: 1 }, ''); } catch(e){}   // Android back closes the board
     render();
-    var r = mini && mini.getClientRects().length ? mini.getBoundingClientRect() : null;
-    var pr = panel.getBoundingClientRect();
+    var src = opts.from && opts.from.getClientRects().length ? opts.from : mini && mini.getClientRects().length ? mini : null;
+    var r = src ? src.getBoundingClientRect() : null, pr = panel.getBoundingClientRect();
     if (!reduce() && panel.animate){
       if (r && r.width){
-        // Grow up out of the mini player: start clipped to its rectangle.
-        var from = 'inset(' + Math.max(0, r.top - pr.top) + 'px ' + Math.max(0, pr.right - r.right) + 'px ' + Math.max(0, pr.bottom - r.bottom) + 'px ' + Math.max(0, r.left - pr.left) + 'px round 14px)';
-        panel.animate([{ clipPath: from }, { clipPath: 'inset(0px 0px 0px 0px round 22px)' }], { duration: 380, easing: 'cubic-bezier(.2,.9,.25,1)' });
+        // Grow up out of the mini player (or the widget tapped): start clipped to its rectangle.
+        panel.animate([{ clipPath: clipFrom(r, pr, 14) }, { clipPath: 'inset(0px 0px 0px 0px round 22px)' }], { duration: 380, easing: 'cubic-bezier(.2,.9,.25,1)' });
         panel.querySelectorAll('.pq-head, .pq-chips, .pq-pager').forEach(function(el, k){ el.animate([{ opacity: 0, transform: 'translateY(18px)' }, { opacity: 1, transform: 'none' }], { duration: 300, delay: 90 + k * 40, easing: 'ease-out', fill: 'backwards' }); });
       } else {
         panel.animate([{ transform: 'translateY(100%)' }, { transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.2,.9,.25,1)' });
       }
       root.querySelector('.pq-scrim').animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300 });
     }
-    setTimeout(function(){ try { root.querySelector('.pq-close').focus({ preventScroll: true }); } catch(e){} }, 50);
+    if (opts.add) setTimeout(openAdd, 200);
+    else setTimeout(function(){ try { root.querySelector('.pq-close').focus({ preventScroll: true }); } catch(e){} }, 50);
     buzz();
   }
   // Closing from the board itself goes through history, so the entry open() pushed does not linger.
@@ -287,7 +393,7 @@
     if (reduce() || !panel.animate){ done(); return; }
     var r = mini && mini.getClientRects().length ? mini.getBoundingClientRect() : null, pr = panel.getBoundingClientRect(), a;
     if (r && r.width && !panel.style.transform){
-      var to = 'inset(' + Math.max(0, r.top - pr.top) + 'px ' + Math.max(0, pr.right - r.right) + 'px ' + Math.max(0, pr.bottom - r.bottom) + 'px ' + Math.max(0, r.left - pr.left) + 'px round 14px)';
+      var to = clipFrom(r, pr, 14);
       a = panel.animate([{ clipPath: 'inset(0px 0px 0px 0px round 22px)', opacity: 1 }, { clipPath: to, opacity: 1, offset: .85 }, { clipPath: to, opacity: 0 }], { duration: 300, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'forwards' });
     } else {
       a = panel.animate([{ transform: panel.style.transform || 'none' }, { transform: 'translateY(100%)' }], { duration: 220, easing: 'ease-in', fill: 'forwards' });
@@ -335,17 +441,15 @@
     var q = Q(); if (!q) return;
     var pg = b.closest('.pq-page'), act = b.dataset.act, row = b.closest('.pq-row');
     var p = (pg && pages.find(function(x){ return x.id === pg.dataset.id; })) || curPage();
-    var i = row ? +row.dataset.i : -1, k = row && row.dataset.k != null ? +row.dataset.k : -1;
+    var pos = row ? +row.dataset.pos : -1;
     switch (act){
-      case 'jump-added': q.jumpAdded(k); break;
-      case 'jump-ctx': q.jumpUpcoming(i); break;
-      case 'rm-added': removeRow(row, function(){ q.removeAdded(k); }); return;
-      case 'rm-ctx': removeRow(row, function(){ q.removeUpcoming(i); }); return;
-      case 'clear': q.clearAdded(); toast('Cleared the songs you added'); break;
+      case 'jump': q.jumpAt(pos); break;
+      case 'rm': removeRow(row, function(){ q.removeAt(pos); }); return;
+      case 'clear': q.clearAdded(); toast('Cleared the songs you picked'); break;
       case 'add-songs': openAdd(); return;
       case 'save-live': {
-        var s = q.state(100000);
-        if (s.cur < 0 && !s.added.length && !s.ctx.length){ toast('The queue is empty'); return; }
+        var s = q.state(1);
+        if (s.cur < 0 && !s.up.length){ toast('The queue is empty'); return; }
         editing = { kind:'save', page:p.id, value:'Queue ' + (loadSaves().length + 1) }; render(true); return;
       }
       case 'rename': editing = { kind:'rename', page:p.id, id:p.save.id, value:p.save.name }; render(true); return;
@@ -359,11 +463,11 @@
         var ids = pageIdxs(p); if (!ids.length) return;
         q.playList(ids, 0); toast('Playing ' + p.name); pageIdx = 0; render(); return;
       }
-      case 'play-from': q.playList(pageIdxs(p), k); toast('Playing ' + p.name); pageIdx = 0; render(); return;
+      case 'play-from': q.playList(pageIdxs(p), pos); toast('Playing ' + p.name); pageIdx = 0; render(); return;
       case 'queue-all': {
         var n = q.add(pageIdxs(p), false); if (!n) return;
         toast(n + (n === 1 ? ' song' : ' songs') + ' added to the queue');
-        if (q.state(1).cur < 0) q.jumpAdded(0);
+        if (q.state(1).cur < 0) q.jumpAt(0);
         return;
       }
     }
@@ -378,7 +482,7 @@
       storeSaves(list); editing = null; toast('Renamed'); render(true); return;
     }
     var q = Q(), s = q.state(100000), t = tracks();
-    var ids = (s.cur >= 0 ? [s.cur] : []).concat(s.added, s.ctx).map(function(i){ return t[i] && t[i].dbId; }).filter(function(x){ return x != null; });
+    var ids = (s.cur >= 0 ? [s.cur] : []).concat(s.up.map(function(x){ return x.i; })).map(function(i){ return t[i] && t[i].dbId; }).filter(function(x){ return x != null; });
     var id = Date.now().toString(36);
     list.push({ id: id, name: name, ids: ids, ts: Date.now() });
     storeSaves(list); editing = null;
@@ -391,47 +495,6 @@
     var a = row.animate([{ opacity: 1, transform: 'none', height: h + 'px' }, { opacity: 0, transform: 'translateX(40px)', height: h + 'px', offset: .6 }, { opacity: 0, transform: 'translateX(40px)', height: '0px', paddingTop: 0, paddingBottom: 0 }], { duration: 260, easing: 'ease-in', fill: 'forwards' });
     a.onfinish = then;
   }
-
-  // Drag the grip to reorder songs you added.
-  (function(){
-    var drag = null;
-    pager.addEventListener('pointerdown', function(e){
-      var g = e.target.closest('.pq-grip'); if (!g) return;
-      var row = g.closest('.pq-row'), list = row.parentElement;
-      e.preventDefault();
-      var rows = [].slice.call(list.children), r = row.getBoundingClientRect();
-      drag = { row: row, list: list, rows: rows, from: rows.indexOf(row), to: rows.indexOf(row), y0: e.clientY, h: r.height, id: e.pointerId };
-      row.classList.add('pq-dragging');
-      try { g.setPointerCapture(e.pointerId); } catch(err){}
-      buzz();
-    });
-    pager.addEventListener('pointermove', function(e){
-      if (!drag || e.pointerId !== drag.id) return;
-      var dy = e.clientY - drag.y0;
-      drag.row.style.transform = 'translateY(' + dy + 'px)';
-      var to = Math.max(0, Math.min(drag.rows.length - 1, drag.from + Math.round(dy / drag.h)));
-      if (to !== drag.to){
-        drag.to = to;
-        drag.rows.forEach(function(el, k){
-          if (el === drag.row) return;
-          var shift = (drag.from < to && k > drag.from && k <= to) ? -drag.h : (drag.from > to && k >= to && k < drag.from) ? drag.h : 0;
-          el.style.transform = shift ? 'translateY(' + shift + 'px)' : '';
-        });
-      }
-      // keep the list scrolling while dragging near its edges
-      var body = drag.list.closest('.pq-body'), br = body.getBoundingClientRect();
-      if (e.clientY < br.top + 40) body.scrollTop -= 8; else if (e.clientY > br.bottom - 40) body.scrollTop += 8;
-    });
-    function end(e){
-      if (!drag || (e && e.pointerId !== drag.id)) return;
-      var d = drag; drag = null;
-      d.rows.forEach(function(el){ el.style.transform = ''; });
-      d.row.classList.remove('pq-dragging');
-      if (d.to !== d.from && Q()) Q().moveAdded(d.from, d.to);
-    }
-    pager.addEventListener('pointerup', end);
-    pager.addEventListener('pointercancel', end);
-  })();
 
   // ---------- Add songs ----------
   var addedNow = new Set(), addT = 0;
@@ -478,7 +541,7 @@
     var plus = row.querySelector('.pq-plus'); if (plus) plus.innerHTML = I.check;
     if (!reduce() && row.animate) row.animate([{ background: 'color-mix(in srgb, var(--accent) 22%, transparent)' }, { background: 'transparent' }], { duration: 500 });
     buzz();
-    if (q.state(1).cur < 0) q.jumpAdded(0);   // nothing was playing: start with it
+    if (q.state(1).cur < 0) q.jumpAt(0);   // nothing was playing: start with it
     else if (next) toast('"' + (tracks()[i].title || 'Song') + '" plays next');
   });
 
@@ -489,20 +552,21 @@
     if (!isOpen) return;
     clearTimeout(liveT);
     liveT = setTimeout(function(){
-      if (editing || pager.querySelector('.pq-dragging')) return;   // don't redraw under a name being typed or a drag
+      if (editing || Sortable.active()) return;   // don't redraw under a name being typed or a drag
       render(true);
     }, 60);
   }
   document.addEventListener('pp-queue', refresh);
   var np = document.getElementById('np-title');
   if (np && window.MutationObserver) new MutationObserver(refresh).observe(np, { childList: true, subtree: true, characterData: true });
-  ['play-btn'].forEach(function(id){ var el = document.getElementById(id); if (el && window.MutationObserver) new MutationObserver(refresh).observe(el, { attributes: true, attributeFilter: ['aria-label'] }); });
+  var pb = document.getElementById('play-btn');
+  if (pb && window.MutationObserver) new MutationObserver(refresh).observe(pb, { attributes: true, attributeFilter: ['aria-label'] });
   window.addEventListener('resize', function(){ if (isOpen) setPage(pageIdx, true); });
 
-  // The "Up next" widget's heading opens the board too (the only way in when the mini player is off).
+  // The "Up next" widget's heading opens the board too (a way in when the mini player is off).
   document.addEventListener('click', function(e){
     var h = e.target.closest && e.target.closest('.pw-un .pw-wh');
-    if (h){ e.preventDefault(); e.stopPropagation(); open(); }
+    if (h && !document.body.classList.contains('pw-editing')){ e.preventDefault(); e.stopPropagation(); open({ from: h.closest('.pw-cardwrap') || h }); }
   }, true);
 
   window.ppOpenQueue = open;
@@ -511,6 +575,7 @@
     flip: flip,
     miniUp: function(){ if (flippedOn) open(); else flip(true); },
     open: open,
-    close: requestClose
+    close: requestClose,
+    dragging: function(){ return Sortable.active(); }
   };
 })();

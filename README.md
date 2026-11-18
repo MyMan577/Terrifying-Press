@@ -54,10 +54,11 @@ Press Play has a lot of settings, and most of them are things other players leav
 
 **Queue**
 - Swipe up on the mini player and it flips over to show what plays next. Tap it (or swipe up again) and the queue board grows out of it; swipe down flips it back.
-- The board shows the song playing, the songs you added yourself (drag to reorder, x to remove), then what follows from the playlist you were playing. Tap any song to jump to it.
+- The board is one list in play order: the songs you picked (marked "Added by you") mixed in with what follows from the playlist you were playing. Drag any song anywhere, by its handle or with a long-press: a picked song can go after playlist songs and a playlist song can go before picked ones. Tap a song to jump to it, x to take it out.
 - Long-press songs in Home or the Library and choose Play next or Add to queue, or use Add songs on the board to search your library.
-- Swipe sideways on the board for your saved queues (Save queue keeps the current one) and presets: Shuffle everything, Recently added, Most played and Videos. Play starts one, Add to queue tacks it on.
-- The Up next widget's heading opens the board too, and "Open the queue" can be put on a gesture.
+- Swipe sideways on the board for your saved queues (Save queue keeps the current one) and presets: Shuffle everything, Recently added, Most played and Videos. Their songs drag too. Play starts one, Add to queue tacks it on.
+- Three queue widgets in Customize, Layout (also inside stacks): Queue (the list, with drag handles, Add and remove), Up next card (the next song, big, with a skip-to button) and Queue covers (a sideways row of covers you drag left and right). The Up next widget's songs drag as well.
+- "Open the queue" can be put on a gesture.
 
 **Leaving the player** (Settings, Playback)
 - Mini player on or off. With it off, leaving the player either keeps the track playing (tap it in Home or the Library to get back) or stops it.

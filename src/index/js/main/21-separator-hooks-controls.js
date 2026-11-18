@@ -59,11 +59,12 @@
     w: {
       upNext: n => {
         if (currentIndex < 0 || !tracks[currentIndex]) return [];
-        return userQueueIdxs().concat(contextUpcoming(n)).slice(0, n);
+        return upcomingEntries(n).map(e => e.i);
       },
       jump: i => {
         if (i < 0 || i >= tracks.length) return;
-        if (tracks[i] && userQueue.includes(tracks[i].dbId)) forceQueued = true;
+        const e = upcomingEntries(400).find(x => x.i === i);
+        if (e && e.k != null) forceQueuedK = e.k;
         loadTrack(i, true);
       },
       time: () => { const m = media(); return { t: (m && m.currentTime) || 0, d: (m && isFinite(m.duration) && m.duration) || 0 }; },
@@ -280,14 +281,35 @@
     const curIsStem = !!(tracks[ref] && tracks[ref].stem);
     return tracks.map((_,i) => i).filter(i => !!tracks[i].stem === curIsStem);
   }
-  // Hand-queued songs as track indices, in order. Songs deleted from the library drop out.
+  // Picked songs that are still in the library: [{i, k}] (k = place in userQueue). Missing songs drop out.
   function userQueueIdxs(){
     if (!userQueue.length) return [];
     const at = new Map(); tracks.forEach((t, i) => at.set(t.dbId, i));
-    const out = [], keep = [];
-    userQueue.forEach(id => { if (at.has(id)){ out.push(at.get(id)); keep.push(id); } });
+    const keep = userQueue.filter(e => at.has(e.id));
     if (keep.length !== userQueue.length){ userQueue = keep; saveUserQueue(); }
-    return out;
+    return userQueue.map((e, k) => ({ i: at.get(e.id), k }));
+  }
+  // Everything still to come, in play order: picked songs placed among the songs that follow from playQueue.
+  // [{i, k}] where k is set for a picked song. A picked song whose `after` song is no longer ahead plays first.
+  function upcomingEntries(n){
+    n = n == null ? Infinity : n;
+    const picked = userQueueIdxs();
+    const ctx = contextUpcoming(Infinity);
+    if (!picked.length) return ctx.slice(0, n === Infinity ? ctx.length : n).map(i => ({ i }));
+    const ahead = new Set(ctx.map(i => tracks[i].dbId));
+    const groups = new Map(), out = [], used = new Set();
+    picked.forEach(p => {
+      const a = userQueue[p.k].after, key = a != null && ahead.has(a) ? a : null;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(p);
+    });
+    const emit = key => (groups.get(key) || []).forEach(p => { if (!used.has(p.k)){ used.add(p.k); out.push({ i: p.i, k: p.k }); } });
+    emit(null);
+    for (let j = 0; j < ctx.length && out.length < n; j++){
+      out.push({ i: ctx[j] });
+      emit(tracks[ctx[j]].dbId);
+    }
+    return out.slice(0, n === Infinity ? out.length : n);
   }
   function saveUserQueue(){
     queueVer++;
@@ -295,19 +317,24 @@
     clearTimeout(saveUserQueue.t);
     saveUserQueue.t = setTimeout(() => { try { document.dispatchEvent(new CustomEvent('pp-queue')); } catch(e){} }, 0);
   }
-  // Called by loadTrack before currentIndex moves: a queued song that starts leaves the queue.
+  // Called by loadTrack before currentIndex moves: a picked song that starts leaves the queue.
   function noteQueuePlay(i){
     const t = tracks[i], fresh = playQueue !== queueCtxArr;
     queueCtxArr = playQueue;
-    const k = t ? userQueue.indexOf(t.dbId) : -1;
-    if (k >= 0 && (forceQueued || (k === 0 && !fresh))){
+    let k = -1;
+    if (t && forceQueuedK >= 0 && userQueue[forceQueuedK] && userQueue[forceQueuedK].id === t.dbId) k = forceQueuedK;
+    else if (t && !fresh && userQueue.length && currentIndex >= 0){
+      const e = upcomingEntries(1)[0];
+      if (e && e.k != null && e.i === i) k = e.k;
+    }
+    if (k >= 0){
       if (!playingQueued) queueAnchorId = currentIndex >= 0 && tracks[currentIndex] ? tracks[currentIndex].dbId : null;
       userQueue.splice(k, 1);
       playingQueued = true;
     } else {
       playingQueued = false; queueAnchorId = null;
     }
-    forceQueued = false;
+    forceQueuedK = -1;
     saveUserQueue();
   }
   // True when nothing comes after the current song with repeat off.
@@ -324,19 +351,23 @@
   // What follows from the queue the song was started from (not the hand-queued songs), honouring shuffle and repeat.
   function contextUpcoming(n){
     const out = []; if (currentIndex < 0 || !tracks[currentIndex]) return out;
+    if (repeatMode === 2) n = Math.min(n, 400);
     if (shuffleOn && !shuffleOrder.length) buildShuffleOrder();
     const ref = queueRef(), q = shuffleOn ? shuffleOrder : activeQueue(), p = q.indexOf(ref); if (p < 0) return out;
     for (let k = 1; k < q.length && out.length < n; k++){
       if (repeatMode === 0 && p + k >= q.length) break;   // the queue ends here
       const j = q[(p + k) % q.length];
-      if (j !== currentIndex) out.push(j);
+      if (j !== currentIndex || playingQueued) out.push(j);   // a picked song playing doesn't hide its own place in the playlist
     }
     return out;
   }
   function nextTrackIndex(){
     if (tracks.length === 0) return -1;
-    const uq = userQueueIdxs();
-    if (uq.length) return uq[0];
+    if (userQueue.length){
+      if (currentIndex < 0){ const p = userQueueIdxs()[0]; if (p) return p.i; }
+      const e = upcomingEntries(1)[0];
+      if (e) return e.i;
+    }
     const queue = activeQueue();
     if (queue.length === 0) return -1;
     const ref = queueRef();
@@ -372,44 +403,80 @@
     }
   }
 
-  // The queue board (pp-queue.js) reads and edits the queue through this.
+  // Take a song out of what follows from playQueue (the playlist itself is not changed).
+  function dropUpcoming(i){
+    if (i === currentIndex) return;
+    const ref = queueRef();
+    if (!(playQueue.length && playQueue.includes(ref))) playQueue = activeQueue().slice();
+    playQueue = playQueue.filter(x => x !== i);
+    queueCtxArr = playQueue;   // same context, just edited
+    shuffleOrder = shuffleOrder.filter(x => x !== i);
+  }
+  // The queue board (pp-queue.js) and the queue widgets read and edit the queue through this.
+  // Positions (pos) are places in upcomingEntries(): picked songs and the rest, in play order.
   window.__ppQueue = {
     state: (n) => {
-      const ctx = contextUpcoming(n || 200), cur = currentIndex >= 0 && tracks[currentIndex] ? currentIndex : -1;
-      return { cur, added: userQueueIdxs(), ctx, shuffle: shuffleOn, repeat: repeatMode, playingQueued, playing: isPlaying };
+      const cur = currentIndex >= 0 && tracks[currentIndex] ? currentIndex : -1;
+      return { cur, up: upcomingEntries(n || 200), picked: userQueueIdxs().length, shuffle: shuffleOn, repeat: repeatMode, playingQueued, playing: isPlaying };
     },
-    // idxs: track indices. next=true puts them straight after the current song, in the order given.
+    // idxs: track indices. next=true plays them straight after the current song, in the order given.
     add: (idxs, next) => {
       const ids = idxs.map(i => tracks[i] && tracks[i].dbId).filter(id => id != null);
       if (!ids.length) return 0;
-      if (next) userQueue.splice(0, 0, ...ids); else userQueue.push(...ids);
+      userQueueIdxs();
+      const items = ids.map(id => ({ id, after: null }));
+      if (next) userQueue.splice(0, 0, ...items);
+      else {
+        // at the very end: after the last song still to come
+        const up = upcomingEntries(Infinity), last = up.length ? up[up.length - 1] : null;
+        const after = !last ? null : last.k != null ? userQueue[last.k].after : tracks[last.i].dbId;
+        items.forEach(x => { x.after = after; });
+        userQueue.push(...items);
+      }
       saveUserQueue();
       return ids.length;
     },
-    removeAdded: k => { if (k >= 0 && k < userQueue.length){ userQueueIdxs(); userQueue.splice(k, 1); saveUserQueue(); } },
-    moveAdded: (from, to) => {
-      userQueueIdxs();
-      if (from < 0 || from >= userQueue.length || to < 0 || to >= userQueue.length || from === to) return;
-      const [id] = userQueue.splice(from, 1); userQueue.splice(to, 0, id); saveUserQueue();
-    },
-    clearAdded: () => { userQueue = []; saveUserQueue(); },
-    // Take a song out of what follows from the current context (the playlist itself is not changed).
-    removeUpcoming: i => {
-      if (i === currentIndex) return;
-      const ref = queueRef();
-      if (!(playQueue.length && playQueue.includes(ref))) playQueue = activeQueue().slice();
-      playQueue = playQueue.filter(x => x !== i);
-      queueCtxArr = playQueue;   // same context, just edited
-      shuffleOrder = shuffleOrder.filter(x => x !== i);
+    removeAt: pos => {
+      const e = upcomingEntries(pos + 1)[pos]; if (!e) return;
+      if (e.k != null) userQueue.splice(e.k, 1); else dropUpcoming(e.i);
       saveUserQueue();
     },
-    // Play a song shown in the board: a hand-queued one (k = its place) or one from the context.
-    jumpAdded: k => {
-      const idx = userQueueIdxs()[k]; if (idx == null) return;
-      forceQueued = true; loadTrack(idx, true);
+    jumpAt: pos => {
+      const e = upcomingEntries(pos + 1)[pos]; if (!e) return;
+      if (e.k != null) forceQueuedK = e.k;
+      loadTrack(e.i, true);
     },
-    jumpUpcoming: i => { if (i >= 0 && i < tracks.length) loadTrack(i, true); },
-    // Start a whole new queue (a saved queue or a preset). Hand-queued songs stay queued.
+    // Drag: move the song at `from` to `to` (both places among the first n). Any song can go anywhere.
+    moveAt: (from, to, n) => {
+      const S = upcomingEntries(Math.max(n || 0, from + 1, to + 1));
+      if (from < 0 || from >= S.length || to < 0 || to >= S.length || from === to) return;
+      const oldSet = S.filter(e => e.k == null).map(e => e.i);
+      const [m] = S.splice(from, 1); S.splice(to, 0, m);
+      const newSet = S.filter(e => e.k == null).map(e => e.i);
+      // 1. the songs from playQueue take their new order in the same slots
+      if (newSet.some((i, j) => i !== oldSet[j])){
+        if (!shuffleOn){
+          const ref = queueRef();
+          if (!(playQueue.length && playQueue.includes(ref))) playQueue = activeQueue().slice();
+        }
+        const q = (shuffleOn ? shuffleOrder : playQueue).slice();
+        const slots = oldSet.map(i => q.indexOf(i));
+        if (slots.every(x => x >= 0)){
+          slots.forEach((x, j) => { q[x] = newSet[j]; });
+          if (shuffleOn) shuffleOrder = q; else { playQueue = q; queueCtxArr = q; }
+        }
+      }
+      // 2. each picked song now follows the song from playQueue just above it
+      let lastSet = null; const order = [], seen = new Set();
+      S.forEach(e => {
+        if (e.k == null){ lastSet = tracks[e.i].dbId; return; }
+        const x = userQueue[e.k]; x.after = lastSet; order.push(x); seen.add(e.k);
+      });
+      userQueue = order.concat(userQueue.filter((x, k) => !seen.has(k)));
+      saveUserQueue();
+    },
+    clearAdded: () => { userQueue = []; saveUserQueue(); },
+    // Start a whole new queue (a saved queue or a preset). Picked songs stay queued.
     playList: (idxs, startAt) => {
       idxs = idxs.filter(i => i >= 0 && i < tracks.length);
       if (!idxs.length) return;

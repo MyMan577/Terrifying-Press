@@ -342,7 +342,7 @@
     if (!n) return;
     const what = n === 1 ? '"' + (tracks[idxs[0]].title || 'Song') + '"' : n + ' songs';
     showToast(next ? what + ' will play next' : what + ' added to the queue');
-    if (currentIndex === -1) loadTrack(nextTrackIndex(), true);   // nothing playing yet: start the queue
+    if (currentIndex === -1) window.__ppQueue.jumpAt(0);   // nothing playing yet: start the queue
   }
   function runSelectAct(act, btn){
     switch (act){
