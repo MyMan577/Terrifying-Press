@@ -30,12 +30,14 @@
     N.sampleLuma = function () { return Promise.reject(new Error('not native')); };
     N.setMemc = function () {};
     N.memcStatus = null;
-    N.mirror = N.decorateAnalyser = N.setVizTrim = N.queueNext = N.nowPlaying = N.updateMeta = N.setFxProvider = N.setVideoFilterCss = N.screenOn = N.scheduleRect = N.resync = N.enterPip = function () {};
+    N.mirror = N.decorateAnalyser = N.setVizTrim = N.queueNext = N.nowPlaying = N.updateMeta = N.setFxProvider = N.companionFx = N.setVideoFilterCss = N.screenOn = N.scheduleRect = N.resync = N.enterPip = function () {};
     N.boot = function () { return Promise.resolve(); };
     N.pushCatalog = N.migrateAll = function () {};
     N.snapshot = function () { return Promise.reject(new Error('not native')); };
     N.sameUri = function () { return false; };
     N.expectAdvance = function () {};
+    N.crossfade = function () { return Promise.resolve(false); };
+    N.cancelCrossfade = function () {};
     N.jobs = { run: function (title, fn) { return fn(function () {}); } };
     N.lib = null;
     return;
@@ -349,6 +351,15 @@
 
   // Queue the track JS will play next so ExoPlayer advances gaplessly and while the screen is off.
   var nextToken = 0;
+  // Settings > Transitions, Crossfade: ask ExoPlayer to fade into the queued next item over ms (see PlaybackService).
+  // Resolves true when the fade is set up; false means the normal gapless advance happens instead.
+  N.crossfade = function (ms) {
+    var S = cur;
+    if (!S || !S.active || S.kind !== 'audio' || !Player.crossfade) return Promise.resolve(false);
+    return Player.crossfade({ ms: Math.round(ms) }).then(function (r) { return !!(r && r.ok); }, function () { return false; });
+  };
+  N.cancelCrossfade = function () { if (cur && cur.active && Player.cancelCrossfade) call(function () { return Player.cancelCrossfade(); }); };
+
   N.queueNext = function (t) {
     var tok = ++nextToken;
     var S = cur;
@@ -507,8 +518,16 @@
 
   // ---------- effects ----------
   var fxFn = null, fxLast = '';
+  // A web video's soundtrack played by the native player (the WebView cannot decode it, see 29b "sound companion"):
+  // the native player has no wrapper then, but the EQ and effects must still reach it.
+  var fxCompanion = false;
+  N.companionFx = function (on) {
+    fxCompanion = !!on;
+    if (fxCompanion) { fxLast = ''; pushFx(true); }
+    syncFxTimer();
+  };
   function pushFx(force) {
-    if (!fxFn || !cur || !cur.active) return;
+    if (!fxFn || !((cur && cur.active) || fxCompanion)) return;
     var f; try { f = fxFn(); } catch (e) { return; }
     var j = JSON.stringify(f);
     if (!force && j === fxLast) return;
@@ -521,7 +540,7 @@
   function fxTick() { pushFx(false); try { pollFilter(); } catch (e) {} if (N.hooks.tick) { try { N.hooks.tick(); } catch (e) {} } }
   function syncFxTimer() {
     if (!fxFn) return;
-    var want = !document.hidden || !!(cur && cur.active && (cur.playing || cur.pwr));
+    var want = !document.hidden || fxCompanion || !!(cur && cur.active && (cur.playing || cur.pwr));
     if (want && !fxTimer) { fxTimer = setInterval(fxTick, 400); fxTick(); }
     else if (!want && fxTimer) { clearInterval(fxTimer); fxTimer = 0; }
   }
@@ -549,10 +568,13 @@
   N.vizRate = function () { return (cur && cur.active && cur.playing && fftF) ? fftRate : 0; };
   function dec(s) { var b = atob(s), a = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; }
   function syncViz() {
-    var want = !!(cur && cur.active && cur.kind === 'audio' && cur.playing && !document.hidden);
+    // a video's sound feeds the bars too while a Visualiser widget is on screen (it stamps __ppVizWant), else only songs do
+    var wid = (window.__ppVizWant || 0) > (window.performance ? performance.now() : 0) - 1500;
+    var want = !!(cur && cur.active && (cur.kind === 'audio' || wid) && cur.playing && !document.hidden);
     if (want === vizOn) return; vizOn = want;
     call(function () { return Player.setViz({ on: want, leadMs: VIZ_LEAD_MS - vizTrim }); });
   }
+  setInterval(syncViz, 1000);   // a Visualiser widget can appear or go away over a playing video
   N.decorateAnalyser = function (an) {
     var of = an.getByteFrequencyData.bind(an), ot = an.getByteTimeDomainData.bind(an);
     an.getByteFrequencyData = function (arr) {
@@ -805,6 +827,10 @@
   N.audioOptions = { get: function () { return Player.getAudioOptions(); }, set: function (o) { return Player.setAudioOptions(o); } };
   N.selectTrack = function (o) { return Player.selectTrack(o); };
   N.stop = function () { return Player.stop(); };
+  /** Settings > Leaving the player: other media, calls, the media notification, swiping the app away. */
+  N.setPlaybackPrefs = function (o) { return call(function () { return Player.setPlaybackPrefs(o); }); };
+  /** Ends what is playing (Leaving the player: Stop the track). */
+  N.closeTrack = function () { if (cur && cur.active) deactivate(cur); return call(function () { return Player.stop(); }); };
 
   // ---------- library / files ----------
   N.lib = {
@@ -818,6 +844,7 @@
     missing: function (uris) { return Lib.missing({ uris: uris || [] }); },
     mediaDetails: function (uris) { return Lib.mediaDetails({ uris: uris || [] }); },
     readText: function (uri) { return Lib.readText({ uri: uri }); },
+    hashFiles: function (uris) { return Lib.hashFiles({ uris: uris || [] }); },
     getPendingOpen: function () { return Lib.getPendingOpen(); },
     deleteLocal: function (uri) { return Lib.deleteLocal({ uri: uri }); },
     saveToDevice: function (o) { return Lib.saveToDevice(o); },
