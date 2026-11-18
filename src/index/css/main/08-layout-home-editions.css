@@ -135,6 +135,17 @@
   #pl-home{ display:none; }
   body.player-layout[data-pl-view="home"] #sidebar,
   body.player-layout[data-pl-view="playlists"] #sidebar{ visibility:hidden; pointer-events:none; }
+  /* While a browse screen is hidden, the browser skips it entirely. visibility alone still restyled and laid out every
+     row of the Library (3000 rows for 3000 songs) each time a class on <body> changed, which happens many times while
+     the app starts: seconds of a frozen app on a phone. content-visibility:hidden keeps its layout and scroll position,
+     so coming back is still instant. Same cases as the visibility:hidden rules (here, pp-widgets.css, and the audio
+     player page above). */
+  body.player-layout[data-pl-view="home"] #sidebar,
+  body.player-layout[data-pl-view="playlists"] #sidebar,
+  body.player-layout[data-pw-page] #sidebar,
+  body.player-layout[data-pw-page] #pl-home,
+  body.player-layout[data-pl-player]:not(.pl-video) #sidebar,
+  body.player-layout[data-pl-player]:not(.pl-video) #pl-home{ content-visibility:hidden; }
   body.player-layout[data-pl-view="home"] #pl-home,
   body.player-layout[data-pl-view="playlists"] #pl-home{
     display:block; position:fixed; left:0; right:0; top:0; z-index:30;

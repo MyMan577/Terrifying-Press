@@ -101,7 +101,7 @@
     dragScopeIndices = indices;
     dragScopePlaylist = filteringByPlaylist ? activePl : null;
 
-    indices.forEach((i, pos) => {
+    const buildRow = (i, pos) => {
       const t = tracks[i];
       const row = document.createElement('div');
       row.className = 'track' + (i === currentIndex ? ' active' : '') + (detailedPlaylistMode ? ' detailed' : '');
@@ -228,7 +228,8 @@
         if (stemSecHidden) return;
       }
       playlistEl.appendChild(row);
-    });
+    };
+    ppBuildRows(indices, buildRow);
     updateSelectBar();
     // Measure after layout so scrollWidth is accurate.
     // One pass at most is ever waiting. Frames do not run while the app is in the background, and the list is rebuilt
@@ -240,6 +241,46 @@
     }
   }
   var marqueePassQueued = false;   // var: the list can be drawn before this line is reached
+  // Building the Library's rows. While the Library is on screen they are all built at once, as always (building them in
+  // steps there would make the list jump under the finger). While it is hidden (Home, the player, a page) they are built
+  // in small steps with a pause between, so taps and the screen that IS showing are not held up: building 3000 rows in
+  // one go blocked the app for a long while at every start and at every track change. Opening the Library while steps
+  // are still waiting builds the rest straight away. A newer drawing of the list stops an older one's steps.
+  var ppRowsGen = 0, ppRowsRest = null;   // var: the list can be drawn before this line is reached
+  function ppBuildRows(list, build){
+    const gen = ppRowsGen = (ppRowsGen || 0) + 1, STEP = 150;   // || 0: may run before the var line above has
+    ppRowsRest = null;
+    // While the page is still loading the loading screen covers everything, so nothing is on screen yet either.
+    const shown = document.readyState !== 'loading' && (!playlistEl.checkVisibility || playlistEl.checkVisibility({ visibilityProperty: true }));
+    if (shown || list.length <= STEP){ list.forEach(build); return; }
+    let at = 0;
+    const step = (all) => {
+      if (gen !== ppRowsGen) return;
+      const end = all ? list.length : Math.min(list.length, at + STEP);
+      for (; at < end; at++) build(list[at], at);
+      if (at < list.length){ ppRowsRest = () => step(true); setTimeout(step, 0); }
+      else {
+        ppRowsRest = null;
+        if (!marqueePassQueued){ marqueePassQueued = true; requestAnimationFrame(() => { marqueePassQueued = false; setupMarquees(playlistEl.querySelectorAll('.marquee')); }); }
+      }
+    };
+    step(false);
+    ppWatchRowsShown();
+  }
+  var ppRowsWatch = null;
+  function ppWatchRowsShown(){
+    if (ppRowsWatch) return;
+    // The Library comes into view through the view / page / player attributes on <body>.
+    ppRowsWatch = new MutationObserver(() => {
+      if (!ppRowsRest) return;
+      if (!playlistEl.checkVisibility || playlistEl.checkVisibility({ visibilityProperty: true })) ppRowsRest();
+    });
+    ppRowsWatch.observe(document.body, { attributes: true, attributeFilter: ['class', 'data-pl-view', 'data-pw-page', 'data-pl-player'] });
+    // The app opened straight onto the Library: finish it as soon as the page is ready.
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => {
+      if (ppRowsRest && (!playlistEl.checkVisibility || playlistEl.checkVisibility({ visibilityProperty: true }))) ppRowsRest();
+    }, { once: true });
+  }
   // Only rows that are (nearly) on screen are measured, when they get there: measuring a whole big library at once
   // laid out every row of it, which took seconds on a phone at every start. Within a batch every row is measured
   // first and only then changed: measuring and changing row by row made the page lay itself out again for each row.

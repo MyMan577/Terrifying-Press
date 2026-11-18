@@ -480,9 +480,12 @@
     const todo = tracks.filter(t => t.nativeUri && !t.mdv && /^content:/.test(t.nativeUri));
     for (let i = 0; i < todo.length; i += 150){
       const chunk = todo.slice(i, i + 150);
-      let r; try { r = await PPNative.lib.mediaDetails(chunk.map(t => t.nativeUri)); } catch(e){ return; }
+      let r; try { r = await PPNative.lib.mediaDetails(chunk.map(t => t.nativeUri)); } catch(e){ break; }   // keep what earlier chunks found: saved below
       const by = new Map(((r && r.items) || []).map(o => [o.uri, o]));
       chunk.forEach(t => {
+        // Marked as done even when the phone had nothing on it (a moved or deleted file): asking again on every start
+        // gets the same nothing, and used to rerun this whole pass, and its saves, each time the app opened.
+        t.mdv = 1;
         const o = by.get(t.nativeUri); if (!o) return;
         if (!t.album && o.album) t.album = o.album;
         if (o.genre) t.genre = o.genre;
@@ -490,9 +493,9 @@
         if (o.disc) t.disc = o.disc;
         if (o.year) t.year = o.year;
         if (o.folder) t.folder = o.folder;
-        t.mdv = 1;
       });
-      saveLibraryMeta();
     }
+    // One save at the end, not one per chunk: each save writes the whole library (1.3 MB for 3000 songs).
+    if (todo.length) saveLibraryMeta();
     if (todo.length && ppBrowseState().mode !== 'songs') renderPlaylist();
   }

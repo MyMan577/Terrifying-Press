@@ -36,7 +36,12 @@
   (function(){
     var btn = document.querySelector('.pp-games-btn-side'), hdr = document.getElementById('sidebar-header');
     if (!btn || !hdr) return;
+    // Runs at most once per frame, and not at all while the sidebar is hidden (its layout is skipped then, and measuring
+    // it forced the browser to lay out the whole Library at every class change while the app started).
+    var queued = 0;
+    function schedule(){ if (!queued) queued = requestAnimationFrame(function(){ queued = 0; place(); }); }
     function place(){
+      if (hdr.checkVisibility && !hdr.checkVisibility({ visibilityProperty: true })) return;
       var m = document.getElementById('menu-btn'), right = 14;
       if (m && m.getClientRects().length){
         var hr = hdr.getBoundingClientRect(), mr = m.getBoundingClientRect();
@@ -44,10 +49,11 @@
       }
       btn.style.right = right + 'px';
     }
-    place();
-    if (window.ResizeObserver) new ResizeObserver(place).observe(hdr);
-    window.addEventListener('resize', place);
-    new MutationObserver(place).observe(document.body, { attributes:true, attributeFilter:['class'] });   // layout switch
+    schedule();
+    if (window.ResizeObserver) new ResizeObserver(schedule).observe(hdr);
+    window.addEventListener('resize', schedule);
+    // layout switch, and the sidebar coming back into view
+    new MutationObserver(schedule).observe(document.body, { attributes:true, attributeFilter:['class', 'data-pl-view', 'data-pw-page', 'data-pl-player'] });
   })();
 
   // ---- games page ----
