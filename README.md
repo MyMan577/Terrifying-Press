@@ -35,7 +35,7 @@ Press Play has a lot of settings, and most of them are things other players leav
 - Bass and reverb controls, and playback speed.
 - Choose how songs join: normal, gapless with no pause between tracks, or crossfade with a length you set.
 - ReplayGain keeps songs at a similar loudness so you are not reaching for the volume between tracks.
-- Hi-res output plays 24-bit and 32-bit files at full depth, with the equalizer, effects, boost, ReplayGain, speed and visualizer all still working on them, and the player shows each track's format, bit depth and sample rate. You can also force software-only or hardware-only decoding, for audio and for video (the video choice applies to the VLC engine too), like VLC's hardware acceleration setting; Auto picks the best decoder for each file.
+- Hi-res output plays 24-bit and 32-bit files at full depth, with the equalizer, effects, boost, ReplayGain, speed and visualizer all still working on them, and the player shows each track's format, bit depth and sample rate. You can also force software-only or hardware-only decoding, for audio and for video, like VLC's hardware acceleration setting; Auto picks the best decoder for each file.
 
 **Playback**
 - Remembers where you stopped in each track, and lets you choose how often progress is saved. You can also turn it off so tracks always start from the beginning.
