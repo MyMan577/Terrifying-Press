@@ -174,7 +174,13 @@ class FxAudioProcessor : BaseAudioProcessor() {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT || inputAudioFormat.channelCount !in 1..8) {
             return AudioFormat.NOT_SET // inactive: audio passes through untouched
         }
-        sr = inputAudioFormat.sampleRate.toDouble(); ch = inputAudioFormat.channelCount
+        setup(inputAudioFormat.sampleRate, inputAudioFormat.channelCount)
+        return inputAudioFormat
+    }
+
+    /** Sets the chain up for [rate] Hz, [channels] channels (16-bit through the processor pipeline, or float via [HiResFxSink]). */
+    private fun setup(rate: Int, channels: Int) {
+        sr = rate.toDouble(); ch = channels
         chans = Array(ch) { Chan(sr, it) }
         tmp = DoubleArray(ch)
         echoIdx = 0
@@ -185,9 +191,9 @@ class FxAudioProcessor : BaseAudioProcessor() {
         val fc = -ln(1 - 0.12) * 48000 / (2 * PI)
         revDark = 1 - exp(-2 * PI * fc / sr)
         revNorm = 0.00125 * (44100.0 / 48000.0) * sqrt(48000 * 2.8) * sqrt(24000 / (fc * atan(24000 / fc))) / ROOM_GAIN
-        synchronized(clk) { rate = inputAudioFormat.sampleRate }
+        synchronized(clk) { this.rate = rate }
         applied = null
-        return inputAudioFormat
+        clearState()
     }
 
     override fun onFlush() { clearState() }
@@ -236,11 +242,64 @@ class FxAudioProcessor : BaseAudioProcessor() {
     override fun queueInput(inputBuffer: ByteBuffer) {
         val n = inputBuffer.remaining()
         if (n == 0) return
+        val out = replaceOutputBuffer(n)
+        run(n / (2 * ch),
+            copy = { val s = inputBuffer.getShort(); out.putShort(s); s / 32768.0f },
+            read = { inputBuffer.getShort() / 32768.0 },
+            write = { x ->
+                val s = (x * 32767.0).roundToInt().coerceIn(-32768, 32767)
+                out.putShort(s.toShort())
+                s / 32768.0f
+            })
+        // Any trailing partial frame is dropped (never happens with whole-frame PCM).
+        inputBuffer.position(inputBuffer.limit())
+        out.flip()
+    }
+
+    // ---------- Hi-res: the same chain on 24-bit, 32-bit and float PCM, giving 32-bit float ----------
+    private var hiCh = 0; private var hiRate = 0
+
+    /** [HiResFxSink] is about to send this stream: set the chain up for it (the processor pipeline is not used then). */
+    fun configureHiRes(rate: Int, channels: Int) {
+        if (channels !in 1..8) { hiCh = 0; return }
+        if (channels != hiCh || rate != hiRate || ch != channels || sr != rate.toDouble()) setup(rate, channels)
+        hiCh = channels; hiRate = rate
+        applied = null
+    }
+    fun flushHiRes() { clearState() }
+    /** True when [configureHiRes] accepted the stream. */
+    val hiResReady: Boolean get() = hiCh in 1..8
+
+    /**
+     * Runs the chain over [frames] frames of [enc] PCM (C.ENCODING_PCM_24BIT, _32BIT or _FLOAT, little-endian) from
+     * [input] (absolute reads from its position; the buffer itself is not moved) into [out] as 32-bit float.
+     * Nothing is rounded to 16 bits: the full depth goes to the output. Above 0 dBFS it is shaped exactly like the
+     * 16-bit path (limiter, then the soft knee), so it sounds the same, just with more resolution.
+     */
+    fun processHiRes(input: ByteBuffer, enc: Int, frames: Int, out: ByteBuffer) {
+        var i = input.position()
+        val read: () -> Double = when (enc) {
+            C.ENCODING_PCM_24BIT -> { {
+                val v = (input.get(i).toInt() and 0xff) or ((input.get(i + 1).toInt() and 0xff) shl 8) or (input.get(i + 2).toInt() shl 16)
+                i += 3; v / 8388608.0 } }
+            C.ENCODING_PCM_32BIT -> { { val v = input.getInt(i); i += 4; v / 2147483648.0 } }
+            else -> { { val v = input.getFloat(i); i += 4; v.toDouble() } }
+        }
+        run(frames,
+            copy = { val x = read().toFloat(); out.putFloat(x); x },
+            read = read,
+            write = { x -> val f = x.toFloat(); out.putFloat(f); f })
+    }
+
+    /**
+     * The effect chain for [frames] frames. [copy] passes one sample through untouched (all effects neutral),
+     * [read] fetches the next sample (-1..1), [write] stores one result and gives back what was stored, for the
+     * visualizer. Samples come and go in interleaved channel order.
+     */
+    private inline fun run(frames: Int, copy: () -> Float, read: () -> Double, write: (Double) -> Float) {
         val p = params
         if (p !== applied) { refresh(p); applied = p }
-        val out = replaceOutputBuffer(n)
         val bypass = p.neutral && abs(gainNow - 1.0) < 0.001 && limDb > -0.01
-        val frames = n / (2 * ch)
         val tremInc = 2 * PI * 5.2 / sr
         var rp = wPos
         val t = tmp
@@ -248,14 +307,14 @@ class FxAudioProcessor : BaseAudioProcessor() {
         for (f in 0 until frames) {
             var mono = 0f
             if (bypass) {
-                for (c in 0 until ch) { val s = inputBuffer.getShort(); out.putShort(s); mono += s / 32768.0f }
+                for (c in 0 until ch) mono += copy()
             } else {
                 gainNow += (gainTarget - gainNow) * gainK
                 val trem = if (tremOn) (1 - tremDepth) + tremDepth * sin(tremPhase) else 1.0
                 var peak = 0.0
                 for (c in 0 until ch) {
                     val st = chans[c]
-                    var x = inputBuffer.getShort() / 32768.0
+                    var x = read()
                     if (eqOn) for (b in 0 until 10) if (eqActive[b]) x = st.eq[b].process(x)
                     x *= gainNow
                     var side = 0.0                                  // echo repeats and bass harmonics join after the reverb
@@ -313,17 +372,12 @@ class FxAudioProcessor : BaseAudioProcessor() {
                     // step in it (the old one jumped from 0.95 to 0.74, which is the crackle the booster made).
                     val a = abs(x)
                     if (a > 0.9) x = sign(x) * (0.9 + 0.1 * tanh((a - 0.9) / 0.1))
-                    val s = (x * 32767.0).roundToInt().coerceIn(-32768, 32767)
-                    out.putShort(s.toShort())
-                    mono += s / 32768.0f
+                    mono += write(x)
                 }
             }
             ring[rp] = mono / ch; rp = (rp + 1) and (RING - 1)
         }
         synchronized(clk) { wPos = rp; clkFrames += frames }
-        // Any trailing partial frame is dropped (never happens with whole-frame PCM).
-        inputBuffer.position(inputBuffer.limit())
-        out.flip()
     }
 
     // ---------- Visualizer: a ring of the output, and the clock that says which part of it is audible ----------
@@ -469,4 +523,68 @@ class VizClockSink(sink: AudioSink, private val fx: FxAudioProcessor) : Forwardi
         val dtUs = ((SystemClock.elapsedRealtimeNanos() - posAtNs) / 1000L).coerceIn(0L, 150_000L)
         posUs + (dtUs * speed).toLong()
     }
+}
+
+/**
+ * Hi-res output with the effects. Media3 plays 24-bit, 32-bit and float PCM as 32-bit float when Hi-res output is on,
+ * but on that path it skips every audio processor: the EQ, effects, boost, ReplayGain, visualizer and speed all
+ * stopped for exactly the files Hi-res is for. This sits in front of the real output and runs the effect chain
+ * itself, in float, at full depth ([FxAudioProcessor.processHiRes]), then hands the output float PCM. Speed and pitch
+ * on that path come from the AudioTrack (see PlaybackService). 16-bit audio passes straight through to the normal
+ * processor pipeline, so it is untouched by this.
+ */
+@UnstableApi
+class HiResFxSink(sink: AudioSink, private val fx: FxAudioProcessor) : ForwardingAudioSink(sink) {
+    private var active = false
+    private var enc = C.ENCODING_INVALID
+    private var frameIn = 0
+    private var pending: ByteBuffer? = null      // the processed copy of the buffer the output has not finished taking
+    private var scratch: ByteBuffer? = null
+
+    private fun handles(f: Format) = f.sampleMimeType == androidx.media3.common.MimeTypes.AUDIO_RAW && f.channelCount in 1..8 &&
+        (f.pcmEncoding == C.ENCODING_PCM_24BIT || f.pcmEncoding == C.ENCODING_PCM_32BIT || f.pcmEncoding == C.ENCODING_PCM_FLOAT)
+
+    /** Only takes over when the output would use float for this format (Hi-res output on). */
+    private fun floatOut(f: Format) =
+        super.getFormatSupport(f.buildUpon().setPcmEncoding(C.ENCODING_PCM_FLOAT).build()) == AudioSink.SINK_FORMAT_SUPPORTED_DIRECTLY
+
+    override fun configure(inputFormat: Format, specifiedBufferSize: Int, outputChannels: IntArray?) {
+        pending = null
+        active = handles(inputFormat) && outputChannels == null && floatOut(inputFormat)
+        if (active) {
+            fx.configureHiRes(inputFormat.sampleRate, inputFormat.channelCount)
+            active = fx.hiResReady
+        }
+        if (!active) { super.configure(inputFormat, specifiedBufferSize, outputChannels); return }
+        enc = inputFormat.pcmEncoding
+        frameIn = (if (enc == C.ENCODING_PCM_24BIT) 3 else 4) * inputFormat.channelCount
+        val asFloat = inputFormat.buildUpon().setPcmEncoding(C.ENCODING_PCM_FLOAT).build()
+        val size = if (specifiedBufferSize > 0) specifiedBufferSize / frameIn * 4 * inputFormat.channelCount else specifiedBufferSize
+        super.configure(asFloat, size, null)
+    }
+
+    override fun handleBuffer(buffer: ByteBuffer, presentationTimeUs: Long, encodedAccessUnitCount: Int): Boolean {
+        if (!active) return super.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
+        // The output may take a buffer in several calls; the same (already processed) copy is offered each time, and
+        // the input is only marked as used once all of it is gone, so nothing is processed twice.
+        val out: ByteBuffer = pending ?: processed(buffer).also { pending = it }
+        val done = super.handleBuffer(out, presentationTimeUs, encodedAccessUnitCount)
+        if (done) { buffer.position(buffer.limit()); pending = null }
+        return done
+    }
+
+    private fun processed(buffer: ByteBuffer): ByteBuffer {
+        val frames = buffer.remaining() / frameIn
+        val need = frames * (frameIn / (if (enc == C.ENCODING_PCM_24BIT) 3 else 4)) * 4
+        val old = scratch
+        val s: ByteBuffer = if (old != null && old.capacity() >= need) old
+                            else ByteBuffer.allocateDirect(need).order(java.nio.ByteOrder.nativeOrder()).also { scratch = it }
+        s.clear()
+        fx.processHiRes(buffer.duplicate().order(java.nio.ByteOrder.LITTLE_ENDIAN), enc, frames, s)
+        s.flip()
+        return s
+    }
+
+    override fun flush() { pending = null; if (active) fx.flushHiRes(); super.flush() }
+    override fun reset() { pending = null; active = false; super.reset() }
 }

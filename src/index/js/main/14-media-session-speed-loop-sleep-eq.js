@@ -19,7 +19,8 @@
     if (!t || t.kind !== 'video' || (P.active && P.active())){ P.mirror(null); return; }
     const m = media();
     let dur = (m && isFinite(m.duration) && m.duration > 0) ? m.duration : (isFinite(videoEl.duration) ? videoEl.duration : 0);
-    P.mirror({ track: t, playing: !!isPlaying, posMs: Math.round(((m && m.currentTime) || 0) * 1000),
+    let sndPos = null; try { sndPos = ppSndPos(); } catch(e){}   // the sound runs on while the picture rests (29b)
+    P.mirror({ track: t, playing: !!isPlaying, posMs: sndPos != null ? sndPos : Math.round(((m && m.currentTime) || 0) * 1000),
                durMs: Math.round((dur || 0) * 1000), rate: playbackSpeed || 1 });
   }
   let ppMirrorTimer = 0;

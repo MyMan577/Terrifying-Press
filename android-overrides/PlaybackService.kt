@@ -30,7 +30,6 @@ import androidx.media3.exoplayer.audio.AudioRendererEventListener
 import androidx.media3.exoplayer.audio.ForwardingAudioSink
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
-import androidx.media3.common.Format
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -125,21 +124,23 @@ class PlaybackService : MediaLibraryService() {
         val renderers = object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
                 context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean
-            ): AudioSink = VizClockSink(DefaultAudioSink.Builder(context)
-                // Off: everything is played as 16-bit so the FX chain (EQ, effects, boost, visualizer) stays active.
-                // Hi-res on: 24-bit and 32-bit sources go out as 32-bit float, and Media3 skips the FX chain for them.
+            ): AudioSink = VizClockSink(HiResFxSink(DefaultAudioSink.Builder(context)
+                // Off: everything is played as 16-bit through the FX chain (EQ, effects, boost, visualizer).
+                // Hi-res on: 24-bit and 32-bit sources go out as 32-bit float. Media3 skips its processors on that
+                // path, so HiResFxSink runs the same FX chain on it itself, in float, and the speed and pitch come
+                // from the AudioTrack (Media3's own speed processor only works in 16-bit). Everything works the same
+                // either way; Hi-res only keeps the extra depth.
                 .setEnableFloatOutput(floatOut)
-                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams || floatOut)
                 .setAudioProcessors(arrayOf(fx))
-                .build(), fx).also { vizClock = it }
+                .build(), fx), fx).also { vizClock = it }
 
             /**
              * The phone's own audio decoders, then the FFmpeg ones (Media3's FFmpeg extension) for what the phone has
              * no decoder for: DTS, DTS-HD, TrueHD, AC-3 and E-AC-3 soundtracks. They are only tried after the phone's
              * decoders, and they play into the same output (the sink above), so the EQ, effects, visualizer, speed and
-             * Bluetooth delay work on these tracks exactly as on any other. They always decode to 16-bit, like the
-             * phone's own Dolby decoders: as 32-bit float (what the extension picks with Hi-res on) the effect chain
-             * would be skipped.
+             * Bluetooth delay work on these tracks exactly as on any other. With Hi-res on they decode to 32-bit float
+             * (TrueHD and DTS-HD Master Audio are 24-bit lossless), which HiResFxSink runs the effects on as well.
              */
             override fun buildAudioRenderers(
                 context: Context, extensionRendererMode: Int, mediaCodecSelector: MediaCodecSelector,
@@ -153,7 +154,7 @@ class PlaybackService : MediaLibraryService() {
                     ListenerSlot(audioSink, share, 0), eventHandler, eventListener, out)
                 if (audioDec == "hard") return          // "Hardware only": the FFmpeg decoders are software
                 try {
-                    out.add(FfmpegAudioRenderer(eventHandler, eventListener, Pcm16Only(ListenerSlot(audioSink, share, 1))))
+                    out.add(FfmpegAudioRenderer(eventHandler, eventListener, ListenerSlot(audioSink, share, 1)))
                 } catch (t: Throwable) {          // the decoders' native library is missing or would not load
                     android.util.Log.w("PPPlayback", "FFmpeg audio decoders unavailable: $t")
                 }
@@ -255,12 +256,17 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /** The audio attributes for what is loaded (music or a movie soundtrack); focus is handled per [syncFocus]. */
-    fun setMediaAudio(attrs: AudioAttributes) { mediaAttrs = attrs; focusHandled = null; syncFocus() }
+    /**
+     * [focus] false: the player does not take audio focus. Used for a web video's soundtrack (the page's <video> shows
+     * the picture and holds the focus; this player only supplies the sound it cannot decode, and follows it).
+     */
+    fun setMediaAudio(attrs: AudioAttributes, focus: Boolean = true) { mediaAttrs = attrs; wantFocus = focus; focusHandled = null; syncFocus() }
+    private var wantFocus = true
 
     /** Follows the call state. Also run before Play, for phones older than Android 12 (no mode-change listener). */
     fun syncFocus() {
         if (!::player.isInitialized) return
-        val handle = try { !inCall() } catch (_: Exception) { true }
+        val handle = wantFocus && try { !inCall() } catch (_: Exception) { true }
         if (handle == focusHandled) return
         focusHandled = handle
         player.setAudioAttributes(mediaAttrs, handle)
@@ -281,6 +287,7 @@ class PlaybackService : MediaLibraryService() {
     private fun prefs() = getSharedPreferences("pp_resume", MODE_PRIVATE)
     private fun saveResume() {
         val it = player.currentMediaItem ?: return
+        if (it.mediaMetadata.extras?.getBoolean("companion", false) == true) return   // a web video's soundtrack: the page keeps the resume point
         val md = it.mediaMetadata
         val uri = md.extras?.getString("orig") ?: it.localConfiguration?.uri?.toString() ?: return
         prefs().edit().putString("id", it.mediaId).putString("uri", uri)
@@ -398,18 +405,6 @@ private class UiForwardingPlayer(p: Player) : ForwardingPlayer(p) {
     override fun seekToNextMediaItem() { ui()?.invoke("next") ?: super.seekToNextMediaItem() }
     override fun seekToPrevious() { ui()?.invoke("prev") ?: super.seekToPrevious() }
     override fun seekToPreviousMediaItem() { ui()?.invoke("prev") ?: super.seekToPreviousMediaItem() }
-}
-
-/**
- * The output as the FFmpeg decoders see it: the same sink, minus 32-bit float. They then decode to 16-bit, which is
- * what the effect chain (EQ, effects, boost, visualizer) works on.
- */
-@UnstableApi
-private class Pcm16Only(sink: AudioSink) : ForwardingAudioSink(sink) {
-    private fun isFloat(f: Format) = f.sampleMimeType == MimeTypes.AUDIO_RAW && f.pcmEncoding == C.ENCODING_PCM_FLOAT
-    override fun supportsFormat(format: Format): Boolean = !isFloat(format) && super.supportsFormat(format)
-    override fun getFormatSupport(format: Format): Int =
-        if (isFloat(format)) AudioSink.SINK_FORMAT_UNSUPPORTED else super.getFormatSupport(format)
 }
 
 /** One output shared by two renderers: its reports go to both (each ignores what is not about it). */
