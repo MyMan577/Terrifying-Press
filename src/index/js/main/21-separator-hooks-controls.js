@@ -73,7 +73,19 @@
       sleepFor: min => startSleepTimer(min),
       sleepEnd: () => startSleepAtEndOfTrack(),
       sleepOff: () => clearSleepTimer(),
-      positions: () => loadPlaybackPositions()
+      positions: () => loadPlaybackPositions(),
+      // the queue builder widget: put a track right after the one playing, or take one out, without stopping the music
+      playNext: i => {
+        if (i < 0 || i >= tracks.length || currentIndex < 0 || i === currentIndex) return false;
+        return window.__ppQueue.add([i], true) > 0;   // a picked song (see the queue in pp-queue.js)
+      },
+      unqueue: i => {
+        if (i === currentIndex) return false;
+        const pos = upcomingEntries(Infinity).findIndex(e => e.i === i);
+        if (pos < 0) return false;
+        window.__ppQueue.removeAt(pos);
+        return true;
+      }
     },
     sel: {
       active: () => selectMode,

@@ -175,3 +175,6 @@
   .pw-qs-it.pw-q-picked .pw-art{ box-shadow:0 0 0 2px var(--accent); }
   .pw-qs-it.pq-dragging .pw-art{ box-shadow:0 12px 26px rgba(0,0,0,.5); }
   .pw-qs-more{ flex:none; align-self:flex-start; width:var(--pw-qs); aspect-ratio:1/1; border:1px dashed var(--line, rgba(255,255,255,.2)); border-radius:calc(12px*var(--ui-round,1)); background:transparent; color:var(--accent); font:inherit; font-size:16px; font-weight:800; cursor:pointer; }
+  .pw-qb-i.pw-q-picked{ box-shadow:inset 3px 0 0 var(--accent); border-radius:calc(10px*var(--ui-round,1)); }
+  .pw-qb-pk{ font-style:normal; font-weight:700; color:var(--accent); }
+  .pw-qb-i.pq-dragging{ background:var(--bg-elev, #17181d); border-radius:calc(10px*var(--ui-round,1)); }
