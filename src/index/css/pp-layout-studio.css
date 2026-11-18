@@ -28,6 +28,12 @@
   .ls-tag span{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .ls-wrap > .ls-tag{ right:auto; left:2px; }
   .ls-tag-in > .ls-tag{ top:4px; }
+  /* a thumbnail being changed: outlined just outside it with no tint, so the shape picked is plainly seen */
+  .ls-mark.ls-small{ border-radius:calc(6px*var(--ui-round,1)); }
+  .ls-mark.ls-small.on{ background:none; }
+  .ls-small > .ls-tag{ max-width:190px; }
+  /* while a part's sheet is up, the lists get room at the bottom so any row can be scrolled above the sheet */
+  body.ls-sheet-up :is(#playlist, #pl-home, #pp-sg-root){ padding-bottom:62vh !important; }
   .ls-mark.on > .ls-tag{ box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent), 0 4px 12px rgba(0,0,0,.5); }
   /* sliders on the screen being edited don't move: a tap on them picks their part */
   body.ls-editing :is(#seek, #volume, #controls-col input[type=range]){ pointer-events:none; }
@@ -443,18 +449,18 @@
   body[data-lsl-tshape="arch"] #playlist .track-thumb{ border-radius:50% 50% 8% 8% / 38% 38% 8% 8%; }
   body[data-lsl-tshape="hexagon"] #playlist .track-thumb{ border-radius:0; clip-path:polygon(25% 2%, 75% 2%, 99% 50%, 75% 98%, 25% 98%, 1% 50%); }
   body[data-lsp-pshape="square"] #pl-home :is(.ph-pl-head, .ph-detail-head) .ph-thumb{ border-radius:calc(3px*var(--ui-round,1)); }
-  body[data-lsp-cshape="square"] #pl-home .ph-card .ph-thumb{ border-radius:calc(3px*var(--ui-round,1)); }
+  body[data-lsp-cshape="square"] #pl-home :is(.ph-card, .ph-trk) .ph-thumb{ border-radius:calc(3px*var(--ui-round,1)); }
   body[data-lsp-pshape="circle"] #pl-home :is(.ph-pl-head, .ph-detail-head) .ph-thumb{ border-radius:50%; }
-  body[data-lsp-cshape="circle"] #pl-home .ph-card .ph-thumb{ border-radius:50%; }
+  body[data-lsp-cshape="circle"] #pl-home :is(.ph-card, .ph-trk) .ph-thumb{ border-radius:50%; }
   body[data-lsp-pshape="squircle"] #pl-home :is(.ph-pl-head, .ph-detail-head) .ph-thumb{ border-radius:30%; }
-  body[data-lsp-cshape="squircle"] #pl-home .ph-card .ph-thumb{ border-radius:30%; }
+  body[data-lsp-cshape="squircle"] #pl-home :is(.ph-card, .ph-trk) .ph-thumb{ border-radius:30%; }
   body[data-lsp-pshape="leaf"] #pl-home :is(.ph-pl-head, .ph-detail-head) .ph-thumb{ border-radius:42% 8% 42% 8%; }
-  body[data-lsp-cshape="leaf"] #pl-home .ph-card .ph-thumb{ border-radius:42% 8% 42% 8%; }
+  body[data-lsp-cshape="leaf"] #pl-home :is(.ph-card, .ph-trk) .ph-thumb{ border-radius:42% 8% 42% 8%; }
   body[data-lsp-pshape="arch"] #pl-home :is(.ph-pl-head, .ph-detail-head) .ph-thumb{ border-radius:50% 50% 8% 8% / 38% 38% 8% 8%; }
-  body[data-lsp-cshape="arch"] #pl-home .ph-card .ph-thumb{ border-radius:50% 50% 8% 8% / 38% 38% 8% 8%; }
+  body[data-lsp-cshape="arch"] #pl-home :is(.ph-card, .ph-trk) .ph-thumb{ border-radius:50% 50% 8% 8% / 38% 38% 8% 8%; }
   body[data-lsp-pshape="hexagon"] #pl-home :is(.ph-pl-head, .ph-detail-head) .ph-thumb{ border-radius:0; clip-path:polygon(25% 2%, 75% 2%, 99% 50%, 75% 98%, 25% 98%, 1% 50%); }
-  body[data-lsp-cshape="hexagon"] #pl-home .ph-card .ph-thumb{ border-radius:0; clip-path:polygon(25% 2%, 75% 2%, 99% 50%, 75% 98%, 25% 98%, 1% 50%); }
+  body[data-lsp-cshape="hexagon"] #pl-home :is(.ph-card, .ph-trk) .ph-thumb{ border-radius:0; clip-path:polygon(25% 2%, 75% 2%, 99% 50%, 75% 98%, 25% 98%, 1% 50%); }
   body:is([data-lsp-pshape="circle"], [data-lsp-pshape="hexagon"]) #pl-home :is(.ph-pl-head, .ph-detail-head) .ph-thumb,
-  body:is([data-lsp-cshape="circle"], [data-lsp-cshape="hexagon"]) #pl-home .ph-card .ph-thumb{ aspect-ratio:1; }
-  body[data-lsp-pshape="hexagon"] #pl-home :is(.ph-pl-head, .ph-detail-head) .ph-thumb, body[data-lsp-cshape="hexagon"] #pl-home .ph-card .ph-thumb,
+  body:is([data-lsp-cshape="circle"], [data-lsp-cshape="hexagon"]) #pl-home :is(.ph-card, .ph-trk) .ph-thumb{ aspect-ratio:1; }
+  body[data-lsp-pshape="hexagon"] #pl-home :is(.ph-pl-head, .ph-detail-head) .ph-thumb, body[data-lsp-cshape="hexagon"] #pl-home :is(.ph-card, .ph-trk) .ph-thumb,
   body[data-lsl-tshape="hexagon"] #playlist .track-thumb{ border-color:transparent; }

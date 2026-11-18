@@ -150,16 +150,17 @@
       parts:[
         { name:'Your playlists', opts:[
           { k:'view', label:'Look', c:[['list','List'],['compact','Compact list'],['cards','Cards'],['grid2','Grid, 2 across'],['grid3','Grid, 3 across']] },
-          { k:'cover', label:'Cover size', c:[['m','Medium'],['s','Small'],['l','Large']], when:{ view:['list','compact','cards'] } },
-          { k:'shape', label:'Cover proportions', c:[['wide','Wide'],['square','Square']] },
-          { k:'pshape', label:'Cover shape', c:[['round','Rounded'],['square','Square'],['circle','Circle'],['squircle','Squircle'],['leaf','Leaf'],['arch','Arch'],['hexagon','Hexagon']] },
           { k:'counts', label:'Video and audio counts', c:[['show','Shown'],['off','Hidden']] },
           { k:'dur', label:'Total length', c:[['show','Shown'],['off','Hidden']] }] },
+        { name:'Playlist covers', opts:[
+          { k:'cover', label:'Size', c:[['m','Medium'],['s','Small'],['l','Large']], when:{ view:['list','compact','cards'] } },
+          { k:'shape', label:'Proportions', c:[['wide','Wide'],['square','Square']] },
+          { k:'pshape', label:'Shape', c:[['round','Rounded'],['square','Square'],['circle','Circle'],['squircle','Squircle'],['leaf','Leaf'],['arch','Arch'],['hexagon','Hexagon']] }] },
         { name:'An open playlist', opts:[
           { k:'head', label:'Header', c:[['side','Cover beside the name'],['hero','Big cover on top']] },
           { k:'trk', label:'Tracks', c:[['normal','Normal'],['compact','Compact'],['big','Big thumbnails']] }] },
         { name:'Song and video thumbnails', opts:[
-          { k:'cshape', label:'Shape (Home and playlists)', c:[['round','Rounded'],['square','Square'],['circle','Circle'],['squircle','Squircle'],['leaf','Leaf'],['arch','Arch'],['hexagon','Hexagon']] }] }
+          { k:'cshape', label:'Shape (Home and inside a playlist)', c:[['round','Rounded'],['square','Square'],['circle','Circle'],['squircle','Squircle'],['leaf','Leaf'],['arch','Arch'],['hexagon','Hexagon']] }] }
       ] },
     { id:'set', attr:'lss', name:'Settings', title:'Settings', icon:'sliders',
       presets:[
@@ -439,8 +440,9 @@
            'Main buttons':{ sel:['#transport'] }, 'Tools & volume':{ sel:['#extra-transport', '#controls-footer'] } },
     lib: { 'Rows':{ sel:['#playlist'], wrap:true }, 'Thumbnail':{ sel:['#playlist .track-thumb'], first:true }, 'Text & buttons':{ sel:['#playlist .track-info'], first:true },
            'Top of the list':{ sel:['#browse-row', '#ppv-libhost', '#ppv-savedhost'] } },
-    pls: { 'Your playlists':{ sel:['#pl-home > .ph-sec'], wrap:true }, 'An open playlist':{ sel:['#pl-home .ph-detail-head'] },
-           'Song and video thumbnails':{ sel:['#pl-home .ph-trk .ph-thumb', '#pl-home .ph-pl-head .ph-thumb', '#pl-home .ph-card .ph-thumb'], first:true } },
+    pls: { 'Your playlists':{ sel:['#pl-home > .ph-sec'], wrap:true }, 'Playlist covers':{ sel:['#pl-home .ph-pl-head .ph-thumb', '#pl-home .ph-detail-head .ph-thumb'], first:true },
+           'An open playlist':{ sel:['#pl-home .ph-detail-head'] },
+           'Song and video thumbnails':{ sel:['#pl-home .ph-trk .ph-thumb', '#pl-home .ph-card .ph-thumb'], first:true } },
     set: { 'Groups':{ sel:['#pp-sg-root'], wrap:true }, 'Rows':{ sel:['#pp-sg-root .settings-row'], first:true } }
   };
   SURF.forEach(function(sf){ sf.parts.forEach(function(p){ p.at = (PART_EL[sf.id] || {})[p.name] || { sel:[] }; }); });
@@ -535,18 +537,27 @@
   function marksSoon(){ if (!marksQueued && open){ marksQueued = true; requestAnimationFrame(function(){ marksQueued = false; drawMarks(); }); } }
   function drawMarks(){
     if (!open){ marks.hidden = true; return; }
-    var sf = byId[cur], vw = window.innerWidth, vh = window.innerHeight, html = '';
+    var sf = byId[cur], vw = window.innerWidth, vh = window.innerHeight, html = '', placed = [];
+    var barBot = bar.hidden ? 0 : bar.getBoundingClientRect().bottom;
     sf.parts.forEach(function(p, i){
       var rs = partEls(p).map(function(x){ return x.getBoundingClientRect(); });
       if (rs.length > 1)                                         // one part made of several pieces: one outline around them all
         rs = [rs.reduce(function(a, r){ return { left: Math.min(a.left, r.left), top: Math.min(a.top, r.top), right: Math.max(a.right, r.right), bottom: Math.max(a.bottom, r.bottom) }; })];
       rs.forEach(function(r){
         if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) return;
-        var top = Math.max(2, r.top), bot = Math.min(vh - 2, r.bottom), left = Math.max(2, r.left), right = Math.min(vw - 2, r.right);
-        var tagIn = top < 70;                                   // too close to the top: the tag goes inside the outline
-        html += '<div class="ls-mark' + (p.at.wrap ? ' ls-wrap' : '') + (i === sheetPart && sheetKind === 'part' ? ' on' : '') + (tagIn ? ' ls-tag-in' : '') + '" style="left:' + left.toFixed(0) + 'px;top:' + top.toFixed(0) +
+        var pad = p.at.first ? 4 : 0;                           // a thumbnail is outlined just outside it, so its shape stays in view
+        var top = Math.max(2, r.top - pad), bot = Math.min(vh - 2, r.bottom + pad), left = Math.max(2, r.left - pad), right = Math.min(vw - 2, r.right + pad);
+        // The tag: on the outline's top edge; for a small part (a thumbnail) above or below it, never over it;
+        // and moved down when it would sit on another part's tag.
+        var small = p.at.first && (bot - top) < 120, tw = Math.min(190, 34 + p.name.length * 6.6), th = 26;
+        var tx = p.at.wrap ? left + 2 : (small ? left : right - 2 - tw);
+        var ty = small ? top - th - 4 : top - 12;
+        if (ty < barBot + 4) ty = small ? bot + 4 : Math.max(top + 4, barBot + 4);
+        for (var n = 0; n < 6 && placed.some(function(q){ return tx < q[0] + q[2] + 4 && q[0] < tx + tw + 4 && ty < q[1] + th + 2 && q[1] < ty + th + 2; }); n++) ty += th + 4;
+        placed.push([tx, ty, tw]);
+        html += '<div class="ls-mark' + (p.at.wrap ? ' ls-wrap' : '') + (small ? ' ls-small' : '') + (i === sheetPart && sheetKind === 'part' ? ' on' : '') + '" style="left:' + left.toFixed(0) + 'px;top:' + top.toFixed(0) +
           'px;width:' + Math.max(0, right - left).toFixed(0) + 'px;height:' + Math.max(0, bot - top).toFixed(0) + 'px">' +
-          '<button type="button" class="ls-tag" data-part="' + i + '">' + svg('sliders') + '<span>' + esc(p.name) + '</span></button></div>';
+          '<button type="button" class="ls-tag" data-part="' + i + '" style="left:' + (tx - left).toFixed(0) + 'px;right:auto;top:' + (ty - top).toFixed(0) + 'px">' + svg('sliders') + '<span>' + esc(p.name) + '</span></button></div>';
       });
     });
     if (marks._h !== html){ marks.innerHTML = html; marks._h = html; }
@@ -565,7 +576,7 @@
     el._shown = true;
     marksSoon();
   }
-  function closeSheet(){ el.hidden = true; el._shown = false; sheetKind = null; sheetPart = -1; bodyEl.innerHTML = ''; sheetMove.reset(); marksSoon(); }
+  function closeSheet(){ body.classList.remove('ls-sheet-up'); el.hidden = true; el._shown = false; sheetKind = null; sheetPart = -1; bodyEl.innerHTML = ''; sheetMove.reset(); marksSoon(); }
 
   function partHTML(i){
     var sf = byId[cur], part = sf.parts[i]; if (!part) return '';
@@ -605,7 +616,27 @@
     else if (sheetKind === 'hidden'){ if (!hiddenParts().length){ closeSheet(); return; } bodyEl.innerHTML = hiddenHTML(); }
     bodyEl.scrollTop = top;
   }
-  function openPart(i){ var part = byId[cur].parts[i]; if (part) openSheet('part', part.name, partHTML(i), i); }
+  function openPart(i){ var part = byId[cur].parts[i]; if (part){ openSheet('part', part.name, partHTML(i), i); revealSoon(); } }
+  // The sheet covers the lower half of the screen. On the Library, Playlists and Settings the part being changed is
+  // often under it, so every change looked like it did nothing: scroll that part into the space between the bar and
+  // the sheet. The screens get room at the bottom while a sheet is up so even the last rows can come up that far.
+  function scroller(x){
+    for (var q = x.parentElement; q && q !== body && q !== document.documentElement; q = q.parentElement){
+      var oy = getComputedStyle(q).overflowY; if ((oy === 'auto' || oy === 'scroll') && q.scrollHeight > q.clientHeight + 2) return q; }
+    return document.scrollingElement || document.documentElement;
+  }
+  function reveal(){
+    if (!open || sheetKind !== 'part' || el.hidden || cur === 'aud' || cur === 'vid') return;
+    var part = byId[cur].parts[sheetPart]; if (!part) return;
+    var x = part.at.first ? (partEls(part)[0] || partEls(part, true)[0]) : partEls(part, true)[0]; if (!x) return;
+    var r = x.getBoundingClientRect(), top = bar.getBoundingClientRect().bottom + 30, bot = card.getBoundingClientRect().top - 12;
+    if (bot - top < 40) return;                                   // the sheet fills the screen: nothing to make room in
+    var want = r.top >= top && r.bottom <= bot ? 0 : r.top - top;
+    if (r.height > bot - top && r.top <= top && r.bottom >= top + 60) want = 0;   // a big part already filling the space
+    if (!want) return;
+    var sc = scroller(x); sc.scrollTop += want; marksSoon();
+  }
+  function revealSoon(){ body.classList.add('ls-sheet-up'); requestAnimationFrame(function(){ requestAnimationFrame(reveal); }); setTimeout(reveal, 260); }
   /** Puts the screen being edited behind the bar; when it cannot be shown (nothing to play) says why in a sheet. */
   function enterScreen(){
     var need = showScreen();
@@ -616,7 +647,7 @@
     setTimeout(marksSoon, 80); setTimeout(marksSoon, 450);
   }
   function remember(){ undoS.push(JSON.stringify(S)); if (undoS.length > 40) undoS.shift(); }
-  function change(){ save(); apply(); applySpots(); redrawSheet(); setTimeout(marksSoon, 60); setTimeout(marksSoon, 400); }
+  function change(){ save(); apply(); applySpots(); redrawSheet(); if (sheetKind === 'part') revealSoon(); setTimeout(marksSoon, 60); setTimeout(marksSoon, 400); }
 
   bar.addEventListener('click', function(e){
     var b = e.target.closest('[data-lb]'); if (!b) return;
