@@ -584,6 +584,7 @@
   // A fidget takes every touch that starts on it, so a page holding one gets a thin strip down each side that is the
   // stack's: swipe from an edge to change pages, or tap it for the next or previous page. The rest is the fidget's.
   var EDGES = '<i class="pw-stk-edge pw-stk-el" data-stk-go="-1" aria-hidden="true"></i><i class="pw-stk-edge pw-stk-er" data-stk-go="1" aria-hidden="true"></i>';
+  var STK_PAGE = {};   // the page each stack is on, by widget id (kept while the app is open)
   T.stack = { name:'Stack', icon:'layers', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Several widgets in one spot, swipe between them',
     fields:[['dots','Show dots','toggle',true],['auto','Turn by itself','seg',[['','Off'],['5','5 s'],['10','10 s'],['20','20 s']]]],
     render:function(o, c, ctx, it){
@@ -601,6 +602,12 @@
         (o.dots === false || pages.length < 2 ? '' : '<div class="pw-stk-dots">' + pages.map(function(x, i){ return '<i data-stk-to="' + i + '"' + (i ? '' : ' class="on"') + '></i>'; }).join('') + '</div>') + '</div>';
     },
     live:function(el){
+      // Home is drawn again when a song starts (and on other changes): come back to the page the stack was on
+      if (!el._pwRest){
+        el._pwRest = 1;
+        var box = el.closest('[data-wid]'), pg = box ? STK_PAGE[box.dataset.wid] : 0, tr0 = el.firstChild;
+        if (pg && tr0 && tr0.children.length > pg){ tr0.scrollLeft = pg * tr0.clientWidth; }
+      }
       var sec = +el.dataset.auto; if (!sec || editing) return;
       var now = Date.now(), tr = el.firstChild, n = tr.children.length; if (n < 2) return;
       if (!el._pwAt) el._pwAt = now;

@@ -1,5 +1,5 @@
   var BUILTIN_ORDER = ['title','games','tagline','playground','tabs','hero','chips','videos','audio','history'];
-  var NEW_ORDER = ['nowplaying','cover','seekbar','upnext','lyrics','viz','volume','speed','trackinfo','stack','action','shufpl','shortcuts','search','eq','sleeper','bookmarks','level','bloopy','game',
+  var NEW_ORDER = ['nowplaying','cover','seekbar','upnext','lyrics','singalong','stems','viz','volume','speed','trackinfo','stack','action','shufpl','mood','shortcuts','search','eq','sleeper','bookmarks','level','sotd','onthisday','recap','bloopy','game',
                    'clock','world','greeting','countdown','calendar','dayprog','stopwatch','focus','battery','todo','tally','dice','breathe','text','rotate','drawing','image','stats',
                    'recent','most','random','cont','genre','playlist','playlists','setting','setsec','spacer','divider'];
 
@@ -116,6 +116,7 @@
     return html;
   }
   function renderZone(zone, c){
+    setTimeout(liveSoon, 0);   // live widgets fill in (and stacks go back to their page) as soon as the zone is on screen
     var items = zoneItems(zone, false) || [], ctx = { zone: zone.indexOf('page:') === 0 ? 'page' : zone };
     var rows = [], row = null, fill = 0;
     items.forEach(function(it){
@@ -201,6 +202,7 @@
   document.addEventListener('scroll', function(e){
     var tr = e.target; if (!tr.classList || !tr.classList.contains('pw-stk-tr')) return;
     stackDots(tr.parentNode);
+    var box = tr.closest('[data-wid]'); if (box && tr.clientWidth) STK_PAGE[box.dataset.wid] = Math.round(tr.scrollLeft / tr.clientWidth);
   }, true);
   ['pointerdown', 'touchstart'].forEach(function(ev){
     document.addEventListener(ev, function(e){ var stk = e.target.closest && e.target.closest('.pw-stk'); if (stk) stk._pwTouched = Date.now(); }, { capture:true, passive:true });
