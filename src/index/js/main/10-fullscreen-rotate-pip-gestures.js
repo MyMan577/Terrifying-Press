@@ -392,11 +392,13 @@
     // tap into two singles. Follow-up taps only need to land near the first
     // one; they count toward the first tap's zone even if they drift across
     // a zone border.
-    const MULTI_MS = 320;          // max gap between a release and the next press
-    const MULTI_SLOP_PX = 90;      // how far a follow-up tap may land from the first
-    const LONGPRESS_MS = 550;
-    const SWIPE_MIN_PX = 40;
-    const TAP_MOVE_TOLERANCE = 12;
+    // The shared touch numbers (pp-touch.js), so these surfaces feel like the rest of the app.
+    const TOUCH = window.PPTouch;
+    const MULTI_MS = TOUCH.MULTI_GAP_MS;    // max gap between a release and the next press
+    const MULTI_SLOP_PX = TOUCH.MULTI_SLOP; // how far a follow-up tap may land from the first
+    const LONGPRESS_MS = TOUCH.HOLD_MS;
+    const SWIPE_MIN_PX = TOUCH.SWIPE_MIN;
+    const TAP_MOVE_TOLERANCE = TOUCH.SLOP;
     const PINCH_STEP = 1.28;       // finger-distance ratio that counts as one pinch step
     const TWO_TAP_MAX_MS = 350;
 
@@ -407,7 +409,7 @@
     let seqReleaseT = 0;           // when the last tap of the current sequence lifted
     let longPressTimer = null;
     let longPressFired = false;
-    let startX = 0, startY = 0, startedOnControl = false;
+    let startX = 0, startY = 0, startT = 0, startedOnControl = false;
     let wandered = false;          // the finger strayed past the tap tolerance at some point during this press
     let lastTouchTime = 0;
     // pan-when-zoomed state (only active on the video surface)
@@ -476,7 +478,7 @@
     function onStart(x, y, target){
       startedOnControl = isInteractive(target);
       if (startedOnControl) return;
-      startX = x; startY = y; wandered = false;
+      startX = x; startY = y; startT = performance.now(); wandered = false;
       if (tapCount > 0){
         if (Date.now() - seqReleaseT > MULTI_MS || Math.hypot(x - seqX, y - seqY) > MULTI_SLOP_PX){
           // Too late or too far to be part of the pending taps: settle those now.
@@ -511,7 +513,8 @@
       const dist = Math.hypot(dx, dy);
       if (longPressFired) return; // already handled on the timer
 
-      if (dist > SWIPE_MIN_PX){
+      // Same rule as swiping between tabs: long enough, or short but quick. A slow, short drag is nothing.
+      if (TOUCH.isSwipe(dist, performance.now() - startT)){
         cancelTapSequence();
         if (Math.abs(dx) > Math.abs(dy)){
           runGesture(wrapEl, dx > 0 ? 'swipeRight' : 'swipeLeft', 'any');

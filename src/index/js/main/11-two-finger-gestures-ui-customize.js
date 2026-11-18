@@ -39,7 +39,7 @@
       if (mPinched || mPanned) return;
       const dt = Date.now() - mStartT;
       const dx = mCx - mStartCx, dy = mCy - mStartCy;
-      if (mMaxMove > SWIPE_MIN_PX && mMaxDistDelta < 50){
+      if (TOUCH.isSwipe(mMaxMove, dt) && mMaxDistDelta < 50){
         if (Math.abs(dx) > Math.abs(dy)) runGesture(wrapEl, dx > 0 ? 'twoSwipeRight' : 'twoSwipeLeft', 'any');
         else runGesture(wrapEl, dy > 0 ? 'twoSwipeDown' : 'twoSwipeUp', 'any');
       } else if (dt < TWO_TAP_MAX_MS && mMaxMove < TAP_MOVE_TOLERANCE * 1.5 && mMaxDistDelta < 24){

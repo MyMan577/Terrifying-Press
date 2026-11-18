@@ -523,14 +523,15 @@
     else if (t.type === 'action') runAction(t.action, t);
   }, true);
   // Long-press a page's tab: open it in edit mode.
-  var lpTimer = 0, lpFired = false;
+  var lpTimer = 0, lpFired = false, lpX = 0, lpY = 0;
   if (bar){
     bar.addEventListener('pointerdown', function(e){
       var b = e.target.closest('.pw-tab'); if (!b) return;
       var t = tabList().find(function(x){ return x.id === b.dataset.pwTab; }); if (!t || t.type !== 'page' || t.page === POMO_ID) return;
-      lpFired = false; clearTimeout(lpTimer);
-      lpTimer = setTimeout(function(){ lpFired = true; if (navigator.vibrate) try { navigator.vibrate(15); } catch(err){} startEdit('page:' + t.page); }, 550);
+      lpFired = false; clearTimeout(lpTimer); lpX = e.clientX; lpY = e.clientY;
+      lpTimer = setTimeout(function(){ lpFired = true; if (navigator.vibrate) try { navigator.vibrate(15); } catch(err){} startEdit('page:' + t.page); }, PPTouch.HOLD_MS);
     });
+    bar.addEventListener('pointermove', function(e){ if (PPTouch.moved(lpX, lpY, e.clientX, e.clientY)) clearTimeout(lpTimer); });
     ['pointerup','pointercancel','pointerleave'].forEach(function(ev){ bar.addEventListener(ev, function(){ clearTimeout(lpTimer); }); });
     bar.addEventListener('scroll', function(){ clearTimeout(lpTimer); }, { passive:true });
     bar.addEventListener('click', function(e){ if (lpFired){ lpFired = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
@@ -634,9 +635,9 @@
       var b = holdEl; holdEl = null; ateClick = Date.now();
       try { if (navigator.vibrate) navigator.vibrate(12); } catch(err){}
       runTap(b, 'hold');
-    }, 520);
+    }, PPTouch.HOLD_MS);
   }, true);
-  document.addEventListener('pointermove', function(e){ if (holdEl && Math.hypot(e.clientX - holdX, e.clientY - holdY) > 10){ holdEl = null; clearTimeout(holdT); } }, true);
+  document.addEventListener('pointermove', function(e){ if (holdEl && PPTouch.moved(holdX, holdY, e.clientX, e.clientY)){ holdEl = null; clearTimeout(holdT); } }, true);
   ['pointerup', 'pointercancel'].forEach(function(ev){ document.addEventListener(ev, function(){ holdEl = null; clearTimeout(holdT); }, true); });
   document.addEventListener('contextmenu', function(e){ if (!editing && e.target.closest && e.target.closest('[data-pw-hold]')) e.preventDefault(); }, true);
   // Rows on a page / in the player play through Home's own handler, which these zones aren't inside.
@@ -702,8 +703,8 @@
       if (!drag || e.pointerId !== pid) return; drag = false;
       if (!moved) return;
       var a = trail[0], b = trail[trail.length - 1], v = (b[1] - a[1]) / Math.max(16, b[0] - a[0]), m = maxOff();
-      if (v > 0.5 && start >= m - 2){ set(0, false); onClose(); return; }      // flicked down from the lowest spot: away
-      set(v > 0.45 ? m : v < -0.45 ? 0 : (off > m / 2 ? m : 0), true);
+      if (v > PPTouch.FLICK && start >= m - 2){ set(0, false); onClose(); return; }      // flicked down from the lowest spot: away
+      set(v > PPTouch.FLICK ? m : v < -PPTouch.FLICK ? 0 : (off > m / 2 ? m : 0), true);
     }
     [grab, card.querySelector('.pw-sheet-head')].forEach(function(z){
       if (!z) return; z.style.touchAction = 'none';

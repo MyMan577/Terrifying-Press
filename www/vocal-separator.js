@@ -7803,7 +7803,7 @@
       let sx, sy, ox, oy, moved = false, on = false;
       const move = e => {
         if (!on) return; const dx = e.clientX - sx, dy = e.clientY - sy;
-        if (!moved) { if (Math.hypot(dx, dy) < 6) return; moved = true; el.classList.remove('bl-snap'); el.classList.add('bl-strain'); blFace(el.querySelector('.ppv-ball'), 'strain'); }
+        if (!moved) { if (!(window.PPTouch ? PPTouch.moved(0, 0, dx, dy) : Math.hypot(dx, dy) >= 10)) return; moved = true; el.classList.remove('bl-snap'); el.classList.add('bl-strain'); blFace(el.querySelector('.ppv-ball'), 'strain'); }
         blMove(el, ox + dx, oy + dy); if (el === cfab) blAnchor();
       };
       const end = () => {
