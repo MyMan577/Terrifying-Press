@@ -425,7 +425,7 @@
     const src = t && thumbSrc(t);
     const d = showDur && t ? fmtDur(t.duration) : '';
     return '<div class="ph-thumb' + (src ? ' has-img' : '') + '" data-thumb-id="' + esc(t ? t.dbId : '') + '">' +
-      (src ? '<img src="' + esc(src) + '" alt="">' : '') +
+      (src ? '<img src="' + esc(src) + '" alt="" loading="lazy" decoding="async">' : '') +
       (t && t.kind === 'audio' ? IC_PH_AUDIO : IC_PH) +
       (d ? '<span class="ph-dur">' + d + '</span>' : '') + '</div>';
   }
@@ -437,7 +437,7 @@
   }
   // A playlist's own picture, else its first video's thumbnail (see plInfo)
   function plThumbHTML(pl, first){
-    if (pl && pl.thumb) return '<div class="ph-thumb has-img"><img src="' + esc(pl.thumb) + '" alt=""></div>';
+    if (pl && pl.thumb) return '<div class="ph-thumb has-img"><img src="' + esc(pl.thumb) + '" alt="" loading="lazy" decoding="async"></div>';
     return thumbHTML(first, false);
   }
   function sectionHTML(key, title, items, emptyMsg, extraBtn){

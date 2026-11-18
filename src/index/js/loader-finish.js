@@ -10,9 +10,12 @@
       setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, 450);
     }, wait);
   }
-  var pageLoaded = document.readyState === 'complete'
+  // The page's own code has run once this script runs (it is near the end of the page). Not waiting for the
+  // window's load event: that waits for every image on the page too, and with a big library the list and Home hold
+  // hundreds of covers, which kept the loading screen up for 10 seconds and more. Covers fill in as they arrive.
+  var pageLoaded = document.readyState !== 'loading'
     ? Promise.resolve()
-    : new Promise(function(r){ window.addEventListener('load', r, { once:true }); });
+    : new Promise(function(r){ document.addEventListener('DOMContentLoaded', r, { once:true }); });
   var fonts = (document.fonts && document.fonts.ready) ? document.fonts.ready.catch(function(){}) : Promise.resolve();
   var fontsOrTimeout = Promise.race([fonts, new Promise(function(r){ setTimeout(r, 2500); })]);
   var lib = window.__ppLibReady || Promise.resolve();

@@ -406,7 +406,7 @@
 
   function tileMediaHtml(t){
     return t.artUrl
-      ? `<img src="${t.artUrl}" alt="">`
+      ? `<img src="${t.artUrl}" alt="" loading="lazy" decoding="async">`
       : HEADPHONE_ICON_SVG;
   }
 

@@ -75,6 +75,19 @@
       req.onerror = () => reject(req.error);
     });
   }
+  /** Many records in one transaction (Map id -> value, missing ones left out). One read each, one after another,
+   *  cost a round trip per track at every start. */
+  async function dbGetMany(ids){
+    const out = new Map(), want = [...new Set(ids.filter(Boolean))];
+    if (!want.length) return out;
+    const db = await openDB();
+    return new Promise(resolve => {
+      const tx = db.transaction('media', 'readonly'), st = tx.objectStore('media');
+      want.forEach(id => { const r = st.get(id); r.onsuccess = () => { if (r.result) out.set(id, r.result); }; });
+      tx.oncomplete = () => resolve(out);
+      tx.onerror = tx.onabort = () => resolve(out);
+    });
+  }
   async function dbDelete(id){
     const db = await openDB();
     return new Promise((resolve, reject) => {

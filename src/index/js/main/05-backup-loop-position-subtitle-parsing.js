@@ -143,6 +143,11 @@
       }
       return '';
     };
+    // Everything this start needs from the app's own database (covers, and files still kept there), read at once.
+    const nativeArts = !!(window.PPNative && PPNative.lib);
+    const pre = await dbGetMany(meta.flatMap(m => m.remoteUrl ? [] : m.nativeUri ? ((m.nativeArt && nativeArts) ? [] : [m.artDbId])
+                                                                               : [m.dbId, m.artDbId])).catch(() => new Map());
+    const dbGet = (id) => pre.get(id) || null;
     for (const m of meta){
       try {
         if (m.remoteUrl){
@@ -154,7 +159,7 @@
         if (m.nativeUri){   // lives on the device (SAF reference or app storage), no IndexedDB copy
           let artUrl = null;
           if (m.nativeArt && window.PPNative && PPNative.lib) artUrl = PPNative.lib.fileSrc(m.nativeArt);
-          else if (m.artDbId){ const ab = await dbGet(m.artDbId); if (ab) artUrl = URL.createObjectURL(ab); }
+          else if (m.artDbId){ const ab = dbGet(m.artDbId); if (ab) artUrl = URL.createObjectURL(ab); }
           const vx = videoExtOf(m);
           const lost = !m.convertedFromVideo && m.kind === 'audio' && m.ext === 'mp3' && !!vx && !m.stem;   // stuck by the old bug
           const conv = !!m.convertedFromVideo || lost, back = conv && !keepMp3Conversions;
@@ -174,12 +179,12 @@
             _origHeight: conv && !back ? (m.origHeight != null ? m.origHeight : null) : undefined });
           continue;
         }
-        const blob = await dbGet(m.dbId);
+        const blob = dbGet(m.dbId);
         if (!blob) continue; // bytes missing (cleared storage, etc.), skip silently
         const url = URL.createObjectURL(blob);
         let artUrl = null;
         if (m.artDbId){
-          const artBlob = await dbGet(m.artDbId);
+          const artBlob = dbGet(m.artDbId);
           if (artBlob) artUrl = URL.createObjectURL(artBlob);
         }
         // Auto-revert path: when the "keep conversions on reload" setting is
