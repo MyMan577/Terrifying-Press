@@ -409,7 +409,7 @@ class FxAudioProcessor : BaseAudioProcessor() {
 
     /**
      * The sound around playback time [atUs] (or the newest sound when the time is not known):
-     * [freq] like AnalyserNode.getByteFrequencyData (-100..-30 dB mapped to 0..255), [wave] as 0..255 samples.
+     * [freq] like AnalyserNode.getByteFrequencyData (-100..-10 dB mapped to 0..255, the range the page sets), [wave] as 0..255 samples.
      */
     @Synchronized fun analyse(freq: ByteArray, wave: ByteArray, atUs: Long) {
         val end: Int; var back = 0L
@@ -428,7 +428,7 @@ class FxAudioProcessor : BaseAudioProcessor() {
         for (i in 0 until min(freq.size, FFT_N / 2)) {
             val mag = sqrt(re[i] * re[i] + im[i] * im[i]) / FFT_N * 2
             val db = 20 * log10(max(mag, 1e-9))
-            freq[i] = (((db + 100.0) / 70.0) * 255.0).coerceIn(0.0, 255.0).toInt().toByte()
+            freq[i] = (((db + 100.0) / 90.0) * 255.0).coerceIn(0.0, 255.0).toInt().toByte()   // -100..-10 dB, as the page's analyser
         }
     }
 

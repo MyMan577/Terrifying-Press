@@ -344,7 +344,9 @@
     border-radius:calc(16px*var(--ui-round,1)); }
   .pw-stk-tr::-webkit-scrollbar{ display:none; }
   .pw-stk-pg{ flex:0 0 100%; min-width:0; scroll-snap-align:start; scroll-snap-stop:always; display:flex; flex-direction:column; justify-content:center; box-sizing:border-box; }
-  .pw-stk-pg > .pw-cardwrap{ height:100%; }
+  /* a page as tall as the stack's tallest one: what is on it sits in the middle, with or without a card around it */
+  .pw-stk-pg > .pw-cardwrap{ height:100%; display:flex; flex-direction:column; justify-content:center; }
+  .pw-stk-pg > .pw-cardwrap > :not(.pw-card){ flex:none; }
   .pw-stk-dots{ display:flex; justify-content:center; gap:5px; margin-top:7px; }
   .pw-stk-dots i{ width:6px; height:6px; border-radius:3px; background:var(--line); transition:width .2s, background .2s; }
   .pw-stk-dots i.on{ width:16px; background:var(--accent); }
