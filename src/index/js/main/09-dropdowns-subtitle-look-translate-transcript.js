@@ -169,7 +169,12 @@
     subtitleDropdown.classList.remove('open');
   });
   subtitleRemoveBtn.addEventListener('click', () => {
-    if (currentIndex !== -1) writeSubtitleEntry(tracks[currentIndex].dbId, null);
+    if (currentIndex !== -1){
+      const t = tracks[currentIndex];
+      writeSubtitleEntry(t.dbId, null);
+      // the same words are often saved as synced lyrics too: take them away as well, or they come back on the disc
+      if (window.__ppLyrics && window.__ppLyrics.has(t.dbId)) window.__ppLyrics.set(t.dbId, '');
+    }
     setSubtitleCues([]);
     subtitleDropdown.classList.remove('open');
   });
