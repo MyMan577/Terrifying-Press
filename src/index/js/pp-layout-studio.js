@@ -151,10 +151,11 @@
         { name:'Your playlists', opts:[
           { k:'view', label:'Look', c:[['list','List'],['compact','Compact list'],['cards','Cards'],['grid2','Grid, 2 across'],['grid3','Grid, 3 across']] },
           { k:'cover', label:'Cover size', c:[['m','Medium'],['s','Small'],['l','Large']], when:{ view:['list','compact','cards'] } },
-          { k:'shape', label:'Cover proportions', c:[['wide','Wide'],['square','Square']] },
-          { k:'pshape', label:'Cover shape', c:[['round','Rounded'],['square','Square'],['circle','Circle'],['squircle','Squircle'],['leaf','Leaf'],['arch','Arch'],['hexagon','Hexagon']] },
           { k:'counts', label:'Video and audio counts', c:[['show','Shown'],['off','Hidden']] },
           { k:'dur', label:'Total length', c:[['show','Shown'],['off','Hidden']] }] },
+        { name:'Playlist covers', opts:[
+          { k:'pshape', label:'Shape', c:[['round','Rounded'],['square','Square'],['circle','Circle'],['squircle','Squircle'],['leaf','Leaf'],['arch','Arch'],['hexagon','Hexagon']] },
+          { k:'shape', label:'Proportions', c:[['wide','Wide'],['square','Square']] }] },
         { name:'An open playlist', opts:[
           { k:'head', label:'Header', c:[['side','Cover beside the name'],['hero','Big cover on top']] },
           { k:'trk', label:'Tracks', c:[['normal','Normal'],['compact','Compact'],['big','Big thumbnails']] }] },
@@ -452,7 +453,8 @@
     lib: { 'Rows':{ sel:['#playlist'], wrap:true }, 'Thumbnail':{ sel:['#playlist .track-thumb'], first:true }, 'Text & buttons':{ sel:['#playlist .track-info', '#playlist .track-num'], first:true },
            'Top of the list':{ sel:['#action-row', '#search-row', '#playlist-view-row', '#browse-row', '#ppv-libhost', '#ppv-savedhost'] } },
     pls: { 'Your playlists':{ sel:['#pl-home > .ph-sec'], wrap:true }, 'An open playlist':{ sel:['#pl-home .ph-detail-head'] },
-           'Song and video thumbnails':{ sel:['#pl-home .ph-trk .ph-thumb', '#pl-home .ph-pl-head .ph-thumb', '#pl-home .ph-card .ph-thumb'], first:true } },
+           'Playlist covers':{ sel:['#pl-home .ph-pl-head .ph-thumb', '#pl-home .ph-detail-head .ph-thumb', '#pl-home .pw-pl-card .ph-thumb'], first:true },
+           'Song and video thumbnails':{ sel:['#pl-home .ph-trk .ph-thumb', '#pl-home .ph-card:not(.pw-pl-card) .ph-thumb'], first:true } },
     set: { 'Groups':{ sel:['#pp-sg-root'], wrap:true }, 'Rows':{ sel:['#pp-sg-root .settings-row'], first:true } }
   };
   SURF.forEach(function(sf){ sf.parts.forEach(function(p){ p.at = (PART_EL[sf.id] || {})[p.name] || { sel:[] }; }); });
