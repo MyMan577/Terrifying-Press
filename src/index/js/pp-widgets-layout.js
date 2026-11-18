@@ -498,7 +498,9 @@
   var tbArrowL = tbArrowEl('l'), tbArrowR = tbArrowEl('r');
   function tbArrows(){
     if (!bar) return;
-    var on = body.classList.contains('pw-tabs-scroll'), sl = bar.scrollLeft, max = bar.scrollWidth - bar.clientWidth;
+    var on = body.classList.contains('pw-tabs-scroll');
+    if (!on){ bar.classList.remove('pw-more-l', 'pw-more-r'); return; }   // nothing to measure: no layout forced
+    var sl = bar.scrollLeft, max = bar.scrollWidth - bar.clientWidth;
     bar.classList.toggle('pw-more-l', on && sl > 4);
     bar.classList.toggle('pw-more-r', on && sl < max - 4);
   }

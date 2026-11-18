@@ -1075,7 +1075,12 @@
 (function(){
   const col = document.getElementById('controls-col');
   if (!col || typeof ResizeObserver === 'undefined') return;
-  const set = () => document.body.style.setProperty('--cv-ctl-h', Math.ceil(col.getBoundingClientRect().height) + 'px');
-  new ResizeObserver(set).observe(col);
-  set();
+  // The size comes with the ResizeObserver's report (which also arrives once right after observe()): reading it from the
+  // element instead made the browser lay the page out again, many times while the app started.
+  let last = -1;
+  new ResizeObserver(es => {
+    const e = es[es.length - 1], b = e.borderBoxSize && e.borderBoxSize[0];
+    const h = Math.ceil(b ? b.blockSize : e.contentRect.height);
+    if (h !== last){ last = h; document.body.style.setProperty('--cv-ctl-h', h + 'px'); }
+  }).observe(col);
 })();
