@@ -591,12 +591,18 @@
   });
   window.addEventListener('pageshow', () => { pageLeaving = false; });
 
+  // Settings > Leaving the player: songs and videos each keep playing in the background, or not (pp-leave.js, 'ppLeaveV1').
+  function bgAllowed(kind){
+    try { const o = JSON.parse(localStorage.getItem('ppLeaveV1')) || {}; return o[kind === 'video' ? 'bgVideo' : 'bgAudio'] !== false; } catch(e){ return true; }
+  }
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) return;
     if (isPlaying && currentIndex !== -1) resumeOnReturn = true;
     if (bgAudioActive) return;
-    const pv = isPlaying && currentIndex !== -1 && tracks[currentIndex] && tracks[currentIndex].kind === 'video';
-    if (pv) enterBackgroundAudioMode();
+    const t = currentIndex !== -1 ? tracks[currentIndex] : null, kind = t && t.kind === 'video' ? 'video' : 'audio';
+    // not allowed to play in the background: pause now, and carry on when the app is back (resumeOnReturn above)
+    if (isPlaying && t && !bgAllowed(kind)){ togglePlay(); resumeOnReturn = true; return; }   // togglePlay clears it (a pause by hand stays paused)
+    if (isPlaying && kind === 'video') enterBackgroundAudioMode();
   }, true);   // capture: runs ahead of the other handlers (delay/visualizer refreshes etc.)
 
   // Back in the foreground: if playback was running when we left, make it run again - no matter

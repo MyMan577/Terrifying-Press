@@ -54,6 +54,7 @@ Press Play has a lot of settings, and most of them are things other players leav
 
 **Leaving the player** (Settings, Playback)
 - Mini player on or off. With it off, leaving the player either keeps the track playing (tap it in Home or the Library to get back) or stops it.
+- Songs and videos each keep playing in the background, or pause when you leave the app (and carry on when you come back).
 - Media controls notification on or off, what happens when other apps play sound (pause, turn yours down, or keep playing), what happens during calls (keep playing, or pause and carry on afterwards), and whether music keeps playing when you swipe the app away.
 
 **Notifications**
