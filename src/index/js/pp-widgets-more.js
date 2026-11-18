@@ -297,57 +297,7 @@
     sameId('tally', id, function(x){ T.tally.live(x); });
   });
 
-  // Focus timer: work, then a break, round and round. Can start the music for work and pause it for breaks.
-  var FOCUS_KEY = 'ppFocusV1';
-  T.focus = { name:'Focus timer', icon:'clock', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Work, break, repeat. Can play music while you work and pause it for breaks',
-    fields:[['work','Work for','seg',[['15','15 min'],['','25 min'],['45','45 min'],['60','1 hour']]],['rest','Breaks','seg',[['','5 min'],['10','10 min'],['15','15 min']]],
-            ['music','Music','seg',[['','Leave it'],['play','Play for work, pause for breaks']]],['buzz','Vibrate when it changes','toggle',true],['card','On a card','toggle',true]],
-    render:function(o, c, ctx, it){
-      var id = it ? it.id : 'x';
-      return card(cardOn(o), '<div class="pw-fo" data-pw-live="focus" data-id="' + esc(id) + '" data-work="' + (+o.work || 25) + '" data-rest="' + (+o.rest || 5) + '" data-music="' + esc(o.music || '') + '" data-buzz="' + (o.buzz === false ? 0 : 1) + '">' +
-        '<div class="pw-fo-ring"><div class="pw-fo-in"><b>25:00</b><small>Focus</small></div></div>' +
-        '<div class="pw-fo-side"><div class="pw-fo-r"></div><div class="pw-sw-b"><button type="button" data-pw-fo="go">Start</button><button type="button" data-pw-fo="skip">Skip</button><button type="button" data-pw-fo="reset">Reset</button></div></div></div>');
-    },
-    live:function(el){
-      var all = kept(FOCUS_KEY), id = el.dataset.id, s = all[id] || {}, ph = s.ph || 'work', len = (ph === 'work' ? +el.dataset.work : +el.dataset.rest) * 60000;
-      var left = s.run ? s.end - Date.now() : s.left != null ? s.left : len;
-      if (s.run && left <= 0){ focusNext(el, s, ph); all[id] = s; keep(FOCUS_KEY, all); return T.focus.live(el); }
-      left = Math.max(0, left);
-      var sec = Math.ceil(left / 1000);
-      setText(el.querySelector('.pw-fo-in b'), Math.floor(sec / 60) + ':' + pad(sec % 60));
-      setText(el.querySelector('.pw-fo-in small'), ph === 'work' ? 'Focus' : 'Break');
-      el.style.setProperty('--p', ((1 - left / len) * 100).toFixed(2) + '%');
-      el.classList.toggle('pw-fo-rest', ph !== 'work'); el.classList.toggle('pw-fo-run', !!s.run);
-      setText(el.querySelector('.pw-fo-r'), (s.done || 0) ? (s.done === 1 ? '1 round done today' : s.done + ' rounds done today') : 'Ready when you are');
-      setText(el.querySelector('[data-pw-fo="go"]'), s.run ? 'Pause' : s.left != null ? 'Go on' : 'Start');
-    } };
-  function focusNext(el, s, ph){
-    var day = new Date().toDateString(); if (s.day !== day){ s.day = day; s.done = 0; }
-    if (ph === 'work') s.done = (s.done || 0) + 1;
-    s.ph = ph === 'work' ? 'rest' : 'work';
-    s.end = Date.now() + (s.ph === 'work' ? +el.dataset.work : +el.dataset.rest) * 60000; s.left = null;
-    toast(s.ph === 'work' ? 'Break over. Back to it.' : 'Nice work. Time for a break.');
-    if (el.dataset.buzz === '1'){ try { if (navigator.vibrate) navigator.vibrate([180, 90, 180]); } catch(x){} }
-    focusMusic(el, s.ph);
-  }
-  function focusMusic(el, ph){
-    if (el.dataset.music !== 'play') return;
-    var playing = liveState().playing, K = kit();
-    if (ph === 'work' && !playing){ if (K && K.hasTrack()) click('play-btn'); else runAction('shuffleall'); }
-    if (ph !== 'work' && playing) click('play-btn');
-  }
-  document.addEventListener('click', function(e){
-    var b = e.target.closest && e.target.closest('[data-pw-fo]'); if (!b || editing) return;
-    var el = b.closest('[data-pw-live="focus"]'); if (!el) return;
-    var all = kept(FOCUS_KEY), id = el.dataset.id, s = all[id] || {}, op = b.dataset.pwFo, ph = s.ph || 'work';
-    var len = (ph === 'work' ? +el.dataset.work : +el.dataset.rest) * 60000;
-    if (op === 'reset') s = { day: s.day, done: s.done };
-    else if (op === 'skip'){ s.run = true; focusNext(el, s, ph); }
-    else if (s.run){ s.left = Math.max(0, s.end - Date.now()); s.run = false; }
-    else { s.end = Date.now() + (s.left != null ? s.left : len); s.left = null; s.run = true; s.ph = ph; focusMusic(el, ph); }
-    all[id] = s; keep(FOCUS_KEY, all); startTick();
-    sameId('focus', id, function(x){ T.focus.live(x); });
-  });
+  // The Focus timer is now Press Play Pomodoro: a tab of its own and a widget (pp-widgets-pomodoro.js).
 
   // World clock: the time in up to three other places.
   var CITIES = [['America/Los_Angeles','Los Angeles'],['America/Denver','Denver'],['America/Chicago','Chicago'],['America/New_York','New York'],['America/Toronto','Toronto'],

@@ -229,17 +229,18 @@
   var openPageId = null;
   function pageById(id){ return L.pages.find(function(p){ return p.id === id; }); }
   function openPage(id){
-    if (!pageById(id)){ toast('That page no longer exists.'); return; }
+    if (id !== POMO_ID && !pageById(id)){ toast('That page no longer exists.'); return; }
     var K = kit(); if (K && K.on() && K.view() !== 'home'){ K.setView('home'); }
     openPageId = id; body.setAttribute('data-pw-page', id);
     renderPage(); pageEl.scrollTop = 0; syncTabs();
   }
   function closePage(){
     if (!openPageId) return;
-    openPageId = null; body.removeAttribute('data-pw-page'); pageEl.innerHTML = ''; syncTabs();
+    openPageId = null; body.removeAttribute('data-pw-page'); pageEl.innerHTML = ''; syncTabs(); poWake();
   }
   function renderPage(){
     if (!openPageId) return;
+    if (openPageId === POMO_ID){ pomoPage(pageEl); poWake(); return; }   // Press Play Pendulum (pp-widgets-pendulum.js)
     var top = pageEl.scrollTop;
     var editingThis = editing === 'page:' + openPageId, empty = !(L.zones['page:' + openPageId] || []).length;
     pageEl.innerHTML = renderZone('page:' + openPageId, null) +
@@ -429,6 +430,7 @@
   function tabList(){ return L.tabs || tabsDefault(); }
   function tabInfo(t){
     if (t.type === 'view'){ var b = bar && bar.querySelector('button[data-pl-view="' + t.view + '"]'); return { label: t.label || ACTIONS[t.view].label, icon: t.icon || null }; }
+    if (t.type === 'page' && t.page === POMO_ID) return { label: t.label || 'Pendulum', icon: t.icon || 'alarm' };
     if (t.type === 'page'){ var p = pageById(t.page); return { label: t.label || (p ? p.name : 'Page'), icon: t.icon || 'page' }; }
     if (t.type === 'games') return { label: t.label || 'Games', icon: t.icon || 'game' };
     if (t.type === 'player') return { label: t.label || 'Playing', icon: t.icon || 'headphones' };
@@ -522,7 +524,7 @@
   if (bar){
     bar.addEventListener('pointerdown', function(e){
       var b = e.target.closest('.pw-tab'); if (!b) return;
-      var t = tabList().find(function(x){ return x.id === b.dataset.pwTab; }); if (!t || t.type !== 'page') return;
+      var t = tabList().find(function(x){ return x.id === b.dataset.pwTab; }); if (!t || t.type !== 'page' || t.page === POMO_ID) return;
       lpFired = false; clearTimeout(lpTimer);
       lpTimer = setTimeout(function(){ lpFired = true; if (navigator.vibrate) try { navigator.vibrate(15); } catch(err){} startEdit('page:' + t.page); }, 550);
     });
@@ -542,7 +544,7 @@
         if (b.hidden) return;
         if (b.dataset.plView){ out.push({ view: b.dataset.plView }); return; }
         var t = tabList().find(function(x){ return x.id === b.dataset.pwTab; });
-        if (t && t.type === 'page' && pageById(t.page)) out.push({ page: t.page });
+        if (t && t.type === 'page' && (pageById(t.page) || t.page === POMO_ID)) out.push({ page: t.page });
       });
       return out;
     },
@@ -1106,6 +1108,7 @@
       '<div class="pw-sh-h">Add a tab</div><div class="pw-add-grid pw-add-small">' +
         missing.map(function(v){ return '<button type="button" class="pw-add-tile" data-addtab="view:' + v + '">' + svg(ACTIONS[v].icon) + '<span><b>' + ACTIONS[v].label + '</b></span></button>'; }).join('') +
         '<button type="button" class="pw-add-tile" data-addtab="games">' + svg('game') + '<span><b>Games</b></span></button>' +
+        (list.some(function(t){ return t.type === 'page' && t.page === POMO_ID; }) ? '' : '<button type="button" class="pw-add-tile" data-addtab="page:' + POMO_ID + '">' + svg('alarm') + '<span><b>Press Play Pendulum</b><small>Alarms and the Pomodoro</small></span></button>') +
         '<button type="button" class="pw-add-tile" data-addtab="player">' + svg('headphones') + '<span><b>Now playing</b><small>Opens the player</small></span></button>' +
         L.pages.map(function(p){ return '<button type="button" class="pw-add-tile" data-addtab="page:' + p.id + '">' + svg('page') + '<span><b>' + esc(p.name) + '</b><small>Your page</small></span></button>'; }).join('') +
         '<button type="button" class="pw-add-tile" data-addtab="newpage">' + svg('plus') + '<span><b>New page</b><small>Make one from widgets</small></span></button>' +

@@ -55,18 +55,6 @@
   .pw-tc-b button svg{ width:16px; height:16px; }
   .pw-tc-b .pw-tc-r{ flex:1.3 1 0; color:var(--text-dim); }
 
-  /* focus timer */
-  .pw-fo{ --p:0%; display:flex; align-items:center; gap:16px; }
-  .pw-fo-ring{ flex:none; width:104px; height:104px; border-radius:50%; display:grid; place-items:center;
-    background:conic-gradient(var(--pw-fc, var(--accent)) var(--p), color-mix(in srgb, var(--text, #fff) 12%, transparent) 0); transition:background .4s; }
-  .pw-fo-rest .pw-fo-ring{ --pw-fc:#7cc4ff; }
-  .pw-fo-in{ width:88px; height:88px; border-radius:50%; background:var(--r-card, var(--bg-elev, #15171b)); display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.1; }
-  .pw-fo-in b{ font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--pw-fg, var(--text)); }
-  .pw-fo-in small{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text-dim); }
-  .pw-fo-side{ flex:1 1 auto; min-width:0; }
-  .pw-fo-r{ font-size:13px; color:var(--text-dim); }
-  .pw-fo-run [data-pw-fo="go"]{ background:var(--accent); color:var(--on-accent, #08110f); border-color:transparent; }
-
   /* world clock */
   .pw-wc{ display:flex; gap:8px; }
   .pw-wc-c{ flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:center; text-align:center; gap:2px; padding:6px 2px; border-radius:calc(12px*var(--ui-round,1)); }

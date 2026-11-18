@@ -12,6 +12,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Alarms (Press Play Pendulum): exact alarm times, ringing on a locked phone, and set again after a restart -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Media access. Android 13+ uses the per-type media permissions; older versions use the classic read permission.
          Declining is fine: files can always be added through the system picker. -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
@@ -164,6 +169,13 @@
 
         <!-- Reminders, tips and rewards scheduled by the app (NotifyReceiver in JobsPlugin.kt) -->
         <receiver android:name=".NotifyReceiver" android:exported="false" />
+        <!-- Alarms are set again after the phone restarts or the app is updated (AlarmBootReceiver in JobsPlugin.kt) -->
+        <receiver android:name=".AlarmBootReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Home screen widget: what is playing, with previous / play-pause / next -->
         <receiver android:name=".NowPlayingWidget" android:exported="true" android:label="@string/widget_name">
