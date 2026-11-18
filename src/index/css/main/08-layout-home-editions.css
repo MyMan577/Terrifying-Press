@@ -422,3 +422,7 @@
   .ph-plsel-bar span{ flex:1; color:var(--text-dim); }
   .ph-plsel-bar button{ padding:8px 12px; border-radius:calc(9px*var(--ui-round,1)); border:1px solid var(--line); background:var(--bg); color:var(--text); font:600 12.5px system-ui,sans-serif; cursor:pointer; }
   .ph-plsel-bar button:disabled{ opacity:.45; cursor:default; }
+
+  /* Settings > Leaving the player > Mini player off: no bar above the tabs, and nothing makes room for it */
+  body.pp-no-mini{ --pl-mini:0px; }
+  body.pp-no-mini #pl-mini{ display:none !important; }

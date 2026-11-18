@@ -573,6 +573,18 @@
   { const s = document.getElementById('open-keep-select');
     if (s){ ppOpenSettingSync(); s.addEventListener('change', () => { try { localStorage.setItem(PP_OPEN_KEY, s.value); } catch(e){} }); } }
 
+  // Ends what is playing (Settings > Leaving the player > Stop the track, pp-leave.js): its place is saved, nothing is loaded.
+  window.__ppCloseTrack = function(){
+    if (currentIndex === -1) return;
+    try { if (rememberPlaybackPosition) savePlaybackPosition(tracks[currentIndex].dbId, media().currentTime); } catch(e){}
+    try { audioEl.pause(); videoEl.pause(); } catch(e){}
+    try { if (PPNative.enabled && PPNative.closeTrack) PPNative.closeTrack(); } catch(e){}
+    currentIndex = -1; isPlaying = false; updatePlayIcon();
+    npTitle.classList.remove('marquee-active'); npTitleTrack.textContent = 'No track selected'; npArtist.textContent = '-'; showFallbackArt();
+    try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch(e){}
+  };
+  window.__ppUpdateMediaSession = function(){ try { updateMediaSession(); } catch(e){} };
+
   // What should play after the current track? Mirrors onEnded() so native can advance on its own.
   let ppNextSig = '';
   function ppQueueNext(){

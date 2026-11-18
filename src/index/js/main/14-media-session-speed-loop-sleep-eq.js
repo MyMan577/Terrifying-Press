@@ -33,6 +33,8 @@
     if (!('mediaSession' in navigator) || currentIndex === -1) return;
     const t = tracks[currentIndex];
     if (window.PPNative) PPNative.updateMeta(t);
+    // Settings > Leaving the player > Media controls notification off: no media controls from the browser either
+    if (window.__ppNoMediaNotif){ navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; return; }
     navigator.mediaSession.metadata = new MediaMetadata({
       title: t.title,
       artist: t.artist,

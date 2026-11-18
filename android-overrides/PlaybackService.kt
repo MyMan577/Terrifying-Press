@@ -196,6 +196,7 @@ class PlaybackService : MediaLibraryService() {
             audioManager.addOnModeChangedListener(java.util.concurrent.Executor { main.post(it) }, l)
             modeListener = l
         }
+        main.postDelayed(focusTick, 2000)
         player.addAnalyticsListener(object : AnalyticsListener {
             override fun onAudioDecoderInitialized(
                 eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long
@@ -207,7 +208,7 @@ class PlaybackService : MediaLibraryService() {
             override fun onIsPlayingChanged(isPlaying: Boolean) { if (!isPlaying) saveResume() }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) { saveResume() }
             // Keep the home screen widget in step with what is playing.
-            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { NowPlayingWidget.refresh(this@PlaybackService) }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { NowPlayingWidget.refresh(this@PlaybackService); syncFocus() }
             override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) { NowPlayingWidget.refresh(this@PlaybackService) }
             override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) { NowPlayingWidget.refresh(this@PlaybackService) }
         })
@@ -237,7 +238,63 @@ class PlaybackService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
+        // "Keep playing after the app is swiped away" off: swiping the app away ends playback too
+        if (!opts().getBoolean("survive", true)) { player.stop(); hideMediaNotification(); stopSelf(); return }
         if (!player.playWhenReady || player.mediaItemCount == 0) stopSelf()
+    }
+
+    // ---------- your choices (Settings > Leaving the player; NativePlayerPlugin.setPlaybackPrefs) ----------
+    // other: when another app plays sound, "pause" (Media3's normal audio focus: it pauses this, this pauses it),
+    //        "duck" (this keeps playing, turned down, while the other one plays) or "mix" (no audio focus at all: both play).
+    // calls: "keep" playing during a call (as before) or "pause" for it and carry on afterwards.
+    // notify: the media controls notification (and lock-screen controls). survive: see onTaskRemoved.
+    private fun opts() = getSharedPreferences("pp_playback", MODE_PRIVATE)
+    private fun otherMode() = opts().getString("other", "pause") ?: "pause"
+    private fun callMode() = opts().getString("calls", "keep") ?: "keep"
+    fun notifyOn() = opts().getBoolean("notify", true)
+    fun prefsChanged() { focusHandled = null; syncFocus(); refreshNotification() }
+
+    // the app's own volume, and the turning down while another app plays ("duck")
+    private var userVolume = 1f
+    private var duckMul = 1f
+    fun setUserVolume(v: Float) { userVolume = v; if (::player.isInitialized) player.volume = userVolume * duckMul }
+    private var duckReq: Any? = null   // an AudioFocusRequest (Android 8+)
+    private fun ownDuckFocus(on: Boolean) {
+        if (Build.VERSION.SDK_INT < 26) return
+        if (on && duckReq == null) {
+            val r = android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build())
+                .setWillPauseWhenDucked(false)
+                .setOnAudioFocusChangeListener({ c ->
+                    duckMul = if (c == AudioManager.AUDIOFOCUS_GAIN) 1f else 0.25f
+                    player.volume = userVolume * duckMul
+                }, main)
+                .build()
+            duckReq = r
+            try { audioManager.requestAudioFocus(r) } catch (_: Exception) {}
+        } else if (!on && duckReq != null) {
+            try { audioManager.abandonAudioFocusRequest(duckReq as android.media.AudioFocusRequest) } catch (_: Exception) {}
+            duckReq = null; duckMul = 1f; player.volume = userVolume
+        }
+    }
+    private var callWas = false
+    private var pausedByCall = false
+    // the call state is also checked every couple of seconds: phones before Android 12 have no listener for it
+    private val focusTick = object : Runnable { override fun run() { syncFocus(); main.postDelayed(this, 2000) } }
+
+    // the media notification: Media3 shows it through here; with it switched off it is taken away instead
+    override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
+        if (!notifyOn()) { hideMediaNotification(); return }
+        super.onUpdateNotification(session, startInForegroundRequired)
+    }
+    fun hideMediaNotification() {
+        try { androidx.core.app.ServiceCompat.stopForeground(this, androidx.core.app.ServiceCompat.STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
+        try { (getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager).cancel(1001) } catch (_: Exception) {}   // Media3's media notification id
+    }
+    private fun refreshNotification() {
+        val s = session ?: return
+        if (notifyOn()) onUpdateNotification(s, player.playWhenReady) else hideMediaNotification()
     }
 
     // ---------- Audio focus vs. phone calls ----------
@@ -266,14 +323,22 @@ class PlaybackService : MediaLibraryService() {
     /** Follows the call state. Also run before Play, for phones older than Android 12 (no mode-change listener). */
     fun syncFocus() {
         if (!::player.isInitialized) return
-        val handle = wantFocus && try { !inCall() } catch (_: Exception) { true }
-        if (handle == focusHandled) return
-        focusHandled = handle
-        player.setAudioAttributes(mediaAttrs, handle)
+        val call = try { inCall() } catch (_: Exception) { false }
+        if (call != callWas) {                               // a call began or ended
+            callWas = call
+            if (call && callMode() == "pause" && player.playWhenReady) { pausedByCall = true; player.pause() }
+            else if (!call && pausedByCall) { pausedByCall = false; player.play() }
+        }
+        val other = otherMode()
+        val handle = wantFocus && !call && other == "pause"   // Media3 handles the focus only for "pause"
+        if (handle != focusHandled) { focusHandled = handle; player.setAudioAttributes(mediaAttrs, handle) }
+        ownDuckFocus(wantFocus && !call && other == "duck" && player.playWhenReady)
     }
 
     override fun onDestroy() {
         instance = null
+        main.removeCallbacks(focusTick)
+        ownDuckFocus(false)
         if (Build.VERSION.SDK_INT >= 31) (modeListener as? AudioManager.OnModeChangedListener)?.let { try { audioManager.removeOnModeChangedListener(it) } catch (_: Exception) {} }
         modeListener = null
         clearMirror()   // so the session's player is ExoPlayer again when it is released below

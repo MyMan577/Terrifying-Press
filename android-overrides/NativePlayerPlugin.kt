@@ -484,7 +484,18 @@ class NativePlayerPlugin : Plugin() {
     }
     @PluginMethod fun setVolume(call: PluginCall) {
         val v = (call.getFloat("volume") ?: 1f).coerceIn(0f, 1f)
-        withSvc(call) { it.player.volume = v; call.resolve() }
+        withSvc(call) { it.setUserVolume(v); call.resolve() }
+    }
+    /** Settings > Leaving the player: { other: pause | duck | mix, calls: keep | pause, notify, survive } (see PlaybackService). */
+    @PluginMethod fun setPlaybackPrefs(call: PluginCall) {
+        val e = context.getSharedPreferences("pp_playback", android.content.Context.MODE_PRIVATE).edit()
+        call.getString("other")?.let { if (it in listOf("pause", "duck", "mix")) e.putString("other", it) }
+        call.getString("calls")?.let { if (it in listOf("keep", "pause")) e.putString("calls", it) }
+        call.getBoolean("notify")?.let { e.putBoolean("notify", it) }
+        call.getBoolean("survive")?.let { e.putBoolean("survive", it) }
+        e.commit()
+        main.post { PlaybackService.instance?.prefsChanged() }
+        call.resolve()
     }
     @PluginMethod fun setLoop(call: PluginCall) {
         val on = call.getBoolean("loop", false) ?: false

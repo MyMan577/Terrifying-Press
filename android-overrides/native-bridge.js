@@ -816,6 +816,10 @@
   N.audioOptions = { get: function () { return Player.getAudioOptions(); }, set: function (o) { return Player.setAudioOptions(o); } };
   N.selectTrack = function (o) { return Player.selectTrack(o); };
   N.stop = function () { return Player.stop(); };
+  /** Settings > Leaving the player: other media, calls, the media notification, swiping the app away. */
+  N.setPlaybackPrefs = function (o) { return call(function () { return Player.setPlaybackPrefs(o); }); };
+  /** Ends what is playing (Leaving the player: Stop the track). */
+  N.closeTrack = function () { if (cur && cur.active) deactivate(cur); return call(function () { return Player.stop(); }); };
 
   // ---------- library / files ----------
   N.lib = {
