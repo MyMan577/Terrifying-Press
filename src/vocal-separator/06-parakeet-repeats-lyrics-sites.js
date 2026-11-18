@@ -22,11 +22,11 @@
   }
   function pkCues(words) {                                             // words -> subtitle lines: sentence ends, pauses, and a length cap
     const cues = []; let cur = null;
-    const flush = () => { if (cur) { cues.push({ start: cur.s, end: cur.e, text: cur.t.join(' ') }); cur = null; } };
+    const flush = () => { if (cur) { cues.push({ start: cur.s, end: cur.e, text: cur.t.join(' '), w: cur.w }); cur = null; } };   // w: when each word was heard, for the sing-along highlight
     for (const w of words) {
       if (cur) { const len = cur.t.join(' ').length; if (w.s - cur.e > 0.9 || w.e - cur.s > 8 || len + w.text.length > 84) flush(); }
-      if (!cur) cur = { s: w.s, e: w.e, t: [] };
-      cur.t.push(w.text); cur.e = Math.max(cur.e, w.e);
+      if (!cur) cur = { s: w.s, e: w.e, t: [], w: [] };
+      cur.t.push(w.text); cur.w.push({ s: w.s, e: w.e }); cur.e = Math.max(cur.e, w.e);
       const len = cur.t.join(' ').length;
       if ((/[.!?]["')\]]?$/.test(w.text) && len >= 24) || (/[,;:]$/.test(w.text) && len >= 60)) flush();
     }
@@ -241,7 +241,7 @@
   };
   // Merge extra passes into alternatives, find repeated lines, and unify the wording when most repeats agree.
   async function rpFinish(passes, x) {
-    const main = passes[0].map(c => ({ start: c.start, end: c.end, text: c.text, alts: [] }));
+    const main = passes[0].map(c => ({ start: c.start, end: c.end, text: c.text, alts: [], w: c.w }));
     for (let k = 1; k < passes.length; k++) for (const m of main) {
       const part = passes[k].filter(c => { const mid = (c.start + c.end) / 2; return mid >= m.start - 0.3 && mid <= m.end + 0.3; });
       if (!part.length) continue;
@@ -255,7 +255,7 @@
         const ms = ix.map(i => main[i]), vs = new Set(ms.map(c => rpNorm(c.text)));
         if (vs.size < 2 && !ms.some(c => c.alts.length)) continue;
         const v = rpVote(ms); if (!v) continue;
-        if (vs.size > 1 && ms.length >= 3 && v.sup >= 2 && v.sc / ms.length >= 0.8) { ms.forEach(c => { if (rpNorm(c.text) !== rpNorm(v.text)) { c.alts.unshift(c.text); c.text = v.text; rep.fixed++; } }); }
+        if (vs.size > 1 && ms.length >= 3 && v.sup >= 2 && v.sc / ms.length >= 0.8) { ms.forEach(c => { if (rpNorm(c.text) !== rpNorm(v.text)) { c.alts.unshift(c.text); c.text = v.text; c.w = null; rep.fixed++; } }); }
         else if (vs.size > 1) rep.unsure++;
       }
     } catch (e) { console.warn('repeat check failed', e); }
@@ -280,7 +280,7 @@
       if (o.lv && o.lv.wake && navigator.wakeLock) { try { wl = await navigator.wakeLock.request('screen'); } catch (e) {} }
       const cues = await transcribeRun(t, o, status);
       try { rpAltsSave(t.dbId, cues); } catch (e) {}                  // alternative wordings live beside the subtitles, for the editor's Repeats tab
-      return cues.map(c => ({ start: c.start, end: c.end, text: c.text }));
+      return cues.map(c => c.w ? { start: c.start, end: c.end, text: c.text, w: c.w } : { start: c.start, end: c.end, text: c.text });
     } finally { if (NATIVE) NP.keepAlive({ on: false }).catch(() => {}); wl && wl.release().catch(() => {}); heavyJob = false; }
   }
   // The song as 16 kHz mono for speech models. With o.clean the music is removed first (or previously split vocals are reused).
@@ -365,6 +365,34 @@
     }
     return words.sort((a, b) => a.s - b.s);
   }
+  // Whisper often skips sung passages it is unsure of (and never goes back), so whole verses can go missing.
+  // After the main pass, every stretch of at least 2.5 s where the (vocal) audio is clearly loud but no line covers it is decoded again on
+  // its own, and the lines heard there are added. Returns the stretches as [[start, end], ...].
+  function holesIn(cues, x) {
+    const sr = 16000, F = sr / 2, n = Math.floor(x.length / F); if (n < 8) return [];
+    const rms = new Float32Array(n); for (let i = 0; i < n; i++) { let q = 0; const a = i * F; for (let j = 0; j < F; j++) { const v = x[a + j]; q += v * v; } rms[i] = Math.sqrt(q / F); }
+    const ref = Array.from(rms).sort((u, v) => u - v)[Math.floor(n * 0.9)]; if (!(ref > 0.002)) return [];
+    const cov = new Uint8Array(n);
+    for (const c of cues) { const e = c.end > c.start ? c.end : c.start + 3; for (let i = Math.max(0, Math.floor((c.start - 0.4) * 2)); i < Math.min(n, Math.ceil((e + 0.4) * 2)); i++) cov[i] = 1; }
+    const out = []; let a = -1, last = -1;
+    for (let i = 0; i <= n; i++) {
+      const on = i < n && !cov[i] && rms[i] > ref * 0.12;
+      if (on) { if (a < 0) a = i; last = i; }
+      else if (a >= 0 && (i >= n || cov[i] || i - last > 2)) { if (last - a + 1 >= 5) out.push([Math.max(0, a / 2 - 0.6), Math.min(x.length / sr, (last + 1) / 2 + 0.6)]); a = -1; }
+    }
+    return out.slice(0, 60);
+  }
+  async function fillHoles(cues, x, decode, status) {
+    const holes = holesIn(cues, x); if (!holes.length) return cues;
+    const add = [];
+    for (let i = 0; i < holes.length; i++) {
+      status('Listening again to parts with singing but no words (' + (i + 1) + ' of ' + holes.length + ')…'); await tick();
+      const [hs, he] = holes[i];
+      let got = []; try { got = await decode([[hs, he]]); } catch (e) { console.warn('second listen failed', e); continue; }
+      for (const c of got) { const mid = (c.start + (c.end > c.start ? c.end : c.start + 2)) / 2; if (mid >= hs && mid <= he && !cues.some(q => c.start < (q.end || q.start + 2) - 0.2 && (c.end || c.start + 2) > q.start + 0.2)) add.push(c); }
+    }
+    return add.length ? cues.concat(add).sort((u, v) => u.start - v.start) : cues;
+  }
   async function transcribeRun(t, o, status) {
     let pipe = null;
     if (o.task === 'translate' && whEn(o.size)) { o = Object.assign({}, o, { size: 'base' }); status('Translating needs the multilingual Base model…'); }
@@ -377,7 +405,12 @@
     const regs = speechRegions(x, 16000);
     window.__ppvRep = null;
     if (whPk(o.size)) {
-      try { if (!NATIVE) throw new Error('Parakeet only runs in the Android app'); return await rpFinish([cleanCues(await parakeetNative(x, regs, o, status), dur, x)], x); }
+      try {
+        if (!NATIVE) throw new Error('Parakeet only runs in the Android app');
+        let pc = cleanCues(await parakeetNative(x, regs, o, status), dur, x);
+        pc = await fillHoles(pc, x, async rg => cleanCues(await parakeetNative(x, rg, o, () => {}), dur, x), status);
+        return await rpFinish([pc], x);
+      }
       catch (e) { console.warn('Parakeet failed', e); status('Parakeet failed: ' + errText(e) + ' Using English Base instead…'); o = Object.assign({}, o, { size: 'base_en' }); }
       finally { if (NATIVE) NP.parakeetUnload().catch(() => {}); }          // give the memory back
     }
@@ -424,6 +457,7 @@
       const off = offs[k], xx = off ? x.subarray(Math.floor(off * 16000)) : x, rg = off ? regs.map(r => [Math.max(0, r[0] - off), r[1] - off]).filter(r => r[1] - r[0] > 0.5) : regs;
       const st = offs.length > 1 ? (m => status('Pass ' + (k + 1) + ' of ' + offs.length + ': ' + m)) : status;
       let c; try { c = await decodeOnce(xx, rg, o, st, k); } catch (e) { if (!k) throw e; console.warn('Extra pass failed, keeping what we have', e); break; }
+      if (!k) c = await fillHoles(c, x, rg2 => decodeOnce(x, rg2, o, () => {}, 0), st);
       passes.push(off ? c.map(q => ({ start: q.start + off, end: q.end + off, text: q.text })) : c);
     }
     status(passes.length > 1 ? 'Comparing the passes and the repeated lines…' : 'Checking repeated lines…'); await tick();
