@@ -771,12 +771,16 @@
   if (navigator.getBattery) try { navigator.getBattery().then(function(b){ batt = b; ['levelchange','chargingchange'].forEach(function(ev){ b.addEventListener(ev, liveSoon); }); liveSoon(); }).catch(function(){}); } catch(e){}
   T.battery = { name:'Battery', icon:'bolt', kind:'box', zones:['home','page','player','video'], w:'half', desc:'How much charge the phone has',
     fields:[['look','Look','seg',[['bar','Bar'],['ring','Ring'],['text','Just the number']]],['card','On a card','toggle',true]],
-    render:function(o){ return card(cardOn(o), '<div class="pw-bat pw-bat-' + esc(o.look || 'bar') + '" data-pw-live="battery"><div class="pw-bat-v"></div><div class="pw-bat-bar"><i></i></div></div>'); },
+    // the look's class is pw-bat-l-*: "pw-bat-bar" is the bar inside, and the Bar look used to get that same class,
+    // which squashed the whole widget to the bar's 10 px and cut the number off
+    render:function(o){ return card(cardOn(o), '<div class="pw-bat pw-bat-l-' + esc(o.look || 'bar') + '" data-pw-live="battery"><div class="pw-bat-v"></div><div class="pw-bat-bar"><i></i></div><div class="pw-bat-cap"></div></div>'); },
     live:function(el){
       var v = el.querySelector('.pw-bat-v');
       if (!batt){ setText(v, navigator.getBattery ? '…' : 'Not available'); return; }
-      var p = Math.round(batt.level * 100);
-      setText(v, p + '%' + (batt.charging ? ' ⚡' : ''));
+      var p = Math.round(batt.level * 100), key = p + '|' + !!batt.charging;
+      // the number big, the % smaller, and a drawn bolt (not the emoji) while charging
+      if (v._k !== key){ v._k = key; v.innerHTML = '<b>' + p + '</b><small>%</small>' + (batt.charging ? '<svg class="pw-bat-bolt" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="currentColor"/></svg>' : ''); v.setAttribute('aria-label', p + '%' + (batt.charging ? ', charging' : '')); }
+      setText(el.querySelector('.pw-bat-cap'), batt.charging ? (p >= 100 ? 'Charged' : 'Charging') : p <= 15 ? 'Low battery' : 'Battery');
       el.style.setProperty('--p', p + '%'); el.classList.toggle('pw-bat-low', p <= 15 && !batt.charging); el.classList.toggle('pw-bat-chg', !!batt.charging);
     } };
 
