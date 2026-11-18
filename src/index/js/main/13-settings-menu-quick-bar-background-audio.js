@@ -69,9 +69,17 @@
     for (const x of quickBarItems){ if (used + qbWeight(x) > max) break; out.push(x); used += qbWeight(x); }
     return out;
   }
+  // Optional order the Layout studio sets for the pills on the bar; without it they keep the menu's order.
+  const QUICKBAR_ORDER_KEY = 'playerQuickBarOrder';
+  function qbOrder(){
+    let o = null; try { o = JSON.parse(localStorage.getItem(QUICKBAR_ORDER_KEY)); } catch(e){}
+    o = Array.isArray(o) ? o.filter(x => QUICKBAR_ORDER.includes(x)) : [];
+    QUICKBAR_ORDER.forEach(x => { if (!o.includes(x)) o.push(x); });
+    return o;
+  }
   function renderQuickBar(){
     const shown = shownQuickBarItems();
-    QUICKBAR_ORDER.forEach(name => {
+    qbOrder().forEach(name => {
       const wrapper = getItemWrapper(name);
       if (!wrapper) return;
       if (shown.includes(name)){
@@ -114,6 +122,33 @@
   });
 
   renderQuickBar();
+  // For the Layout studio: every button of the player's \u2630 menu, whether it is on the bar, and its place there.
+  window.__ppQuickBar = {
+    list(){
+      const shown = shownQuickBarItems();
+      return qbOrder().map(id => {
+        const slot = getMenuSlot(id), item = slot && slot.closest('.menu-item'), t = item && item.querySelector('.menu-item-title');
+        const ic = t && t.querySelector('svg');
+        return { id, label: t ? t.textContent.trim() : id, icon: ic ? ic.outerHTML : '', on: shown.includes(id), weight: qbWeight(id) };
+      });
+    },
+    max: () => quickBarMax(),
+    used: () => qbUsed(shownQuickBarItems()),
+    toggle(id){
+      const cb = document.querySelector('.qb-checkbox[data-qb="' + id + '"]'); if (!cb) return false;
+      if (!cb.checked && cb.disabled){ if (typeof showToast === 'function') showToast('The quick bar is full (' + quickBarMax() + ' places). Take a button off first.'); return false; }
+      cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); return true;
+    },
+    move(id, dir){
+      const on = shownQuickBarItems(), o = qbOrder();
+      const seq = o.filter(x => on.includes(x)), i = seq.indexOf(id), j = i + dir;
+      if (i < 0 || j < 0 || j >= seq.length) return;
+      const a = o.indexOf(seq[i]), b = o.indexOf(seq[j]); o[a] = seq[j]; o[b] = seq[i];
+      try { localStorage.setItem(QUICKBAR_ORDER_KEY, JSON.stringify(o)); } catch(e){}
+      renderQuickBar();
+    },
+    reset(){ try { localStorage.removeItem(QUICKBAR_ORDER_KEY); } catch(e){} renderQuickBar(); }
+  };
   // Re-render when media layout mode is switched on or off.
   let qbLastMax = quickBarMax();
   new MutationObserver(() => { const m = quickBarMax(); if (m !== qbLastMax){ qbLastMax = m; renderQuickBar(); } })

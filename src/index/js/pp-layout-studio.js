@@ -288,7 +288,9 @@
     b.setAttribute('aria-label', spotLabel(v) || 'Button');
     return b;
   }
+  function studioOn(k){ return typeof open !== 'undefined' && open && cur === k; }
   function spotSync(b){
+    if (b.classList.contains('ls-spot-empty')) return;
     var v = b.dataset.spotV, base = b.dataset.base || b.className;
     if (!b.dataset.base) b.dataset.base = base;
     if (v.indexOf('el:') === 0){
@@ -313,12 +315,16 @@
       var vals = spotVals(k);
       SPOTS[k].forEach(function(sp){
         var v = vals[sp[0]] || '';
-        if (sp[2] && v === 'none'){ hide.push(k + '-' + sp[0]); return; }
-        if (!v || v === 'none' || !spotLabel(v)) return;
+        // while the studio edits this player, an empty spot shows as a dashed + to tap and fill
+        var empty = studioOn(k) && (sp[2] ? v === 'none' : (!v || v === 'none' || !spotLabel(v)));
+        if (empty) v = '';
+        else if (sp[2] && v === 'none'){ hide.push(k + '-' + sp[0]); return; }
+        else if (!v || v === 'none' || !spotLabel(v)) return;
         var b;
         if (sp[0] === 'tl' || sp[0] === 'tr'){
           var orig = document.getElementById(sp[2]); if (!transport || !orig) return;
           b = spotBtn(k, sp[0], v, ' ctrl-btn');
+          if (empty) hide.push(k + '-' + sp[0]);
           // takes the place (and the Arrange order) of the button it stands in for
           b.style.order = getComputedStyle(orig).order;
           transport.insertBefore(b, sp[0] === 'tl' ? orig : orig.nextSibling);
@@ -326,7 +332,8 @@
         } else if (sp[0].indexOf('tb') === 0){ b = spotBtn(k, sp[0], v, ''); tb.appendChild(b); n[k]++; }
         else if (sp[0].charAt(0) === 'r'){ b = spotBtn(k, sp[0], v, ''); rail.appendChild(b); }
         else if (cov){ b = spotBtn(k, sp[0], v, ' ls-cov-' + sp[0]); cov.appendChild(b); }
-        if (b){ spotSync(b); spotEls.push(b); }
+        if (b && empty){ b.classList.add('ls-spot-empty'); b.innerHTML = svg('plus'); b.setAttribute('aria-label', 'Empty spot: ' + sp[1]); spotEls.push(b); }
+        else if (b){ spotSync(b); spotEls.push(b); }
       });
     });
     // the top bar's spots are listed right to left: tb1 sits next to the app's own buttons
@@ -343,7 +350,7 @@
     }
   }
   document.addEventListener('click', function(e){
-    var b = e.target.closest && e.target.closest('.ls-spot'); if (!b) return;
+    var b = e.target.closest && e.target.closest('.ls-spot'); if (!b || open) return;   // in the studio a tap picks the spot instead
     e.preventDefault(); e.stopPropagation();
     if (window.__ppTap && body.classList.contains('pl-video')) window.__ppTap();
     var v = b.dataset.spotV;
@@ -413,15 +420,18 @@
       (n ? ' ' + n + ' there now.' : '') + '</p><div class="ls-foot"><button type="button" class="ls-go" data-ls-edit="settings">' + (n ? 'Edit them' : 'Add widgets') + '</button></div></div>';
   }
   function spotsHTML(k){
+    return '<div class="ls-part"><div class="ls-pname">Button spots</div><p class="ls-note">Choose the button for each place. A spot left empty shows nothing.</p>' + SPOTS[k].map(function(sp){ return spotRowHTML(k, sp); }).join('') + '</div>';
+  }
+  function spotRowHTML(k, sp){
     var c = spotChoices(), vals = spotVals(k);
-    return '<div class="ls-part"><div class="ls-pname">Button spots</div><p class="ls-note">Choose the button for each place. A spot left empty shows nothing.</p>' + SPOTS[k].map(function(sp){
+    return (function(){
       var v = vals[sp[0]] || '';
       return '<div class="ls-opt ls-spotrow"><label>' + esc(sp[1]) + '</label><select data-spotset="' + k + '|' + sp[0] + '">' +
         (sp[2] ? '<option value=""' + (!v ? ' selected' : '') + '>Normal (' + esc(sp[2] === 'shuffle-btn' ? 'Shuffle' : 'Repeat') + ')</option><option value="none"' + (v === 'none' ? ' selected' : '') + '>Nothing</option>'
                : '<option value=""' + (!v ? ' selected' : '') + '>Empty</option>') +
         '<optgroup label="The player’s buttons">' + c.els.map(function(x){ return '<option value="el:' + x[0] + '"' + (v === 'el:' + x[0] ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; }).join('') + '</optgroup>' +
         '<optgroup label="Actions">' + c.acts.map(function(x){ return '<option value="act:' + x.id + '"' + (v === 'act:' + x.id ? ' selected' : '') + '>' + esc(x.label) + '</option>'; }).join('') + '</optgroup></select></div>';
-    }).join('') + '</div>';
+    })();
   }
 
   // ======================= the studio: edited on the screen itself =======================
@@ -429,6 +439,8 @@
   // screen outlined with a dashed line and a tag, and a small sheet with just that part's choices when you tap it.
   // The sheet has a tab to drag it down out of the way, so the change can be seen as it is made.
   IC.undo = '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/>';
+  IC.menu = '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>';
+  IC.plus = '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>';
   IC.grid = '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>';
   // Where each part is on the screen: the elements it changes. wrap: it holds other parts (its tag goes on the left).
   // first: only the first one on screen is outlined (a row's thumbnail), though a tap on any of them opens it.
@@ -437,36 +449,75 @@
            'Tools & volume':{ sel:['#extra-transport', '#controls-footer'] }, 'Controls panel':{ sel:['#controls-col'], wrap:true } },
     vid: { 'Behind the controls':{ sel:['#controls-col'], wrap:true }, 'Top bar':{ sel:['#now-playing', '#video-tools'] }, 'Seek bar':{ sel:['#seek-row'] },
            'Main buttons':{ sel:['#transport'] }, 'Tools & volume':{ sel:['#extra-transport', '#controls-footer'] } },
-    lib: { 'Rows':{ sel:['#playlist'], wrap:true }, 'Thumbnail':{ sel:['#playlist .track-thumb'], first:true }, 'Text & buttons':{ sel:['#playlist .track-info'], first:true },
-           'Top of the list':{ sel:['#browse-row', '#ppv-libhost', '#ppv-savedhost'] } },
+    lib: { 'Rows':{ sel:['#playlist'], wrap:true }, 'Thumbnail':{ sel:['#playlist .track-thumb'], first:true }, 'Text & buttons':{ sel:['#playlist .track-info', '#playlist .track-num'], first:true },
+           'Top of the list':{ sel:['#action-row', '#search-row', '#playlist-view-row', '#browse-row', '#ppv-libhost', '#ppv-savedhost'] } },
     pls: { 'Your playlists':{ sel:['#pl-home > .ph-sec'], wrap:true }, 'An open playlist':{ sel:['#pl-home .ph-detail-head'] },
            'Song and video thumbnails':{ sel:['#pl-home .ph-trk .ph-thumb', '#pl-home .ph-pl-head .ph-thumb', '#pl-home .ph-card .ph-thumb'], first:true } },
     set: { 'Groups':{ sel:['#pp-sg-root'], wrap:true }, 'Rows':{ sel:['#pp-sg-root .settings-row'], first:true } }
   };
   SURF.forEach(function(sf){ sf.parts.forEach(function(p){ p.at = (PART_EL[sf.id] || {})[p.name] || { sel:[] }; }); });
 
-  var cur = 'aud', open = false, keepUi = null, sheetKind = null, sheetPart = -1, undoS = [];
+  // Every single thing on the screen, outlined on its own and opened with a tap: each button of the players (main row,
+  // quick bar, video tools, top bar, button spots), the times and volume; each row, heading and section of the lists.
+  // kind: what its sheet offers. part: a list item that opens the choices of that part.
+  var PLAYER_ITEMS = [
+    { sel:'#transport > .ctrl-btn:not(.ls-spot)', kind:'tb' },
+    { sel:'#transport > .ls-spot, .ls-spots > .ls-spot', kind:'spot' },
+    { sel:'#extra-transport > [data-item-wrapper]', kind:'qb' },
+    { sel:'#pl-back, #immersive-btn, #menu-btn, #pl-pin-btn', kind:'top' },
+    { sel:'#cur-time, #dur-time, #vol-row', kind:'sv' },
+    { sel:'#np-title, #np-artist', part:'Title & artist' }
+  ];
+  var ITEMS = {
+    aud: PLAYER_ITEMS,
+    vid: PLAYER_ITEMS.concat([{ sel:'#video-tools > *', kind:'vt' }]).map(function(x){ return x.part === 'Title & artist' ? { sel:x.sel, part:'Top bar' } : x; }),
+    lib: [{ sel:'#playlist > .track', part:'Rows' }, { sel:'#action-row > *, #search-row, #playlist-view-row, #browse-row > *', part:'Top of the list' }],
+    pls: [{ sel:'#pl-home .ph-card, #pl-home .ph-row, #pl-home .ph-chip, #pl-home .ph-trk', part:'Your playlists' }],
+    set: [{ sel:'#pp-sg-root > .pp-sg > .pp-sg-title', part:'Groups' }, { sel:'#pp-sg-root .settings-section', kind:'sec' }, { sel:'#pp-sg-root .settings-row', part:'Rows' }]
+  };
+  function itemEls(){
+    var out = [], seen = [], vh = window.innerHeight, vw = window.innerWidth;
+    (ITEMS[cur] || []).forEach(function(d){
+      document.querySelectorAll(d.sel).forEach(function(x){
+        if (seen.indexOf(x) >= 0 || x.closest('#ls-edbar, #ls-studio, #ls-marks, #menu-overlay') || !visible(x)) return;
+        var r = x.getBoundingClientRect(); if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) return;
+        seen.push(x); out.push({ el:x, d:d });
+      });
+    });
+    return out.slice(0, 160);
+  }
+  function itemName(x){
+    var b = x.matches('button, [role=button]') ? x : x.querySelector('button') || x;
+    var n = b.getAttribute('aria-label') || b.title || (x.dataset.itemWrapper ? qbLabel(x.dataset.itemWrapper) : '') || (x.textContent || '').replace(/\s+/g, ' ').trim();
+    if (x.classList.contains('ls-spot')){ var sp = (SPOTS[x.dataset.spotK] || []).find(function(q){ return q[0] === x.dataset.spot; }); if (sp) return sp[1].replace(/ \(.*\)$/, ''); }
+    var known = { 'cur-time':'Time played', 'dur-time':'Length', 'vol-row':'Volume' }; if (known[x.id]) n = known[x.id];
+    return n.length > 40 ? n.slice(0, 38) + '…' : (n || 'Button');
+  }
+  function qbLabel(id){ var Q = window.__ppQuickBar, it = Q && Q.list().find(function(x){ return x.id === id; }); return it ? it.label : id; }
+
+  var curItem = null, cur = 'aud', open = false, keepUi = null, sheetKind = null, sheetPart = -1, undoS = [];
 
   // the bar at the top, as in the page editor
   var bar = document.createElement('div'); bar.id = 'ls-edbar'; bar.hidden = true;
   bar.innerHTML = '<button type="button" class="pw-ed-done" data-lb="done">Done</button>' +
     '<button type="button" class="ls-ed-title" data-lb="screens" aria-label="Which screen"><span></span>' + svg('down') + '</button>' +
     '<button type="button" data-lb="hidden" aria-label="Hidden parts" hidden>' + svg('eye') + '</button>' +
+    '<button type="button" data-lb="menu" aria-label="Buttons in the menu" hidden>' + svg('menu') + '</button>' +
     '<button type="button" data-lb="arrange" aria-label="Arrange" hidden>' + svg('list') + '</button>' +
     '<button type="button" data-lb="undo" aria-label="Undo">' + svg('undo') + '</button>' +
     '<button type="button" class="pw-ed-add" data-lb="presets" aria-label="Presets">' + svg('grid') + '</button>';
-  body.appendChild(bar);
+  var UI = document.documentElement; UI.appendChild(bar);
 
   // the sheet: one part (or the presets, or the screens) at a time, never the whole studio at once
   var el = document.createElement('div'); el.id = 'ls-studio'; el.hidden = true;
   el.innerHTML = '<div class="pw-sheet-card ls-card" role="dialog" aria-label="Layout studio"><div class="pw-sheet-head"><b></b>' +
     '<button type="button" class="pw-sheet-x" data-ls="x" aria-label="Close">' + svg('x') + '</button></div><div class="pw-sheet-body ls-body"></div></div>';
-  body.appendChild(el);
+  UI.appendChild(el);
   var card = el.querySelector('.ls-card'), bodyEl = el.querySelector('.ls-body'), sheetTitle = el.querySelector('.pw-sheet-head b');
   var sheetMove = window.PPSheetDrag ? window.PPSheetDrag(card, el, function(){ closeSheet(); }) : { reset: function(){} };
 
   // the dashed outlines and their tags
-  var marks = document.createElement('div'); marks.id = 'ls-marks'; marks.hidden = true; body.appendChild(marks);
+  var marks = document.createElement('div'); marks.id = 'ls-marks'; marks.hidden = true; UI.appendChild(marks);
 
   function firstOf(kind){ var A = api(); if (!A) return -1; var t = A.tracks(); for (var i = 0; i < t.length; i++) if (kind === 'video' ? t[i].kind === 'video' : (t[i].kind !== 'video' && !t[i].stem)) return i; return -1; }
   function curKind(){ var A = api(), K = kit(); if (!A || !K || !K.hasTrack()) return null; var t = A.tracks()[A.currentIndex()]; return t ? (t.kind === 'video' ? 'video' : 'audio') : null; }
@@ -535,19 +586,42 @@
   function marksSoon(){ if (!marksQueued && open){ marksQueued = true; requestAnimationFrame(function(){ marksQueued = false; drawMarks(); }); } }
   function drawMarks(){
     if (!open){ marks.hidden = true; return; }
-    var sf = byId[cur], vw = window.innerWidth, vh = window.innerHeight, html = '';
+    var sf = byId[cur], vw = window.innerWidth, vh = window.innerHeight, html = '', tags = [], placed = [];
+    function clip(r){
+      if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) return null;
+      return { left: Math.max(2, r.left), top: Math.max(2, r.top), right: Math.min(vw - 2, r.right), bottom: Math.min(vh - 2, r.bottom) };
+    }
+    function box(c, cls){ return '<div class="ls-mark' + cls + '" style="left:' + c.left.toFixed(0) + 'px;top:' + c.top.toFixed(0) + 'px;width:' + Math.max(0, c.right - c.left).toFixed(0) + 'px;height:' + Math.max(0, c.bottom - c.top).toFixed(0) + 'px"></div>'; }
     sf.parts.forEach(function(p, i){
-      var rs = partEls(p).map(function(x){ return x.getBoundingClientRect(); });
-      if (rs.length > 1)                                         // one part made of several pieces: one outline around them all
+      var els = partEls(p, !!p.at.first), rs = els.map(function(x){ return x.getBoundingClientRect(); });
+      if (p.at.first) rs = rs.filter(function(r){ return r.bottom > 0 && r.top < vh; });
+      else if (rs.length > 1)                                    // one part made of several pieces: one outline around them all
         rs = [rs.reduce(function(a, r){ return { left: Math.min(a.left, r.left), top: Math.min(a.top, r.top), right: Math.max(a.right, r.right), bottom: Math.max(a.bottom, r.bottom) }; })];
+      var on = i === sheetPart && sheetKind === 'part', first = true;
       rs.forEach(function(r){
-        if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) return;
-        var top = Math.max(2, r.top), bot = Math.min(vh - 2, r.bottom), left = Math.max(2, r.left), right = Math.min(vw - 2, r.right);
-        var tagIn = top < 70;                                   // too close to the top: the tag goes inside the outline
-        html += '<div class="ls-mark' + (p.at.wrap ? ' ls-wrap' : '') + (i === sheetPart && sheetKind === 'part' ? ' on' : '') + (tagIn ? ' ls-tag-in' : '') + '" style="left:' + left.toFixed(0) + 'px;top:' + top.toFixed(0) +
-          'px;width:' + Math.max(0, right - left).toFixed(0) + 'px;height:' + Math.max(0, bot - top).toFixed(0) + 'px">' +
-          '<button type="button" class="ls-tag" data-part="' + i + '">' + svg('sliders') + '<span>' + esc(p.name) + '</span></button></div>';
+        var c = clip(r); if (!c) return;
+        html += box(c, (p.at.wrap ? ' ls-wrap' : '') + (on ? ' on' : ''));
+        if (first){ tags.push({ i:i, c:c, name:p.name, wrap:!!p.at.wrap, on:on }); first = false; }   // one tag per part
       });
+    });
+    itemEls().forEach(function(it){
+      var c = clip(it.el.getBoundingClientRect()); if (!c) return;
+      html += box(c, ' ls-item' + (sheetKind === 'item' && curItem && curItem.el === it.el ? ' on' : ''));
+    });
+    // tags: never on top of each other or under the bar at the top
+    var barB = bar.getBoundingClientRect().bottom + 4;
+    tags.sort(function(a, b){ return a.wrap - b.wrap; }).forEach(function(t){
+      var w = Math.min(190, 34 + t.name.length * 6.4), h = 26, c = t.c;
+      var tries = [], ys = [c.top - 12, c.top + 4, c.bottom - h - 4, c.top - 12 + h + 2, c.top + 4 + 2 * (h + 2)];
+      ys.forEach(function(y){ tries.push([t.wrap ? c.left + 2 : c.right - w - 2, y]); tries.push([t.wrap ? c.right - w - 2 : c.left + 2, y]); tries.push([(c.left + c.right - w) / 2, y]); });
+      var pos = null;
+      for (var k = 0; k < tries.length && !pos; k++){
+        var x = Math.max(4, Math.min(vw - w - 4, tries[k][0])), y = Math.max(barB, Math.min(vh - h - 4, tries[k][1]));
+        if (!placed.some(function(q){ return x < q.x + q.w + 3 && q.x < x + w + 3 && y < q.y + h + 3 && q.y < y + h + 3; })) pos = { x:x, y:y };
+      }
+      if (!pos) pos = { x: Math.max(4, Math.min(vw - w - 4, c.right - w)), y: Math.max(barB, c.top - 12) };
+      placed.push({ x:pos.x, y:pos.y, w:w });
+      html += '<button type="button" class="ls-tag' + (t.on ? ' on' : '') + '" data-part="' + t.i + '" style="left:' + pos.x.toFixed(0) + 'px;top:' + pos.y.toFixed(0) + 'px;max-width:' + w.toFixed(0) + 'px">' + svg('sliders') + '<span>' + esc(t.name) + '</span></button>';
     });
     if (marks._h !== html){ marks.innerHTML = html; marks._h = html; }
     marks.hidden = false;
@@ -559,18 +633,90 @@
   var marksTick = 0;
 
   function openSheet(kind, title, html, part){
-    sheetKind = kind; sheetPart = part == null ? -1 : part;
+    sheetKind = kind; sheetPart = part == null ? -1 : part; if (kind !== 'item') curItem = null;
     sheetTitle.textContent = title; bodyEl.innerHTML = html; el.hidden = false; bodyEl.scrollTop = 0;
     if (kind !== 'part' || !el._shown) sheetMove.reset();          // a tag tapped while the sheet is down keeps it down
     el._shown = true;
     marksSoon();
   }
-  function closeSheet(){ el.hidden = true; el._shown = false; sheetKind = null; sheetPart = -1; bodyEl.innerHTML = ''; sheetMove.reset(); marksSoon(); }
+  function closeSheet(){ curItem = null; el.hidden = true; el._shown = false; sheetKind = null; sheetPart = -1; bodyEl.innerHTML = ''; sheetMove.reset(); marksSoon(); }
 
   function partHTML(i){
     var sf = byId[cur], part = sf.parts[i]; if (!part) return '';
     var opts = part.opts.filter(function(o){ return shown(sf, o); });
-    return opts.map(function(o){ return seg(sf, o); }).join('') + (partEls(part, true).length ? '' : '<p class="pw-note">Hidden on this screen right now. Pick a choice above to bring it back.</p>');
+    return opts.map(function(o){ return seg(sf, o); }).join('') + (partEls(part, true).length ? '' : '<p class="pw-note">Hidden on this screen right now. Pick a choice above to bring it back.</p>') +
+      (part.name === 'Tools & volume' ? menuButtonsHTML() : '');
+  }
+  // ---- one button (or row) on its own ----
+  function menuButtonsHTML(){
+    var Q = window.__ppQuickBar; if (!Q) return '';
+    var list = Q.list(), onL = list.filter(function(x){ return x.on; });
+    return '<div class="ls-part"><div class="ls-pname">Buttons in the ☰ menu</div><p class="ls-note">Every button of the player’s menu. Turn one on to put it on the player’s quick bar (' + Q.used() + ' of ' + Q.max() + ' places used); off, it stays in the ☰ menu.</p>' +
+      '<div class="ls-order">' + list.map(function(it){
+        var j = onL.indexOf(it);
+        return '<div class="ls-orow ls-qbrow' + (it.on ? '' : ' ls-off') + '"><i class="ls-qbic">' + it.icon + '</i><span>' + esc(it.label) + (it.weight > 1 ? ' <small>(' + it.weight + ' places)</small>' : '') + '</span>' +
+          (it.on ? '<button type="button" class="ls-ic" data-qb-mv="' + it.id + '|-1" aria-label="Move ' + esc(it.label) + ' left"' + (j ? '' : ' disabled') + '>' + svg('up') + '</button>' +
+            '<button type="button" class="ls-ic" data-qb-mv="' + it.id + '|1" aria-label="Move ' + esc(it.label) + ' right"' + (j < onL.length - 1 ? '' : ' disabled') + '>' + svg('down') + '</button>' : '') +
+          '<button type="button" class="ls-ic' + (it.on ? ' on' : '') + '" data-qb-tg="' + it.id + '" aria-label="' + (it.on ? 'Take ' + esc(it.label) + ' off the quick bar' : 'Put ' + esc(it.label) + ' on the quick bar') + '">' + svg('eye') + '</button></div>';
+      }).join('') + '</div><div class="ls-foot"><button type="button" data-qb-reset="1">Menu order</button></div></div>';
+  }
+  function arrRow(gid, key, what){
+    var A = window.PPWidgets && window.PPWidgets.arrange; if (!A) return '';
+    var list = A.list(gid) || [], i = list.findIndex(function(x){ return x.key === key; }); if (i < 0) return '';
+    var it = list[i], h = '';
+    if (it.canHide) h += '<div class="ls-opt"><label>On the screen</label><div class="ls-seg"><button type="button" data-it-tg="' + esc(key) + '"' + (it.shown ? ' class="on"' : '') + '>Shown</button><button type="button" data-it-tg="' + esc(key) + '"' + (it.shown ? '' : ' class="on"') + '>Hidden</button></div></div>';
+    else h += '<p class="pw-note">' + esc(it.label) + ' always stays.</p>';
+    if (A.canOrder(gid)) h += '<div class="ls-opt"><label>Place in the ' + what + '</label><div class="ls-seg"><button type="button" data-it-mv="' + gid + '|' + esc(key) + '|-1"' + (i ? '' : ' disabled') + '>‹ Earlier</button><button type="button" data-it-mv="' + gid + '|' + esc(key) + '|1"' + (i < list.length - 1 ? '' : ' disabled') + '>Later ›</button></div></div>';
+    return h;
+  }
+  function spotPickHTML(k, sp){
+    var c = spotChoices(), v = spotVals(k)[sp[0]] || '', W = window.PPWidgets;
+    function tile(val, label, icon){
+      return '<button type="button" class="ls-pick' + (v === val ? ' on' : '') + '" data-spot-pick="' + k + '|' + sp[0] + '|' + esc(val) + '">' + (icon || svg('x')) + '<span>' + esc(label) + '</span></button>';
+    }
+    var base = sp[2] ? tile('', 'Normal (' + (sp[2] === 'shuffle-btn' ? 'Shuffle' : 'Repeat') + ')', (document.getElementById(sp[2]) || {}).querySelector ? (document.getElementById(sp[2]).querySelector('svg') || {}).outerHTML : '') + tile('none', 'Nothing', svg('x'))
+                     : tile('', 'Empty', svg('x'));
+    return '<div class="ls-part"><div class="ls-pname">' + esc(sp[1]) + '</div><p class="ls-note">Tap a button to put it here.</p><div class="ls-picks">' + base + '</div>' +
+      '<div class="ls-pname">The player’s buttons</div><div class="ls-picks">' + c.els.map(function(x){ var o = document.getElementById(x[0]), ic = o && o.querySelector('svg'); return tile('el:' + x[0], x[1], ic ? ic.outerHTML : ''); }).join('') + '</div>' +
+      '<div class="ls-pname">Actions</div><div class="ls-picks">' + c.acts.map(function(x){ return tile('act:' + x.id, x.label, IC[x.id] ? svg(x.id) : W && W.icon ? W.icon(x.icon || 'star') : ''); }).join('') + '</div></div>';
+  }
+  function setSpot(k, spot, v){
+    remember(); S.spots = S.spots || {}; S.spots[k] = Object.assign({}, S.spots[k]);
+    if (v) S.spots[k][spot] = v; else delete S.spots[k][spot];
+    if (!Object.keys(S.spots[k]).length) delete S.spots[k]; if (!Object.keys(S.spots).length) delete S.spots;
+    save();
+    // the spot's button is rebuilt: the sheet follows it (redrawSheet finds it again by its place)
+    if (sheetKind === 'item' && curItem) curItem.spot = [k, spot];
+    change();
+  }
+  function partBtn(name){ var i = byId[cur].parts.findIndex(function(p){ return p.name === name; }); return i < 0 ? '' : '<div class="ls-foot"><button type="button" data-part="' + i + '">' + esc(name) + ': every choice</button></div>'; }
+  function itemHTML(it){
+    var x = it.el, k = it.d.kind, sid = cur, h = '';
+    if (k === 'tb'){
+      h = arrRow('transport', x.id, 'main row');
+      var sp = SPOTS[sid] && SPOTS[sid].find(function(q){ return q[2] === x.id; });
+      if (sp) h += spotPickHTML(sid, sp);
+      return h + partBtn('Main buttons');
+    }
+    if (k === 'spot'){ var s2 = SPOTS[x.dataset.spotK].find(function(q){ return q[0] === x.dataset.spot; }); return s2 ? spotPickHTML(x.dataset.spotK, s2) : ''; }
+    if (k === 'qb'){
+      var id = x.dataset.itemWrapper, Q = window.__ppQuickBar, list = Q ? Q.list().filter(function(q){ return q.on; }) : [], j = list.findIndex(function(q){ return q.id === id; });
+      h = '<div class="ls-opt"><label>Where</label><div class="ls-seg"><button type="button" class="on">On the quick bar</button><button type="button" data-qb-tg="' + id + '">Only in the ☰ menu</button></div></div>' +
+        '<div class="ls-opt"><label>Place on the bar</label><div class="ls-seg"><button type="button" data-qb-mv="' + id + '|-1"' + (j > 0 ? '' : ' disabled') + '>‹ Left</button><button type="button" data-qb-mv="' + id + '|1"' + (j >= 0 && j < list.length - 1 ? '' : ' disabled') + '>Right ›</button></div></div>';
+      return h + menuButtonsHTML() + partBtn('Tools & volume');
+    }
+    if (k === 'vt'){ var b = x.matches('button') ? x : x.querySelector('button'); return (b ? arrRow('video', b.id, 'video tools') : '') + partBtn('Top bar'); }
+    if (k === 'sv') return arrRow('seek', x.id, 'row') + partBtn(x.id === 'vol-row' ? 'Tools & volume' : 'Seek bar');
+    if (k === 'top'){
+      if (x.id === 'menu-btn') return menuButtonsHTML();
+      return '<p class="pw-note">' + esc(itemName(x)) + ' always stays. Tap a dashed + beside it to add your own button there.</p>';
+    }
+    if (k === 'sec') return sectionsHTML();
+    return '';
+  }
+  function openItem(it){
+    if (it.d.part){ var i = byId[cur].parts.findIndex(function(p){ return p.name === it.d.part; }); if (i >= 0) openPart(i); return; }
+    curItem = it; openSheet('item', itemName(it.el), itemHTML(it));
   }
   function presetsHTML(){
     var sf = byId[cur], p = presetOf(sf);
@@ -581,7 +727,7 @@
   }
   function arrangeHTML(){
     var sf = byId[cur];
-    return orderHTML(sf) + (SPOTS[sf.id] ? spotsHTML(sf.id) : '') +
+    return orderHTML(sf) + (SPOTS[sf.id] ? menuButtonsHTML() + spotsHTML(sf.id) : '') +
       (sf.id === 'lib' ? midHTML('lib-mid', 'Widgets in the list', 'A row of widgets partway down your songs and videos: a clock, buttons, a Setting widget, anything.', [[0,'At the top'],[1,'After 1'],[3,'After 3'],[5,'After 5'],[10,'After 10'],[25,'After 25']]) : '') +
       (sf.id === 'pls' ? midHTML('pls-mid', 'Widgets among your playlists', 'Widgets between your playlists, in the list or the grid.', [[0,'Before the first'],[1,'After 1'],[2,'After 2'],[4,'After 4'],[8,'After 8']]) : '') +
       (sf.id === 'set' ? setZonesHTML() + sectionsHTML() : '');
@@ -601,6 +747,10 @@
     if (sheetKind === 'part') bodyEl.innerHTML = partHTML(sheetPart);
     else if (sheetKind === 'presets') bodyEl.innerHTML = presetsHTML();
     else if (sheetKind === 'arrange') bodyEl.innerHTML = arrangeHTML();
+    else if (sheetKind === 'menu') bodyEl.innerHTML = menuButtonsHTML();
+    else if (sheetKind === 'item'){
+      if (curItem && !document.contains(curItem.el) && curItem.spot){ var nb = document.querySelector('.ls-spot[data-spot-k="' + curItem.spot[0] + '"][data-spot="' + curItem.spot[1] + '"]'); if (nb) curItem = { el:nb, d:{ kind:'spot' }, spot:curItem.spot }; }
+      if (!curItem || !document.contains(curItem.el)){ curItem = null; closeSheet(); return; } bodyEl.innerHTML = itemHTML(curItem); }
     else if (sheetKind === 'screens') bodyEl.innerHTML = screensHTML();
     else if (sheetKind === 'hidden'){ if (!hiddenParts().length){ closeSheet(); return; } bodyEl.innerHTML = hiddenHTML(); }
     bodyEl.scrollTop = top;
@@ -611,9 +761,20 @@
     var need = showScreen();
     bar.querySelector('.ls-ed-title span').textContent = byId[cur].title;
     bar.querySelector('[data-lb="arrange"]').hidden = !arrangeHTML();
+    bar.querySelector('[data-lb="menu"]').hidden = !(SPOTS[cur] && window.__ppQuickBar);
+    body.setAttribute('data-ls-scr', cur);
+    // the player's own top bar would sit under the studio's bar: the player is shrunk to fit the room below it
+    var cs = getComputedStyle(body); [bar, el, marks].forEach(function(x){ x.style.fontFamily = cs.fontFamily; x.style.color = cs.color; });
+    var top = Math.ceil(bar.getBoundingClientRect().bottom + 6), vh = window.innerHeight;
+    UI.style.setProperty('--ls-top', top + 'px'); UI.style.setProperty('--ls-sc', ((vh - top) / vh).toFixed(4));
     keepVideoUi();
     if (need) openSheet('need', byId[cur].title, need); else if (sheetKind === 'need' || sheetKind === 'screens') closeSheet();
     setTimeout(marksSoon, 80); setTimeout(marksSoon, 450);
+  }
+  // a quick-bar button taken off leaves the screen: its sheet turns into the full list of the menu's buttons
+  function afterQb(){
+    if (sheetKind === 'item' && curItem && curItem.d.kind === 'qb' && (!document.contains(curItem.el) || curItem.el.closest('#menu-overlay'))) openSheet('menu', 'Buttons in the ☰ menu', menuButtonsHTML());
+    applySpots(); redrawSheet(); setTimeout(marksSoon, 60); setTimeout(marksSoon, 400);
   }
   function remember(){ undoS.push(JSON.stringify(S)); if (undoS.length > 40) undoS.shift(); }
   function change(){ save(); apply(); applySpots(); redrawSheet(); setTimeout(marksSoon, 60); setTimeout(marksSoon, 400); }
@@ -625,6 +786,7 @@
     else if (k === 'screens') openSheet('screens', 'Which screen', screensHTML());
     else if (k === 'presets') openSheet('presets', 'Presets', presetsHTML());
     else if (k === 'arrange') openSheet('arrange', 'Arrange', arrangeHTML());
+    else if (k === 'menu') openSheet('menu', 'Buttons in the ☰ menu', menuButtonsHTML());
     else if (k === 'hidden') openSheet('hidden', 'Hidden parts', hiddenHTML());
     else if (k === 'undo'){
       if (!undoS.length){ toast('Nothing to undo.'); return; }
@@ -640,23 +802,30 @@
     var tag = t.closest('.ls-tag');
     e.preventDefault(); e.stopPropagation();
     if (tag){ openPart(+tag.dataset.part); return; }
-    var sf = byId[cur], best = -1, area = Infinity;
+    var sf = byId[cur], best = -1, bestIt = null, area = Infinity;
     sf.parts.forEach(function(p, i){ partEls(p, true).forEach(function(x){ if (x.contains(t)){ var r = x.getBoundingClientRect(), ar = r.width * r.height; if (ar < area){ area = ar; best = i; } } }); });
-    if (best >= 0) openPart(best);
+    itemEls().forEach(function(it){ if (it.el.contains(t)){ var r = it.el.getBoundingClientRect(), ar = r.width * r.height; if (ar <= area){ area = ar; bestIt = it; } } });
+    if (bestIt) openItem(bestIt); else if (best >= 0) openPart(best);
   }, true);
 
   el.addEventListener('click', function(e){
     var t = e.target, b;
     if (t.closest('[data-ls="x"]')){ closeSheet(); return; }
-    if ((b = t.closest('[data-ls-tab]'))){ cur = b.dataset.lsTab; undoS = []; enterScreen(); if (sheetKind === 'screens') closeSheet(); return; }
+    if ((b = t.closest('[data-ls-tab]'))){ cur = b.dataset.lsTab; undoS = []; enterScreen(); applySpots(); if (sheetKind === 'screens') closeSheet(); return; }
     if ((b = t.closest('[data-part]'))){ openPart(+b.dataset.part); return; }
     if ((b = t.closest('[data-pre]'))){
       var sf = byId[cur], pr = sf.presets.find(function(x){ return x.id === b.dataset.pre; });
       if (pr){ remember(); if (Object.keys(pr.v).length) S[sf.id] = Object.assign({}, pr.v); else delete S[sf.id]; change(); }
       return;
     }
-    if ((b = t.closest('.ls-seg button'))){ remember(); setVal(byId[cur], b.parentNode.dataset.k, b.dataset.v); change(); return; }
-    var A = window.PPWidgets && window.PPWidgets.arrange;
+    if ((b = t.closest('.ls-seg[data-k] button'))){ remember(); setVal(byId[cur], b.parentNode.dataset.k, b.dataset.v); change(); return; }
+    var A = window.PPWidgets && window.PPWidgets.arrange, Q = window.__ppQuickBar;
+    if ((b = t.closest('[data-spot-pick]'))){ var sk = b.dataset.spotPick.split('|'); setSpot(sk[0], sk[1], sk.slice(2).join('|')); return; }
+    if ((b = t.closest('[data-qb-tg]')) && Q){ Q.toggle(b.dataset.qbTg); afterQb(); return; }
+    if ((b = t.closest('[data-qb-mv]')) && Q){ var qm = b.dataset.qbMv.split('|'); Q.move(qm[0], +qm[1]); afterQb(); return; }
+    if ((b = t.closest('[data-qb-reset]')) && Q){ Q.reset(); afterQb(); return; }
+    if ((b = t.closest('[data-it-tg]')) && A){ var on = !b.classList.contains('on'); if (on){ A.toggle(b.dataset.itTg); change(); } return; }
+    if ((b = t.closest('[data-it-mv]')) && A){ var im = b.dataset.itMv.split('|'), il = A.list(im[0]) || [], ii = il.findIndex(function(x){ return x.key === im[1]; }); if (ii >= 0){ A.move(im[0], ii, +im[2]); change(); } return; }
     if ((b = t.closest('[data-mv]')) && A){ var g = b.closest('[data-g]').dataset.g, m = b.dataset.mv.split(':'); A.move(g, +m[0], +m[1]); change(); return; }
     if ((b = t.closest('[data-tg]')) && A){ A.toggle(b.dataset.tg); change(); return; }
     if ((b = t.closest('[data-mid]'))){ var mm = b.dataset.mid.split('|'); window.PPWidgets.zopt(mm[0], { after: +mm[1] }); change(); return; }
@@ -698,13 +867,14 @@
     if (!body.classList.contains('player-layout')){ toast('The layout studio needs the phone layout (Settings > Appearance).'); }
     if (window.PPWidgets && window.PPWidgets.stopEdit) window.PPWidgets.stopEdit();
     open = true; undoS = []; bar.hidden = false; body.classList.add('ls-open', 'ls-editing');
-    enterScreen();
+    enterScreen(); applySpots();
     clearInterval(marksTick); marksTick = setInterval(marksSoon, 500);   // the screen moves by itself too (the video's controls, a list growing)
   }
   function close(){
     open = false; bar.hidden = true; closeSheet(); marks.hidden = true; marks.innerHTML = ''; marks._h = '';
-    body.classList.remove('ls-open', 'ls-editing');
+    body.classList.remove('ls-open', 'ls-editing'); body.removeAttribute('data-ls-scr');
     clearInterval(keepUi); keepUi = null; clearInterval(marksTick); marksTick = 0;
+    applySpots();
     toast('Layout saved.');
   }
   window.addEventListener('keydown', function(e){ if (e.key === 'Escape' && open){ if (!el.hidden) closeSheet(); else close(); } });
