@@ -448,6 +448,7 @@
   var ppAddChain = Promise.resolve();
   function ppAddNative(entries, src){
     if (!entries || !entries.length) return ppAddChain;
+    if (src === 'open'){ ppOpenExternal(entries); return ppAddChain; }   // "Open with Press Play" from another app: play it now
     if (src === 'scan' && (ppInboxScans > 0 || ppManualScan)){ ppFoundAdd(entries); return ppAddChain; }   // found by a look at the phone (background or Scan phone): wait in the inbox
     if (src !== 'scan' && src !== 'inbox') return ppAddNativeNow(entries, src);
     const manual = ppManualScan;
@@ -462,7 +463,7 @@
   async function ppAddNativeNow(entries, src){
     if (!entries || !entries.length) return;
     const startIdx = tracks.length;
-    const targetPlaylistId = src === 'inbox' ? null : userPlaylistViewId();
+    const targetPlaylistId = (src === 'inbox' || src === 'open') ? null : userPlaylistViewId();   // an opened file never lands in the playlist on screen
     const known = new Set(tracks.map(t => t.nativeUri).filter(Boolean));
     const fresh = [];
     for (const e of entries){
@@ -503,6 +504,75 @@
     }
     if (subFiles.length) attachSidecarSubtitles(subFiles, videoPairs, fresh.length);
   }
+  // ---------- a file opened from another app ("Open with Press Play" in Files and the like) ----------
+  // It plays at once, with the player open. A file that was not in the library yet is added for that; once you leave it
+  // (close the player, or another track plays) you are asked whether to keep it in the library or remove it again.
+  // "Don't ask again" stores the answer, which Settings > Files opened from other apps can change: 'ask', 'keep', 'remove'.
+  const PP_OPEN_KEY = 'ppOpenedKeep';
+  const ppOpenPref = () => { try { const v = localStorage.getItem(PP_OPEN_KEY); return v === 'keep' || v === 'remove' ? v : 'ask'; } catch(e){ return 'ask'; } };
+  let ppOpened = null, ppOpenAsking = false;          // ppOpened: { ids: dbIds added just to play them, seen: the player showed one }
+  const ppFindUri = uri => tracks.findIndex(t => t.nativeUri && (t.nativeUri === uri || PPNative.sameUri(t.nativeUri, uri)));
+  async function ppOpenExternal(entries){
+    entries = (entries || []).filter(e => e && e.uri); if (!entries.length) return;
+    await ppAddChain;                                   // a scan adding files right now: let it finish, so nothing is added twice
+    const fresh = entries.filter(e => ppFindUri(e.uri) < 0);
+    if (fresh.length) await ppAddNativeNow(fresh, 'open');
+    const idxs = entries.map(e => ppFindUri(e.uri)).filter(i => i >= 0); if (!idxs.length) return;
+    const added = fresh.map(e => ppFindUri(e.uri)).filter(i => i >= 0).map(i => tracks[i].dbId);
+    if (added.length) ppOpened = { ids: new Set((ppOpened ? [...ppOpened.ids] : []).concat(added)), seen: false };
+    playQueue = idxs; shuffleOrder = []; loadTrack(idxs[0], true);
+    // the player page: the layout may still be starting when the app was launched by the file
+    let n = 0; const show = () => { const K = window.__ppHomeKit; if (K && K.openPlayer){ if (!K.playerOpen()) K.openPlayer(); } else if (n++ < 20) setTimeout(show, 150); };
+    show();
+  }
+  function ppOpenedRemove(){
+    if (!ppOpened) return;
+    const ids = ppOpened.ids; ppOpened = null;
+    const idx = tracks.map((t, i) => ids.has(t.dbId) ? i : -1).filter(i => i >= 0).sort((a, b) => b - a);
+    if (!idx.length) return;
+    idx.forEach(i => removeTrack(i, true));
+    saveLibraryMeta(); renderPlaylist(); renderPlaylistsManager();
+  }
+  function ppOpenAsk(){
+    const ts = [...ppOpened.ids].map(id => tracks.find(t => t.dbId === id)).filter(Boolean);
+    if (!ts.length){ ppOpened = null; return; }
+    ppOpenAsking = true;
+    const one = ts.length === 1, ov = document.createElement('div');
+    ov.id = 'pp-open-ask'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-labelledby', 'pp-oa-t');
+    ov.innerHTML = '<div class="pp-oa-card"><h2 id="pp-oa-t">Keep ' + (one ? '“' + escapeHtml(ts[0].title) + '”' : ts.length + ' files') + ' in your library?</h2>' +
+      '<p>You opened ' + (one ? 'it' : 'them') + ' from another app. Keep ' + (one ? 'it' : 'them') + ' with the rest of your music and videos, or remove ' + (one ? 'it' : 'them') + ' again (the file itself stays on your phone).</p>' +
+      '<label class="pp-oa-never"><input type="checkbox"> Don’t ask again</label>' +
+      '<div class="pp-oa-btns"><button type="button" data-a="remove">Remove</button><button type="button" data-a="keep" class="pp-oa-pri">Keep</button></div></div>';
+    document.body.appendChild(ov);
+    ov.querySelector('[data-a="keep"]').focus();
+    ov.addEventListener('click', e => {
+      const b = e.target.closest('[data-a]'); if (!b) return;
+      const a = b.dataset.a;
+      if (ov.querySelector('input').checked){ try { localStorage.setItem(PP_OPEN_KEY, a); } catch(x){} ppOpenSettingSync(); }
+      if (a === 'remove') ppOpenedRemove(); else ppOpened = null;
+      ov.remove(); ppOpenAsking = false;
+      showToast(a === 'remove' ? (one ? 'Removed from your library.' : 'Removed them from your library.') : (one ? 'Kept in your library.' : 'Kept them in your library.'));
+    });
+  }
+  // Left it? The player closed, or a track that was not opened this way is playing.
+  function ppOpenedCheck(){
+    if (!ppOpened || ppOpenAsking) return;
+    const cur = currentIndex !== -1 ? tracks[currentIndex] : null, onIt = !!(cur && ppOpened.ids.has(cur.dbId));
+    const playerShown = !document.body.classList.contains('player-layout') || document.body.hasAttribute('data-pl-player');
+    if (onIt && playerShown){ ppOpened.seen = true; return; }
+    if (!ppOpened.seen && onIt) return;                // still opening
+    if (![...ppOpened.ids].some(id => tracks.some(t => t.dbId === id))){ ppOpened = null; return; }   // already removed some other way
+    const pref = ppOpenPref();
+    if (pref === 'keep'){ ppOpened = null; return; }
+    if (pref === 'remove'){ if (!onIt) ppOpenedRemove(); return; }   // still playing in the mini player: removed once something else plays
+    ppOpenAsk();
+  }
+  setInterval(ppOpenedCheck, 700);
+  new MutationObserver(() => setTimeout(ppOpenedCheck, 50)).observe(document.body, { attributes: true, attributeFilter: ['data-pl-player'] });
+  function ppOpenSettingSync(){ const s = document.getElementById('open-keep-select'); if (s) s.value = ppOpenPref(); }
+  { const s = document.getElementById('open-keep-select');
+    if (s){ ppOpenSettingSync(); s.addEventListener('change', () => { try { localStorage.setItem(PP_OPEN_KEY, s.value); } catch(e){} }); } }
+
   // What should play after the current track? Mirrors onEnded() so native can advance on its own.
   let ppNextSig = '';
   function ppQueueNext(){
