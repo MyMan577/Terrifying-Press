@@ -1,0 +1,25 @@
+  /* ===== Extras: slideshow, the cover behind a widget (pp-widgets-extras.js) ===== */
+  /* slideshow */
+  .pw-sl2{ position:relative; width:100%; overflow:hidden; border-radius:calc(14px*var(--ui-round,1)); background:var(--bg-elev); cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .pw-sl2-i{ position:absolute; inset:0; opacity:0; transition:opacity .9s ease, transform .9s ease; }
+  .pw-sl2-i.on{ opacity:1; z-index:1; }
+  .pw-sl2-i img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .pw-sl2-contain .pw-sl2-i img{ object-fit:contain; }
+  .pw-sl2-slide .pw-sl2-i{ transform:translateX(100%); opacity:1; transition:transform .7s cubic-bezier(.3,.8,.3,1); }
+  .pw-sl2-slide .pw-sl2-i.on{ transform:none; }
+  .pw-sl2-slide .pw-sl2-i.was{ transform:translateX(-100%); }
+  .pw-sl2-zoom .pw-sl2-i img{ transform:scale(1); transition:transform 12s linear; }
+  .pw-sl2-zoom .pw-sl2-i.on img{ transform:scale(1.14); }
+  .pw-sl2-cap{ position:absolute; left:0; right:0; bottom:0; padding:22px 12px 9px; font-size:13px; font-weight:650; color:#fff; background:linear-gradient(transparent, rgba(0,0,0,.65)); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pw-sl2-dots{ position:absolute; z-index:2; left:0; right:0; top:8px; display:flex; justify-content:center; gap:5px; pointer-events:none; }
+  .pw-sl2-dots i{ width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,.45); box-shadow:0 1px 3px rgba(0,0,0,.4); }
+  .pw-sl2-dots i.on{ background:#fff; width:14px; border-radius:3px; }
+  @media (prefers-reduced-motion: reduce){ .pw-sl2-i, .pw-sl2-i img{ transition:none !important; } }
+
+  /* the cover of what is playing behind a widget */
+  .pw-bx-cover{ position:relative; isolation:isolate; overflow:hidden; color:#fff; border-radius:calc(16px*var(--ui-round,1)); padding:12px 14px; background:var(--bg-elev); }
+  .pw-bx-cover::before{ content:''; position:absolute; inset:calc(var(--pw-bxb, 14px) * -2); z-index:-1; background:var(--pw-cover, none) center/cover no-repeat, var(--bg-elev);
+    filter:blur(var(--pw-bxb, 14px)) saturate(1.35); transition:background-image .6s; }
+  .pw-bx-cover::after{ content:''; position:absolute; inset:0; z-index:-1; background:rgba(0,0,0,var(--pw-bxd, .35)); }
+  .pw-bx-cover :is(.pw-clock-d, .pw-np-a, .pw-stat span, .pw-lyr-n, .pw-li small, .pw-wh, .pw-sl small, .pw-lvl small, .pw-empty, .pw-song-t small, .pw-otd-e){ color:inherit; opacity:.8; }
+  .pw-bx-cover{ --text:#fff; --text-dim:rgba(255,255,255,.78); }

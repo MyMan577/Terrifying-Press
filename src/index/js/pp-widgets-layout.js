@@ -1,6 +1,6 @@
   var BUILTIN_ORDER = ['title','games','tagline','playground','tabs','hero','chips','videos','audio','history'];
   var NEW_ORDER = ['nowplaying','cover','seekbar','upnext','queue','lyrics','singalong','stems','viz','volume','speed','trackinfo','stack','action','shufpl','mood','shortcuts','search','eq','sleeper','alarm','bookmarks','practice','level','sotd','onthisday','recap','bloopy','pet','game','guess','taptempo',
-                   'clock','world','greeting','countdown','calendar','dayprog','stopwatch','focus','battery','todo','tally','dice','breathe','text','rotate','drawing','image','stats','storage',
+                   'clock','world','greeting','countdown','calendar','dayprog','stopwatch','focus','battery','todo','tally','dice','breathe','text','rotate','drawing','image','slides','stats','storage',
                    'recent','most','random','cont','genre','playlist','playlists','pltiles','tagchips','setting','setsec','spacer','divider'];
 
   function subOf(t){ return t.kind === 'video' ? (t.height ? t.height + 'p' : (t.ext || '').toUpperCase()) : ((t.artist && t.artist !== 'Unknown artist') ? t.artist : (t.ext || '').toUpperCase()); }
@@ -89,6 +89,7 @@
     if (o.bx) cls += ' pw-bx-' + o.bx;
     if ((o.bx === 'color' || o.bx === 'gradient') && okCol(o.bxc)) st.push('--pw-bxc:' + o.bxc);
     if (o.bx === 'gradient' && okCol(o.bxc2)) st.push('--pw-bxc2:' + o.bxc2);
+    if (o.bx === 'cover') st.push('--pw-bxd:' + ((o.bxd != null ? +o.bxd : 35) / 100), '--pw-bxb:' + (o.bxb === '0' ? 0 : +o.bxb || 14) + 'px');
     if (o.bx === 'image'){ if (okImg(o.bxi)) st.push('--pw-bxi:url("' + o.bxi + '")'); st.push('--pw-bxd:' + ((o.bxd != null ? +o.bxd : 35) / 100)); }
     if (o.rad != null && RAD[o.rad] != null){ cls += ' pw-rad'; st.push('--pw-rad:' + RAD[o.rad] + 'px'); }
     if (o.pad) cls += ' pw-pad-' + o.pad;
@@ -934,7 +935,8 @@
   function commonFields(it, top){
     var o = it.o, f = '<div class="pw-sh-h">Every widget</div>';
     if (top) f += fieldHTML(['when', 'Show it', 'seg', [['','Always'],['playing','While something plays'],['idle','When nothing plays']]], o);
-    f += fieldHTML(['bx', 'Behind it', 'seg', [['','Nothing'],['card','Card'],['glass','Glass'],['accent','Accent'],['color','Colour'],['gradient','Gradient'],['image','Picture']]], o);
+    f += fieldHTML(['bx', 'Behind it', 'seg', [['','Nothing'],['card','Card'],['glass','Glass'],['accent','Accent'],['color','Colour'],['gradient','Gradient'],['image','Picture'],['cover','Cover art']]], o);
+    if (o.bx === 'cover'){ f += fieldHTML(['bxb', 'Blur', 'seg', [['0','None'],['','Soft'],['30','Strong']]], o); f += fieldHTML(['bxd', 'Darken it', 'range', [0, 80, 5, '%', 35]], o); }
     if (o.bx === 'color' || o.bx === 'gradient') f += fieldHTML(['bxc', o.bx === 'gradient' ? 'First colour' : 'Background colour', 'color', ''], o);
     if (o.bx === 'gradient') f += fieldHTML(['bxc2', 'Second colour', 'color', ''], o);
     if (o.bx === 'image'){ f += fieldHTML(['bxi', 'Picture', 'image', ''], o); f += fieldHTML(['bxd', 'Darken it', 'range', [0, 80, 5, '%', 35]], o); }
