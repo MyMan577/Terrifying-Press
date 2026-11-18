@@ -518,6 +518,23 @@
     bar.addEventListener('click', function(e){ if (lpFired){ lpFired = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
     bar.addEventListener('contextmenu', function(e){ if (e.target.closest('.pw-tab')) e.preventDefault(); });
   }
+  // Swiping between tabs (player-layout.js) goes through the tab bar as it is laid out: the built-in tabs and the
+  // pages, in the bar's order. Tabs that run an action (the player, games, a button) are stepped over.
+  window.__ppPwSwipe = {
+    pageEl: pageEl,
+    pageOpen: function(){ return openPageId; },
+    targets: function(){
+      var out = []; if (!bar) return out;
+      bar.querySelectorAll('button[data-pl-view], .pw-tab').forEach(function(b){
+        if (b.hidden) return;
+        if (b.dataset.plView){ out.push({ view: b.dataset.plView }); return; }
+        var t = tabList().find(function(x){ return x.id === b.dataset.pwTab; });
+        if (t && t.type === 'page' && pageById(t.page)) out.push({ page: t.page });
+      });
+      return out;
+    },
+    openPage: openPage, closePage: closePage
+  };
   function goView(v){
     closePage();
     var K = kit(); if (!K) return;

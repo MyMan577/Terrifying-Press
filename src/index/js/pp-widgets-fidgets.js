@@ -71,14 +71,49 @@
   function fdSetup(el, step, maxDpr){
     var cv = el.querySelector('canvas');
     var f = el._fd = { o: fdOpts(el), id: el.dataset.id || 'x', step: step, awake: false, cv: cv, g: cv ? cv.getContext('2d') : null, maxDpr: maxDpr, dirty: true, w: 1, h: 1, dpr: 1 };
-    if (cv){ cv.style.touchAction = 'none'; fdSize(f); }
+    if (cv){ cv.style.touchAction = 'pan-y'; fdSize(f); }      // the page can still scroll over it (see fdPointer)
     return f;
   }
   // Where the pointer is on the canvas, in canvas pixels.
   function fdPt(f, e){ var r = f.cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * f.dpr, y: (e.clientY - r.top) * f.dpr }; }
+  // Whether a touch at (x, y) (page pixels) is on the fidget itself. f.hit tells for the round ones: the canvas is a
+  // whole rectangle, and a touch on the empty part around a spinner or a knob is the page's (it scrolls).
+  function fdOwns(f, x, y){
+    if (!f.hit) return true;
+    var r = f.cv.getBoundingClientRect();
+    return f.hit(x - r.left, y - r.top, r.width, r.height);
+  }
+  /** A circle in the middle of the canvas, [k] of the shorter side across (plus a little to spare for fingers). */
+  function fdRound(k){ return function(x, y, w, h){ return Math.hypot(x - w / 2, y - h / 2) <= Math.min(w, h) * k + 10; }; }
+  // Fidgets and scrolling: a touch that starts on the fidget is the fidget's, and the page does not move under it;
+  // anywhere else on the widget the page scrolls as usual. A fidget that fills its whole box (the nebula) lets the
+  // page have a swipe that starts clearly up or down, and takes everything else. Neither ever switches tabs.
   function fdPointer(f, h){
-    var cv = f.cv, id = null;
-    cv.addEventListener('pointerdown', function(e){ if (editing || id != null) return; id = e.pointerId; try { cv.setPointerCapture(id); } catch(x){} e.preventDefault(); h.down(fdPt(f, e), e); fdWake(cv.parentNode); });
+    var cv = f.cv, id = null, tOwn = false, tDecided = false, tx = 0, ty = 0;
+    cv.addEventListener('touchstart', function(e){
+      var t = e.touches[0];
+      tOwn = !editing && e.touches.length === 1 && !!t && fdOwns(f, t.clientX, t.clientY); tDecided = false;
+      if (t){ tx = t.clientX; ty = t.clientY; }
+      if (tOwn) e.ppNoTabSwipe = true;                       // read by the tab swipe (player-layout.js)
+    }, { passive: true });
+    cv.addEventListener('touchmove', function(e){
+      if (!tOwn) return;
+      var t = e.touches[0];
+      if (!tDecided && t){
+        var dx = t.clientX - tx, dy = t.clientY - ty;
+        if (f.scrollVertical){
+          if (Math.hypot(dx, dy) < 8) return;               // not yet clear which way: decide on the next move
+          tDecided = true;
+          if (Math.abs(dy) > Math.abs(dx) * 1.3){ tOwn = false; return; }   // a scroll: the page takes it
+        } else tDecided = true;
+      }
+      if (e.cancelable) e.preventDefault();
+    }, { passive: false });
+    cv.addEventListener('pointerdown', function(e){
+      if (editing || id != null) return;
+      if (!fdOwns(f, e.clientX, e.clientY)) return;          // on the empty part of the canvas: not the fidget's
+      id = e.pointerId; try { cv.setPointerCapture(id); } catch(x){} e.preventDefault(); h.down(fdPt(f, e), e); fdWake(cv.parentNode);
+    });
     cv.addEventListener('pointermove', function(e){ if (e.pointerId !== id) return; h.move(fdPt(f, e), e); });
     var up = function(e){ if (e.pointerId !== id) return; id = null; h.up(fdPt(f, e), e); fdWake(cv.parentNode); };
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
@@ -115,6 +150,7 @@
     } };
   function spinInit(el){
     var f = fdSetup(el, step, 3), o = f.o, arms = Math.max(2, Math.min(6, +o.arms || 3)), fr = SPIN_FR[o.spin] || SPIN_FR[''];
+    f.hit = fdRound(0.5);
     var s = f.s = fdMem(f.id, { a: 0, v: 0, peak: 0 }), k = f.k = fdKeep(f.id, { spins: 0 });
     var samples = [], lastAng = 0, lastMove = 0, faceAt = 0, seg = 0;
     fdPointer(f, {
@@ -222,6 +258,7 @@
       el._fd.playing = st.playing; fdFace(el, fdFaceHTML(el._fd.o.show, st)); fdWake(el); } };
   function nebInit(el){
     var f = fdSetup(el, step, 2.5), o = f.o, look = o.look || '', parts = [], rings = [], ptr = null, pulse = 0, rainAt = 0, beatAt = 0;
+    f.scrollVertical = true;
     var N = look === 'fire' ? { low: 22, '': 40, high: 70 }[o.dens || ''] : { low: 70, '': 130, high: 220 }[o.dens || ''];
     var pal = o.pal === 'theme' ? null : NEB_PAL[o.pal || ''] || NEB_PAL[''], cols = [], sprites = [];
     var path = 0, swirled = false, lastDown = 0, lastDownP = null, prevP = null, lastRingP = null;
@@ -441,6 +478,7 @@
   }
   function knobInit(el){
     var f = fdSetup(el, step, 3), o = f.o, n = +o.step || 24, u = Math.PI * 2 / n;
+    f.hit = fdRound(0.5);
     var s = f.s = fdMem(f.id, { a: 0, fa: 0 }), k = f.k = fdKeep(f.id, { clicks: 0 });
     var lastAng = 0, det = 0, trackAcc = 0, glow = 0;
     fdPointer(f, {
@@ -518,6 +556,7 @@
     live:function(el, st){ if (!el._fd) sqInit(el); var o = el._fd.o; fdFace(el, !o.show || o.show === 'none' ? '' : fdFaceHTML(o.show, st, el._fd.k.n, 'squishes')); fdWake(el); } };
   function sqInit(el){
     var f = fdSetup(el, step, 2.5), o = f.o, K = 36, d = new Float32Array(K), v = new Float32Array(K), feel = SQ_FEEL[o.feel || ''] || SQ_FEEL[''];
+    f.hit = fdRound(0.46);
     var k = f.k = fdKeep(f.id, { n: 0 }), press = null, t = 0, blinkAt = 2 + Math.random() * 3, col = null, colAt = -9;
     fdPointer(f, {
       down: function(p){ press = { x: p.x, y: p.y, t0: t, fired: false }; k.n++; fdBuzz(o, 8); },

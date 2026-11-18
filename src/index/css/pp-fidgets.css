@@ -1,7 +1,7 @@
   /* ===== Fidgets (pp-widgets-fidgets.js) ===== */
   .pw-fd{ position:relative; width:100%; color:var(--pw-fc, var(--accent)); -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
   .pw-fd button{ -webkit-tap-highlight-color:transparent; }
-  .pw-fd-spin, .pw-fd-neb, .pw-fd-knob, .pw-fd-sq{ container-type:size; touch-action:none; }
+  .pw-fd-spin, .pw-fd-neb, .pw-fd-knob, .pw-fd-sq{ container-type:size; touch-action:pan-y; }   /* the page scrolls past them; a touch on the fidget itself keeps it still (pp-widgets-fidgets.js fdPointer) */
   .pw-fd > canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; z-index:1; }
   .pw-fd-fired{ animation:pw-fd-fire .7s ease-out; }
   @keyframes pw-fd-fire{ 0%{ filter:brightness(1.7) drop-shadow(0 0 14px currentColor); } 100%{ filter:none; } }

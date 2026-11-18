@@ -571,6 +571,8 @@
 
   /* ===== the newer widgets ===== */
   .pw-sk input[type=range], .pw-vol input[type=range]{ -webkit-appearance:none; appearance:none; width:100%; min-width:0; height:22px; background:transparent; margin:0; --p:0%; }
+  /* sliders in widgets move sideways; an up/down swipe that starts on one scrolls the page */
+  .pw-zone input[type=range], #pw-page input[type=range]{ touch-action:pan-y; }
   .pw-sk input[type=range]::-webkit-slider-runnable-track, .pw-vol input[type=range]::-webkit-slider-runnable-track{ height:5px; border-radius:3px;
     background:linear-gradient(90deg, var(--accent) var(--p), var(--line) var(--p)); }
   .pw-sk input[type=range]::-webkit-slider-thumb, .pw-vol input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:16px; height:16px; margin-top:-5.5px; border-radius:50%; background:var(--accent); border:0; box-shadow:0 1px 4px rgba(0,0,0,.4); }
