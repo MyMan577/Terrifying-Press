@@ -113,6 +113,7 @@
     playPause:     { label: 'Play / Pause', run: () => togglePlay() },
     next:          { label: 'Next track', run: () => { if (currentIndex !== -1) loadTrack(nextTrackIndex(), true); } },
     prev:          { label: 'Previous track', run: () => { if (currentIndex !== -1) loadTrack(prevTrackIndex(), true); } },
+    queue:         { label: 'Open the queue', run: () => { if (window.ppOpenQueue) window.ppOpenQueue(); } },
     seekFwd10:     { label: 'Seek +10s', run: () => { media().currentTime = (isFinite(media().duration) && media().duration > 0) ? Math.min(media().duration, media().currentTime + 10) : media().currentTime + 10; } },
     seekBack10:    { label: 'Seek -10s', run: () => { media().currentTime = Math.max(0, media().currentTime - 10); } },
     seekFwd30:     { label: 'Seek +30s', run: () => { media().currentTime = (isFinite(media().duration) && media().duration > 0) ? Math.min(media().duration, media().currentTime + 30) : media().currentTime + 30; } },

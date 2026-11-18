@@ -314,7 +314,9 @@
     // Drop the removed slot from the queue/shuffle order and shift every
     // index after it down by one, so they keep pointing at the same songs.
     const reindex = (arr) => arr.filter(idx => idx !== i).map(idx => idx > i ? idx - 1 : idx);
-    playQueue = reindex(playQueue);
+    { const sameCtx = queueCtxArr === playQueue;   // same queue, re-pointed: not a new context for the queue board
+      playQueue = reindex(playQueue);
+      if (sameCtx) queueCtxArr = playQueue; }
     shuffleOrder = reindex(shuffleOrder);
     if (i < currentIndex) currentIndex--;
     else if (wasCurrent){

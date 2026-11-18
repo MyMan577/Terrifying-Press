@@ -591,8 +591,7 @@
     let n = null;
     try {
       if (currentIndex !== -1 && repeatMode !== 2 && !(sleepTimer && sleepTimer.mode === 'track')){
-        const isLast = shuffleOn ? shuffleOrder.indexOf(currentIndex) === shuffleOrder.length - 1 : currentIndex === tracks.length - 1;
-        if (!(isLast && repeatMode === 0)){
+        if (!(repeatMode === 0 && atQueueEnd())){
           const ni = nextTrackIndex();
           if (ni >= 0 && ni !== currentIndex) n = tracks[ni];
         }
@@ -662,7 +661,7 @@
     };
     window.ppMigrateLibrary = () => PPNative.migrateAll(tracks);   // run once from the console, or hook to a button
     PPNative.hooks.tick = () => {
-      const sig = [currentIndex, shuffleOn, repeatMode, sleepTimer && sleepTimer.mode, tracks.length].join('|');
+      const sig = [currentIndex, shuffleOn, repeatMode, sleepTimer && sleepTimer.mode, tracks.length, queueVer].join('|');
       if (sig !== ppNextSig){ ppNextSig = sig; syncAudioLoop(); ppQueueNext(); }
       ppCatalogCheck();
     };

@@ -500,7 +500,9 @@
     const shuffledTracks = shuffleOrder.map(i => tracks[i]);
     tracks = sortOrder.map(i => tracks[i]);
     if (currentTrack) currentIndex = tracks.indexOf(currentTrack);
-    playQueue = queuedTracks.map(t => tracks.indexOf(t)).filter(i => i !== -1);
+    { const sameCtx = queueCtxArr === playQueue;   // same queue, re-pointed: not a new context for the queue board
+      playQueue = queuedTracks.map(t => tracks.indexOf(t)).filter(i => i !== -1);
+      if (sameCtx) queueCtxArr = playQueue; }
     shuffleOrder = shuffledTracks.map(t => tracks.indexOf(t)).filter(i => i !== -1);
     delete sortViews['__all__'];
     saveSortViews();

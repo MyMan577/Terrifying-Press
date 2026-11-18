@@ -52,6 +52,13 @@ Press Play has a lot of settings, and most of them are things other players leav
 - Playlist import reads M3U, PLS and XSPF, and CUE sheets: an album ripped as one big file with a .cue shows up as its separate songs, each playing just its part of the file.
 - Network shares: + Add, Network shares finds Windows/SMB shares, UPnP/DLNA media servers and NFS exports on your Wi-Fi, and you can connect to SMB, FTP, SFTP and NFS servers by address. Play a file straight from a share, or add a whole folder to your library.
 
+**Queue**
+- Swipe up on the mini player and it flips over to show what plays next. Tap it (or swipe up again) and the queue board grows out of it; swipe down flips it back.
+- The board shows the song playing, the songs you added yourself (drag to reorder, x to remove), then what follows from the playlist you were playing. Tap any song to jump to it.
+- Long-press songs in Home or the Library and choose Play next or Add to queue, or use Add songs on the board to search your library.
+- Swipe sideways on the board for your saved queues (Save queue keeps the current one) and presets: Shuffle everything, Recently added, Most played and Videos. Play starts one, Add to queue tacks it on.
+- The Up next widget's heading opens the board too, and "Open the queue" can be put on a gesture.
+
 **Leaving the player** (Settings, Playback)
 - Mini player on or off. With it off, leaving the player either keeps the track playing (tap it in Home or the Library to get back) or stops it.
 - Songs and videos each keep playing in the background, or pause when you leave the app (and carry on when you come back).

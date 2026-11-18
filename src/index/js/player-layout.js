@@ -267,7 +267,7 @@
   });
   // Swipe the mini-player away: drag it down or sideways and it follows your finger, fading as it goes. Let go past
   // about a third of the way (or flick it) and it slides off: playback pauses and the bar stays hidden until something
-  // plays again. Short of that, or dragged up, it springs back with a small overshoot. A drag never counts as a tap.
+  // plays again. Short of that it springs back with a small overshoot. Dragged up, it flips over to Up next (pp-queue.js). A drag never counts as a tap.
   { let sx = 0, sy = 0, down = false, locked = false, clickBlock = 0, trail = [];
     mini.style.touchAction = 'none';
     const band = (d, lim) => Math.sign(d) * lim * (1 - 1 / (Math.abs(d) / lim * 0.6 + 1));   // ~lim px at most
@@ -325,6 +325,14 @@
       const vx = fresh ? (z[1] - a[1]) / dt : 0, vy = fresh ? (z[2] - a[2]) / dt : 0;
       const far = side ? Math.abs(dx) > mini.offsetWidth * 0.33 : dy > 55;
       const flick = side ? Math.abs(vx) > 0.6 && Math.sign(vx) === Math.sign(dx) && Math.abs(dx) > 24 : vy > 0.5 && dy > 18;
+      const QB = window.__ppQueueBoard;
+      // Swipe up: flip over to Up next (or, already flipped, open the queue board). Swipe down on the flipped side flips back.
+      if (QB && !side && (dy < -34 || (vy < -0.45 && dy < -16))){
+        mini.style.transition = 'none'; mini.style.transform = ''; mini.style.opacity = '';
+        requestAnimationFrame(() => { mini.style.transition = ''; });
+        QB.miniUp(); return;
+      }
+      if (QB && !side && QB.flipped() && (far || flick)){ springBack(); QB.flip(false); return; }
       if (far || flick) dismiss(o[0], o[1]); else springBack();
     };
     mini.addEventListener('pointerup', end);
@@ -781,6 +789,8 @@
       '<button type="button" class="phs-all" data-act="all" id="phs-all">Select all</button>' +
     '</div>' +
     '<div class="phs-actions">' +
+      '<button type="button" class="phs-act" data-act="q-next">' + SVG('<path d="M4 6h10M4 12h10M4 18h6"/><path d="M16 15l5 3-5 3z" fill="currentColor"/>') + 'Play next</button>' +
+      '<button type="button" class="phs-act" data-act="q-add">' + SVG('<path d="M4 6h10M4 12h10M4 18h8"/><path d="M18 13v8M14 17h8"/>') + 'Queue</button>' +
       '<button type="button" class="phs-act" data-act="playlist">' + SVG('<path d="M4 6h12M4 12h8M4 18h8M17 14v6M14 17h6"/>') + 'Playlists</button>' +
       '<button type="button" class="phs-act" data-act="move-pl">' + SVG('<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>') + 'Move to</button>' +
       '<button type="button" class="phs-act" data-act="remove-pl">' + SVG('<path d="M5 12h14"/><circle cx="12" cy="12" r="9"/>') + 'Remove</button>' +

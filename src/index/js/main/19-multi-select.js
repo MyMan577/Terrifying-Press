@@ -234,7 +234,9 @@
     const shuffledTracks = shuffleOrder.map(i => tracks[i]);
     tracks.splice(0, tracks.length, ...list);
     if (currentTrack) currentIndex = tracks.indexOf(currentTrack);
-    playQueue = queuedTracks.map(t => tracks.indexOf(t)).filter(i => i !== -1);
+    { const sameCtx = queueCtxArr === playQueue;   // same queue, re-pointed: not a new context for the queue board
+      playQueue = queuedTracks.map(t => tracks.indexOf(t)).filter(i => i !== -1);
+      if (sameCtx) queueCtxArr = playQueue; }
     shuffleOrder = shuffledTracks.map(t => tracks.indexOf(t)).filter(i => i !== -1);
     saveLibraryMeta();
   }
@@ -332,6 +334,16 @@
     if (!btn || !selectMode) return;
     runSelectAct(btn.dataset.act, btn);
   });
+  // "Play next" / "Add to queue": the selected songs, in the order they were picked.
+  function queueSelected(next){
+    const idxs = [...selectedTracks].map(t => tracks.indexOf(t)).filter(i => i !== -1);
+    const n = window.__ppQueue ? window.__ppQueue.add(idxs, next) : 0;
+    exitSelectMode();
+    if (!n) return;
+    const what = n === 1 ? '"' + (tracks[idxs[0]].title || 'Song') + '"' : n + ' songs';
+    showToast(next ? what + ' will play next' : what + ' added to the queue');
+    if (currentIndex === -1) loadTrack(nextTrackIndex(), true);   // nothing playing yet: start the queue
+  }
   function runSelectAct(act, btn){
     switch (act){
       case 'cancel': exitSelectMode(); break;
@@ -344,6 +356,7 @@
         break;
       }
       case 'remove-pl': removeSelectedFromPlaylist(); break;
+      case 'q-next': case 'q-add': queueSelected(act === 'q-next'); break;
       case 'top': moveSelectedToEdge(true); break;
       case 'up': shiftSelected(-1); break;
       case 'down': shiftSelected(1); break;

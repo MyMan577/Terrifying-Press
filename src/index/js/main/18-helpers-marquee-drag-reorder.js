@@ -443,7 +443,9 @@
     insertAt = Math.max(0, Math.min(tracks.length, insertAt));
     tracks.splice(insertAt, 0, moved);
     if (currentTrack) currentIndex = tracks.indexOf(currentTrack);
-    playQueue = queuedTracks.map(t => tracks.indexOf(t)).filter(i => i !== -1);
+    { const sameCtx = queueCtxArr === playQueue;   // same queue, re-pointed: not a new context for the queue board
+      playQueue = queuedTracks.map(t => tracks.indexOf(t)).filter(i => i !== -1);
+      if (sameCtx) queueCtxArr = playQueue; }
     shuffleOrder = shuffledTracks.map(t => tracks.indexOf(t)).filter(i => i !== -1);
     saveLibraryMeta();
     renderPlaylist();
