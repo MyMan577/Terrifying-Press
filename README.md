@@ -52,6 +52,9 @@ Press Play has a lot of settings, and most of them are things other players leav
 - Playlist import reads M3U, PLS and XSPF, and CUE sheets: an album ripped as one big file with a .cue shows up as its separate songs, each playing just its part of the file.
 - Network shares: + Add, Network shares finds Windows/SMB shares, UPnP/DLNA media servers and NFS exports on your Wi-Fi, and you can connect to SMB, FTP, SFTP and NFS servers by address. Play a file straight from a share, or add a whole folder to your library.
 
+**Notifications**
+- Short ones, at most one a day and only in the daytime: your daily bonus is ready, a streak is about to end, a level is close, the song you stopped on, new files found on your phone, your week in music, and now and then a silly one. Reminders and tips, Rewards and streaks, and Fun ones can each be switched off in Settings, Notifications.
+
 **Backup and moving phones**
 - Export your settings and progress, without your media files, and restore them on another phone.
 

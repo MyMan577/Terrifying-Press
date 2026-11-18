@@ -162,6 +162,9 @@
             </intent-filter>
         </receiver>
 
+        <!-- Reminders, tips and rewards scheduled by the app (NotifyReceiver in JobsPlugin.kt) -->
+        <receiver android:name=".NotifyReceiver" android:exported="false" />
+
         <!-- Home screen widget: what is playing, with previous / play-pause / next -->
         <receiver android:name=".NowPlayingWidget" android:exported="true" android:label="@string/widget_name">
             <intent-filter>

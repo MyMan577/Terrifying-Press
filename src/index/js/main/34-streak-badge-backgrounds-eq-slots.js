@@ -35,6 +35,13 @@
       return bonus;
     }
 
+    // Read only, for the reminders and rewards notifications (pp-notify.js): where you are and what the next day pays.
+    window.__ppProgress = () => {
+      const st = state.streak, li = levelInfo(state.xp), today = localDayNumber(), next = (st.lastDay === today || st.lastDay === today - 1 || st.lastDay === today - 2) ? st.count + 1 : 1;
+      return { level: li.level, xpToNext: Math.max(0, Math.round(li.xpForNext - li.xpIntoLevel)), streak: st.count, best: st.best || 0, lastDay: st.lastDay, today,
+        listenedToday: st.lastDay === today,
+        nextBonus: Math.round(XP_PER_MINUTE * Math.min(STREAK_DAILY_MAX_MIN, 10 * Math.pow(STREAK_DAILY_GROWTH, next - 1)) * (next % 7 === 0 ? 2 : 1)), nextDay: next };
+    };
     function recordWatchTime(ms){
       if (!isFinite(ms) || ms <= 0) return;
       const dailyBonus = touchStreak();
