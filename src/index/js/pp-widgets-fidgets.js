@@ -48,6 +48,7 @@
   // Drawing loop: one per fidget, only while it is on screen and (for the ones that can rest) while it moves.
   function fdVisible(el){
     if (document.hidden || !el.offsetParent) return false;
+    if (el.closest('#pp-ringscreen')) return true;   // the ringing screen covers everything (pp-widgets-pendulum.js)
     var inPlayer = !!el.closest('#pw-player-zone, #pw-player-top, #pw-video-zone'), playerOpen = body.hasAttribute('data-pl-player');
     return inPlayer ? playerOpen : !playerOpen;
   }
@@ -75,12 +76,12 @@
     return f;
   }
   // Where the pointer is on the canvas, in canvas pixels.
-  function fdPt(f, e){ var r = f.cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * f.dpr, y: (e.clientY - r.top) * f.dpr }; }
+  function fdPt(f, e){ var r = (f.cv || f.pad).getBoundingClientRect(); return { x: (e.clientX - r.left) * f.dpr, y: (e.clientY - r.top) * f.dpr }; }
   // Whether a touch at (x, y) (page pixels) is on the fidget itself. f.hit tells for the round ones: the canvas is a
   // whole rectangle, and a touch on the empty part around a spinner or a knob is the page's (it scrolls).
   function fdOwns(f, x, y){
     if (!f.hit) return true;
-    var r = f.cv.getBoundingClientRect();
+    var r = (f.cv || f.pad).getBoundingClientRect();
     return f.hit(x - r.left, y - r.top, r.width, r.height);
   }
   /** A circle in the middle of the canvas, [k] of the shorter side across (plus a little to spare for fingers). */
@@ -89,7 +90,8 @@
   // anywhere else on the widget the page scrolls as usual. A fidget that fills its whole box (the nebula) lets the
   // page have a swipe that starts clearly up or down, and takes everything else. Neither ever switches tabs.
   function fdPointer(f, h){
-    var cv = f.cv, id = null, tOwn = false, tDecided = false, tx = 0, ty = 0;
+    // the canvas, or (a picture fidget) the box the picture moves in
+    var cv = f.cv || f.pad, id = null, tOwn = false, tDecided = false, tx = 0, ty = 0;
     cv.addEventListener('touchstart', function(e){
       var t = e.touches[0];
       tOwn = !editing && e.touches.length === 1 && !!t && fdOwns(f, t.clientX, t.clientY); tDecided = false;
@@ -112,10 +114,10 @@
     cv.addEventListener('pointerdown', function(e){
       if (editing || id != null) return;
       if (!fdOwns(f, e.clientX, e.clientY)) return;          // on the empty part of the canvas: not the fidget's
-      id = e.pointerId; try { cv.setPointerCapture(id); } catch(x){} e.preventDefault(); h.down(fdPt(f, e), e); fdWake(cv.parentNode);
+      id = e.pointerId; try { cv.setPointerCapture(id); } catch(x){} e.preventDefault(); h.down(fdPt(f, e), e); fdWake(f.cv ? cv.parentNode : cv);
     });
     cv.addEventListener('pointermove', function(e){ if (e.pointerId !== id) return; h.move(fdPt(f, e), e); });
-    var up = function(e){ if (e.pointerId !== id) return; id = null; h.up(fdPt(f, e), e); fdWake(cv.parentNode); };
+    var up = function(e){ if (e.pointerId !== id) return; id = null; h.up(fdPt(f, e), e); fdWake(f.cv ? cv.parentNode : cv); };
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
   }
   // Colours: the widget's colour (or the theme's accent) as numbers, and mixes of it.

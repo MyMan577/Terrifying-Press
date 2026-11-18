@@ -60,6 +60,13 @@ Press Play has a lot of settings, and most of them are things other players leav
 **Notifications**
 - Short ones, at most one a day and only in the daytime: your daily bonus is ready, a streak is about to end, a level is close, the song you stopped on, new files found on your phone, your week in music, and now and then a silly one. Reminders and tips, Rewards and streaks, and Fun ones can each be switched off in Settings, Notifications.
 
+**Press Play Pendulum** (its own tab: alarms and a focus timer)
+- Alarms: daily, on chosen days, or once. Each wakes you to an alarm sound (classic beeps, a digital watch, an old bell, a buzzer, gentle chimes, a soft sunrise, or the phone's own alarm sound), the sound and then your music, or just music (a playlist, everything shuffled, or what you last played), getting louder slowly, with a snooze you choose. On Android they are real alarm clocks: they ring with the app closed, on a locked phone, and after a restart. Stopping one can start a focus session.
+- Pomodoro: focus, short breaks, and a long break every few rounds, with lengths you pick. It can start your music when you focus and fade it out for breaks, keeps what you worked on, and shows today, the week, a daily goal and your streak.
+- The ringing screen: a full screen when an alarm goes off or a Pomodoro round ends (each can be switched off). It starts as a blank slate on a background of your choice (sunrise, night sky, aurora, ocean, ember, your theme colour, plain, the cover of what is playing, or your own picture): put a clock, the date, pictures, Bloopy or any other widget on it.
+- On Android, alarm sounds and the Pomodoro chime can play through the speaker even with headphones in, or through the headphones when they are in.
+- Widgets for both: the next alarm with on/off switches, and the Pomodoro as a ring or a slim bar.
+
 **Backup and moving phones**
 - Export your settings and progress, without your media files, and restore them on another phone.
 

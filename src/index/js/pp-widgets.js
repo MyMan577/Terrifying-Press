@@ -47,6 +47,7 @@
     text:'<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/>',
     image:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
     minus:'<line x1="4" y1="12" x2="20" y2="12"/>',
+    check:'<polyline points="20 6 9 17 4 12"/>',
     space:'<line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 12 3 16 7"/><polyline points="8 17 12 21 16 17"/>',
     sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     history:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 14"/>',
@@ -395,6 +396,7 @@
     var cv = el.querySelector('canvas'), g = cv.getContext('2d'), lv = new Float32Array(32), last = 0, col = '', colAt = 0;
     function onScreen(){
       if (document.hidden || !el.offsetParent) return false;
+      if (el.closest('#pp-ringscreen')) return true;
       var inPlayer = !!el.closest('#pw-player-zone, #pw-player-top, #pw-video-zone'), playerOpen = body.hasAttribute('data-pl-player');
       return inPlayer ? playerOpen : !playerOpen;
     }
@@ -583,6 +585,7 @@
   // A fidget takes every touch that starts on it, so a page holding one gets a thin strip down each side that is the
   // stack's: swipe from an edge to change pages, or tap it for the next or previous page. The rest is the fidget's.
   var EDGES = '<i class="pw-stk-edge pw-stk-el" data-stk-go="-1" aria-hidden="true"></i><i class="pw-stk-edge pw-stk-er" data-stk-go="1" aria-hidden="true"></i>';
+  var STK_PAGE = {};   // the page each stack is on, by widget id (kept while the app is open)
   T.stack = { name:'Stack', icon:'layers', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Several widgets in one spot, swipe between them',
     fields:[['dots','Show dots','toggle',true],['auto','Turn by itself','seg',[['','Off'],['5','5 s'],['10','10 s'],['20','20 s']]]],
     render:function(o, c, ctx, it){
@@ -592,7 +595,7 @@
         var h = itemHTML(k, c, ctx);
         if (!h){ if (!editing) return; h = '<div class="pw-hidden-note">' + esc(d.name) + '</div>'; }
         var sty = styleOf(k.o || {});
-        pages.push('<div class="pw-stk-pg pw-t-' + k.type + sty.cls + '"' + sty.style + (editing ? '' : sty.data) + '>' + h + (d.fidget ? EDGES : '') + '</div>');
+        pages.push('<div class="pw-stk-pg pw-t-' + k.type + sty.cls + '"' + sty.style + (editing ? '' : sty.data) + '>' + h + (d.fidget || (k.o && FX_WORD[k.o.fx] && (k.type === 'image' || k.type === 'drawing')) ? EDGES : '') + '</div>');
       });
       if (pages.length < 2 || editing) pages = pages.map(function(x){ return x.replace(EDGES, ''); });
       if (!pages.length) return editing ? '<div class="pw-empty">An empty stack. Open its settings to put widgets in it.</div>' : '';
@@ -600,6 +603,12 @@
         (o.dots === false || pages.length < 2 ? '' : '<div class="pw-stk-dots">' + pages.map(function(x, i){ return '<i data-stk-to="' + i + '"' + (i ? '' : ' class="on"') + '></i>'; }).join('') + '</div>') + '</div>';
     },
     live:function(el){
+      // Home is drawn again when a song starts (and on other changes): come back to the page the stack was on
+      if (!el._pwRest){
+        el._pwRest = 1;
+        var box = el.closest('[data-wid]'), pg = box ? STK_PAGE[box.dataset.wid] : 0, tr0 = el.firstChild;
+        if (pg && tr0 && tr0.children.length > pg){ tr0.scrollLeft = pg * tr0.clientWidth; }
+      }
       var sec = +el.dataset.auto; if (!sec || editing) return;
       var now = Date.now(), tr = el.firstChild, n = tr.children.length; if (n < 2) return;
       if (!el._pwAt) el._pwAt = now;

@@ -10,6 +10,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -150,6 +152,35 @@ class NotifyPlugin : Plugin() {
         NotifyReceiver.post(context, call.getString("id") ?: "now", call.getString("title") ?: "", call.getString("text") ?: "", call.getString("kind") ?: "tip")
         call.resolve()
     }
+    /**
+     * Alarms (Press Play Pendulum): [{ id, at (ms), title, text }] replaces the last list. Unlike the tips above these
+     * are exact (an alarm clock, shown in the status bar), ring loudly on the Alarms channel until dismissed, and are
+     * set again after the phone restarts. Resolves { exact }: false when Android (12+) has not allowed exact alarms,
+     * and they come a few minutes late at worst.
+     */
+    @PluginMethod fun alarms(call: PluginCall) {
+        AlarmSched.replace(context, (call.getArray("items") ?: JSArray()).toString())
+        call.resolve(JSObject().put("exact", AlarmSched.exactAllowed(context)))
+    }
+    /**
+     * Plays an alarm sound the page made (a WAV, base64): { wav, loop, speaker, louder }. speaker: on the alarm stream,
+     * which Android plays on the speaker even with headphones in (and at the alarm volume); otherwise on the media
+     * stream, which goes to the headphones when they are in. louder: starts at a quarter and rises over 30 seconds.
+     */
+    @PluginMethod fun playSound(call: PluginCall) {
+        val data = try { android.util.Base64.decode(call.getString("wav") ?: "", android.util.Base64.DEFAULT) } catch (e: Exception) { null }
+        if (data == null || data.isEmpty()) { call.reject("no sound"); return }
+        try {
+            AlarmSound.play(context, data, call.getBoolean("loop", true) ?: true, call.getBoolean("speaker", false) ?: false, call.getBoolean("louder", false) ?: false)
+            call.resolve()
+        } catch (e: Exception) { call.reject(e.message ?: "could not play") }
+    }
+    @PluginMethod fun stopSound(call: PluginCall) { AlarmSound.stop(); call.resolve() }
+    /** Takes a ringing alarm's notification away (the app has started the music). */
+    @PluginMethod fun dismiss(call: PluginCall) {
+        NotificationManagerCompat.from(context).cancel(NotifyReceiver.notifId(call.getString("id") ?: ""))
+        call.resolve()
+    }
     /** Whether Android lets the app show notifications at all (the person can switch them off for the app). */
     @PluginMethod fun status(call: PluginCall) {
         call.resolve(JSObject().put("enabled", NotificationManagerCompat.from(context).areNotificationsEnabled()))
@@ -159,7 +190,8 @@ class NotifyPlugin : Plugin() {
 class NotifyReceiver : BroadcastReceiver() {
     companion object {
         const val PREFS = "pp_notify"
-        private const val CH_TIPS = "pp_tips"; private const val CH_REWARDS = "pp_rewards"
+        private const val CH_TIPS = "pp_tips"; private const val CH_REWARDS = "pp_rewards"; private const val CH_ALARMS = "pp_alarms"
+        fun notifId(id: String) = 0x5000 + (id.hashCode() and 0xfff)
         // one PendingIntent per id: the action carries the id (extras do not count when Android matches them)
         private fun pending(ctx: Context, id: String, extras: Bundle?): PendingIntent {
             val i = Intent(ctx, NotifyReceiver::class.java).setAction("pp.notify.$id")
@@ -182,18 +214,136 @@ class NotifyReceiver : BroadcastReceiver() {
             if (Build.VERSION.SDK_INT >= 26) {
                 nm.createNotificationChannel(NotificationChannel(CH_TIPS, "Reminders and tips", NotificationManager.IMPORTANCE_DEFAULT))
                 nm.createNotificationChannel(NotificationChannel(CH_REWARDS, "Rewards", NotificationManager.IMPORTANCE_DEFAULT))
+                if (kind == "alarm") {
+                    val ch = NotificationChannel(CH_ALARMS, "Alarms", NotificationManager.IMPORTANCE_HIGH)
+                    ch.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+                        AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+                    ch.enableVibration(true); ch.vibrationPattern = longArrayOf(0, 700, 400, 700, 400, 700)
+                    ch.setBypassDnd(true)
+                    nm.createNotificationChannel(ch)
+                }
             }
+            val alarm = kind == "alarm"
             val open = PendingIntent.getActivity(ctx, 7, Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-            val n = NotificationCompat.Builder(ctx, if (kind == "reward") CH_REWARDS else CH_TIPS)
+            val b = NotificationCompat.Builder(ctx, if (alarm) CH_ALARMS else if (kind == "reward") CH_REWARDS else CH_TIPS)
                 .setSmallIcon(R.drawable.pp_w_note)
                 .setContentTitle(title).setContentText(text)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-                .setAutoCancel(true).setContentIntent(open).build()
-            nm.notify(0x5000 + (id.hashCode() and 0xfff), n)
+                .setAutoCancel(true).setContentIntent(open)
+            if (alarm) {
+                // rings (and keeps ringing) until it is tapped or swiped away; on a locked phone it shows full screen
+                b.setCategory(NotificationCompat.CATEGORY_ALARM).setPriority(NotificationCompat.PRIORITY_MAX)
+                    .setFullScreenIntent(open, true)
+                    .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
+                    .setVibrate(longArrayOf(0, 700, 400, 700, 400, 700))
+            }
+            val n = b.build()
+            if (alarm) n.flags = n.flags or Notification.FLAG_INSISTENT
+            nm.notify(notifId(id), n)
         }
     }
     override fun onReceive(ctx: Context, i: Intent) {
         post(ctx, i.getStringExtra("id") ?: "n", i.getStringExtra("title") ?: "", i.getStringExtra("text") ?: "", i.getStringExtra("kind") ?: "tip")
+    }
+}
+
+/** Exact alarms for Press Play Pendulum, kept apart from the tips (NotifyPlugin.replace cancels only those). */
+object AlarmSched {
+    private const val KEY = "alarm_items"
+    fun exactAllowed(ctx: Context): Boolean {
+        if (Build.VERSION.SDK_INT < 31) return true
+        val am = ctx.getSystemService(AlarmManager::class.java) ?: return false
+        return am.canScheduleExactAlarms()
+    }
+    private fun pending(ctx: Context, id: String, extras: Bundle?): PendingIntent {
+        val i = Intent(ctx, NotifyReceiver::class.java).setAction("pp.alarm.$id")
+        if (extras != null) i.putExtras(extras)
+        return PendingIntent.getBroadcast(ctx, ("alarm:" + id).hashCode(), i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    }
+    private fun read(ctx: Context): org.json.JSONArray =
+        try { org.json.JSONArray(ctx.getSharedPreferences(NotifyReceiver.PREFS, 0).getString(KEY, "[]")) } catch (e: Exception) { org.json.JSONArray() }
+    fun replace(ctx: Context, json: String) {
+        val am = ctx.getSystemService(AlarmManager::class.java) ?: return
+        val old = read(ctx)
+        for (k in 0 until old.length()) { val o = old.optJSONObject(k) ?: continue; am.cancel(pending(ctx, o.optString("id"), null)) }
+        ctx.getSharedPreferences(NotifyReceiver.PREFS, 0).edit().putString(KEY, json).apply()
+        scheduleAll(ctx)
+    }
+    fun scheduleAll(ctx: Context) {
+        val am = ctx.getSystemService(AlarmManager::class.java) ?: return
+        val list = read(ctx); val now = System.currentTimeMillis()
+        for (k in 0 until list.length()) {
+            val o = list.optJSONObject(k) ?: continue
+            val id = o.optString("id"); val at = o.optLong("at")
+            if (id.isEmpty() || at <= now) continue
+            val b = Bundle().apply { putString("id", id); putString("title", o.optString("title")); putString("text", o.optString("text")); putString("kind", "alarm") }
+            val p = pending(ctx, id, b)
+            try {
+                if (exactAllowed(ctx)) {
+                    val show = PendingIntent.getActivity(ctx, 8, Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+                    am.setAlarmClock(AlarmManager.AlarmClockInfo(at, show), p)
+                } else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, p)
+            } catch (e: SecurityException) {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, p)
+            }
+        }
+    }
+}
+
+/** A restart (or an app update) clears every alarm: set them again from the saved list. */
+class AlarmBootReceiver : BroadcastReceiver() {
+    override fun onReceive(ctx: Context, i: Intent) {
+        if (i.action == Intent.ACTION_BOOT_COMPLETED || i.action == Intent.ACTION_MY_PACKAGE_REPLACED) AlarmSched.scheduleAll(ctx)
+    }
+}
+
+/** The alarm and Pomodoro sounds, played on the alarm stream (speaker, even with headphones in) or the media stream. */
+object AlarmSound {
+    private var mp: android.media.MediaPlayer? = null
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    fun play(ctx: Context, data: ByteArray, loop: Boolean, speaker: Boolean, louder: Boolean) {
+        val f = java.io.File(ctx.cacheDir, "pp_alarm_sound.wav")
+        f.writeBytes(data)
+        main.post {
+            stopNow()
+            val p = android.media.MediaPlayer()
+            try {
+                p.setAudioAttributes(AudioAttributes.Builder()
+                    .setUsage(if (speaker) AudioAttributes.USAGE_ALARM else AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+                p.setDataSource(f.absolutePath)
+                p.isLooping = loop
+                p.setOnCompletionListener { if (!loop && mp === it) stopNow() }
+                p.prepare()
+                val v0 = if (louder) 0.25f else 1f
+                p.setVolume(v0, v0)
+                p.start()
+                mp = p
+                if (louder) {
+                    val t0 = android.os.SystemClock.uptimeMillis()
+                    main.postDelayed(object : Runnable {
+                        override fun run() {
+                            val m = mp ?: return
+                            if (m !== p) return
+                            val v = minOf(1f, 0.25f + 0.75f * (android.os.SystemClock.uptimeMillis() - t0) / 30000f)
+                            m.setVolume(v, v)
+                            if (v < 1f) main.postDelayed(this, 500)
+                        }
+                    }, 500)
+                }
+            } catch (e: Exception) {
+                try { p.release() } catch (x: Exception) {}
+            }
+        }
+    }
+    /** Stops it (on the main thread, where it was started). */
+    fun stop() { main.post { stopNow() } }
+    private fun stopNow() {
+        val p = mp ?: return
+        mp = null
+        try { p.stop() } catch (e: Exception) {}
+        try { p.release() } catch (e: Exception) {}
     }
 }

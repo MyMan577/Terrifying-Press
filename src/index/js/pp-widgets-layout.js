@@ -1,7 +1,7 @@
   var BUILTIN_ORDER = ['title','games','tagline','playground','tabs','hero','chips','videos','audio','history'];
-  var NEW_ORDER = ['nowplaying','cover','seekbar','upnext','lyrics','viz','volume','speed','trackinfo','stack','action','shufpl','shortcuts','search','eq','sleeper','bookmarks','level','bloopy','game',
-                   'clock','greeting','countdown','calendar','dayprog','stopwatch','battery','text','rotate','drawing','image','stats',
-                   'recent','most','random','cont','genre','playlist','playlists','setting','setsec','spacer','divider'];
+  var NEW_ORDER = ['nowplaying','cover','seekbar','upnext','queue','lyrics','singalong','stems','viz','volume','speed','trackinfo','stack','action','shufpl','mood','shortcuts','search','eq','sleeper','alarm','bookmarks','practice','level','sotd','onthisday','recap','bloopy','pet','game','guess','taptempo',
+                   'clock','world','greeting','countdown','calendar','dayprog','stopwatch','focus','battery','todo','tally','dice','breathe','text','rotate','drawing','image','slides','stats','storage',
+                   'recent','most','random','cont','genre','playlist','playlists','pltiles','tagchips','setting','setsec','spacer','divider'];
 
   function subOf(t){ return t.kind === 'video' ? (t.height ? t.height + 'p' : (t.ext || '').toUpperCase()) : ((t.artist && t.artist !== 'Unknown artist') ? t.artist : (t.ext || '').toUpperCase()); }
   // Home hands its lists over; other zones work them out the same way.
@@ -89,6 +89,7 @@
     if (o.bx) cls += ' pw-bx-' + o.bx;
     if ((o.bx === 'color' || o.bx === 'gradient') && okCol(o.bxc)) st.push('--pw-bxc:' + o.bxc);
     if (o.bx === 'gradient' && okCol(o.bxc2)) st.push('--pw-bxc2:' + o.bxc2);
+    if (o.bx === 'cover') st.push('--pw-bxd:' + ((o.bxd != null ? +o.bxd : 35) / 100), '--pw-bxb:' + (o.bxb === '0' ? 0 : +o.bxb || 14) + 'px');
     if (o.bx === 'image'){ if (okImg(o.bxi)) st.push('--pw-bxi:url("' + o.bxi + '")'); st.push('--pw-bxd:' + ((o.bxd != null ? +o.bxd : 35) / 100)); }
     if (o.rad != null && RAD[o.rad] != null){ cls += ' pw-rad'; st.push('--pw-rad:' + RAD[o.rad] + 'px'); }
     if (o.pad) cls += ' pw-pad-' + o.pad;
@@ -116,6 +117,7 @@
     return html;
   }
   function renderZone(zone, c){
+    setTimeout(liveSoon, 0);   // live widgets fill in (and stacks go back to their page) as soon as the zone is on screen
     var items = zoneItems(zone, false) || [], ctx = { zone: zone.indexOf('page:') === 0 ? 'page' : zone };
     var rows = [], row = null, fill = 0;
     items.forEach(function(it){
@@ -201,6 +203,7 @@
   document.addEventListener('scroll', function(e){
     var tr = e.target; if (!tr.classList || !tr.classList.contains('pw-stk-tr')) return;
     stackDots(tr.parentNode);
+    var box = tr.closest('[data-wid]'); if (box && tr.clientWidth) STK_PAGE[box.dataset.wid] = Math.round(tr.scrollLeft / tr.clientWidth);
   }, true);
   ['pointerdown', 'touchstart'].forEach(function(ev){
     document.addEventListener(ev, function(e){ var stk = e.target.closest && e.target.closest('.pw-stk'); if (stk) stk._pwTouched = Date.now(); }, { capture:true, passive:true });
@@ -226,17 +229,18 @@
   var openPageId = null;
   function pageById(id){ return L.pages.find(function(p){ return p.id === id; }); }
   function openPage(id){
-    if (!pageById(id)){ toast('That page no longer exists.'); return; }
+    if (id !== POMO_ID && !pageById(id)){ toast('That page no longer exists.'); return; }
     var K = kit(); if (K && K.on() && K.view() !== 'home'){ K.setView('home'); }
     openPageId = id; body.setAttribute('data-pw-page', id);
     renderPage(); pageEl.scrollTop = 0; syncTabs();
   }
   function closePage(){
     if (!openPageId) return;
-    openPageId = null; body.removeAttribute('data-pw-page'); pageEl.innerHTML = ''; syncTabs();
+    openPageId = null; body.removeAttribute('data-pw-page'); pageEl.innerHTML = ''; syncTabs(); poWake();
   }
   function renderPage(){
     if (!openPageId) return;
+    if (openPageId === POMO_ID){ pomoPage(pageEl); poWake(); return; }   // Press Play Pendulum (pp-widgets-pendulum.js)
     var top = pageEl.scrollTop;
     var editingThis = editing === 'page:' + openPageId, empty = !(L.zones['page:' + openPageId] || []).length;
     pageEl.innerHTML = renderZone('page:' + openPageId, null) +
@@ -426,6 +430,7 @@
   function tabList(){ return L.tabs || tabsDefault(); }
   function tabInfo(t){
     if (t.type === 'view'){ var b = bar && bar.querySelector('button[data-pl-view="' + t.view + '"]'); return { label: t.label || ACTIONS[t.view].label, icon: t.icon || null }; }
+    if (t.type === 'page' && t.page === POMO_ID) return { label: t.label || 'Pendulum', icon: t.icon || 'alarm' };
     if (t.type === 'page'){ var p = pageById(t.page); return { label: t.label || (p ? p.name : 'Page'), icon: t.icon || 'page' }; }
     if (t.type === 'games') return { label: t.label || 'Games', icon: t.icon || 'game' };
     if (t.type === 'player') return { label: t.label || 'Playing', icon: t.icon || 'headphones' };
@@ -519,7 +524,7 @@
   if (bar){
     bar.addEventListener('pointerdown', function(e){
       var b = e.target.closest('.pw-tab'); if (!b) return;
-      var t = tabList().find(function(x){ return x.id === b.dataset.pwTab; }); if (!t || t.type !== 'page') return;
+      var t = tabList().find(function(x){ return x.id === b.dataset.pwTab; }); if (!t || t.type !== 'page' || t.page === POMO_ID) return;
       lpFired = false; clearTimeout(lpTimer);
       lpTimer = setTimeout(function(){ lpFired = true; if (navigator.vibrate) try { navigator.vibrate(15); } catch(err){} startEdit('page:' + t.page); }, 550);
     });
@@ -539,7 +544,7 @@
         if (b.hidden) return;
         if (b.dataset.plView){ out.push({ view: b.dataset.plView }); return; }
         var t = tabList().find(function(x){ return x.id === b.dataset.pwTab; });
-        if (t && t.type === 'page' && pageById(t.page)) out.push({ page: t.page });
+        if (t && t.type === 'page' && (pageById(t.page) || t.page === POMO_ID)) out.push({ page: t.page });
       });
       return out;
     },
@@ -607,7 +612,7 @@
   // A tap or long press on a widget can run an action of its own (Settings > Every widget). The widget's own
   // buttons, rows and fields keep working: a tap on them is theirs.
   var holdT = 0, holdEl = null, holdX = 0, holdY = 0, ateClick = 0;
-  function ownControl(t, box){ var c = t.closest('button, a, input, select, textarea, label, form, [data-pw-act], [data-act], .ph-card, .ph-row, .ph-list, canvas'); return c && box.contains(c) ? c : null; }
+  function ownControl(t, box){ var c = t.closest('button, a, input, select, textarea, label, form, [data-pw-act], [data-act], .ph-card, .ph-row, .ph-list, canvas, .pw-ifx-obj, .pw-tdo, .pw-tc, .pw-dice'); return c && box.contains(c) ? c : null; }
   function runTap(box, kind){ var a = box.getAttribute('data-pw-' + kind), pg = box.getAttribute('data-pw-' + (kind === 'tap' ? 'tpage' : 'hpage')); if (a) runAction(a, { page: pg }); }
   document.addEventListener('click', function(e){
     if (Date.now() - ateClick < 700){ ateClick = 0; e.preventDefault(); e.stopPropagation(); return; }
@@ -711,10 +716,10 @@
 
   var ZNAMES = { home:'Home', player:'Above the controls', 'player-top':'Top of the player', video:'Over the video', playlists:'Top of Playlists', library:'Top of the Library',
     'lib-mid':'In the list', 'pls-mid':'Among your playlists', settings:'Settings', 'set-top':'Top of Settings', 'set-play':'After Playback', 'set-lib':'After Library & playlists',
-    'set-look':'After Appearance & layout', 'set-data':'After Backup & storage', 'set-fun':'After Rewards & games' };
+    'set-look':'After Appearance & layout', 'set-data':'After Backup & storage', 'set-fun':'After Rewards & games', ring:'the ringing screen' };
   function zoneName(z){ return ZNAMES[z] || ((pageById(z.slice(5)) || {}).name || 'Page'); }
   function sessionName(ed){ return ed === 'player' ? 'the player' : ed === 'video' ? 'the video overlay' : ed === 'library' ? 'the Library' : ed === 'playlists' ? 'Playlists' : ed === 'settings' ? 'Settings' : zoneName(ed); }
-  function currentZoneOnScreen(){ var K = kit(); return openPageId ? 'page:' + openPageId : body.hasAttribute('data-pl-player') ? (body.classList.contains('pl-video') ? 'video' : 'player') : K && K.view() === 'playlists' ? 'playlists' : K && K.view() === 'library' ? 'library' : K && K.view() === 'settings' ? 'settings' : 'home'; }
+  function currentZoneOnScreen(){ var K = kit(); return rsOn() ? 'ring' : openPageId ? 'page:' + openPageId : body.hasAttribute('data-pl-player') ? (body.classList.contains('pl-video') ? 'video' : 'player') : K && K.view() === 'playlists' ? 'playlists' : K && K.view() === 'library' ? 'library' : K && K.view() === 'settings' ? 'settings' : 'home'; }
   function startEdit(zone){
     var K = kit();
     if (!K || !K.on()){ toast('Layout editing works in the media player layout (Settings).'); return; }
@@ -733,6 +738,7 @@
     else if (zone === 'library'){ closePage(); K.setView('library'); }
     else if (zone === 'settings'){ closePage(); K.setView('settings'); }
     else if (zone === 'player' || zone === 'video'){ closePage(); K.openPlayer(); }
+    else if (zone === 'ring'){ if (!rsOn()) rsShow('preview'); }   // the ringing screen (pp-widgets-pendulum.js)
     else openPage(zone.slice(5));
     zonesOf(zone).forEach(function(z){ zoneItems(z, true); }); save();
     edZone = zone === 'player' ? 'player' : zone === 'settings' ? 'set-top' : zone;
@@ -750,8 +756,9 @@
   }
   function stopEdit(){
     if (!editing) return;
+    var wasRing = editing === 'ring';
     editing = null; edZone = null; body.classList.remove('pw-editing'); edBar.hidden = true; closeSheet();
-    refreshAll(); toast('Layout saved.');
+    refreshAll(); if (wasRing) rsRender(); toast('Layout saved.');
   }
   function refreshZone(){
     if (editing === 'home' || editing === 'playlists'){ var K = kit(); if (K) K.renderHome(true); if (editing === 'playlists') renderMid('pls-mid', true); }
@@ -759,6 +766,7 @@
     else if (editing === 'library'){ renderLibrary(); renderMid('lib-mid', true); }
     else if (editing === 'settings') renderSettingsZones();
     else if (editing === 'video') renderVideo();
+    else if (editing === 'ring') rsRender();
     else if (editing) renderPage();
   }
   function items(){ return zoneItems(edZone || editing, true); }
@@ -849,7 +857,7 @@
   document.addEventListener('pointercancel', endDrag, true);
 
   // ---- add sheet ----
-  function zoneKind(z){ return z.indexOf('page:') === 0 || z === 'playlists' || z === 'library' || z === 'lib-mid' || z === 'pls-mid' || z.indexOf('set-') === 0 ? 'page' : z === 'player-top' ? 'player' : z; }
+  function zoneKind(z){ return z === 'ring' || z.indexOf('page:') === 0 || z === 'playlists' || z === 'library' || z === 'lib-mid' || z === 'pls-mid' || z.indexOf('set-') === 0 ? 'page' : z === 'player-top' ? 'player' : z; }
   function addSheet(){
     if (!edZone || !isEd(edZone)) edZone = zonesOf(editing)[zonesOf(editing).length - 1];
     var zk = zoneKind(edZone), present = items().map(function(x){ return x.type; });
@@ -906,6 +914,8 @@
     if (type === 'setting') return stPickHTML(k, v, label);
     if (type === 'setsec') return stSecPickHTML(k, v, label);
     if (type === 'page') return row('<select data-k="' + k + '"><option value="">Choose a page…</option>' + L.pages.map(function(p){ return '<option value="' + p.id + '"' + (v === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>');
+    if (type === 'playlist0'){ var A0 = api(), pls0 = A0 ? A0.playlists().filter(function(p){ return !p.libOnly && !p.stemOf; }) : [];
+      return row('<select data-k="' + k + '"><option value="">Everything, shuffled</option><option value="resume"' + (v === 'resume' ? ' selected' : '') + '>What I last played</option>' + pls0.map(function(p){ return '<option value="' + esc(p.id) + '"' + (v === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>'); }
     if (type === 'playlist'){ var A = api(), pls = A ? A.playlists().filter(function(p){ return !p.libOnly; }) : [];
       return row('<select data-k="' + k + '"><option value="">Choose a playlist…</option>' + pls.map(function(p){ return '<option value="' + esc(p.id) + '"' + (v === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select>'); }
     if (type === 'icon') return row('<div class="pw-icons" data-k="' + k + '"><button type="button" data-v=""' + (!v ? ' class="on"' : '') + '>Auto</button>' + ICON_CHOICES.map(function(n){ return '<button type="button" data-v="' + n + '"' + (v === n ? ' class="on"' : '') + ' aria-label="' + n + '">' + svg(n) + '</button>'; }).join('') + '</div>');
@@ -915,7 +925,7 @@
     if (type === 'image') return row('<div class="pw-colrow"><button type="button" class="pw-mini" data-pick="' + k + '">' + (v ? 'Change picture…' : 'Choose picture…') + '</button>' + (v ? '<button type="button" class="pw-mini" data-clear="' + k + '">Remove</button>' : '') + '<input type="file" accept="image/*" hidden data-file="' + k + '"></div>');
     return '';
   }
-  function rangeLabel(unit, val){ return unit === 'all' && !+val ? 'All' : unit === 'autopx' ? (+val ? val + 'px' : 'Auto') : val + (unit && unit !== 'all' ? unit : ''); }
+  function rangeLabel(unit, val){ return unit === 'goal' ? (+val ? String(val) : 'None') : unit === 'all' && !+val ? 'All' : unit === 'autopx' ? (+val ? val + 'px' : 'Auto') : val + (unit && unit !== 'all' ? unit : ''); }
   // Where a widget is: in the zone itself, or a page of a stack in the zone.
   function locate(id){
     var a = items();
@@ -930,7 +940,8 @@
   function commonFields(it, top){
     var o = it.o, f = '<div class="pw-sh-h">Every widget</div>';
     if (top) f += fieldHTML(['when', 'Show it', 'seg', [['','Always'],['playing','While something plays'],['idle','When nothing plays']]], o);
-    f += fieldHTML(['bx', 'Behind it', 'seg', [['','Nothing'],['card','Card'],['glass','Glass'],['accent','Accent'],['color','Colour'],['gradient','Gradient'],['image','Picture']]], o);
+    f += fieldHTML(['bx', 'Behind it', 'seg', [['','Nothing'],['card','Card'],['glass','Glass'],['accent','Accent'],['color','Colour'],['gradient','Gradient'],['image','Picture'],['cover','Cover art']]], o);
+    if (o.bx === 'cover'){ f += fieldHTML(['bxb', 'Blur', 'seg', [['0','None'],['','Soft'],['30','Strong']]], o); f += fieldHTML(['bxd', 'Darken it', 'range', [0, 80, 5, '%', 35]], o); }
     if (o.bx === 'color' || o.bx === 'gradient') f += fieldHTML(['bxc', o.bx === 'gradient' ? 'First colour' : 'Background colour', 'color', ''], o);
     if (o.bx === 'gradient') f += fieldHTML(['bxc2', 'Second colour', 'color', ''], o);
     if (o.bx === 'image'){ f += fieldHTML(['bxi', 'Picture', 'image', ''], o); f += fieldHTML(['bxd', 'Darken it', 'range', [0, 80, 5, '%', 35]], o); }
@@ -1069,7 +1080,9 @@
         var s = Math.min(1, 1280 / Math.max(img.width, img.height)), c = document.createElement('canvas');
         c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
         c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        try { cb(c.toDataURL('image/jpeg', 0.84)); } catch(e){ cb(r.result); }
+        // pictures that can be see-through (PNG, WebP, GIF) stay see-through, so a cut-out spins as a cut-out (picture fidgets)
+        var alpha = /png|webp|gif/i.test(file.type || ''), url;
+        try { url = alpha ? c.toDataURL('image/webp', 0.9) : c.toDataURL('image/jpeg', 0.84); if (alpha && url.indexOf('data:image/webp') !== 0) url = c.toDataURL('image/png'); cb(url); } catch(e){ cb(r.result); }
       };
       img.onerror = function(){ toast('That picture could not be opened.'); };
       img.src = r.result;
@@ -1098,6 +1111,7 @@
       '<div class="pw-sh-h">Add a tab</div><div class="pw-add-grid pw-add-small">' +
         missing.map(function(v){ return '<button type="button" class="pw-add-tile" data-addtab="view:' + v + '">' + svg(ACTIONS[v].icon) + '<span><b>' + ACTIONS[v].label + '</b></span></button>'; }).join('') +
         '<button type="button" class="pw-add-tile" data-addtab="games">' + svg('game') + '<span><b>Games</b></span></button>' +
+        (list.some(function(t){ return t.type === 'page' && t.page === POMO_ID; }) ? '' : '<button type="button" class="pw-add-tile" data-addtab="page:' + POMO_ID + '">' + svg('alarm') + '<span><b>Press Play Pendulum</b><small>Alarms and the Pomodoro</small></span></button>') +
         '<button type="button" class="pw-add-tile" data-addtab="player">' + svg('headphones') + '<span><b>Now playing</b><small>Opens the player</small></span></button>' +
         L.pages.map(function(p){ return '<button type="button" class="pw-add-tile" data-addtab="page:' + p.id + '">' + svg('page') + '<span><b>' + esc(p.name) + '</b><small>Your page</small></span></button>'; }).join('') +
         '<button type="button" class="pw-add-tile" data-addtab="newpage">' + svg('plus') + '<span><b>New page</b><small>Make one from widgets</small></span></button>' +
