@@ -557,10 +557,13 @@
   N.vizRate = function () { return (cur && cur.active && cur.playing && fftF) ? fftRate : 0; };
   function dec(s) { var b = atob(s), a = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; }
   function syncViz() {
-    var want = !!(cur && cur.active && cur.kind === 'audio' && cur.playing && !document.hidden);
+    // a video's sound feeds the bars too while a Visualiser widget is on screen (it stamps __ppVizWant), else only songs do
+    var wid = (window.__ppVizWant || 0) > (window.performance ? performance.now() : 0) - 1500;
+    var want = !!(cur && cur.active && (cur.kind === 'audio' || wid) && cur.playing && !document.hidden);
     if (want === vizOn) return; vizOn = want;
     call(function () { return Player.setViz({ on: want, leadMs: VIZ_LEAD_MS - vizTrim }); });
   }
+  setInterval(syncViz, 1000);   // a Visualiser widget can appear or go away over a playing video
   N.decorateAnalyser = function (an) {
     var of = an.getByteFrequencyData.bind(an), ot = an.getByteTimeDomainData.bind(an);
     an.getByteFrequencyData = function (arr) {
