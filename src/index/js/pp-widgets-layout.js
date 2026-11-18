@@ -230,6 +230,7 @@
   function pageById(id){ return L.pages.find(function(p){ return p.id === id; }); }
   function openPage(id){
     if (id !== POMO_ID && !pageById(id)){ toast('That page no longer exists.'); return; }
+    if (id === POMO_ID && PEND_OFF){ pendLite(); return; }
     var K = kit(); if (K && K.on() && K.view() !== 'home'){ K.setView('home'); }
     openPageId = id; body.setAttribute('data-pw-page', id);
     renderPage(); pageEl.scrollTop = 0; syncTabs();
@@ -440,7 +441,8 @@
   function applyTabs(){
     if (!bar) return;
     bar.querySelectorAll('.pw-tab').forEach(function(b){ b.remove(); });
-    var list = tabList(), ind = document.getElementById('pl-tab-ind');
+    // Lite has no Pendulum: its tab stays in the saved bar (for when Lite is switched off) but is not shown
+    var list = tabList().filter(function(t){ return !(PEND_OFF && t.type === 'page' && t.page === POMO_ID); }), ind = document.getElementById('pl-tab-ind');
     BUILTIN_TABS.forEach(function(v){
       var b = bar.querySelector('button[data-pl-view="' + v + '"]'); if (!b) return;
       if (!origLabels[v]) origLabels[v] = { label: b.querySelector('span').textContent, svg: b.querySelector('svg').outerHTML };
