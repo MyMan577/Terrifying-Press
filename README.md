@@ -143,7 +143,7 @@ Bloopy is entirely optional. If you do not want it, turn off the mascot and the 
 - Edit in batches: select several songs and give them one cover (or remove their custom covers), or select several playlists (Select on the Playlists page, or Select several in Settings, Playlists) to merge them into a new playlist, give them one picture, reset their pictures, shuffle each, or delete them.
 - New on this phone: the app notices new music and videos on your phone and keeps them apart from your library, sorted into bundles by what each one looks like (an album, loose songs, podcasts, camera videos, screen recordings, voice messages and so on). You add or dismiss each bundle. Nothing joins your library by itself, and this can be switched off. Files you have deleted from the phone are offered for removal in the same place.
 - Plays audio and video, from local files and from web stream links.
-- Opens files from file managers, browsers and chat apps through "Open with".
+- Opens files from file managers, browsers and chat apps through "Open with". The file plays straight away; when you leave it, Press Play asks whether to keep it in your library or remove it again, with a "Don't ask again" box (changeable in Settings, Files opened from other apps).
 - Registers itself as a music player, so headset, car and assistant requests to open your music app can launch it.
 - Media notification and lock screen controls, with playback that keeps going in the background.
 - A home screen widget showing what is playing, with previous, play and next.
