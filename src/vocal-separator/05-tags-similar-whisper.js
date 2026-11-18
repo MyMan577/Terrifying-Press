@@ -213,7 +213,13 @@
     asrId = id + '|wasm'; return asr;
   }
   const pad2 = n => String(n).padStart(2, '0');
-  const toLrc = cues => cues.map(c => '[' + pad2(Math.floor(c.start / 60)) + ':' + (c.start % 60).toFixed(2).padStart(5, '0') + ']' + c.text).join('\n');
+  const lrcT = v => { v = Math.max(0, v); const m = Math.floor(v / 60); return pad2(m) + ':' + (v - m * 60).toFixed(2).padStart(5, '0'); };
+  // A line whose words were each heard (Parakeet) gets their times as <mm:ss.xx> tags, so the sing-along highlight follows the real singing.
+  const toLrc = cues => cues.map(c => {
+    const ws = String(c.text).split(' ');
+    if (c.w && c.w.length === ws.length && ws.length > 1) return '[' + lrcT(c.start) + ']' + ws.map((x, i) => '<' + lrcT(c.w[i].s) + '>' + x).join(' ') + ' <' + lrcT(c.w[ws.length - 1].e) + '>';
+    return '[' + lrcT(c.start) + ']' + c.text;
+  }).join('\n');
   const srtT = s => { const ms = Math.round(s * 1000); return pad2(Math.floor(ms / 3600000)) + ':' + pad2(Math.floor(ms / 60000) % 60) + ':' + pad2(Math.floor(ms / 1000) % 60) + ',' + String(ms % 1000).padStart(3, '0'); };
   const toSrt = cues => cues.map((c, i) => (i + 1) + '\n' + srtT(c.start) + ' --> ' + srtT(c.end) + '\n' + c.text + '\n').join('\n');
   // Whisper invents text over silence and music. Drop the usual junk and runs of the same line.
@@ -222,7 +228,9 @@
     for (const c of raw) {
       let t = String(c.text || '').replace(/[♪♫]+/g, ' ').replace(/\[[^\]]*(music|silence|applause|laughter)[^\]]*\]|\([^)]*(music|silence|applause|laughter)[^)]*\)/gi, ' ').replace(/\s+/g, ' ').trim();
       if (t.length < 2 || /^(thanks for watching|thank you\.?$|subtitles by|subtitle by|amara\.org|please subscribe)/i.test(t)) continue;
-      out.push({ start: c.start, end: c.end, text: t });
+      const o2 = { start: c.start, end: c.end, text: t };
+      if (c.w && c.w.length === t.split(' ').length && t === String(c.text).replace(/\s+/g, ' ').trim()) o2.w = c.w;   // word times survive only if no word was removed
+      out.push(o2);
     }
     // A line sung 3+ times in a row is real in a lot of songs ("hey, hey, hey"). It is only dropped when it looks like Whisper looping over
     // silence: the audio under it is quiet, the lines overlap in time, or the run is very long.
