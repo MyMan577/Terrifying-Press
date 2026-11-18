@@ -347,9 +347,18 @@
   /* a page as tall as the stack's tallest one: what is on it sits in the middle, with or without a card around it */
   .pw-stk-pg > .pw-cardwrap{ height:100%; display:flex; flex-direction:column; justify-content:center; }
   .pw-stk-pg > .pw-cardwrap > :not(.pw-card){ flex:none; }
-  .pw-stk-dots{ display:flex; justify-content:center; gap:5px; margin-top:7px; }
-  .pw-stk-dots i{ width:6px; height:6px; border-radius:3px; background:var(--line); transition:width .2s, background .2s; }
-  .pw-stk-dots i.on{ width:16px; background:var(--accent); }
+  .pw-stk-dots{ display:flex; justify-content:center; gap:0; margin-top:0; }
+  /* each dot is a button with a finger-sized touch area around the small dot that shows */
+  .pw-stk-dots i{ display:block; padding:9px 5px; cursor:pointer; }
+  .pw-stk-dots i::before{ content:''; display:block; width:6px; height:6px; border-radius:3px; background:var(--line); transition:width .2s, background .2s; }
+  /* a fidget page's edges: swipe there to change pages, tap for the next one (pp-widgets.js EDGES) */
+  .pw-stk-pg{ position:relative; }
+  .pw-stk-edge{ position:absolute; top:0; bottom:0; width:24px; z-index:6; display:flex; align-items:center; justify-content:center; touch-action:pan-x pan-y; cursor:pointer; color:var(--text-dim); }
+  .pw-stk-el{ left:0; } .pw-stk-er{ right:0; }
+  .pw-stk-edge::before{ content:''; width:7px; height:7px; border:solid currentColor; border-width:0 0 2px 2px; opacity:.45; }
+  .pw-stk-el::before{ transform:translateX(2px) rotate(45deg); } .pw-stk-er::before{ transform:translateX(-2px) rotate(-135deg); }
+  .pw-stk-pg:first-child > .pw-stk-el, .pw-stk-pg:last-child > .pw-stk-er{ display:none; }
+  .pw-stk-dots i.on::before{ width:16px; background:var(--accent); }
   .pw-sh-top{ margin:0 0 12px; padding:0 0 12px; border-top:0; border-bottom:1px solid var(--line); }
 
   /* ---------- shared bits of the newer widgets ---------- */

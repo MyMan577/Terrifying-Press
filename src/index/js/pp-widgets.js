@@ -580,6 +580,9 @@
     } };
 
   // Stack: several widgets in one place. Swipe between them, or let it turn by itself.
+  // A fidget takes every touch that starts on it, so a page holding one gets a thin strip down each side that is the
+  // stack's: swipe from an edge to change pages, or tap it for the next or previous page. The rest is the fidget's.
+  var EDGES = '<i class="pw-stk-edge pw-stk-el" data-stk-go="-1" aria-hidden="true"></i><i class="pw-stk-edge pw-stk-er" data-stk-go="1" aria-hidden="true"></i>';
   T.stack = { name:'Stack', icon:'layers', kind:'box', zones:['home','page','player','video'], w:'full', desc:'Several widgets in one spot, swipe between them',
     fields:[['dots','Show dots','toggle',true],['auto','Turn by itself','seg',[['','Off'],['5','5 s'],['10','10 s'],['20','20 s']]]],
     render:function(o, c, ctx, it){
@@ -589,11 +592,12 @@
         var h = itemHTML(k, c, ctx);
         if (!h){ if (!editing) return; h = '<div class="pw-hidden-note">' + esc(d.name) + '</div>'; }
         var sty = styleOf(k.o || {});
-        pages.push('<div class="pw-stk-pg pw-t-' + k.type + sty.cls + '"' + sty.style + (editing ? '' : sty.data) + '>' + h + '</div>');
+        pages.push('<div class="pw-stk-pg pw-t-' + k.type + sty.cls + '"' + sty.style + (editing ? '' : sty.data) + '>' + h + (d.fidget ? EDGES : '') + '</div>');
       });
+      if (pages.length < 2 || editing) pages = pages.map(function(x){ return x.replace(EDGES, ''); });
       if (!pages.length) return editing ? '<div class="pw-empty">An empty stack. Open its settings to put widgets in it.</div>' : '';
       return '<div class="pw-stk" data-pw-live="stack" data-auto="' + (+o.auto || 0) + '"><div class="pw-stk-tr">' + pages.join('') + '</div>' +
-        (o.dots === false || pages.length < 2 ? '' : '<div class="pw-stk-dots">' + pages.map(function(x, i){ return '<i' + (i ? '' : ' class="on"') + '></i>'; }).join('') + '</div>') + '</div>';
+        (o.dots === false || pages.length < 2 ? '' : '<div class="pw-stk-dots">' + pages.map(function(x, i){ return '<i data-stk-to="' + i + '"' + (i ? '' : ' class="on"') + '></i>'; }).join('') + '</div>') + '</div>';
     },
     live:function(el){
       var sec = +el.dataset.auto; if (!sec || editing) return;
