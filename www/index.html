@@ -14689,6 +14689,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     let longPressTimer = null;
     let longPressFired = false;
     let startX = 0, startY = 0, startedOnControl = false;
+    let wandered = false;          // the finger strayed past the tap tolerance at some point during this press
     let lastTouchTime = 0;
     // pan-when-zoomed state (only active on the video surface)
     const canPan = wrapEl === videoWrap;
@@ -14756,7 +14757,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     function onStart(x, y, target){
       startedOnControl = isInteractive(target);
       if (startedOnControl) return;
-      startX = x; startY = y;
+      startX = x; startY = y; wandered = false;
       if (tapCount > 0){
         if (Date.now() - seqReleaseT > MULTI_MS || Math.hypot(x - seqX, y - seqY) > MULTI_SLOP_PX){
           // Too late or too far to be part of the pending taps: settle those now.
@@ -14777,6 +14778,12 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       }, LONGPRESS_MS);
     }
 
+    function movedPastTap(x, y){
+      const far = Math.hypot(x - startX, y - startY) > TAP_MOVE_TOLERANCE;
+      if (far) wandered = true;
+      return far;
+    }
+
     function onEnd(x, y){
       clearTimeout(longPressTimer);
       if (startedOnControl) return;
@@ -14794,7 +14801,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
         }
         return;
       }
-      if (dist > TAP_MOVE_TOLERANCE){ cancelTapSequence(); return; } // an ambiguous drag, not a tap
+      // An ambiguous drag, or one that wandered off and came back: not a tap.
+      if (dist > TAP_MOVE_TOLERANCE || wandered){ cancelTapSequence(); return; }
 
       if (tapCount === 0){
         lastTapZone = zoneFromX(x);
@@ -14892,9 +14900,10 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     layer.addEventListener('touchmove', (e) => {
       if (multi){ moveMulti(e); return; }
       if (!startedOnControl && e.touches.length === 1 && panMove(e.touches[0].clientX, e.touches[0].clientY)) return;
-      // Any real movement cancels a pending long-press so scrolling/
-      // swiping doesn't also fire the press action.
-      if (!longPressFired) clearTimeout(longPressTimer);
+      // Real movement cancels a pending long-press so a swipe doesn't also
+      // fire the press action. A resting finger always jitters a few pixels,
+      // so only movement past the tap tolerance counts.
+      if (!longPressFired && e.touches.length === 1 && movedPastTap(e.touches[0].clientX, e.touches[0].clientY)) clearTimeout(longPressTimer);
     }, { passive: true });
     layer.addEventListener('touchcancel', () => {
       multi = false; clearTimeout(longPressTimer); panEnd(); cancelTapSequence();
@@ -14943,7 +14952,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     });
     layer.addEventListener('mousemove', (e) => {
       if (mouseDown && panMove(e.clientX, e.clientY)) return;
-      if (mouseDown && !longPressFired) clearTimeout(longPressTimer);
+      if (mouseDown && !longPressFired && movedPastTap(e.clientX, e.clientY)) clearTimeout(longPressTimer);
     });
   }
 
