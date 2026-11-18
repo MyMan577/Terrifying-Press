@@ -546,7 +546,9 @@ async function ppMp4Chapters(blob){
     ppStoreLyrics(t.dbId, (await f.text()).replace(/^\uFEFF/, '')); ppLoadLyricsFor(t);
     ppToast(ppLrc.length ? 'Loaded ' + ppLrc.length + ' synced lines.' : 'Loaded lyrics (no timestamps, shown as plain text).');
   });
-  ppEl('ly-clear').addEventListener('click', () => { const t = tracks[currentIndex]; if (!t) return; ppStoreLyrics(t.dbId, ''); ppLoadLyricsFor(t); });
+  // the same words are often saved twice (synced lyrics and subtitles): Remove takes both away
+  ppEl('ly-clear').addEventListener('click', () => { const t = tracks[currentIndex]; if (!t) return; ppStoreLyrics(t.dbId, ''); ppLoadLyricsFor(t);
+    writeSubtitleEntry(t.dbId, null); if (t.kind === 'video') setSubtitleCues([]); try { const a = window.__ppApi; if (a && a.setSubtitles) a.setSubtitles(t.dbId, [], ''); } catch(e){} });
   function ppSidecarLrc(track, file, fileList){
     const key = file.name.replace(/\.[^/.]+$/, '').toLowerCase();
     const lrc = fileList.find(f => /\.lrc$/i.test(f.name) && f.name.replace(/\.[^/.]+$/, '').toLowerCase() === key);

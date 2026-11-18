@@ -266,7 +266,7 @@
           // ---------- Song text: captions and lyrics share one box that always fits the screen, with its own look ----------
           const ST_CSS = '#ppv-st{position:absolute;z-index:4;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:4px;overflow:hidden;text-align:center;font-family:var(--st-font);--st-k:1}' +
             '#ppv-st.p-below{justify-content:flex-start}#ppv-st.p-over{justify-content:center}#ppv-st.p-above{justify-content:flex-end}' +
-            '#ppv-st.c-rainbow{animation:st-hue 6s linear infinite}' +
+            '#ppv-st.c-rainbow{animation:st-hue 6s linear infinite}#ppv-st.cc-on #lyrics-overlay{display:none!important}' +
             '#ppv-st #ppv-asub,#ppv-st #lyrics-overlay{position:static;max-width:100%;flex:0 0 auto;transform:scale(var(--st-beat,1));transition:transform .09s linear}' +
             '#ppv-st .st-l{display:inline-block;max-width:100%;min-height:0;overflow-wrap:anywhere;white-space:normal;line-height:1.3;border-radius:6px;padding:.15em .5em;font-weight:var(--st-weight);text-transform:var(--st-caps);text-shadow:var(--st-ts);background:rgba(0,0,0,var(--st-bg));color:var(--st-color);font-size:calc(16px*var(--st-size)*var(--st-k))}' +
             '#ppv-st .ly-next.st-l{display:block;font-size:calc(12.5px*var(--st-size)*var(--st-k));opacity:.6;margin-top:2px;font-weight:400;background:none}#ppv-st.nonext .ly-next,#ppv-st.tight .ly-next{display:none}' +
@@ -411,7 +411,9 @@
             if (keyOf(t) !== lastId) { loadCues(); status(); stSync = +syncMap()[t.dbId] || 0; stSyncUi(); }
             const now = aud.currentTime - stSync, n = now - off; let txt = '', s0 = -1, e0 = -1;
             if (isOn() && cues.length) for (const c of cues) { if (c.s > n) break; if (n < c.e) { txt += (txt ? '\n' : '') + c.text; if (s0 < 0) s0 = c.s; e0 = Math.max(e0, c.e); } }
-            const lyOn = !!(lyEl && lyEl.classList.contains('show'));
+            // Whisper and online lyrics save the same words twice (synced lyrics and subtitles): with CC on, only the subtitles show
+            const ccOn = isOn() && cues.length > 0; wrap.classList.toggle('cc-on', ccOn);
+            const lyOn = !ccOn && !!(lyEl && lyEl.classList.contains('show'));
             if (!txt && preview && !lyOn) { txt = 'This is how the words will look'; s0 = n - (n % 4); e0 = s0 + 4; }
             if (txt !== shown) { shown = txt; stFill(sp, txt, s0, e0, cuePace); }
             box.style.display = txt && sp.__stT ? 'block' : 'none';
@@ -468,7 +470,8 @@
           btn.onclick = () => { loadCues(); status(); placeWhisper('aud'); panel.classList.toggle('open'); };
           $('#ppv-apx').onclick = () => panel.classList.remove('open');
           $('#ppv-aton').onclick = () => { setOn(!isOn()); status(); tick(); };
-          $('#ppv-arm').onclick = () => { const t = cur(); if (!t) return; try { const all = JSON.parse(localStorage.getItem('playerSubtitles') || '{}'); delete all[t.dbId]; localStorage.setItem('playerSubtitles', JSON.stringify(all)); } catch (e) {} loadCues(); status(); tick(); };
+          // the same words are often saved twice (subtitles and synced lyrics): Remove takes both away
+          $('#ppv-arm').onclick = () => { const t = cur(); if (!t) return; try { const all = JSON.parse(localStorage.getItem('playerSubtitles') || '{}'); delete all[t.dbId]; localStorage.setItem('playerSubtitles', JSON.stringify(all)); } catch (e) {} try { const L = window.__ppLyrics; if (L && L.has(t.dbId)) L.set(t.dbId, ''); } catch (e) {} loadCues(); status(); tick(); };
           $('#ppv-ald').onclick = () => $('#ppv-af').click();
           $('#ppv-af').onchange = async e => {
             const f = e.target.files[0]; e.target.value = ''; const t = cur(); if (!f || !t) return;
