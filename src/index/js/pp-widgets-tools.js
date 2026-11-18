@@ -94,13 +94,13 @@
   // Genres and feels from the smart tags as chips; tap one to play those songs shuffled.
   var VIBE_NAMES = { chill:'Chill', party:'Party', happy:'Happy', sad:'Sad', energetic:'Energetic', aggressive:'Intense', instrumental:'Instrumental', vocals:'Vocals', dance:'Dance', focus:'Focus', romantic:'Romantic', dark:'Dark' };
   function tagSets(kind){
-    var V = window.PPVocals, tags = null; try { tags = V && V.loadTags ? V.loadTags() : null; } catch(e){}
+    var V = window.PPVocals, tags = null; try { tags = V && V.loadTags ? V.loadTags() : null; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     var A = api(), sets = {}; if (!A || !tags) return sets;
     var t = A.tracks();
     playable().forEach(function(i){
       var c = tags[String(t[i].dbId)]; if (!c) return;
       if (kind !== 'vibe'){ var g = (c.gn || [])[0]; if (g){ var n = String(g[0]).split('---')[0].replace(/ music$/i, '').trim(); if (n) (sets['g:' + n] = sets['g:' + n] || { name: n, ids: [] }).ids.push(i); } }
-      if (kind !== 'genre' && V.vibes){ var vb = []; try { vb = V.vibes(c) || []; } catch(x){}
+      if (kind !== 'genre' && V.vibes){ var vb = []; try { vb = V.vibes(c) || []; } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
         vb.forEach(function(v){ if (v === 'vocals' || v === 'speech') return; var nm = VIBE_NAMES[v] || (v.charAt(0).toUpperCase() + v.slice(1)); (sets['v:' + v] = sets['v:' + v] || { name: nm, ids: [], vibe: 1 }).ids.push(i); }); }
     });
     return sets;
@@ -123,7 +123,7 @@
   // How much room the library takes, split into videos and music, and the biggest files.
   function fmtBytes(n){ if (!n) return '0 MB'; var u = ['B','KB','MB','GB','TB'], i = Math.min(4, Math.floor(Math.log(n) / Math.log(1024))); return (n / Math.pow(1024, i)).toFixed(i >= 3 ? 1 : 0) + ' ' + u[i]; }
   var storeEst = null;
-  try { if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(function(e){ storeEst = e; liveSoon(); }).catch(function(){}); } catch(e){}
+  try { if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(function(e){ storeEst = e; liveSoon(); }).catch(function(){}); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   T.storage = { name:'Storage', icon:'folder', kind:'box', zones:['home','page'], w:'full', desc:'How much room your library takes, and its biggest files',
     fields:[['big','Show the biggest files','seg',[['0','None'],['','3'],['5','5']]],['card','On a card','toggle',true]],
     render:function(o){ return card(cardOn(o), '<div class="pw-sto" data-pw-live="storage" data-big="' + (o.big === '0' ? 0 : +o.big || 3) + '"></div>'); },

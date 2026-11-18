@@ -16,7 +16,7 @@
   function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
   function load(k, d){ try { var x = JSON.parse(localStorage.getItem(k) || 'null'); return x && typeof x === 'object' ? x : d; } catch(e){ return d; } }
   var S = load(KEY, {});
-  function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} }
+  function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
 
   var IC = {
     music:'<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
@@ -251,7 +251,7 @@
       saveFold();
     }
   });
-  function saveFold(){ try { localStorage.setItem(FOLD_KEY, JSON.stringify(folded)); } catch(e){} }
+  function saveFold(){ try { localStorage.setItem(FOLD_KEY, JSON.stringify(folded)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
 
   // ======================= button spots =======================
   // Fixed places on the players where the user chooses the button: two in the top bar, the two outer places in the
@@ -362,7 +362,7 @@
   // ======================= Settings sections: order, group, shown =======================
   var SA_KEY = 'ppSettingsArrV1';
   function sArr(){ var a = load(SA_KEY, {}); a.place = a.place || {}; a.order = a.order || {}; a.hide = a.hide || []; return a; }
-  function sArrSave(a){ try { localStorage.setItem(SA_KEY, JSON.stringify(a)); } catch(e){} if (window.__ppSettings) window.__ppSettings.run(); }
+  function sArrSave(a){ try { localStorage.setItem(SA_KEY, JSON.stringify(a)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } if (window.__ppSettings) window.__ppSettings.run(); }
   function secName(sec){
     var l = sec.querySelector('.settings-section-label'), t = sec.querySelector('.settings-row-title');
     var x = (l && l.textContent.trim()) || (t && t.textContent.replace(/\s+/g, ' ').trim()) || 'Section';

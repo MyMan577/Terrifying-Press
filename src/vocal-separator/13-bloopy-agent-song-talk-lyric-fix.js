@@ -177,7 +177,7 @@
       if (c.v != null) L.push(c.v >= 50 ? 'Has vocals' : 'Mostly instrumental');
       if (c.fv != null) L.push('Vocals from ' + mmssT(c.fv) + ' to ' + mmssT(c.lv));
       if (c.d) L.push('Length: ' + mmssT(c.d));
-      try { const m = songMap(t.dbId, c); if (m) L.push('Song map (where the song changes and what changes in the music, from the lyrics and the sound):\n' + songMapRows(m).join('\n') + (m.duet ? '\n  (the voice changes between parts: maybe two singers)' : '')); } catch (e) {}
+      try { const m = songMap(t.dbId, c); if (m) L.push('Song map (where the song changes and what changes in the music, from the lyrics and the sound):\n' + songMapRows(m).join('\n') + (m.duet ? '\n  (the voice changes between parts: maybe two singers)' : '')); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       // Structure from the timed lyrics: lines that come back are the chorus / hook.
       let cues = []; try { const e = (JSON.parse(localStorage.getItem('playerSubtitles')) || {})[t.dbId]; if (e && e.c) cues = e.c.map(q => [+q[0], String(q[2] || '').trim()]).filter(q => q[1]); } catch (x) {}
       if (cues.length >= 6) {
@@ -232,7 +232,7 @@
         for (const q of tr.lines) { if (n + q.length + 3 > chars) break; ly.push(q); n += q.length + 3; }
         if (ly.length) out += '\nLyrics' + (ly.length < tr.lines.length ? ' (the start)' : '') + ': ' + ly.join(' / ');
       }
-      if (!sum && !tr.lines.length) { let tg = ''; try { tg = tagLine(x); } catch (e) {} out += '\n(No lyrics or summary are saved for this song' + (tg ? '; its sound: ' + tg : '') + '. Say that you have not read its words.)'; }
+      if (!sum && !tr.lines.length) { let tg = ''; try { tg = tagLine(x); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } out += '\n(No lyrics or summary are saved for this song' + (tg ? '; its sound: ' + tg : '') + '. Say that you have not read its words.)'; }
       return out;
     }
     // Several songs inside one token budget. The most recently asked-for songs get the room; the rest are only named.
@@ -247,8 +247,8 @@
     function ctxWanted(st, text) {
       const tr = window.__ppApi.tracks(), t = st.t, low = String(text).toLowerCase(), list = [], push = x => { if (x && !x.stem && x.dbId !== t.dbId && !list.includes(x)) list.push(x); };
       let note = '';
-      try { blNamed(text).forEach(i => push(tr[i])); } catch (e) {}
-      (String(text).match(/["“][^"“”]{2,60}["”]/g) || []).forEach(q => { try { const i = blFindSong(q); if (i >= 0) push(tr[i]); } catch (e) {} });
+      try { blNamed(text).forEach(i => push(tr[i])); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+      (String(text).match(/["“][^"“”]{2,60}["”]/g) || []).forEach(q => { try { const i = blFindSong(q); if (i >= 0) push(tr[i]); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } });
       const al = ctxAlbum(t), at = al.findIndex(x => x.dbId === t.dbId);
       if (al.length > 1 && at >= 0) {
         const closing = /\b(closing|final|last) (song|track) (on|of|in|from)\b|\bcloser\b/.test(low);
@@ -338,7 +338,7 @@
       const artist = t.artist && !/^(unknown artist|video|stream)$/i.test(t.artist) ? t.artist : '';
       songTalk = { t, idx: i, title: t.title, artist, hist: [], ctx: [], note: '', row: null };
       const st = songTalk;
-      cbox.style.display = 'flex'; try { blAnchor(); } catch (e) {}
+      cbox.style.display = 'flex'; try { blAnchor(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       stBar = document.createElement('div');
       stBar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid #2e2f36;font-size:12px;background:#22232a';
       const lab = document.createElement('span'); lab.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
@@ -349,7 +349,7 @@
       // A sister part ("Pt. 2", "Reprise") obviously belongs with this song, so it is read from the start.
       let sib = []; try { sib = ctxSiblings(t).filter(ctxHas).slice(0, 2); st.ctx = sib.map(x => x.dbId); } catch (e) { console.warn(e); }
       ctxChips(st);
-      let albumN = 0; try { const al = ctxAlbum(t); albumN = ctxCandidates(t).filter(x => al.includes(x)).length; } catch (e) {}
+      let albumN = 0; try { const al = ctxAlbum(t); albumN = ctxCandidates(t).filter(x => al.includes(x)).length; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       cin.placeholder = 'Ask about ' + t.title + '\u2026';
       const tr = getTranscript(t.dbId);
       add('bot', blTone('Let\'s talk about ' + t.title + (artist ? ' by ' + artist : '') + '. Ask me anything: what it literally says, what the images stand for, or how the music is built.' +
@@ -388,9 +388,9 @@
         const out = await g(fit.msgs, opts);
         let r = out && out[0] && out[0].generated_text; r = Array.isArray(r) ? (r[r.length - 1] || {}).content : (r || acc);
         r = finishSentence(String(r || acc).trim());
-        try { const tb = (loadTags()[st.t.dbId] || {}).bpm; r = fixNums(r, tb ? [tb] : []); } catch (e) {}
+        try { const tb = (loadTags()[st.t.dbId] || {}).bpm; r = fixNums(r, tb ? [tb] : []); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         if (!looksOk(r)) { el.textContent = 'Sorry, that came out garbled. Ask me again?'; return; }
-        el.textContent = r; scrollDown(); try { vSpeak(r); } catch (e) {}
+        el.textContent = r; scrollDown(); try { vSpeak(r); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         if (songTalk === st) { st.hist.push(uMsg, { role: 'assistant', content: r }); st.hist = st.hist.slice(-12); }
       } catch (e) { console.error(e); el.textContent = 'Oops, my brain would not load: ' + errText(e); }
       finally { chatBusy = false; holdModel = false; cm('greet'); setTimeout(() => cm('idle'), 1300); idleUnload(); }
@@ -634,7 +634,7 @@
       const A = window.__ppApi, t = A.tracks()[i]; if (!t) return;
       if (typeof songTalk !== 'undefined' && songTalk) endSongTalk(false);
       if (lyFix) endLyFix(false);
-      cbox.style.display = 'flex'; try { blAnchor(); } catch (e) {}
+      cbox.style.display = 'flex'; try { blAnchor(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       const data = lfLoad(t);
       if (!data) { add('bot', blTone('There are no lyrics or subtitles saved for ' + t.title + ' yet. Transcribe it first (Lyrics & subtitles), or let auto-lyrics find them, then ask me again.')); return; }
       const artist = t.artist && !/^(unknown artist|video|stream)$/i.test(t.artist) ? t.artist : '';

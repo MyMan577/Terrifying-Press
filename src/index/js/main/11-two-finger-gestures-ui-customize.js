@@ -293,7 +293,7 @@
   }
 
   function saveCustomization(){
-    try { localStorage.setItem(CUSTOMIZE_KEY, JSON.stringify(uiCustomization)); } catch(e){}
+    try { localStorage.setItem(CUSTOMIZE_KEY, JSON.stringify(uiCustomization)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
 
   function loadCustomization(){

@@ -20,7 +20,7 @@
   var fontsOrTimeout = Promise.race([fonts, new Promise(function(r){ setTimeout(r, 2500); })]);
   var lib = window.__ppLibReady || Promise.resolve();
   Promise.all([pageLoaded, fontsOrTimeout, lib]).then(function(){
-    try { if (window.__ppRenderHomeNow) window.__ppRenderHomeNow(); } catch(e){}
+    try { if (window.__ppRenderHomeNow) window.__ppRenderHomeNow(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     requestAnimationFrame(function(){ requestAnimationFrame(finish); });
   }, finish);
   setTimeout(finish, 12000);

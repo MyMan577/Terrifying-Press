@@ -7,7 +7,7 @@
   var FD_KEY = 'ppFidgetsV1', FDS = (function(){ try { return JSON.parse(localStorage.getItem(FD_KEY)) || {}; } catch(e){ return {}; } })(), fdSaveT = 0, FDM = {};
   function fdKeep(id, def){ if (!FDS[id] || typeof FDS[id] !== 'object') FDS[id] = def; return FDS[id]; }    // kept across restarts
   function fdMem(id, def){ if (!FDM[id]) FDM[id] = def; return FDM[id]; }                                    // kept across re-renders
-  function fdSave(){ clearTimeout(fdSaveT); fdSaveT = setTimeout(function(){ try { localStorage.setItem(FD_KEY, JSON.stringify(FDS)); } catch(e){} }, 700); }
+  function fdSave(){ clearTimeout(fdSaveT); fdSaveT = setTimeout(function(){ try { localStorage.setItem(FD_KEY, JSON.stringify(FDS)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }, 700); }
   function fdOpts(el){ try { return JSON.parse(el.dataset.o || '{}') || {}; } catch(e){ return {}; } }
   function fdData(it, o, keys){ var x = {}; keys.forEach(function(k){ if (o[k] != null && o[k] !== '') x[k] = o[k]; }); return ' data-id="' + esc(it ? it.id : 'x') + '" data-o="' + esc(JSON.stringify(x)) + '"'; }
   function fdBuzz(o, ms){ if (o.buzz === false || !navigator.vibrate) return; try { navigator.vibrate(ms); } catch(e){} }

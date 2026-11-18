@@ -218,7 +218,7 @@
     try {
       if (!t || isStock(t)){ localStorage.removeItem(KEY); localStorage.removeItem(CSS_KEY); localStorage.removeItem(BAR_KEY); }
       else { localStorage.setItem(KEY, JSON.stringify(t)); localStorage.setItem(CSS_KEY, buildCss(t)); localStorage.setItem(BAR_KEY, t.c.bg); }
-    } catch(e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
 
   var current = load();

@@ -6,7 +6,7 @@
   async function pkVocab() {                                           // vocab.txt lines look like "▁the 42"; saved after the first download so it works offline
     if (pkVoc) return pkVoc;
     let txt = ''; try { txt = localStorage.getItem('ppvPkVocab') || ''; } catch (e) {}
-    if (!txt) { txt = await (await fetch(PK_BASE + 'vocab.txt')).text(); try { localStorage.setItem('ppvPkVocab', txt); } catch (e) {} }
+    if (!txt) { txt = await (await fetch(PK_BASE + 'vocab.txt')).text(); try { localStorage.setItem('ppvPkVocab', txt); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
     const toks = []; let blank = -1;
     for (const line of txt.split('\n')) {
       const l = line.replace(/\r$/, ''); if (!l) continue;
@@ -237,7 +237,7 @@
   }
   const rpAltsLoad = id => { try { return (JSON.parse(localStorage.getItem('ppvAlts') || '{}')[id]) || []; } catch (e) { return []; } };
   const rpAltsSave = (id, items) => {
-    try { const all = JSON.parse(localStorage.getItem('ppvAlts') || '{}'), list = items.filter(c => c.alts && c.alts.length).map(c => [Math.round((c.s != null ? c.s : c.start) * 100) / 100, c.alts.slice(0, 3)]); if (list.length) all[id] = list; else delete all[id]; localStorage.setItem('ppvAlts', JSON.stringify(all)); } catch (e) {}
+    try { const all = JSON.parse(localStorage.getItem('ppvAlts') || '{}'), list = items.filter(c => c.alts && c.alts.length).map(c => [Math.round((c.s != null ? c.s : c.start) * 100) / 100, c.alts.slice(0, 3)]); if (list.length) all[id] = list; else delete all[id]; localStorage.setItem('ppvAlts', JSON.stringify(all)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   };
   // Merge extra passes into alternatives, find repeated lines, and unify the wording when most repeats agree.
   async function rpFinish(passes, x) {
@@ -279,7 +279,7 @@
     try {
       if (o.lv && o.lv.wake && navigator.wakeLock) { try { wl = await navigator.wakeLock.request('screen'); } catch (e) {} }
       const cues = await transcribeRun(t, o, status);
-      try { rpAltsSave(t.dbId, cues); } catch (e) {}                  // alternative wordings live beside the subtitles, for the editor's Repeats tab
+      try { rpAltsSave(t.dbId, cues); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }                  // alternative wordings live beside the subtitles, for the editor's Repeats tab
       return cues.map(c => c.w ? { start: c.start, end: c.end, text: c.text, w: c.w } : { start: c.start, end: c.end, text: c.text });
     } finally { if (NATIVE) NP.keepAlive({ on: false }).catch(() => {}); wl && wl.release().catch(() => {}); heavyJob = false; }
   }
@@ -608,7 +608,7 @@
   const lyKey = t => lyNorm(t.title);
   // Not 'ppvLyAuto': that key is the on/off switch for this feature.
   const lyAutoGet = () => { try { const m = JSON.parse(localStorage.getItem('ppvLyAutoTitles')); return m && typeof m === 'object' ? m : {}; } catch (e) { return {}; } };
-  const lyAutoPut = m => { try { localStorage.setItem('ppvLyAutoTitles', JSON.stringify(m)); } catch (e) {} };
+  const lyAutoPut = m => { try { localStorage.setItem('ppvLyAutoTitles', JSON.stringify(m)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
   async function lyPrefetch(enabled) {
     if (lyRunning) { lyAgain = true; return; }
     if (!enabled() || !navigator.onLine) return; const A = window.__ppApi, lyr = window.__ppLyrics; if (!A || !lyr || !A.tracks) return;
@@ -644,7 +644,7 @@
         }
         if (offline) break;
         lyTried[t.dbId] = lyKey(t);
-        if (got) { try { if (got.syncedLyrics && durOk(got)) { const cues = lyParseLrc(got.syncedLyrics); lyr.set(t.dbId, got.syncedLyrics); if (cues.length) { try { A.setSubtitles(t.dbId, cues, 'Online.lrc'); } catch (e) {} } } else lyr.set(t.dbId, got.plainLyrics || lyLines(got.syncedLyrics || '').join('\n')); const m = lyAutoGet(); m[t.dbId] = lyKey(t); lyAutoPut(m); } catch (e) { console.warn('lyrics save failed', e); } }
+        if (got) { try { if (got.syncedLyrics && durOk(got)) { const cues = lyParseLrc(got.syncedLyrics); lyr.set(t.dbId, got.syncedLyrics); if (cues.length) { try { A.setSubtitles(t.dbId, cues, 'Online.lrc'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } } else lyr.set(t.dbId, got.plainLyrics || lyLines(got.syncedLyrics || '').join('\n')); const m = lyAutoGet(); m[t.dbId] = lyKey(t); lyAutoPut(m); } catch (e) { console.warn('lyrics save failed', e); } }
         await lyWait(1500);
       }
     } catch (e) { console.warn('lyrics background fetch', e); }

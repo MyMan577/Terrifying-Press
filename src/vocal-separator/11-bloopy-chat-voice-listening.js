@@ -119,7 +119,7 @@
     setAiOnly(aiOnly);
     const cm = m => { cball.className = 'ppv-ball m-' + m; blFace(cball, m); };
     const scrollDown = () => { clist.scrollTop = clist.scrollHeight; };
-    const add = (who, text) => { const d = document.createElement('div'); d.className = 'ch-m ' + who; d.textContent = text; clist.appendChild(d); scrollDown(); if (who === 'bot') { blReact(text); if (!aiOnly) blFollowUp(d, text); try { vSpeak(text); } catch (e) {} } return d; };
+    const add = (who, text) => { const d = document.createElement('div'); d.className = 'ch-m ' + who; d.textContent = text; clist.appendChild(d); scrollDown(); if (who === 'bot') { blReact(text); if (!aiOnly) blFollowUp(d, text); try { vSpeak(text); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } return d; };
     const actions = btns => { const d = document.createElement('div'); d.className = 'ch-a'; btns.forEach(([t, fn]) => { const b = document.createElement('button'); b.textContent = t; b.onclick = () => { fn(b, d); }; d.appendChild(b); }); clist.appendChild(d); scrollDown(); return d; };
     // ---------- Copy button on every chat message ----------
     // Replies are streamed by setting textContent, which would wipe a button put in by hand, so one observer keeps a small
@@ -132,7 +132,7 @@
       const ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
         TICK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
       const copyText = async txt => {
-        try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(txt); return true; } } catch (e) {}
+        try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(txt); return true; } } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         try { const ta = document.createElement('textarea'); ta.value = txt; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0'; document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok; } catch (e) { return false; }
       };
       const dress = d => {
@@ -164,7 +164,7 @@
     const vCat = (a, b) => { const o = new Float32Array(a.length + b.length); o.set(a); o.set(b, a.length); return o; };
     const vDot = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; };
     const vHash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return h >>> 0; };
-    const tfLoad = async () => { if (!tfMod) tfMod = await import(TF_URL); try { tfMod.env.backends.onnx.wasm.numThreads = self.crossOriginIsolated ? Math.min(2, navigator.hardwareConcurrency || 2) : 1; } catch (e) {} return tfMod; };
+    const tfLoad = async () => { if (!tfMod) tfMod = await import(TF_URL); try { tfMod.env.backends.onnx.wasm.numThreads = self.crossOriginIsolated ? Math.min(2, navigator.hardwareConcurrency || 2) : 1; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } return tfMod; };
     const dlSay = (say, what) => p => { if (say && p && p.status === 'progress' && p.file) say('Downloading ' + what + ' ' + Math.round(p.progress || 0) + '%'); };
     // Ask once before a big download (same pattern as the chat brain). Returns true when it asked, so the caller stops and waits for the answer.
     const dlAsk = (flag, msg, go) => { if (lsGet(flag) === '1') return false; add('bot', msg); actions([['Download', (b, d) => { d.remove(); lsSet(flag, '1'); go(); }], ['Not now', (b, d) => d.remove()]]); return true; };
@@ -188,7 +188,7 @@
             await PE.load({ id: 'minilm_q8' });
             await PE.loadVocab({ id: 'minilm_tok' });
             const fe = async texts => { const r = await PE.embed({ texts, maxLen: 128 }); return { dims: [r.count, r.dim], data: await fromB64(r.data) }; };   // already mean-pooled and normalized natively
-            fe.dispose = async () => { try { await PE.unload(); } catch (e) {} };
+            fe.dispose = async () => { try { await PE.unload(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
             return fe;
           } catch (e) { console.warn('fully native MiniLM unavailable, trying the older route', e); }
         }
@@ -207,7 +207,7 @@
               for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
               return { dims: [r.count, r.dim], data: new Float32Array(u8.buffer) };   // already mean-pooled and normalized natively
             };
-            fe.dispose = async () => { try { await PE.unload(); } catch (e) {} };
+            fe.dispose = async () => { try { await PE.unload(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
             return fe;
           } catch (e) { console.warn('native MiniLM unavailable, using the web version', e); }
         }
@@ -216,7 +216,7 @@
       miniP.catch(() => { miniP = null; });
       return miniP;
     }
-    async function freeMini() { clearTimeout(miniT); const p = miniP; miniP = null; if (p) { try { const fe = await p; await fe.dispose(); } catch (e) {} } }
+    async function freeMini() { clearTimeout(miniT); const p = miniP; miniP = null; if (p) { try { const fe = await p; await fe.dispose(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } }
     async function mEmbed(texts, say) {
       const fe = await getMini(say), out = [];
       for (let i = 0; i < texts.length; i += 16) {
@@ -232,10 +232,10 @@
       if (semCmd) return semCmd;
       const items = []; S_CAT.forEach(([cmd, safe, ph]) => ph.forEach(t => items.push({ cmd, safe, t })));
       const sig = vHash(items.map(x => x.t).join('|'));
-      let c = null; try { c = await idbGet('mini_cmd'); } catch (e) {}
+      let c = null; try { c = await idbGet('mini_cmd'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       if (c && c.sig === sig && c.v && c.v.length === items.length) { items.forEach((x, i) => { x.v = c.v[i]; }); return (semCmd = items); }
       const vs = await mEmbed(items.map(x => x.t), say); items.forEach((x, i) => { x.v = vs[i]; });
-      try { await idbPut('mini_cmd', { sig, v: vs }); } catch (e) {}
+      try { await idbPut('mini_cmd', { sig, v: vs }); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       return (semCmd = items);
     }
     // One short text per song: title, artist, tag words and the start of any lyrics. Re-embedded only when that text changes.
@@ -249,7 +249,7 @@
         part.forEach((w, k) => { semIdx[w.id] = { h: w.h, v: vs[k] }; });
         say && say('Learning songs\u2026 ' + Math.min(want.length, i + 48) + ' of ' + want.length);
       }
-      if (want.length) { try { await idbPut('mini_trk', semIdx); } catch (e) {} }
+      if (want.length) { try { await idbPut('mini_trk', semIdx); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       return tr.map((t, i) => !t.stem && semIdx[t.dbId] ? { i, v: semIdx[t.dbId].v } : null).filter(Boolean);
     }
     const MUSICWORD = /\b(song|songs|music|track|tracks|tune|tunes|playlist|vibe|mood|feel|feels|feeling|something|anything|play|listen|put on|about)\b/i;
@@ -311,7 +311,7 @@
       kP.catch(() => { kP = null; kLoaded = false; });
       return kP;
     }
-    async function freeVoice() { clearTimeout(kT); const p = kP; kP = null; kLoaded = false; if (p) { try { const t = await p; await t.model.dispose(); } catch (e) {} } }
+    async function freeVoice() { clearTimeout(kT); const p = kP; kP = null; kLoaded = false; if (p) { try { const t = await p; await t.model.dispose(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } }
     const SKIPSPEAK = /^(?:\u2026|\.\.\.|\(Reading that as|Downloading|Loading|Listening|Transcribing)/;
     // Calm, not bubbly: exclamation marks become full stops, and only the first few sentences are read out.
     function speechSentences(s, full) {
@@ -393,7 +393,7 @@
     const earsNat = () => !!NATIVE && !eNatFailed && vFlag('ppvEarsNat');
     async function earsNative(pcm, say) {
       let size = 'tiny_en';
-      try { if ((await NP.exists({ id: 'wh_base_en_enc' })).ready && (await NP.exists({ id: 'wh_base_en_dec' })).ready) size = 'base_en'; } catch (e) {}
+      try { if ((await NP.exists({ id: 'wh_base_en_enc' })).ready && (await NP.exists({ id: 'wh_base_en_dec' })).ready) size = 'base_en'; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       const raw = await whisperNative(pcm, [[0, pcm.length / 16000]], { size, lang: 'english', task: 'transcribe', quick: true }, m => { if (say) say(/^Transcribing/.test(m) ? 'Transcribing\u2026' : m); });
       clearTimeout(earsNT); earsNT = setTimeout(() => { if (!heavyBusy()) NP.whisperUnload().catch(() => {}); }, 120000);   // give the memory back, unless a subtitle job is using the engine
       return raw.map(r => r.text).join(' ');
@@ -404,7 +404,7 @@
       clearTimeout(earsT); earsT = setTimeout(freeEars, 120000);
       return String(out && out.text || '');
     }
-    async function freeEars() { clearTimeout(earsT); const p = earsP; earsP = null; if (p) { try { const a = await p; await a.dispose(); } catch (e) {} } }
+    async function freeEars() { clearTimeout(earsT); const p = earsP; earsP = null; if (p) { try { const a = await p; await a.dispose(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } }
     // One shared microphone: the wake word and the recorder both read its 16 kHz frames. It closes as soon as nobody needs it.
     const mic = { ctx: null, stream: null, node: null, src: null, subs: new Set(), users: 0, opening: null };
     function vResampler(inRate) {
@@ -422,7 +422,7 @@
       mic.opening = (async () => {
         const s = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
         const C = window.AudioContext || window.webkitAudioContext; let ctx; try { ctx = new C({ sampleRate: 16000 }); } catch (e) { ctx = new C(); }
-        if (ctx.state === 'suspended') { try { await ctx.resume(); } catch (e) {} }
+        if (ctx.state === 'suspended') { try { await ctx.resume(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
         const src = ctx.createMediaStreamSource(s), node = ctx.createScriptProcessor(4096, 1, 1), mute = ctx.createGain(), rs = vResampler(ctx.sampleRate); mute.gain.value = 0;
         node.onaudioprocess = e => { const f = rs(e.inputBuffer.getChannelData(0)); if (f.length) mic.subs.forEach(fn => { try { fn(f); } catch (er) { console.error(er); } }); };
         src.connect(node); node.connect(mute); mute.connect(ctx.destination);

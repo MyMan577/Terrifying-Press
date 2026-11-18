@@ -19,7 +19,7 @@
       { mime: 'video/webm', ext: 'webm' }
     ];
     for (const c of candidates){
-      try { if (MediaRecorder.isTypeSupported(c.mime)) return c; } catch(e){}
+      try { if (MediaRecorder.isTypeSupported(c.mime)) return c; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     }
     return null;
   }

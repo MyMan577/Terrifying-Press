@@ -288,7 +288,7 @@
   // opt.cache : object that keeps ONNX sessions alive between tracks (batch mode).
   async function tagTrack(url, status, lv, opt) {
     opt = opt || {};
-    const P = f => { try { opt.progress && opt.progress(Math.max(0, Math.min(1, f))); } catch (e) {} };
+    const P = f => { try { opt.progress && opt.progress(Math.max(0, Math.min(1, f))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     P(0); await loadOrt();
     const low = !!(lv && lv.blob), r = { errors: [] }, own = [], dg = {};
     const TF = ['tg_effnet', 'tg_hinst', 'tg_hvoice', 'tg_mel', 'tg_mn10'];
@@ -332,7 +332,7 @@
       const hG = hasGenre ? await S('tg_hgenre') : null;
       const sNet = hasStyleNet ? await S('tg_effstyle') : null;
       const hs = [], okHeads = [];
-      for (const h of heads) { try { hs.push(await S('tgh_' + h.id)); okHeads.push(h); status('Loading mood models ' + okHeads.length + ' of ' + heads.length + '…'); P(0.2 + 0.05 * okHeads.length / heads.length); await tick(); } catch (e) { console.warn('mood head unusable', h.id, e); try { await idbDel('tgh_' + h.id); await idbDel('tghm_' + h.id); } catch (e2) {} headsMemo = null; } }
+      for (const h of heads) { try { hs.push(await S('tgh_' + h.id)); okHeads.push(h); status('Loading mood models ' + okHeads.length + ' of ' + heads.length + '…'); P(0.2 + 0.05 * okHeads.length / heads.length); await tick(); } catch (e) { console.warn('mood head unusable', h.id, e); try { await idbDel('tgh_' + h.id); await idbDel('tghm_' + h.id); } catch(e2){ if (typeof ppCaught === "function") ppCaught(e2); } headsMemo = null; } }
       const heads0 = heads; heads = okHeads; if (!okHeads.length && heads0.length) r.errors.push('Moods skipped: the mood models would not load (they will be re-downloaded next run).');
       // Reads a classifier head's answer by its own output shape. If a head hands back one row for the whole batch instead of one per patch
       // (or fewer values than expected), that row is used for every patch instead of reading past the end and producing NaN.

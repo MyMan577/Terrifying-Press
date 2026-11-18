@@ -100,7 +100,7 @@
   }
 
   var busy=false,queued=false;
-  function run(){ if(busy)return; busy=true; try{organize();clamp();}catch(e){} busy=false; }
+  function run(){ if(busy)return; busy=true; try{organize();clamp();}catch(e){ if (typeof ppCaught === "function") ppCaught(e); } busy=false; }
   function sched(){ if(queued)return; queued=true; setTimeout(function(){queued=false;run();},30); }
   run(); setTimeout(run,1000); setTimeout(run,3000);
   // Widgets placed in Settings update themselves often; their changes are not new settings, so they don't set off a pass.

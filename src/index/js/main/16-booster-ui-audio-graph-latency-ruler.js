@@ -259,7 +259,7 @@
     try {
       const ts = ctx.getOutputTimestamp && ctx.getOutputTimestamp();
       if (ts && ts.performanceTime > 0) return ts.performanceTime + (t - ts.contextTime) * 1000;
-    } catch (e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     return performance.now() + (t - ctx.currentTime + (ctx.outputLatency || ctx.baseLatency || 0)) * 1000;
   }
   function ltSchedule(){   // keeps the next ~0.4 s of beeps queued on the audio clock

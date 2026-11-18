@@ -94,7 +94,7 @@
           const w = sidebarEl.getBoundingClientRect().width;
           localStorage.setItem(SIDEBAR_WIDTH_KEY, String(Math.round(w)));
         }
-      } catch(err){}
+      } catch(err){ if (typeof ppCaught === "function") ppCaught(err); }
     }
     handle.addEventListener('pointerup', endDrag);
     handle.addEventListener('pointercancel', endDrag);
@@ -114,7 +114,7 @@
     const all = loadTrackVizSensitivities();
     if (value == null) delete all[dbId];
     else all[dbId] = value;
-    try { localStorage.setItem(TRACK_VIZ_SENS_KEY, JSON.stringify(all)); } catch(e){}
+    try { localStorage.setItem(TRACK_VIZ_SENS_KEY, JSON.stringify(all)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function getSavedTrackVizSens(dbId){
     const v = loadTrackVizSensitivities()[dbId];
@@ -153,13 +153,13 @@
       const b = e.target.closest('button'); if (!b) return;
       vizStyle = VIZ_STYLES.includes(b.dataset.v) ? b.dataset.v : 'bars';
       if (vizStyle === 'disc3d' && !v3Init()) vizStyle = 'bars';     // no WebGL: stay on the plain bars
-      try { localStorage.setItem('ppVizStyle', vizStyle); } catch(x){}
+      try { localStorage.setItem('ppVizStyle', vizStyle); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
       vizIdle = false;                                                // draw the new style even while paused
       paint();
     });
     hapSeg.addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
-      hapticBass = +b.dataset.v; try { localStorage.setItem('ppHapticBass', String(hapticBass)); } catch(x){}
+      hapticBass = +b.dataset.v; try { localStorage.setItem('ppHapticBass', String(hapticBass)); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
       paint();
       if (hapticBass && navigator.vibrate){ try { navigator.vibrate(hapticBass === 2 ? 30 : 14); } catch(x){} }   // feel what was picked
     });
@@ -196,7 +196,7 @@
     try {
       const m = /^#?([0-9a-f]{6})$/i.exec(getComputedStyle(document.body).getPropertyValue('--accent').trim());   // body: a theme sets it there
       if (m){ const n = parseInt(m[1], 16); vizRgb = [n >> 16, (n >> 8) & 255, n & 255]; }
-    } catch(e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     return vizRgb;
   }
   function vizSetDiscScale(s){

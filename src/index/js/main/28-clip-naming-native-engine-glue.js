@@ -41,7 +41,7 @@
     cutterNamePreview.textContent = 'Saves as: ' + cutterFileBase(track, cutterState.start, cutterState.end) + '.' + cutterFormatExt();
   }
   cutterNameStyle.addEventListener('change', () => {
-    try { localStorage.setItem(CUTTER_NAME_KEY, cutterNameStyle.value); } catch (e){}
+    try { localStorage.setItem(CUTTER_NAME_KEY, cutterNameStyle.value); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     if (cutterNameStyle.value === 'custom' && !cutterNameInput.value && cutterState){
       const tr = tracks[cutterState.trackIndex];
       if (tr) cutterNameInput.value = (tr.title || 'clip') + '_cut';
@@ -398,10 +398,10 @@
     const need = items.filter(o => !ppHashes.has(o.key));
     const uris = need.filter(o => o.uri).map(o => o.uri);
     if (uris.length && PPNative.lib.hashFiles){
-      try { const r = await PPNative.lib.hashFiles(uris); const h = (r && r.hashes) || {}; for (const u of uris) if (h[u]) ppHashes.set(u, h[u]); } catch(e){}
+      try { const r = await PPNative.lib.hashFiles(uris); const h = (r && r.hashes) || {}; for (const u of uris) if (h[u]) ppHashes.set(u, h[u]); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     }
     for (const o of need) if (o.dbId){
-      try { const b = await dbGet(o.dbId); if (b) ppHashes.set(o.key, await ppHashBlob(b)); } catch(e){}
+      try { const b = await dbGet(o.dbId); if (b) ppHashes.set(o.key, await ppHashBlob(b)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     }
   }
   async function ppDropDuplicates(entries){
@@ -442,7 +442,7 @@
     try {
       const l = JSON.parse(localStorage.getItem(PP_FOLDERS_KEY) || '[]');
       if (l.indexOf(tree) < 0){ l.push(tree); localStorage.setItem(PP_FOLDERS_KEY, JSON.stringify(l)); }
-    } catch(e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   // Scanned files are checked one batch at a time, so a copy in one batch is caught against the batch before it.
   var ppAddChain = Promise.resolve();
@@ -498,7 +498,7 @@
           const f = new File([r.text || ''], sc.name, { type: 'text/plain' });
           if (/\.lrc$/i.test(sc.name)) ppSidecarLrc(track, new File([], e.name || ''), [f]);
           else subFiles.push(f);
-        } catch(err){}
+        } catch(err){ if (typeof ppCaught === "function") ppCaught(err); }
       }
       if (track.kind === 'video') videoPairs.push({ track, file: new File([], e.name || '') });
     }
@@ -548,7 +548,7 @@
     ov.addEventListener('click', e => {
       const b = e.target.closest('[data-a]'); if (!b) return;
       const a = b.dataset.a;
-      if (ov.querySelector('input').checked){ try { localStorage.setItem(PP_OPEN_KEY, a); } catch(x){} ppOpenSettingSync(); }
+      if (ov.querySelector('input').checked){ try { localStorage.setItem(PP_OPEN_KEY, a); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); } ppOpenSettingSync(); }
       if (a === 'remove') ppOpenedRemove(); else ppOpened = null;
       ov.remove(); ppOpenAsking = false;
       showToast(a === 'remove' ? (one ? 'Removed from your library.' : 'Removed them from your library.') : (one ? 'Kept in your library.' : 'Kept them in your library.'));
@@ -571,19 +571,19 @@
   new MutationObserver(() => setTimeout(ppOpenedCheck, 50)).observe(document.body, { attributes: true, attributeFilter: ['data-pl-player'] });
   function ppOpenSettingSync(){ const s = document.getElementById('open-keep-select'); if (s) s.value = ppOpenPref(); }
   { const s = document.getElementById('open-keep-select');
-    if (s){ ppOpenSettingSync(); s.addEventListener('change', () => { try { localStorage.setItem(PP_OPEN_KEY, s.value); } catch(e){} }); } }
+    if (s){ ppOpenSettingSync(); s.addEventListener('change', () => { try { localStorage.setItem(PP_OPEN_KEY, s.value); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }); } }
 
   // Ends what is playing (Settings > Leaving the player > Stop the track, pp-leave.js): its place is saved, nothing is loaded.
   window.__ppCloseTrack = function(){
     if (currentIndex === -1) return;
-    try { if (rememberPlaybackPosition) savePlaybackPosition(tracks[currentIndex].dbId, media().currentTime); } catch(e){}
+    try { if (rememberPlaybackPosition) savePlaybackPosition(tracks[currentIndex].dbId, media().currentTime); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     try { audioEl.pause(); videoEl.pause(); } catch(e){}
-    try { if (PPNative.enabled && PPNative.closeTrack) PPNative.closeTrack(); } catch(e){}
+    try { if (PPNative.enabled && PPNative.closeTrack) PPNative.closeTrack(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     currentIndex = -1; isPlaying = false; updatePlayIcon();
     npTitle.classList.remove('marquee-active'); npTitleTrack.textContent = 'No track selected'; npArtist.textContent = '-'; showFallbackArt();
-    try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch(e){}
+    try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   };
-  window.__ppUpdateMediaSession = function(){ try { updateMediaSession(); } catch(e){} };
+  window.__ppUpdateMediaSession = function(){ try { updateMediaSession(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
 
   // What should play after the current track? Mirrors onEnded() so native can advance on its own.
   let ppNextSig = '';
@@ -596,7 +596,7 @@
           if (ni >= 0 && ni !== currentIndex) n = tracks[ni];
         }
       }
-    } catch(e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     PPNative.queueNext(n);
   }
   if (window.PPNative && PPNative.available){
@@ -609,7 +609,7 @@
       else if (c === 'play'){ if (!isPlaying) togglePlay(); }      // from the video notification (see ppMirrorSync)
       else if (c === 'pause'){ if (isPlaying) togglePlay(); }
       else if (c === 'seek'){ if (ev && ev.posMs != null && currentIndex !== -1){ try { media().currentTime = ev.posMs / 1000; } catch(e){} } }
-      if (c === 'play' || c === 'pause' || c === 'seek') setTimeout(() => { try { ppMirrorSync(); } catch(e){} }, 700);   // confirm the real state back
+      if (c === 'play' || c === 'pause' || c === 'seek') setTimeout(() => { try { ppMirrorSync(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }, 700);   // confirm the real state back
     };
     // Play or pause pressed outside the page while the native engine plays (notification, widget, headset, car).
     // Without this the app still believed it was playing after a notification pause: coming back to it started the
@@ -620,7 +620,7 @@
         cancelResumeOnReturn();   // paused on purpose: returning to the app must not restart it
         if (isPlaying){
           isPlaying = false; updatePlayIcon(); updateMediaSession();
-          try { if (rememberPlaybackPosition) savePlaybackPosition(tracks[currentIndex].dbId, media().currentTime); } catch(e){}
+          try { if (rememberPlaybackPosition) savePlaybackPosition(tracks[currentIndex].dbId, media().currentTime); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         }
       } else if (!isPlaying){ isPlaying = true; updatePlayIcon(); updateMediaSession(); }
     };
@@ -695,7 +695,7 @@
     backupSpeedSlider.addEventListener('input', () => {
       const v = parseInt(backupSpeedSlider.value, 10);
       showSpeed(v);
-      try { localStorage.setItem(BACKUP_SPEED_KEY, String(v)); } catch (e){}
+      try { localStorage.setItem(BACKUP_SPEED_KEY, String(v)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     });
   }
   if (storageImportBtn && libraryImportInput){

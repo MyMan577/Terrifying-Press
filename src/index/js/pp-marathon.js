@@ -1,6 +1,6 @@
 (function(){
   var BEST='ppMarathonBestV1', BG='ppMarathonBgV1', LEN=30, XP_N=6, SECS=10, BG_NEED=24, PREM_NEED=27;   // 24/30 = 80%, 27/30 = 90%
-  var ls={g:function(k){try{return localStorage.getItem(k)}catch(e){return null}},s:function(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+  var ls={g:function(k){try{return localStorage.getItem(k)}catch(e){return null}},s:function(k,v){try{localStorage.setItem(k,v)}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}};
   var toast=function(m){try{window.ppToast(m)}catch(e){}};
   var G=window.PPModeGate||{unlocked:function(){return true},legacy:function(){return true},check:function(){}};
   var css=document.createElement('style');
@@ -109,11 +109,11 @@
     if(pct>prev)ls.s(BEST,String(pct));
     var lines=[];
     if(right>=BG_NEED){
-      if(!bgHave()){ls.s(BG,'1');lines.push('Finish Line unlocked. Find it under Customize appearance \u2192 Unlockable presets.');toast('Finish Line background unlocked');try{window.PPXpApi&&window.PPXpApi.refreshUnlocks&&window.PPXpApi.refreshUnlocks()}catch(e){}}
+      if(!bgHave()){ls.s(BG,'1');lines.push('Finish Line unlocked. Find it under Customize appearance \u2192 Unlockable presets.');toast('Finish Line background unlocked');try{window.PPXpApi&&window.PPXpApi.refreshUnlocks&&window.PPXpApi.refreshUnlocks()}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}
       else lines.push('Finish Line background: already unlocked.');
     }else lines.push(BG_NEED+' of '+total+' (80%) needed for the Finish Line background.');
     if(pct>=90){
-      try{G.check()}catch(e){}
+      try{G.check()}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       lines.push(G.legacy()||was?'90% or better! Premium was already unlocked.':'90% or better! Press Play PREMIUM is unlocked. Find it under Settings \u2192 App mode.');
     }else lines.push(PREM_NEED+' of '+total+' (90%) earns Press Play PREMIUM.');
     body.innerHTML='';

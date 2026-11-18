@@ -18,7 +18,7 @@
       Object.keys(cutterFxPick).forEach(k => { if (s.pick && typeof s.pick[k] === 'boolean') cutterFxPick[k] = s.pick[k]; });
     }
   } catch(e){}
-  function saveCutterFx(){ try { localStorage.setItem(CUTTER_FX_KEY, JSON.stringify({ on: cutterFxOn, pick: cutterFxPick })); } catch(e){} }
+  function saveCutterFx(){ try { localStorage.setItem(CUTTER_FX_KEY, JSON.stringify({ on: cutterFxOn, pick: cutterFxPick })); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
 
   function cutterFxLive(){
     return {
@@ -169,7 +169,7 @@
     try {
       if (ctx.audioWorklet && typeof AudioWorkletNode !== 'undefined'){
         if (ctx === audioCtx){
-          try { await bitcrusherWorkletReady; } catch(e){}
+          try { await bitcrusherWorkletReady; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
           if (bitcrusherWorkletResolved && !bitcrusherWorkletFailed){
             const n = new AudioWorkletNode(ctx, 'bitcrusher-processor', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
             n.parameters.get('amount').value = amt;

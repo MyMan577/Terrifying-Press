@@ -23,7 +23,7 @@
   let cfg = { mode: 'off', secs: 5, album: true };
   try { Object.assign(cfg, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch(e){}
   cfg.secs = Math.max(1, Math.min(12, +cfg.secs || 5));
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch(e){} };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
 
   // ---- Settings UI ----
   const sec = document.createElement('div');

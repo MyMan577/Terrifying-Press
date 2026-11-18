@@ -6,7 +6,7 @@
   if(on)document.body.classList.add('pp-lite');
   function applyLiteBits(){
     if(!get())return;
-    try{var a=window.PPXpApi;if(a){window.__ppXpO=window.__ppXpO||{w:a.recordWatchTime,c:a.recordCompletion};a.recordWatchTime=function(){};a.recordCompletion=function(){};}}catch(e){}
+    try{var a=window.PPXpApi;if(a){window.__ppXpO=window.__ppXpO||{w:a.recordWatchTime,c:a.recordCompletion};a.recordWatchTime=function(){};a.recordCompletion=function(){};}}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     try{document.documentElement.style.removeProperty('--accent');document.documentElement.style.removeProperty('--accent-dim');}catch(e){}
     // make sure the extra EQ bands are usable regardless of level
     document.querySelectorAll('.eq-band-pro').forEach(function(b){b.classList.add('unlocked');});
@@ -31,7 +31,7 @@
         localStorage.setItem(KEY,turningOn?'1':'0');
         if(turningOn){localStorage.setItem('ppPlusMode','0');localStorage.setItem('ppPremiumMode','0');}
         sessionStorage.setItem('ppLiteBanner',turningOn?'on':'off');
-      }catch(e){}
+      }catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       try{location.reload();}catch(e){}
       // fallback if reload is blocked by the host: apply live
       setTimeout(function(){
@@ -44,7 +44,7 @@
   }
   var HIDE_KEY='ppLiteHidden', SEEN_KEY='ppLiteFirstSeen', NEW_DAYS=7;
   function isHidden(){try{return localStorage.getItem(HIDE_KEY)==='1';}catch(e){return false;}}
-  function setHidden(v){try{if(v)localStorage.setItem(HIDE_KEY,'1');else localStorage.removeItem(HIDE_KEY);}catch(e){}}
+  function setHidden(v){try{if(v)localStorage.setItem(HIDE_KEY,'1');else localStorage.removeItem(HIDE_KEY);}catch(e){ if (typeof ppCaught === "function") ppCaught(e); }}
   function showNew(){
     try{
       var t=parseInt(localStorage.getItem(SEEN_KEY),10);

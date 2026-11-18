@@ -231,7 +231,7 @@
       if (onProgress) onProgress(1, 'Done');
       return new Blob([target.buffer], { type: 'video/mp4' });
     } finally {
-      closers.forEach(f => { try { f(); } catch(e){} });
+      closers.forEach(f => { try { f(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } });
       cutterExportAbort = null;
     }
   }
@@ -275,7 +275,7 @@
         gl.uniform1i(uT, 0); gl.uniform2f(uOut, W, H);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
       },
-      close(){ try { srFreeAll(C); srFreeAll(C2); gl.getExtension('WEBGL_lose_context').loseContext(); } catch (e){} }
+      close(){ try { srFreeAll(C); srFreeAll(C2); gl.getExtension('WEBGL_lose_context').loseContext(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
     };
   }
 
@@ -309,7 +309,7 @@
     const wasPlaying = !media().paused;
     media().pause();
     const stopKeepAlive = startExportKeepAlive();
-    const say = (txt) => { try { if (onStatus) onStatus(txt); } catch (e){} };
+    const say = (txt) => { try { if (onStatus) onStatus(txt); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     const t0 = performance.now();
     try {
       const blob = await PPNative.jobs.run('Enhancing ' + (t.title || 'video'), async (job) => {
@@ -364,9 +364,9 @@
       try { v.pause(); } catch(e){}
       try { if (audioSrc) audioSrc.disconnect(); } catch(e){}
       try { if (fxChain){ fxChain.oscs.forEach(o => { try { o.stop(); } catch(e){} }); fxChain.nodes.forEach(n => { try { n.disconnect(); } catch(e){} }); } } catch(e){}
-      try { if (delayQueue) delayQueue.forEach(q => { try { q.b.close(); } catch(e){} }); } catch(e){}
+      try { if (delayQueue) delayQueue.forEach(q => { try { q.b.close(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       v.removeAttribute('src');
-      try { v.load(); } catch(e){}
+      try { v.load(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       v.remove();
       cutterExportAbort = null;
     };
@@ -591,7 +591,7 @@
           if (stopped) res(); else releaseLock = res;
         })).catch(() => {});
       }
-    } catch(e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     try {
       const ctx = ensureAudioCtx();
       // A suspended context plays nothing, so the keep-alive would do nothing. The click that
@@ -608,7 +608,7 @@
     } catch(e){ source = null; }
     return () => {
       stopped = true;
-      if (releaseLock){ try { releaseLock(); } catch(e){} releaseLock = null; }
+      if (releaseLock){ try { releaseLock(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } releaseLock = null; }
       try { if (source) source.stop(); } catch(e){}
     };
   }

@@ -12,13 +12,13 @@
   var DEF = { mini: true, leave: 'keep', bgAudio: true, bgVideo: true, notify: true, survive: true, other: 'pause', calls: 'keep' };
   var NAT = !!(window.PPNative && PPNative.available && PPNative.setPlaybackPrefs);
   function get(){ var o = {}; try { o = JSON.parse(localStorage.getItem(KEY)) || {}; } catch(e){} return Object.assign({}, DEF, o); }
-  function set(k, v){ var o = get(); o[k] = v; try { localStorage.setItem(KEY, JSON.stringify(o)); } catch(e){} apply(); }
+  function set(k, v){ var o = get(); o[k] = v; try { localStorage.setItem(KEY, JSON.stringify(o)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } apply(); }
 
   function apply(){
     var o = get();
     body.classList.toggle('pp-no-mini', !o.mini);
     window.__ppNoMediaNotif = !o.notify;            // read by updateMediaSession (the browser's own media controls)
-    if (!o.notify){ try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch(e){} }
+    if (!o.notify){ try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
     else if (window.__ppUpdateMediaSession) window.__ppUpdateMediaSession();
     if (NAT) PPNative.setPlaybackPrefs({ other: o.other, calls: o.calls, notify: !!o.notify, survive: !!o.survive });
     paint();

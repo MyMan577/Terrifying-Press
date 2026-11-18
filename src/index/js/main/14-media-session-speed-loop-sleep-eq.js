@@ -19,17 +19,17 @@
     if (!t || t.kind !== 'video' || (P.active && P.active())){ P.mirror(null); return; }
     const m = media();
     let dur = (m && isFinite(m.duration) && m.duration > 0) ? m.duration : (isFinite(videoEl.duration) ? videoEl.duration : 0);
-    let sndPos = null; try { sndPos = ppSndPos(); } catch(e){}   // the sound runs on while the picture rests (29b)
+    let sndPos = null; try { sndPos = ppSndPos(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // the sound runs on while the picture rests (29b)
     P.mirror({ track: t, playing: !!isPlaying, posMs: sndPos != null ? sndPos : Math.round(((m && m.currentTime) || 0) * 1000),
                durMs: Math.round((dur || 0) * 1000), rate: playbackSpeed || 1 });
   }
   let ppMirrorTimer = 0;
-  function ppMirrorSoon(){ clearTimeout(ppMirrorTimer); ppMirrorTimer = setTimeout(() => { try { ppMirrorSync(); } catch(e){} }, 250); }
+  function ppMirrorSoon(){ clearTimeout(ppMirrorTimer); ppMirrorTimer = setTimeout(() => { try { ppMirrorSync(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }, 250); }
   ['loadedmetadata', 'durationchange', 'seeked', 'ratechange'].forEach(ev => videoEl.addEventListener(ev, ppMirrorSoon));
   [bgPlainEl, bgFxEl].forEach(el => ['seeked', 'ratechange'].forEach(ev => el.addEventListener(ev, ppMirrorSoon)));
 
   function updateMediaSession(){
-    try { ppMirrorSync(); } catch(e){}
+    try { ppMirrorSync(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     if (!('mediaSession' in navigator) || currentIndex === -1) return;
     const t = tracks[currentIndex];
     if (window.PPNative) PPNative.updateMeta(t);
@@ -118,7 +118,7 @@
   }
   function setPitchFollows(on){
     pitchFollowsSpeed = !!on;
-    try { localStorage.setItem('ppPitchFollow', pitchFollowsSpeed ? '1' : '0'); } catch(e){}
+    try { localStorage.setItem('ppPitchFollow', pitchFollowsSpeed ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     applyPitchMode();
   }
   // Pitch slider: shifts the pitch by semitones without changing the speed (on top of "Pitch follows speed").
@@ -136,7 +136,7 @@
   }
   function setPitchSemis(v, save){
     pitchSemis = +v || 0; applyPitchShift();
-    if (save){ try { localStorage.setItem('ppPitchSemis', String(pitchSemis)); } catch(e){} }
+    if (save){ try { localStorage.setItem('ppPitchSemis', String(pitchSemis)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   }
   pitchSlider.addEventListener('input', () => setPitchSemis(pitchSlider.value, false));
   pitchSlider.addEventListener('change', () => { setPitchSemis(pitchSlider.value, true); refreshSpeedPresetUI(); });
@@ -164,7 +164,7 @@
     let prev = null;
     try { const v = localStorage.getItem('ppPresetPrevReverb'); if (v != null) prev = parseFloat(v); } catch(e){}
     if (p.reverb != null){
-      if (prev == null){ try { localStorage.setItem('ppPresetPrevReverb', String(reverbMix)); } catch(e){} }
+      if (prev == null){ try { localStorage.setItem('ppPresetPrevReverb', String(reverbMix)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       reverbMix = p.reverb;
     } else if (prev != null && isFinite(prev)){
       reverbMix = Math.max(0, Math.min(1, prev));
@@ -187,16 +187,16 @@
   const speedSongRemember = document.getElementById('speed-song-remember');
   let songSound = {}, songSoundBase = null, songSoundBooted = false;
   try { songSound = JSON.parse(localStorage.getItem('ppSongSound') || '{}') || {}; } catch(e){ songSound = {}; }
-  function songSoundSave(){ try { localStorage.setItem('ppSongSound', JSON.stringify(songSound)); } catch(e){} }
+  function songSoundSave(){ try { localStorage.setItem('ppSongSound', JSON.stringify(songSound)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   function songSoundSetBase(b){
     songSoundBase = b;
-    try { if (b) localStorage.setItem('ppSongSoundBase', JSON.stringify(b)); else localStorage.removeItem('ppSongSoundBase'); } catch(e){}
+    try { if (b) localStorage.setItem('ppSongSoundBase', JSON.stringify(b)); else localStorage.removeItem('ppSongSoundBase'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function songSoundNow(){ return { s: playbackSpeed, f: pitchFollowsSpeed, r: Math.round(reverbMix * 100) / 100, p: pitchSemis }; }
   function songSoundApply(o){
     if (!o) return;
     if (typeof o.s === 'number' && o.s >= SPEED_MIN && o.s <= SPEED_MAX) playbackSpeed = o.s;
-    if (typeof o.r === 'number' && o.r >= 0 && o.r <= 1 && Math.abs(o.r - reverbMix) > 0.001){ reverbMix = o.r; try { refreshFxUI(); applyFxAll(); } catch(e){} }
+    if (typeof o.r === 'number' && o.r >= 0 && o.r <= 1 && Math.abs(o.r - reverbMix) > 0.001){ reverbMix = o.r; try { refreshFxUI(); applyFxAll(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
     if (!!o.f !== pitchFollowsSpeed) setPitchFollows(!!o.f);
     const p = typeof o.p === 'number' ? o.p : 0; if (p !== pitchSemis) setPitchSemis(p, true);
   }
@@ -355,7 +355,7 @@
       v = isFinite(v) && v > 0 ? Math.min(hi, Math.max(lo, v)) : 0;
       if (k === 'count') v = Math.round(v);
       abOpts[k] = k === 'ramp' ? (v && v < 100 ? v / 100 : 0) : v;
-      try { localStorage.setItem(AB_OPTS_KEY, JSON.stringify(abOpts)); } catch(x){}
+      try { localStorage.setItem(AB_OPTS_KEY, JSON.stringify(abOpts)); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
       if (k === 'ramp' || k === 'count'){ abResetRun(); abRampSpeed(); }
       el.blur(); setABLabel();
     });
@@ -386,7 +386,7 @@
     } else back();
     setABLabel();
   }
-  setInterval(() => { if (isPlaying && abLoop.a != null && abLoop.b != null && currentIndex !== -1){ try { abTick(media()); } catch(e){} } }, 25);
+  setInterval(() => { if (isPlaying && abLoop.a != null && abLoop.b != null && currentIndex !== -1){ try { abTick(media()); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } }, 25);
 
   // ---------- Sleep timer ----------
   // Minutes (quick picks or any number), a clock time, the end of this track or after a few tracks, with an optional
@@ -422,7 +422,7 @@
   function sleepRemainingMs(){
     if (sleepTimer.mode === 'duration') return Math.max(0, sleepTimer.endAt - Date.now());
     if (sleepTimer.mode === 'track'){
-      try { const m = media(); if (isFinite(m.duration) && m.duration > 0) return Math.max(0, (m.duration - m.currentTime) / (playbackSpeed || 1) * 1000); } catch(e){}
+      try { const m = media(); if (isFinite(m.duration) && m.duration > 0) return Math.max(0, (m.duration - m.currentTime) / (playbackSpeed || 1) * 1000); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     }
     return Infinity;
   }
@@ -504,7 +504,7 @@
   document.getElementById('sleep-fade').addEventListener('change', (e) => {
     const v = parseFloat(e.target.value);
     sleepFade = isFinite(v) && v > 0 ? Math.min(900, Math.round(v)) : 0;
-    try { localStorage.setItem(SLEEP_FADE_KEY, String(sleepFade)); } catch(x){}
+    try { localStorage.setItem(SLEEP_FADE_KEY, String(sleepFade)); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
     if (!sleepFade) sleepUnfade();
     e.target.blur(); paintSleepPanel();
   });
@@ -584,7 +584,7 @@
     const all = loadTrackEqOverrides();
     if (override == null) delete all[dbId];
     else all[dbId] = override;
-    try { localStorage.setItem(TRACK_EQ_KEY, JSON.stringify(all)); } catch(e){}
+    try { localStorage.setItem(TRACK_EQ_KEY, JSON.stringify(all)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function getSavedTrackEqOverride(dbId){
     const v = loadTrackEqOverrides()[dbId];

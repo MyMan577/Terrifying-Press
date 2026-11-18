@@ -117,7 +117,7 @@
     on = next;
     body.classList.toggle('player-layout', on);
     if (window.__ppSyncTitle) window.__ppSyncTitle();
-    try { renderStrip(true); } catch(e){}
+    try { renderStrip(true); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     toggle.checked = !on;
     if (on){
       syncMini(); syncProgress();
@@ -351,7 +351,7 @@
   obs.observe(artImg, { attributes:true, attributeFilter:['src','style'] });
 
   toggle.addEventListener('change', () => {
-    try { localStorage.setItem(KEY, toggle.checked ? '0' : '1'); } catch(e){}
+    try { localStorage.setItem(KEY, toggle.checked ? '0' : '1'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     apply(!toggle.checked);
   });
 
@@ -401,7 +401,7 @@
       const v = document.createElement('video');
       v.muted = true; v.playsInline = true; v.preload = 'metadata';
       let done = false;
-      const fin = d => { if (done) return; done = true; try { v.removeAttribute('src'); v.load(); } catch(e){} resolve(d); };
+      const fin = d => { if (done) return; done = true; try { v.removeAttribute('src'); v.load(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } resolve(d); };
       v.onloadedmetadata = () => { try { v.currentTime = Math.min(1, (v.duration || 2) * 0.1); } catch(e){ fin(null); } };
       v.onseeked = () => {
         try {
@@ -432,7 +432,7 @@
       const t = thumbQueue.shift(); thumbRunning++;
       makeThumb(t.url).then(d => {
         thumbCache.set(t.dbId, d); thumbPending.delete(t.dbId);
-        try { syncMini(); } catch(e){}
+        try { syncMini(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         if (d) homeEl.querySelectorAll('.ph-thumb').forEach(el => {
           if (el.dataset.thumbId !== t.dbId || el.querySelector('img')) return;
           const img = document.createElement('img'); img.alt = ''; img.src = d;
@@ -734,7 +734,7 @@
     else if (act === 'home-tab'){ openSec = el.dataset.tab === 'all' ? null : el.dataset.tab; renderHome(true); }
     else if (act === 'clear-history'){
       playHistory = [];
-      try { localStorage.setItem(HKEY, '[]'); } catch(err){}
+      try { localStorage.setItem(HKEY, '[]'); } catch(err){ if (typeof ppCaught === "function") ppCaught(err); }
       renderHome(true);
     }
     else if (act === 'play-video'){
@@ -899,7 +899,7 @@
     observe: el => { if (thumbObserver) el.querySelectorAll('.ph-thumb:not(.has-img)').forEach(t => thumbObserver.observe(t)); },
     hasTrack: () => body.classList.contains('pl-has-track')
   };
-  window.__ppRenderHomeNow = () => { try { renderHome(true); } catch(e){} renderStrip(true); };
+  window.__ppRenderHomeNow = () => { try { renderHome(true); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } renderStrip(true); };
   window.__ppOnChange = scheduleHome;
   window.__ppOnPlay = t => {
     if (miniDismissed){ miniDismissed = null; syncMini(); }   // playing a track again brings the mini-player back
@@ -907,7 +907,7 @@
     playHistory = playHistory.filter(h => h.id !== t.dbId);
     playHistory.unshift({ id:t.dbId, at:Date.now(), kind:t.kind });
     playHistory = playHistory.slice(0, 60);
-    try { localStorage.setItem(HKEY, JSON.stringify(playHistory)); } catch(e){}
+    try { localStorage.setItem(HKEY, JSON.stringify(playHistory)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     scheduleHome();
   };
 
@@ -955,7 +955,7 @@
   function hideUi(){ body.classList.remove('pl-ui-show'); clearTimeout(uiTimer); }
   if (pinBtn) pinBtn.addEventListener('click', () => {
     uiMode = (uiMode + 1) % 3;
-    try { localStorage.setItem(PIN_KEY, String(uiMode)); } catch(e){}
+    try { localStorage.setItem(PIN_KEY, String(uiMode)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     syncPinBtn();
     if (uiMode === 2) hideUi();
     else showUi();   // mode 1 stays up; mode 0 resumes the normal timer
@@ -1036,7 +1036,7 @@
   } catch(e){}
   const pmList = document.getElementById('gesture-pm-list');
   const gConfig = document.getElementById('gestures-config');
-  function savePmMap(){ try { localStorage.setItem(PM_GKEY, JSON.stringify(pmMap)); } catch(e){} }
+  function savePmMap(){ try { localStorage.setItem(PM_GKEY, JSON.stringify(pmMap)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   function renderPmList(){
     const A = window.__ppApi; if (!A || !A.gestureActions) return;
     const actions = A.gestureActions();

@@ -190,7 +190,7 @@
     document.head.appendChild(blDragCss);
     let blSuppress = 0, blAnchoring = false;                                              // a drag must not also count as a tap on the ball
     const blPosGet = k => { try { return JSON.parse(localStorage.getItem(k)) || null; } catch (e) { return null; } };
-    const blPosSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+    const blPosSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     const blClamp = (x, y, w, h) => ({ x: Math.max(4, Math.min(innerWidth - w - 4, x)), y: Math.max(4, Math.min(innerHeight - h - 4, y)) });
     function blMove(el, x, y) { const r = el.getBoundingClientRect(), c = blClamp(x, y, r.width, r.height); el.style.left = c.x + 'px'; el.style.top = c.y + 'px'; el.style.right = 'auto'; el.style.bottom = 'auto'; return c; }
     function blPlace(el, key) { const p = blPosGet(key); if (p) blMove(el, p.x, p.y); }

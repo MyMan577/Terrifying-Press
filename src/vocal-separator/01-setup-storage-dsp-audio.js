@@ -24,7 +24,7 @@
     if (e == null) return 'Unknown error.' + OOM_HINT;
     if (typeof e === 'number') return 'The audio engine crashed (code ' + e + ').' + OOM_HINT;
     let m = e.message || (typeof e === 'string' ? e : '');
-    if (!m) { try { m = JSON.stringify(e); } catch (x) {} if (!m || m === '{}') m = String(e); }
+    if (!m) { try { m = JSON.stringify(e); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); } if (!m || m === '{}') m = String(e); }
     if (/abort|assertions|out of memory|memory access|alloc|bad_alloc|RangeError/i.test(m)) m += OOM_HINT;
     return m;
   };
@@ -93,7 +93,7 @@
   // NNAPI (phone GPU/NPU) for everything except Demucs, whose transformer ops run better on CPU. The Java side falls back to CPU by itself.
   // The tiny classifier heads (a few hundred KB) lose time compiling for NNAPI and copying data over: CPU is faster for them.
   const cpuOnly = new Set((() => { try { return JSON.parse(localStorage.getItem('ppvCpuOnly') || '[]'); } catch (e) { return []; } })());   // models whose NNAPI output came back NaN: always CPU
-  const markCpu = key => { cpuOnly.add(key); try { localStorage.setItem('ppvCpuOnly', JSON.stringify([...cpuOnly])); } catch (e) {} };
+  const markCpu = key => { cpuOnly.add(key); try { localStorage.setItem('ppvCpuOnly', JSON.stringify([...cpuOnly])); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
   const hasBad = d => { if (!d || !d.length) return true; const st = Math.max(1, (d.length / 512) | 0); for (let i = 0; i < d.length; i += st) if (!Number.isFinite(d[i])) return true; return !Number.isFinite(d[d.length - 1]); };
   const wantNnapi = key => { if (cpuOnly.has(key) || /^demucs/.test(key) || /^(tgh_|tg_hinst$|tg_hvoice$|tg_hgenre$|tg_effnet$|tg_effstyle$|tg_mn10$|ww_)/.test(key)) return false;   // tagger models stay on CPU: NNAPI fp16 blurs the embedding and the in-graph log-mel, so every score came out weak
      try { return localStorage.getItem('ppvNnapi') !== '0'; } catch (e) { return true; } };
@@ -116,7 +116,7 @@
         let o = await once(feed);
         if (hasBad(o.data) && wantNnapi(key)) {                      // NNAPI (fp16) overflowed: reload this model on the CPU and redo the call
           console.warn('NaN from NNAPI for', key, '- switching to CPU');
-          markCpu(key); try { await NP.unload({ id: key }); } catch (e) {}
+          markCpu(key); try { await NP.unload({ id: key }); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
           info = await NP.load({ id: key, nnapi: false });
           o = await once(feed);
         }

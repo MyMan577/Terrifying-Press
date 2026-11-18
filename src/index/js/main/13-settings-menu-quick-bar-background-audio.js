@@ -144,7 +144,7 @@
       const seq = o.filter(x => on.includes(x)), i = seq.indexOf(id), j = i + dir;
       if (i < 0 || j < 0 || j >= seq.length) return;
       const a = o.indexOf(seq[i]), b = o.indexOf(seq[j]); o[a] = seq[j]; o[b] = seq[i];
-      try { localStorage.setItem(QUICKBAR_ORDER_KEY, JSON.stringify(o)); } catch(e){}
+      try { localStorage.setItem(QUICKBAR_ORDER_KEY, JSON.stringify(o)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       renderQuickBar();
     },
     reset(){ try { localStorage.removeItem(QUICKBAR_ORDER_KEY); } catch(e){} renderQuickBar(); }
@@ -222,14 +222,14 @@
   async function quickSwitchKind(toAudio){
     const i = currentIndex, t = tracks[i];
     if (!t || (toAudio ? t.kind !== 'video' : !t.convertedFromVideo)) return;
-    let pos = 0; try { pos = media().currentTime || 0; } catch(e){}
+    let pos = 0; try { pos = media().currentTime || 0; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     if (document.pictureInPictureElement === videoEl){ try { await document.exitPictureInPicture(); } catch(e){} }
-    try { savePlaybackPosition(t.dbId, pos > 1 ? pos : null); } catch(e){}
+    try { savePlaybackPosition(t.dbId, pos > 1 ? pos : null); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     const target = toAudio ? audioEl : videoEl, from = toAudio ? videoEl : audioEl;
     // Converting can take a few seconds (the file is saved first) and the old element keeps playing meanwhile, so
     // the place to go back to is where it was when the new one started loading, not where it was at the tap.
     let at = pos, atT = performance.now();
-    target.addEventListener('loadstart', function f(){ target.removeEventListener('loadstart', f); try { at = from.currentTime || pos; } catch(e){} atT = performance.now(); });
+    target.addEventListener('loadstart', function f(){ target.removeEventListener('loadstart', f); try { at = from.currentTime || pos; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } atT = performance.now(); });
     // Put it back there once the other element has the file. Checked again a few times, because a fresh element
     // (or the native player) can report "loaded" before it accepts a seek, or start over from 0 after one.
     const want = () => at + (isPlaying ? (performance.now() - atT) / 1000 : 0);
@@ -387,7 +387,7 @@
     if (document.pictureInPictureElement === videoEl) return;
     // The native player is already making this film's sound (its soundtrack is one the WebView cannot decode, 29b):
     // it simply carries on in the background, and the picture rests.
-    try { if (ppSndBackground()) return; } catch(e){}
+    try { if (ppSndBackground()) return; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     if (bgEnteringOp && bgEnteringOp === bgOpId) return;   // a handoff is already in flight
     const opId = ++bgOpId;
     bgEnteringOp = opId;
@@ -468,7 +468,7 @@
       }
     } catch(e){
       bgLastError = (e && (e.name || e.message)) || String(e);
-      try { console.warn('Background audio handoff failed:', e); } catch(_){}
+      try { console.warn('Background audio handoff failed:', e); } catch(_){ if (typeof ppCaught === "function") ppCaught(_); }
       // audioEl couldn't take over (blocked autoplay while backgrounded,
       // an unsupported codec, or superseded mid-await) - make sure it isn't
       // left half-started. A rejected play() promise doesn't guarantee the
@@ -513,7 +513,7 @@
       if (!P || !P.keepAlive) return;
       bgKeepOn = on;
       P.keepAlive({ on, mode: 'play' }).catch(() => {});   // 'play' is tracked separately from a stem split, so one can't switch the other off
-    } catch(e){}
+    } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   window.ppIdleCheck = () => !isPlaying && !bgKeepOn;
 
@@ -525,7 +525,7 @@
     bgEl.loop = false;
     const userMuted = bgEl.muted;
     bgEl.pause();
-    try { bgEl.removeAttribute('src'); bgEl.load(); } catch(e){}   // wipe it so the next handoff starts clean
+    try { bgEl.removeAttribute('src'); bgEl.load(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // wipe it so the next handoff starts clean
     bgAudioActive = false;
     releaseWebAudioPicture(userMuted);
     setTimeout(() => { if (!bgAudioActive) setBgGraphLive(false); }, 400);   // let the last samples drain
@@ -559,7 +559,7 @@
 
   // Tell the OS this page is media playback (Safari 16.4+): without it, Web Audio
   // output - which audioEl is routed through - is cut when the screen locks.
-  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch(e){}
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   function hookCtxState(){
     if (!audioCtx || audioCtx.__ppHooked) return;
     audioCtx.__ppHooked = true;
@@ -759,7 +759,7 @@
   function stuckRecover(stage, pos){
     const v = videoEl;
     if (stage === 1){
-      try { if (audioCtx && audioCtx.state !== 'running') audioCtx.resume().catch(()=>{}); } catch(e){}
+      try { if (audioCtx && audioCtx.state !== 'running') audioCtx.resume().catch(()=>{}); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       try { v.currentTime = pos; } catch(e){}
       v.play().catch(()=>{});
     } else if (stage === 2){

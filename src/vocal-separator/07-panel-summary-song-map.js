@@ -14,7 +14,7 @@
     return new Promise((res, rej) => { const tx = db.transaction('sums', mode); let out; fn(tx.objectStore('sums'), v => { out = v; }); tx.oncomplete = () => res(out); tx.onerror = tx.onabort = () => rej(tx.error); });
   };
   const sumLoad = () => sumCache;
-  const sumPing = () => { try { document.dispatchEvent(new Event('ppv-sums')); } catch (e) {} };
+  const sumPing = () => { try { document.dispatchEvent(new Event('ppv-sums')); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
   async function sumInit() {
     try {
       const rows = await sumTx('readonly', (st, set) => { const q = st.getAll(); q.onsuccess = () => set(q.result || []); });
@@ -32,14 +32,14 @@
   async function sumSave(id, v) {                                      // resolves true when the summary is safely stored on the device
     sumCache[id] = v; let ok = false;
     try { await sumTx('readwrite', st => { st.put({ id: String(id), v }); }); ok = true; } catch (e) { console.warn('summary save failed', e); }
-    if (!ok) { try { localStorage.setItem(SUM_KEY, JSON.stringify(sumCache)); ok = true; } catch (e) {} }   // database unavailable: fall back to the old place
-    try { if (ok && navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}   // ask the browser not to clear it when space is low
+    if (!ok) { try { localStorage.setItem(SUM_KEY, JSON.stringify(sumCache)); ok = true; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }   // database unavailable: fall back to the old place
+    try { if (ok && navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // ask the browser not to clear it when space is low
     sumPing(); return ok;
   }
   async function sumDelete(id) {
     delete sumCache[id];
-    try { await sumTx('readwrite', st => { st.delete(String(id)); }); } catch (e) {}
-    try { const o = JSON.parse(localStorage.getItem(SUM_KEY) || 'null'); if (o && id in o) { delete o[id]; localStorage.setItem(SUM_KEY, JSON.stringify(o)); } } catch (e) {}
+    try { await sumTx('readwrite', st => { st.delete(String(id)); }); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+    try { const o = JSON.parse(localStorage.getItem(SUM_KEY) || 'null'); if (o && id in o) { delete o[id]; localStorage.setItem(SUM_KEY, JSON.stringify(o)); } } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     sumPing();
   }
   sumInit();
@@ -234,7 +234,7 @@
   const ppvLs = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
   // The user's favourite topics (assistant setting, or learned from "my favourite topics are ..."), so Bloopy chats about them too.
   const favTopics = () => String(ppvLs('ppvTopics') || '').replace(/\s+/g, ' ').trim().slice(0, 200);
-  const setFavTopics = v => { try { localStorage.setItem('ppvTopics', String(v || '').replace(/\s+/g, ' ').trim().slice(0, 200)); } catch (e) {} document.querySelectorAll('#ppv-topics').forEach(x => { x.value = favTopics(); }); };
+  const setFavTopics = v => { try { localStorage.setItem('ppvTopics', String(v || '').replace(/\s+/g, ' ').trim().slice(0, 200)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } document.querySelectorAll('#ppv-topics').forEach(x => { x.value = favTopics(); }); };
   const CHAT_LENS = {
     short:  { label: 'Short (one sentence)', say: 'in one short plain sentence', bul: 'in two short bullet points', talk: 'in one short paragraph of two or three sentences', mul: 0.5 },
     normal: { label: 'Normal (one or two sentences, default)', say: 'in one or two short plain sentences', bul: 'in three short bullet points', talk: 'in one to three short paragraphs', mul: 1 },
@@ -279,7 +279,7 @@
   const menuOpts = o => Object.keys(o).map(k => '<option value="' + k + '">' + o[k].label + '</option>').join('');
   document.addEventListener('change', e => {                          // keep copies of the same menu in step, and save the choice
     const sel = e.target; if (!sel || !sel.dataset || !sel.dataset.sync) return;
-    try { localStorage.setItem(sel.dataset.sync, sel.value); } catch (x) {}
+    try { localStorage.setItem(sel.dataset.sync, sel.value); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
     document.querySelectorAll('select[data-sync="' + sel.dataset.sync + '"]').forEach(o => { if (o !== sel) o.value = sel.value; });
   });
   // A summary that hit the token cap ends mid-sentence: cut back to the last full sentence.
@@ -449,7 +449,7 @@
     if (sb) sb.addEventListener('click', () => placeWhisper('cap'), true);
     if (eb) eb.addEventListener('click', () => { if (curKind() !== 'video') placeWhisper('ly'); }, true);
     const $ = s => document.querySelector(s), A = () => window.__ppApi, cur = () => { const a = A(); return a && a.tracks()[a.currentIndex()]; };
-    const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} };
+    const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     let isBusy = false;
     const busy = on => { isBusy = on; document.querySelectorAll('#ppv-panel button, .ppv-scope button').forEach(b => { if (!b.dataset.keep && !b.classList.contains('ppv-x')) b.disabled = on; }); };
     const deep = $('#ppv-deep'), aeq = $('#ppv-aeq'), ask = $('#ppv-askip'), lib = $('#ppv-lib'), cnt = $('#ppv-count');
@@ -498,7 +498,7 @@
       });
       if (rows.length > savedLimit) { const m = document.createElement('button'); m.className = 'ppv-sec'; m.textContent = 'Show more (' + (rows.length - savedLimit) + ' left)'; m.onclick = () => { savedLimit += 100; renderSaved(); }; box.appendChild(m); }
     };
-    const refreshCount = () => { const a = A(); if (!a) return; try { syncSmartLive(); } catch (e) {} const tg = loadTags(), n = a.tracks().filter(t => tg[t.dbId]).length; cnt.textContent = n + ' of ' + a.tracks().length + ' tracks tagged'; renderSmart(); try { renderSaved(); } catch (e) {} };
+    const refreshCount = () => { const a = A(); if (!a) return; try { syncSmartLive(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } const tg = loadTags(), n = a.tracks().filter(t => tg[t.dbId]).length; cnt.textContent = n + ' of ' + a.tracks().length + ' tracks tagged'; renderSmart(); try { renderSaved(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     function renderSmart() {
       const a = A(), tg = loadTags(), box = $('#ppv-smart'); if (!a) return;
       const ticked = new Set([...box.querySelectorAll('input:checked')].map(i => i.value));
@@ -508,7 +508,7 @@
     d1.addEventListener('toggle', () => { if (d1.open) refreshCount(); });
     // remember open/closed across launches; with nothing tagged yet it starts closed, so it does not push the track list down
     try { const pref = localStorage.getItem('ppvSavedOpen'); if (pref === '0' || (pref == null && !Object.keys(loadTags() || {}).length)) savedEl.open = false; } catch (e) {}
-    savedEl.addEventListener('toggle', () => { try { localStorage.setItem('ppvSavedOpen', savedEl.open ? '1' : '0'); } catch (e) {} if (savedEl.open) renderSaved(); }); $('#ppv-sf').onchange = () => { savedLimit = 100; renderSaved(); }; $('#ppv-ss').oninput = () => { savedLimit = 100; renderSaved(); };
+    savedEl.addEventListener('toggle', () => { try { localStorage.setItem('ppvSavedOpen', savedEl.open ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } if (savedEl.open) renderSaved(); }); $('#ppv-sf').onchange = () => { savedLimit = 100; renderSaved(); }; $('#ppv-ss').oninput = () => { savedLimit = 100; renderSaved(); };
     $('#ppv-heads').onclick = async () => { await resetHeads(); h.status('Mood models will be downloaded again on the next tagging run.'); };
 
     // single track tagging (replaces the old button behaviour so results are kept)

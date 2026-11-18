@@ -149,8 +149,8 @@
     };
     // Who Bloopy is, always in the prompt so the model answers "who are you / what are you / can you hear this" truthfully and in character.
     const selfCtx = () => {
-      let m = '', fs = '', fa = ''; try { m = CHAT_MODELS[chatKey()].label.replace(/\s*\(.*$/, ''); } catch (e) {}
-      try { const f = favSong(); if (f) fs = songLine(f); fa = favArtist() || ''; } catch (e) {}
+      let m = '', fs = '', fa = ''; try { m = CHAT_MODELS[chatKey()].label.replace(/\s*\(.*$/, ''); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+      try { const f = favSong(); if (f) fs = songLine(f); fa = favArtist() || ''; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       return ' WHO YOU ARE: your name is Bloopy (also Bloop). You are a small AI assistant that lives inside this music player and appears as a bouncy ball. You run on this device' + (m ? ' using the ' + m + ' language model' : '') + ' after a one-time download, so what the user says stays on their phone. You are not ChatGPT, Claude, Siri or a person, and you have no body, ears or phone number.' +
         ' You cannot hear the music. You only know a song\'s title, artist and the tags this app made for it. If you are unsure of a fact, say so once, briefly, then still give your best answer. Do not put yourself down or keep saying you are small or limited.' +
         ' You are a real chat buddy, not only a music helper: happily talk about anything the user brings up, such as games, films, shows, books, science, space, animals, sport, food, school, hobbies, ideas or their day. Never say you can only talk about music or the player, and never steer them back to music unless they ask.' +
@@ -213,8 +213,8 @@
     // free-form JSON tool calls they do not). Results are real data from the player and go into the final prompt.
     const lkIdx = (arg, text) => {                                        // which track does the message mean: named in the arg, named in the text, else the current one
       const A = window.__ppApi; let i = -1;
-      if (arg) { try { i = blFindSong(arg); } catch (e) {} }
-      if (i < 0) { try { const n = blNamed(text); if (n && n.length) i = n[0]; } catch (e) {} }
+      if (arg) { try { i = blFindSong(arg); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
+      if (i < 0) { try { const n = blNamed(text); if (n && n.length) i = n[0]; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       return i >= 0 ? i : (A.currentIndex() >= 0 ? A.currentIndex() : -1);
     };
     const lkLine = t => songLine(t) + (tagLine(t) ? ' (' + tagLine(t) + ')' : ' (not tagged yet)');
@@ -236,7 +236,7 @@
       2: { name: 'find_song', what: 'your library', run: (arg, text) => {
         const A = window.__ppApi, tr = A.tracks(), q = blNrm(arg || ''), ids = sReal(), hit = [];
         if (q) ids.forEach(i => { if (blNrm(tr[i].title).includes(q) || blNrm(tr[i].artist || '').includes(q)) hit.push(i); });
-        if (!hit.length) { try { (blNamed(text) || []).forEach(i => hit.push(i)); } catch (e) {} }
+        if (!hit.length) { try { (blNamed(text) || []).forEach(i => hit.push(i)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
         return hit.length ? hit.slice(0, 5).map(i => lkLine(tr[i])).join('; ') + (hit.length > 5 ? '; and ' + (hit.length - 5) + ' more' : '') : 'no matching track in the library'; } },
       3: { name: 'song_info', what: 'the song details', run: (arg, text) => { const A = window.__ppApi, i = lkIdx(arg, text); return i < 0 ? 'no song found and nothing is playing' : lkLine(A.tracks()[i]); } },
       4: { name: 'lyrics', what: 'the lyrics', run: (arg, text) => {
@@ -272,8 +272,8 @@
       // What songs mean and how they connect: saved summaries and lyrics of the named songs, the current one, or its album (same reader as Song Talk).
       15: { name: 'song_meaning', what: 'the summaries and lyrics', cap: () => ctxOf() >= 4096 ? 2400 : 700, run: (arg, text) => {
         const A = window.__ppApi, tr = A.tracks(), list = [], push = x => { if (x && !x.stem && !list.includes(x)) list.push(x); }, both = (arg || '') + ' ' + text;
-        String(arg || '').split(/\s*(?:,|;|&|\band\b|\bvs\.?|\bversus\b)\s*/i).forEach(a => { a = a.replace(/\b(?:the )?album\b/i, '').trim(); if (a.length < 2) return; try { const i = blFindSong(a); if (i >= 0) push(tr[i]); } catch (e) {} });
-        try { blNamed(text).forEach(i => push(tr[i])); } catch (e) {}
+        String(arg || '').split(/\s*(?:,|;|&|\band\b|\bvs\.?|\bversus\b)\s*/i).forEach(a => { a = a.replace(/\b(?:the )?album\b/i, '').trim(); if (a.length < 2) return; try { const i = blFindSong(a); if (i >= 0) push(tr[i]); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } });
+        try { blNamed(text).forEach(i => push(tr[i])); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         const cur = A.currentIndex() >= 0 ? tr[A.currentIndex()] : null;
         if (cur && (!list.length || /\b(this|current|playing)\b/i.test(text))) { const k = list.indexOf(cur); if (k >= 0) list.splice(k, 1); list.unshift(cur); }
         if (!list.length) return 'no song found and nothing is playing';
@@ -289,7 +289,7 @@
       const t = String(text), low = t.toLowerCase(), plans = [], add = (id, arg) => { if (!plans.some(p => p.id === id)) plans.push({ id, arg: String(arg || '').trim().slice(0, 60) }); };
       const after = re => { const m = t.match(re); return m ? m[1].replace(/^["'“‘]+|["'”’.!?]+$/g, '').trim() : ''; };
       // Meaning and links between songs: the saved summary plus lyrics, for the songs named, the current one, or its album.
-      { let nm = 0; try { nm = (blNamed(t) || []).length; } catch (e) {}
+      { let nm = 0; try { nm = (blNamed(t) || []).length; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         const here = /\b(this|that|it|current|playing) ?(song|track|one|album)?\b/.test(low), mean = /\b(about|mean(s|t|ing)?|story|theme|message|summar\w+|interpret\w*|explain)\b/.test(low), link = /\b(relate[sd]?|related|connect\w*|compar\w+|sequel|prequel|differen\w+|in common|versus|vs|fit(s)? (in|into)|same story)\b/.test(low), alb = /\b(albums?|ep|lp|mixtape|soundtrack)\b/.test(low);
         if (/\bwhat('?s| is| was) (this|it|the) (song|track|one) about\b/.test(low) || (mean && nm >= 1 && !/\blyrics?\b/.test(low)) || (link && (nm >= 2 || (nm >= 1 && here))) || (alb && (mean || link) && (here || nm >= 1))) add(15, alb ? 'album' : ''); }
       if (/\b(lyrics?|words to|what (are|were) they (saying|singing))\b/.test(low)) add(4, after(/\blyrics (?:of |for )(.+)$/i));
@@ -297,7 +297,7 @@
       if (/\bplaylists?\b/.test(low) && !plans.some(p => p.id === 9)) add(8, after(/\b(?:in|on|from|of|called|named) (?:my |the )?(.{2,40}?) playlist\b/i) || after(/\bplaylist (?:called|named) (.+)$/i));
       if (/\b(most played|listen(ed)? (to )?(the )?most|top (songs?|tracks?|artists?)|favou?rite (songs?|tracks?|artists?)|play counts?|how (often|many times)|play history|my stats)\b/.test(low)) add(6, /artist/.test(low) ? 'artist' : 'song');
       if (/\bhow many (songs?|tracks?|videos?|playlists?|are tagged|have been tagged)\b|\b(library|collection) (size|stats)\b|\bhow big is (my|the) (library|collection)\b/.test(low)) add(7, '');
-      try { const ws = vibeWordsOf(t); if (ws.length && /\b(songs?|tracks?|music|anything|something|any|got|have|find|show|which|playlist)\b/.test(low)) add(5, ws.join(' ')); } catch (e) {}
+      try { const ws = vibeWordsOf(t); if (ws.length && /\b(songs?|tracks?|music|anything|something|any|got|have|find|show|which|playlist)\b/.test(low)) add(5, ws.join(' ')); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       if (/\b(do i have|have i got|got any|is there|are there|find|search( for)?|look(ing)? for)\b/.test(low) && !plans.some(p => p.id === 7)) add(2, after(/\b(?:by|called|named) (.+)$/i) || after(/\b(?:do i have|have i got|got any|find|search for|look for) (?:any |some |a |the |songs? |tracks? )*(?:by |called |named )?(.+)$/i));
       if (/\b(tempo|bpm|key|genre|mood|how fast|who (sings|sang|is the artist|made)|tell me about|info(rmation)? (on|about))\b/.test(low) && (/\b(this|that|it|current|playing)\b/.test(low) || (() => { try { return (blNamed(t) || []).length > 0; } catch (e) { return false; } })())) add(3, '');
       return plans;
@@ -392,12 +392,12 @@
         r = String(r || acc).trim().replace(/\s+\n/g, '\n') || "Hmm, I lost my words. Try again?";
         const prevBot = (hist.filter(m => m.role === 'assistant').pop() || {}).content, nz = z => String(z || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
         if (prevBot && looksOk(r) && nz(r) === nz(prevBot)) {
-          try { const o2 = await g(msgs, Object.assign({}, opts, { streamer: undefined, temperature: 1.0, repetition_penalty: 1.3 })); let r2 = o2 && o2[0] && o2[0].generated_text; r2 = Array.isArray(r2) ? (r2[r2.length - 1] || {}).content : r2; if (r2 && looksOk(String(r2)) && nz(r2) !== nz(prevBot)) r = String(r2).trim(); } catch (e) {}
+          try { const o2 = await g(msgs, Object.assign({}, opts, { streamer: undefined, temperature: 1.0, repetition_penalty: 1.3 })); let r2 = o2 && o2[0] && o2[0].generated_text; r2 = Array.isArray(r2) ? (r2[r2.length - 1] || {}).content : r2; if (r2 && looksOk(String(r2)) && nz(r2) !== nz(prevBot)) r = String(r2).trim(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         }
         if (!looksOk(r)) { el.textContent = "Sorry, that came out as gibberish. Try again, or tap Clear."; return void (chatBusy = false); }   // never feed garbage back into the history
         r = finishSentence(r);
-        try { const A = window.__ppApi, tg = loadTags(), cu = A && A.currentIndex() >= 0 ? A.tracks()[A.currentIndex()] : null; r = fixNums(r, cu && tg[cu.dbId] && tg[cu.dbId].bpm ? [tg[cu.dbId].bpm] : Object.values(tg).map(x => x && x.bpm).filter(Boolean)); } catch (e) {}
-        el.textContent = r; try { vSpeak(r); } catch (e) {} hist.push({ role: 'user', content: text }, { role: 'assistant', content: r }); hist = memN() ? hist.slice(-2 * memN()) : [];
+        try { const A = window.__ppApi, tg = loadTags(), cu = A && A.currentIndex() >= 0 ? A.tracks()[A.currentIndex()] : null; r = fixNums(r, cu && tg[cu.dbId] && tg[cu.dbId].bpm ? [tg[cu.dbId].bpm] : Object.values(tg).map(x => x && x.bpm).filter(Boolean)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+        el.textContent = r; try { vSpeak(r); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } hist.push({ role: 'user', content: text }, { role: 'assistant', content: r }); hist = memN() ? hist.slice(-2 * memN()) : [];
         if (!direct) moodChip(text);
       } catch (e) { console.error(e); dlOk = false; el.textContent = "Oops, my brain would not load: " + e.message; }
       chatBusy = false; scrollDown(); cm('greet'); setTimeout(() => cm('idle'), 1300);
@@ -473,10 +473,10 @@
       const hs = document.createElement('style'); hs.textContent = 'html.bl-nohead .bl-top,html.bl-nohead #ppv-mrow{display:none!important}'; document.head.appendChild(hs);
       const hc = p.querySelector('#ppv-hdr'), apply = () => document.documentElement.classList.toggle('bl-nohead', !hc.checked);
       try { hc.checked = localStorage.getItem('ppvBlHeaders') === '1'; } catch (e) {}
-      apply(); hc.onchange = () => { try { localStorage.setItem('ppvBlHeaders', hc.checked ? '1' : '0'); } catch (e) {} apply(); };
+      apply(); hc.onchange = () => { try { localStorage.setItem('ppvBlHeaders', hc.checked ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } apply(); };
     }
     const bc = p.querySelector('#ppv-bub'); try { bc.checked = localStorage.getItem('ppvBlBubbles') === '1'; } catch (e) {}
-    bc.onchange = () => { try { localStorage.setItem('ppvBlBubbles', bc.checked ? '1' : '0'); } catch (e) {} if (!bc.checked) { const f = document.getElementById('ppv-mfloat'), r = document.getElementById('bl-react'); f && (f.style.display = 'none'); r && r.classList.remove('show'); } };
+    bc.onchange = () => { try { localStorage.setItem('ppvBlBubbles', bc.checked ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } if (!bc.checked) { const f = document.getElementById('ppv-mfloat'), r = document.getElementById('bl-react'); f && (f.style.display = 'none'); r && r.classList.remove('show'); } };
     p.insertAdjacentHTML('beforeend', '<div class="ppv-bl-set"><label class="ppv-c" style="display:block;margin-top:8px"><input type="checkbox" id="ppv-chat-on"> Bloopy assistant (does things in the app, no AI download)</label>' +
       '<div class="ppv-note">Adds a Bloopy button. He can play music by mood, make mood and smart playlists, tag, split, get lyrics and control the player (volume, seek, speed, EQ, repeat\u2026). That all runs from the tagger and fixed rules, so it needs no chat AI.</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-brain-on"> Chat brain: talk about anything with a tiny AI (optional, one-time download)</label>' +
@@ -508,12 +508,12 @@
       ms.value = mas.chat.memory.get(); mv.textContent = memTxt(+ms.value);
       ms.oninput = () => { const n = mas.chat.memory.set(ms.value); mv.textContent = memTxt(n); };
       const ag = p.querySelector('#ppv-agent-on'); try { ag.checked = localStorage.getItem('ppvAgent') !== '0'; } catch (e) { ag.checked = true; }
-      ag.onchange = () => { try { localStorage.setItem('ppvAgent', ag.checked ? '1' : '0'); } catch (e) {} };
+      ag.onchange = () => { try { localStorage.setItem('ppvAgent', ag.checked ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
       if (navigator.gpu) cl.style.display = 'block'; try { cg.checked = localStorage.getItem('ppvChatGpu') === '1'; } catch (e) {}
       { const lg = p.querySelector('#ppv-lmgpu'), ll = p.querySelector('#ppv-lmgpul');
         if (NATIVE && lg && ll) { ll.style.display = 'block'; try { lg.checked = localStorage.getItem('ppvLmGpu') !== '0'; } catch (e) { lg.checked = true; }
-          lg.onchange = () => { try { localStorage.setItem('ppvLmGpu', lg.checked ? '1' : '0'); } catch (e) {} }; } }
-      cg.onchange = () => { try { localStorage.setItem('ppvChatGpu', cg.checked ? '1' : '0'); } catch (e) {} };
+          lg.onchange = () => { try { localStorage.setItem('ppvLmGpu', lg.checked ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }; } }
+      cg.onchange = () => { try { localStorage.setItem('ppvChatGpu', cg.checked ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
       p.querySelector('#ppv-chatfree').onclick = async () => { try { await mas.chat.free(); status('Chat download removed.'); } catch (e) { status('Error: ' + errText(e)); } }; }
     p.insertAdjacentHTML('beforeend', '<div class="ppv-bl-set"><div style="margin-top:10px"><b>Bloopy voice and listening</b></div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-mini-on"> Smarter understanding (MiniLM, ~25 MB download)</label>' +
@@ -558,7 +558,7 @@
     const $ = s => p.querySelector(s), st = $('#ppv-st'), bar = $('#ppv-bar i'), go = $('#ppv-go'), sel = $('#ppv-model'), sl = $('#ppv-sl'), sv = $('#ppv-sv'), gpu = $('#ppv-gpuc'), lsel = $('#ppv-lvl'), lvi = $('#ppv-lvi'), qsel = $('#ppv-q'), gsel = $('#ppv-gate'), msel = $('#ppv-mask');
     const LV = () => +lsel.value === 4 ? customLevel() : LEVELS[+lsel.value] || null, showLv = () => { const l = LV(); lvi.textContent = !l ? 'No limits. Fastest, but can crash weak phones.' : l.custom ? 'Custom: ' + (l.threads ? l.threads + ' thread' + (l.threads > 1 ? 's' : '') : 'auto threads') + ', ' + Math.round(l.duty * 100) + '% rest.' : l.info; };
     let holdUntil = 0;                                                // keep "Done"/"Error" visible instead of being wiped by "Ready" a split second later
-    const status = t => { st.textContent = t; document.querySelectorAll('.ppv-stx').forEach(e => { e.textContent = t; }); if (/^(Done|Error)/.test(t)) holdUntil = Date.now() + 5000; mas.react(t); }, ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} };
+    const status = t => { st.textContent = t; document.querySelectorAll('.ppv-stx').forEach(e => { e.textContent = t; }); if (/^(Done|Error)/.test(t)) holdUntil = Date.now() + 5000; mas.react(t); }, ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     const nnc = $('#ppv-nnc'); if (NATIVE) { $('#ppv-nn').style.display = 'block'; nnc.checked = ls('ppvNnapi') !== '0'; nnc.onchange = () => { ls('ppvNnapi', nnc.checked ? '1' : '0'); }; }
     const savedModel = ls('ppvModel'); if (savedModel && MODELS[savedModel]) sel.value = savedModel;
     if (ls('ppvStrength')) { sl.value = ls('ppvStrength'); sv.textContent = sl.value; }

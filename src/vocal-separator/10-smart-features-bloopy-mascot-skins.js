@@ -32,7 +32,7 @@
         const hr = whHost.previousElementSibling; if (hr && hr.tagName === 'HR') hr.style.display = on('lyrics') ? '' : 'none';   // the divider the captions menu got
         const sf = $('#ppv-sf'), vo = sf && sf.querySelector('option[value="video"]'), vid = on('savedvid');
         if (vo) { vo.hidden = !vid; vo.disabled = !vid; if (!vid && sf.value === 'video') sf.value = 'all'; }
-        try { renderSaved(); } catch (e) {}
+        try { renderSaved(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       }
       const setF = (f, v) => {
         if (f.key) ls(f.key, v ? '1' : '0');
@@ -49,7 +49,7 @@
       FEATS.forEach(f => { box.querySelector('#ppv-fs-' + f.id).onchange = e => { setF(f, e.target.checked); syncBoxes(); }; });
       box.querySelector('#ppv-fs-all').onchange = e => {
         if (!e.target.checked) { const snap = {}; FEATS.forEach(f => { snap[f.id] = isOn(f); }); if (Object.values(snap).some(Boolean)) ls('ppvSmartSnap', JSON.stringify(snap)); FEATS.forEach(f => setF(f, false)); }
-        else { let snap = null; try { snap = JSON.parse(ls('ppvSmartSnap')); } catch (er) {} if (snap && !Object.values(snap).some(Boolean)) snap = null; FEATS.forEach(f => setF(f, snap ? !!snap[f.id] : f.def === 1)); }
+        else { let snap = null; try { snap = JSON.parse(ls('ppvSmartSnap')); } catch(er){ if (typeof ppCaught === "function") ppCaught(er); } if (snap && !Object.values(snap).some(Boolean)) snap = null; FEATS.forEach(f => setF(f, snap ? !!snap[f.id] : f.def === 1)); }
         syncBoxes();
       };
       // keep these in step when the same switch is changed in its own panel
@@ -69,7 +69,7 @@
   function mascot(panel) {
     let uid = 0, mood = 'idle', key = '', tmr = null, ftmr = null, greeted = false;
     const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
-    const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+    const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     let on = lsGet('ppvMascot') !== '0';
     const bubblesOn = () => lsGet('ppvBlBubbles') === '1';             // speech bubbles that pop up over the app (off by default)
     const pick = a => a[Math.floor(Math.random() * a.length)];

@@ -8,7 +8,7 @@
     const smartSt = { last: null, at: 0, snap: null, noRoute: '', get pu() { return null; }, set pu(v) { if (v) uPush(v); } };
     const sRec = (snap, cmd) => {
       smartSt.snap = snap; smartSt.last = cmd; smartSt.at = Date.now();
-      let ui = []; try { const A = window.__ppApi; if (snap && A && snap.idx === A.currentIndex()) ui = uiDiff(snap.ui, uiNow()); } catch (e) {}   // a track change reloads many controls by itself, so skip those
+      let ui = []; try { const A = window.__ppApi; if (snap && A && snap.idx === A.currentIndex()) ui = uiDiff(snap.ui, uiNow()); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // a track change reloads many controls by itself, so skip those
       uPush({ media: true, snap, ui, cmd });
     };
     const HELP_SMART = '\n\u2022 \u201cundo\u201d, \u201cagain\u201d, \u201ca bit more\u201d, \u201cmuch quieter\u201d, \u201cvolume up 15\u201d\n\u2022 several at once: \u201cplay something chill and turn it down a bit\u201d\n\u2022 goals: \u201cbedtime\u201d, \u201cgym time\u201d, \u201cstudy mode\u201d, \u201cparty mode\u201d\n\u2022 questions: \u201cis it paused\u201d, \u201cwhat\u2019s the volume\u201d, \u201cis shuffle on\u201d\n\u2022 \u201cmake a playlist for me\u201d, \u201csomething new\u201d, \u201cforgotten favorites\u201d, \u201cplaylist like <song>\u201d\n\u2022 \u201cmake a chill playlist with <song> without <artist>\u201d, \u201cadd <song> to <playlist>\u201d, \u201cremove the slow songs from <playlist>\u201d\n\u2022 typos are fine, and if I am unsure I will ask \u201cdid you mean\u2026\u201d';
@@ -231,7 +231,7 @@
     const sNrm = x => String(x).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
     const sReal = () => { const tr = window.__ppApi.tracks(); return tr.map((x, i) => i).filter(i => !tr[i].stem); };
     let sPFmemo = { at: 0, v: {} };
-    const sPF = () => { if (Date.now() - sPFmemo.at < 2000) return sPFmemo.v; try { if (window.PPPortfolioApi && window.PPPortfolioApi.flush) window.PPPortfolioApi.flush(); } catch (e) {} let v = {}; try { v = (JSON.parse(localStorage.getItem('pppSaveV1')) || {}).trackPlays || {}; } catch (e) {} sPFmemo = { at: Date.now(), v }; return v; };
+    const sPF = () => { if (Date.now() - sPFmemo.at < 2000) return sPFmemo.v; try { if (window.PPPortfolioApi && window.PPPortfolioApi.flush) window.PPPortfolioApi.flush(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } let v = {}; try { v = (JSON.parse(localStorage.getItem('pppSaveV1')) || {}).trackPlays || {}; } catch (e) {} sPFmemo = { at: Date.now(), v }; return v; };
     function sTaste() {   // what you actually listen to: top tracks weighted by plays, time listened and recency
       const A = window.__ppApi, tr = A.tracks(), pf = sPF(), now = Date.now(), idx = new Map(tr.map((t, i) => [String(t.dbId), i])), count = new Map(), last = new Map(), an = [];
       Object.entries(pf).forEach(([id, p]) => {

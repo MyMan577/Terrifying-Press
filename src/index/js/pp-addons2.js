@@ -2,10 +2,10 @@
 (function(){
   const anchor = document.getElementById('storage-section');
   if (!anchor) return;
-  const ls = { g: k => { try { return localStorage.getItem(k); } catch(e){ return null; } }, s: (k, v) => { try { localStorage.setItem(k, v); } catch(e){} } };
+  const ls = { g: k => { try { return localStorage.getItem(k); } catch(e){ return null; } }, s: (k, v) => { try { localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } };
   window.__ppAssOn = ls.g('ppAssStyle') === '1';
   let keyOn = ls.g('ppKeysOn') === '1', map = {};
-  try { map = JSON.parse(ls.g('ppKeymap') || '{}'); } catch(e){}
+  try { map = JSON.parse(ls.g('ppKeymap') || '{}'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   const ACTIONS = [
     ['play','Play / pause',{code:'Space',key:' '}], ['seekFwd','Seek +5 s',{code:'ArrowRight',key:'ArrowRight'}], ['seekBack','Seek −5 s',{code:'ArrowLeft',key:'ArrowLeft'}],
     ['next','Next track',{code:'ArrowRight',key:'ArrowRight',shiftKey:true}], ['prev','Previous track',{code:'ArrowLeft',key:'ArrowLeft',shiftKey:true}],

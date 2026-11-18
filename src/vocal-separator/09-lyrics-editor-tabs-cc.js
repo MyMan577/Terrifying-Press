@@ -293,7 +293,7 @@
             const t = cur();
             if (t && t.convertedFromVideo && vidOn != null) {
               vidOn = on;
-              try { const all = JSON.parse(localStorage.getItem('playerSubtitles') || '{}'), o = all[t.dbId]; if (o && !Array.isArray(o)) { o.on = on ? 1 : 0; localStorage.setItem('playerSubtitles', JSON.stringify(all)); } } catch (e) {}
+              try { const all = JSON.parse(localStorage.getItem('playerSubtitles') || '{}'), o = all[t.dbId]; if (o && !Array.isArray(o)) { o.on = on ? 1 : 0; localStorage.setItem('playerSubtitles', JSON.stringify(all)); } } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
             } else ls('ppvAudSub', on ? '1' : '0');
           };
           const loadCues = () => {
@@ -305,7 +305,7 @@
           const ST_DEF = { size: 100, pos: 'below', color: '#ffffff', font: 'default', look: 'outline', bg: 0, bold: 1, caps: 0, fx: 'fade', hl: 0, beat: 0, next: 1, sdh: 0 };
           const ST_FONTS = { default: 'inherit', serif: 'Georgia,serif', mono: "'Courier New',monospace", arial: 'Arial,Helvetica,sans-serif', condensed: "'Arial Narrow',sans-serif-condensed,Arial,sans-serif", impact: "Impact,'Arial Narrow Bold',sans-serif", casual: "'Comic Sans MS','Chalkboard SE',cursive" };
           const ST_LOOKS = { box: { bg: 70 }, outline: { bg: 0 }, cinema: { bg: 0 }, neon: { bg: 0 }, plain: { bg: 0 } };
-          const ST = Object.assign({}, ST_DEF); try { Object.assign(ST, JSON.parse(ls('ppvSongText') || '{}')); } catch (e) {}
+          const ST = Object.assign({}, ST_DEF); try { Object.assign(ST, JSON.parse(ls('ppvSongText') || '{}')); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
           const wrap = document.createElement('div'); wrap.id = 'ppv-st';
           const lyEl = document.getElementById('lyrics-overlay');
           viz.appendChild(wrap); wrap.appendChild(box); if (lyEl) wrap.appendChild(lyEl);
@@ -420,7 +420,7 @@
             box.style.display = txt && sp.__stT ? 'block' : 'none';
             stMark(sp, n);
             if (lyOn) stMark(lyEl.querySelector('.ly-cur'), now);
-            if (ST.beat) { let lv = -1; try { lv = aud.paused ? 0 : window.__ppBassLevel(); } catch (e) {} wrap.style.setProperty('--st-beat', (1 + Math.min(0.14, Math.max(0, lv - 0.02) * 0.7)).toFixed(3)); }
+            if (ST.beat) { let lv = -1; try { lv = aud.paused ? 0 : window.__ppBassLevel(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } wrap.style.setProperty('--st-beat', (1 + Math.min(0.14, Math.max(0, lv - 0.02) * 0.7)).toFixed(3)); }
             if (txt || lyOn) stLayout();
             if (ST.hl && !aud.paused && !stRaf && (txt || lyOn)) stRaf = requestAnimationFrame(stFrame);
           };
@@ -467,12 +467,12 @@
           ui.querySelector('#st-col').addEventListener('input', e => { ST.color = e.target.value; stChanged(); });
           new MutationObserver(() => { preview = panel.classList.contains('open'); shown = null; tick(); }).observe(panel, { attributes: true, attributeFilter: ['class'] });
           stApply(); stPaint(); stSyncUi();
-          try { const a = A(); if (a && a.setSubtitles && !a.__ppvW) { const o = a.setSubtitles; a.setSubtitles = function () { const r = o.apply(this, arguments); lastId = null; return r; }; a.__ppvW = 1; } } catch (e) {}
+          try { const a = A(); if (a && a.setSubtitles && !a.__ppvW) { const o = a.setSubtitles; a.setSubtitles = function () { const r = o.apply(this, arguments); lastId = null; return r; }; a.__ppvW = 1; } } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
           btn.onclick = () => { loadCues(); status(); placeWhisper('aud'); panel.classList.toggle('open'); };
           $('#ppv-apx').onclick = () => panel.classList.remove('open');
           $('#ppv-aton').onclick = () => { setOn(!isOn()); status(); tick(); };
           // the same words are often saved twice (subtitles and synced lyrics): Remove takes both away
-          $('#ppv-arm').onclick = () => { const t = cur(); if (!t) return; try { const all = JSON.parse(localStorage.getItem('playerSubtitles') || '{}'); delete all[t.dbId]; localStorage.setItem('playerSubtitles', JSON.stringify(all)); } catch (e) {} try { const L = window.__ppLyrics; if (L && L.has(t.dbId)) L.set(t.dbId, ''); } catch (e) {} loadCues(); status(); tick(); };
+          $('#ppv-arm').onclick = () => { const t = cur(); if (!t) return; try { const all = JSON.parse(localStorage.getItem('playerSubtitles') || '{}'); delete all[t.dbId]; localStorage.setItem('playerSubtitles', JSON.stringify(all)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } try { const L = window.__ppLyrics; if (L && L.has(t.dbId)) L.set(t.dbId, ''); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } loadCues(); status(); tick(); };
           $('#ppv-ald').onclick = () => $('#ppv-af').click();
           $('#ppv-af').onchange = async e => {
             const f = e.target.files[0]; e.target.value = ''; const t = cur(); if (!f || !t) return;

@@ -140,7 +140,7 @@
   }
   window.addEventListener('resize', refreshViewTransform);
   document.addEventListener('fullscreenchange', refreshViewTransform);
-  try { new ResizeObserver(refreshViewTransform).observe(videoWrap); } catch(e){}
+  try { new ResizeObserver(refreshViewTransform).observe(videoWrap); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   function applyViewMode(){
     refreshViewSize();
     if (!viewIsZoomed()){ viewPanX = 0; viewPanY = 0; }
@@ -157,7 +157,7 @@
     const fs = document.getElementById('view-fit-select'), rb = document.getElementById('view-reset-btn');
     if (fs && fs.value !== String(viewFitIdx)) fs.value = String(viewFitIdx);
     if (rb){ rb.style.opacity = isDefault ? '.5' : '1'; rb.style.borderColor = isDefault ? '' : 'var(--accent)'; }   // lit up whenever the picture is not in normal view
-    try { localStorage.setItem('playerViewFit', viewFitIdx); localStorage.setItem('playerViewZoom', viewZoomIdx); } catch(e){}
+    try { localStorage.setItem('playerViewFit', viewFitIdx); localStorage.setItem('playerViewZoom', viewZoomIdx); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   }
   function cycleViewFit(){
     viewFitIdx = (viewFitIdx + 1) % VIEW_FITS.length; applyViewMode();   // Fit, Fill, Stretch, then each aspect ratio, then back to Fit
@@ -198,9 +198,9 @@
     let auto = false; try { auto = localStorage.getItem('playerViewAutoReset') === '1'; } catch(e){}
     if (ar){
       ar.checked = auto;
-      ar.addEventListener('change', () => { auto = ar.checked; try { localStorage.setItem('playerViewAutoReset', auto ? '1' : '0'); } catch(e){} if (auto && (viewFitIdx || viewZoomIdx)) resetViewMode(); });
+      ar.addEventListener('change', () => { auto = ar.checked; try { localStorage.setItem('playerViewAutoReset', auto ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } if (auto && (viewFitIdx || viewZoomIdx)) resetViewMode(); });
     }
-    try { videoEl.addEventListener('loadedmetadata', () => { if (auto && (viewFitIdx || viewZoomIdx) && !songOvActive('view')) resetViewMode(true); }); } catch(e){}   // a video with its own fit (Override fit & zoom) keeps it
+    try { videoEl.addEventListener('loadedmetadata', () => { if (auto && (viewFitIdx || viewZoomIdx) && !songOvActive('view')) resetViewMode(true); }); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // a video with its own fit (Override fit & zoom) keeps it
   })();
   applyViewMode();
   document.addEventListener('keydown', (e) => {
@@ -313,7 +313,7 @@
       const cleanup = () => {
         if (finished) return;
         finished = true; clearTimeout(guard);
-        try { v.removeAttribute('src'); v.load(); } catch(e){}
+        try { v.removeAttribute('src'); v.load(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         v.remove();
       };
       v.addEventListener('loadedmetadata', () => {

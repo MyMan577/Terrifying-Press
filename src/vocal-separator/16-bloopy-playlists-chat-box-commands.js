@@ -104,7 +104,7 @@
     // were removed by you, or are stale, then refills from your taste. "Your Pattern" is driven by what you play next to what:
     // a small co-listening matrix learned from your own play history (videos included), blended with sound similarity.
     // Songs you add yourself are never touched. Switch off with the "Auto mixes" checkbox in the Library tab.
-    const lvLs = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} };
+    const lvLs = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     const lvOn = () => lvLs('ppvLiveMix') !== '0' && !window.ppSaver;   // Lite and Focus: auto mixes stop changing playlists on their own
     const LV_DAY = 864e5;
     let lvS = null, lvCur = null, lvBusy = false, lvLast = 0, lvTimer = null, lvTagVer = -1;
@@ -151,7 +151,7 @@
       const cs = new Map();   // co-listening: how often each song showed up next to what you played lately
       anchors.forEach((w, a) => { const row = s.co[String(tr[a].dbId)]; if (!row) return; const tot = Object.values(row).reduce((x, y) => x + y, 0) || 1; Object.entries(row).forEach(([b, v]) => { const j = idx.get(b); if (j != null) cs.set(j, (cs.get(j) || 0) + w * v / tot); }); });
       let cmax = 0; cs.forEach(v => { if (v > cmax) cmax = v; });
-      const ids = [...anchors.keys()], wts = ids.map(i => anchors.get(i)); let emb = null; try { emb = await sEmbScores(ids, wts); } catch (e) {}
+      const ids = [...anchors.keys()], wts = ids.map(i => anchors.get(i)); let emb = null; try { emb = await sEmbScores(ids, wts); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       let lo = 9, hi = -9; if (emb) emb.forEach(e => { if (e < lo) lo = e; if (e > hi) hi = e; }); const span = (hi - lo) || 1;
       const F = new Map(real.map(i => [i, sFeat(tg[tr[i].dbId])])), now = Date.now(), R = new Map();
       const tagS = i => { let a = 0, b = 0; ids.forEach((sd, k) => { a += wts[k] * sFSim(F.get(i), F.get(sd)); b += wts[k]; }); return b ? a / b : 0; };
@@ -258,7 +258,7 @@
     const blSay = s => { add('bot', blTone(s)); return true; };
     const blDone = s => blSay('\u2713 ' + s);
     const blCtx = { id: null };                                      // the song you last asked about, so "why is it in..." works
-    const blSave = () => { try { if (window.PPPortfolioApi && window.PPPortfolioApi.flush) window.PPPortfolioApi.flush(); } catch (e) {} try { return JSON.parse(localStorage.getItem('pppSaveV1')) || {}; } catch (e) { return {}; } };
+    const blSave = () => { try { if (window.PPPortfolioApi && window.PPPortfolioApi.flush) window.PPPortfolioApi.flush(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } try { return JSON.parse(localStorage.getItem('pppSaveV1')) || {}; } catch (e) { return {}; } };
     const blDayKey = d => d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
     const blMin = ms => { const mn = Math.round(ms / 60000); return mn < 1 ? 'under a minute' : mn < 60 ? mn + ' min' : Math.floor(mn / 60) + ' h ' + (mn % 60) + ' min'; };
     const blPls = () => window.__ppApi.playlists().filter(p => !p.stemOf);
@@ -325,7 +325,7 @@
     }
     // ---- commands you teach him: stored on this device only, checked before everything else ----
     const blTaughtGet = () => { try { const v = JSON.parse(localStorage.getItem('ppvBloopTaught')); return Array.isArray(v) ? v.filter(e => e && e.p && e.c) : []; } catch (e) { return []; } };
-    const blTaughtSet = v => { try { localStorage.setItem('ppvBloopTaught', JSON.stringify(v.slice(-40))); } catch (e) {} };
+    const blTaughtSet = v => { try { localStorage.setItem('ppvBloopTaught', JSON.stringify(v.slice(-40))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     const blNormPhrase = s => String(s).toLowerCase().replace(/^["\u201c\u201d'\s]+|["\u201c\u201d'\s]+$/g, '').replace(/[?!.]+$/, '').replace(/\s+/g, ' ').trim();
     // "*" in a phrase is a slot: "play * vibes" matches "play happy vibes", and "*" in the command is filled with that word
     function blAlias(text) {

@@ -28,7 +28,7 @@
     }
     function wakeStop() {
       const w = wk; if (!w) return; wk = null; mic.subs.delete(wakeSub);
-      [w.mel, w.emb, w.head].forEach(s => { try { s.release && s.release(); } catch (e) {} }); micRelease();
+      [w.mel, w.emb, w.head].forEach(s => { try { s.release && s.release(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }); micRelease();
     }
     function wakeSub(f) {
       const w = wk; if (!w) return;
@@ -96,9 +96,9 @@
       stopSpeak(); dictStop = true; if (wk) wakeStop();
       await freeVoice(); await freeEars(); await freeMini();
       ['ppvMiniDl', 'ppvVoiceDl', 'ppvEarsDl', 'ppvWake'].forEach(k => lsSet(k, '0')); voiceAsked = false; semAsked = false;
-      for (const k of ['ww_mel', 'ww_emb', 'ww_bloop', 'ww_jarvis', 'mini_cmd', 'mini_trk']) { try { await idbDel(k); } catch (e) {} }
+      for (const k of ['ww_mel', 'ww_emb', 'ww_bloop', 'ww_jarvis', 'mini_cmd', 'mini_trk']) { try { await idbDel(k); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       semIdx = null; semCmd = null;
-      try { for (const k of await caches.keys()) { if (k === 'kokoro-voices') await caches.delete(k); else if (/transformers/i.test(k)) { const c = await caches.open(k); for (const r of await c.keys()) if (/MiniLM|moonshine|Kokoro/i.test(r.url)) await c.delete(r); } } } catch (e) {}
+      try { for (const k of await caches.keys()) { if (k === 'kokoro-voices') await caches.delete(k); else if (/transformers/i.test(k)) { const c = await caches.open(k); for (const r of await c.keys()) if (/MiniLM|moonshine|Kokoro/i.test(r.url)) await c.delete(r); } } } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     }
     const ppVoiceApi = {
       get: k => vFlag(k), set: vSet, free: vFree, list: VOICES, who: voiceWho, when: voiceWhen,
@@ -151,7 +151,7 @@
         } catch (e) { console.error(e); }
       }, 80);
     }
-    const setChatOn = v => { chatOn = !!v; lsSet('ppvChat', chatOn ? '1' : '0'); cfab.style.display = chatOn ? 'block' : 'none'; if (!chatOn) cbox.style.display = 'none'; try { vSync(); } catch (e) {} };
+    const setChatOn = v => { chatOn = !!v; lsSet('ppvChat', chatOn ? '1' : '0'); cfab.style.display = chatOn ? 'block' : 'none'; if (!chatOn) cbox.style.display = 'none'; try { vSync(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     cfab.style.display = chatOn ? 'block' : 'none';
     cfab.onclick = () => {
       if (Date.now() < blSuppress) return;
@@ -308,7 +308,7 @@
       if (!(await NP.exists({ id: llmId() })).ready) await nativeFetch(llmId(), llmUrl(), say);
       await NP.llmLoad({ id: llmId() });
       const eos = [];                                                  // end-of-turn ids for the chosen model
-      for (const t of CHAT_MODELS[chatKey()].eos) { try { const e = tok.encode(t, { add_special_tokens: false }); if (e && e.length === 1) eos.push(Number(e[0])); } catch (x) {} }
+      for (const t of CHAT_MODELS[chatKey()].eos) { try { const e = tok.encode(t, { add_special_tokens: false }); if (e && e.length === 1) eos.push(Number(e[0])); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); } }
       if (!eos.length) eos.push(0, 2);
       const g = async (msgs, opts) => {
         opts = opts || {};
@@ -326,7 +326,7 @@
         return [{ generated_text: msgs.concat([{ role: 'assistant', content: text }]) }];
       };
       g.tokenizer = tok;
-      g.dispose = async () => { try { await NP.llmUnload(); } catch (e) {} };
+      g.dispose = async () => { try { await NP.llmUnload(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
       return g;
     }
     // Android app, LiteRT-LM: plain text goes in, text streams back. No tokenizer or token ids on this side.
@@ -349,7 +349,7 @@
         return [{ generated_text: msgs.concat([{ role: 'assistant', content: text }]) }];
       };
       g.lm = true;
-      g.dispose = async () => { try { await NP.lmUnload(); } catch (e) {} };
+      g.dispose = async () => { try { await NP.lmUnload(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
       return g;
     }
     async function ensureModel(say) {
@@ -365,18 +365,18 @@
           catch (e) { console.warn('Native chat model failed, using the web version', e); llmNativeFailed = true; say('Native brain unavailable, using the web version…'); }
         }
         const gpuOn = lsGet('ppvChatGpu') === '1' && navigator.gpu;
-        try { tfMod.env.backends.onnx.wasm.numThreads = self.crossOriginIsolated ? Math.min(2, navigator.hardwareConcurrency || 2) : 1; } catch (e) {}   // fewer threads = less RAM
+        try { tfMod.env.backends.onnx.wasm.numThreads = self.crossOriginIsolated ? Math.min(2, navigator.hardwareConcurrency || 2) : 1; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // fewer threads = less RAM
         const pcb = p => { if (p && p.status === 'progress' && p.file) say('Downloading ' + p.file.split('/').pop() + ' ' + Math.round(p.progress || 0) + '%'); };
         try { gen = await tfMod.pipeline('text-generation', CHAT_MODEL, { dtype: gpuOn ? 'fp16' : 'q8', device: gpuOn ? 'webgpu' : 'wasm', progress_callback: pcb }); }   // q4 is too lossy for a 135M model: it prints garbage
         catch (e) { if (!gpuOn) throw e; gen = await tfMod.pipeline('text-generation', CHAT_MODEL, { dtype: 'q8', device: 'wasm', progress_callback: pcb }); }
         lsSet('ppvChatDl', '1');
-        try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}   // ask the browser not to evict the downloaded model files
+        try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // ask the browser not to evict the downloaded model files
         return gen;
       })();
       try { return await genP; } finally { genP = null; }
     }
     // Take the language model out of RAM (it stays on disk and reloads later without asking).
-    async function unloadModel() { clearTimeout(idleT); if (gen) { const g = gen; gen = null; try { await g.dispose(); } catch (e) {} } }
+    async function unloadModel() { clearTimeout(idleT); if (gen) { const g = gen; gen = null; try { await g.dispose(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } }
     // How long the model may sit idle in RAM. Reloading a big model takes seconds, so phones with plenty of RAM keep it
     // around for 5 minutes; heavy jobs (split, lyrics, tagging) still free it first.
     const bigRam = () => { try { return (navigator.deviceMemory || 0) >= 8; } catch (e) { return false; } };
@@ -471,8 +471,8 @@
       actions([['Turn on chat AI', (b, d) => { d.remove(); setBrain(true); dlOk = true; send(text, true); }], ['No thanks', (b, d) => d.remove()]]);
     }
     async function freeChat() {
-      if (gen) { try { await gen.dispose(); } catch (e) {} gen = null; }
-      if (NATIVE) { for (const m of Object.values(CHAT_MODELS)) { try { await NP.remove({ id: m.lid }); } catch (e) {} } }
+      if (gen) { try { await gen.dispose(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } gen = null; }
+      if (NATIVE) { for (const m of Object.values(CHAT_MODELS)) { try { await NP.remove({ id: m.lid }); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } }
       lsSet('ppvChatDl', '0');
       const ks = await caches.keys();
       for (const k of ks) if (/transformers/i.test(k)) { const c = await caches.open(k); for (const r of await c.keys()) if (/SmolLM2|Qwen2\.5-0\.5B|Llama-3\.2-1B/i.test(r.url)) await c.delete(r); }
@@ -480,7 +480,7 @@
     // Switch the chat model: drop the loaded one, and ask for the new download the next time Bloopy chats.
     async function setChatModel(k) {
       if (!CHAT_MODELS[k]) return;
-      try { localStorage.setItem('ppvChatModel', k); } catch (e) {}
+      try { localStorage.setItem('ppvChatModel', k); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       CHAT_MODEL = webId(k); llmNativeFailed = false; dlOk = false;
       await unloadModel();
       lsSet('ppvChatDl', '0');

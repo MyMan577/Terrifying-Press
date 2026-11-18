@@ -24,7 +24,7 @@
     if (e == null) return 'Unknown error.' + OOM_HINT;
     if (typeof e === 'number') return 'The audio engine crashed (code ' + e + ').' + OOM_HINT;
     let m = e.message || (typeof e === 'string' ? e : '');
-    if (!m) { try { m = JSON.stringify(e); } catch (x) {} if (!m || m === '{}') m = String(e); }
+    if (!m) { try { m = JSON.stringify(e); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); } if (!m || m === '{}') m = String(e); }
     if (/abort|assertions|out of memory|memory access|alloc|bad_alloc|RangeError/i.test(m)) m += OOM_HINT;
     return m;
   };
@@ -93,7 +93,7 @@
   // NNAPI (phone GPU/NPU) for everything except Demucs, whose transformer ops run better on CPU. The Java side falls back to CPU by itself.
   // The tiny classifier heads (a few hundred KB) lose time compiling for NNAPI and copying data over: CPU is faster for them.
   const cpuOnly = new Set((() => { try { return JSON.parse(localStorage.getItem('ppvCpuOnly') || '[]'); } catch (e) { return []; } })());   // models whose NNAPI output came back NaN: always CPU
-  const markCpu = key => { cpuOnly.add(key); try { localStorage.setItem('ppvCpuOnly', JSON.stringify([...cpuOnly])); } catch (e) {} };
+  const markCpu = key => { cpuOnly.add(key); try { localStorage.setItem('ppvCpuOnly', JSON.stringify([...cpuOnly])); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
   const hasBad = d => { if (!d || !d.length) return true; const st = Math.max(1, (d.length / 512) | 0); for (let i = 0; i < d.length; i += st) if (!Number.isFinite(d[i])) return true; return !Number.isFinite(d[d.length - 1]); };
   const wantNnapi = key => { if (cpuOnly.has(key) || /^demucs/.test(key) || /^(tgh_|tg_hinst$|tg_hvoice$|tg_hgenre$|tg_effnet$|tg_effstyle$|tg_mn10$|ww_)/.test(key)) return false;   // tagger models stay on CPU: NNAPI fp16 blurs the embedding and the in-graph log-mel, so every score came out weak
      try { return localStorage.getItem('ppvNnapi') !== '0'; } catch (e) { return true; } };
@@ -116,7 +116,7 @@
         let o = await once(feed);
         if (hasBad(o.data) && wantNnapi(key)) {                      // NNAPI (fp16) overflowed: reload this model on the CPU and redo the call
           console.warn('NaN from NNAPI for', key, '- switching to CPU');
-          markCpu(key); try { await NP.unload({ id: key }); } catch (e) {}
+          markCpu(key); try { await NP.unload({ id: key }); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
           info = await NP.load({ id: key, nnapi: false });
           o = await once(feed);
         }
@@ -455,10 +455,10 @@
     const lg = ls0('ppvWLang');
     let ref;
     try { status('Whisper is checking where the lines really are…'); ref = await transcribeRun(t, { size, lang: whEn(size) ? '' : (lg === null ? 'english' : lg), task: 'transcribe', clean: true, acc: 0, strength: o.strength, lv: o.lv }, status); }
-    finally { if (asr) { try { await asr.dispose(); } catch (x) {} asr = null; asrId = ''; } }   // give the memory back before the real split
+    finally { if (asr) { try { await asr.dispose(); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); } asr = null; asrId = ''; } }   // give the memory back before the real split
     const cues = alignLines(raw, (ref || []).map(q => ({ start: q.start, end: q.end, text: q.text })));
     const out = { cues, matched: cues.filter(q => q.m).length, total: cues.length };
-    try { cache[t.dbId] = { sig, c: cues.map(q => [+q.start.toFixed(2), +q.end.toFixed(2), q.text, q.m ? 1 : 0]) }; localStorage.setItem('ppvAlign', JSON.stringify(cache)); } catch (x) {}
+    try { cache[t.dbId] = { sig, c: cues.map(q => [+q.start.toFixed(2), +q.end.toFixed(2), q.text, q.m ? 1 : 0]) }; localStorage.setItem('ppvAlign', JSON.stringify(cache)); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
     return out;
   }
 
@@ -815,7 +815,7 @@
   function mediaDur(url) {
     return new Promise(res => {
       const a = document.createElement('audio'); let done = false;
-      const end = d => { if (done) return; done = true; clearTimeout(tm); a.removeAttribute('src'); try { a.load(); } catch (e) {} res(isFinite(d) && d > 0 ? d : 0); };
+      const end = d => { if (done) return; done = true; clearTimeout(tm); a.removeAttribute('src'); try { a.load(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } res(isFinite(d) && d > 0 ? d : 0); };
       const tm = setTimeout(() => end(0), 8000);
       a.preload = 'metadata'; a.onloadedmetadata = () => end(a.duration); a.onerror = () => end(0); a.src = url;
     });
@@ -850,7 +850,7 @@
       else out = await NP.separate(Object.assign({ kind: 'mdx', model: id, nfft: m.nfft, dimF: m.dimF, comp: m.comp }, base));
     } finally { h.remove(); }
     window.__ppLastSep = ' (' + Math.round(out.seconds) + ' s on ' + out.accel + ')';
-    try { localStorage.setItem(accKey, /nnapi|npu|gpu/i.test(String(out.accel)) ? 'nnapi' : 'cpu'); } catch (e) {}
+    try { localStorage.setItem(accKey, /nnapi|npu|gpu/i.test(String(out.accel)) ? 'nnapi' : 'cpu'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     if (nm) {
       window.__ppLastSep += await nativeMask(nm, out.files.Vocals, ['Instrumental', 'Other'].map(n => out.files[n]), status);
       if (hid) { NP.deleteFiles({ paths: [out.files.Vocals] }).catch(() => {}); delete out.files.Vocals; }
@@ -877,7 +877,7 @@
     window.__ppLastSep = '';
     const h = await SS.addListener('progress', e => { onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
     let out;
-    try { out = await SS.separate({ input: saved.path, sharp: opts.strength, nnapi: opts.nnapi !== false && ls0('ppvAccel_spleeter2') !== 'cpu' && !cpuOnly.has('spleeter2'), tune: false }); try { localStorage.setItem('ppvAccel_spleeter2', /nnapi|npu|gpu/i.test(String(out.accel)) ? 'nnapi' : 'cpu'); } catch (e) {} }
+    try { out = await SS.separate({ input: saved.path, sharp: opts.strength, nnapi: opts.nnapi !== false && ls0('ppvAccel_spleeter2') !== 'cpu' && !cpuOnly.has('spleeter2'), tune: false }); try { localStorage.setItem('ppvAccel_spleeter2', /nnapi|npu|gpu/i.test(String(out.accel)) ? 'nnapi' : 'cpu'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
     finally { h.remove(); }
     window.__ppLastSep = ' (' + Math.round(out.seconds) + ' s on ' + out.accel + ')';
     if (opts.nmask) window.__ppLastSep += await nativeMask(opts.nmask, out.vocals, [out.instrumental], status);
@@ -1037,7 +1037,7 @@
   ].map(([id, dir, label, kind, group, classes]) => ({ id, label, kind, group, classes, pos: 1, extra: true, base: dir + '-discogs-effnet-1', file: ESS + dir + '/' + dir + '-discogs-effnet-1.onnx', info: ESS + dir + '/' + dir + '-discogs-effnet-1.json' }));
   const HEAD_MISS = 'ppvHeadMiss', MISS_MS = 3 * 864e5;
   const headMiss = () => { try { return JSON.parse(localStorage.getItem(HEAD_MISS)) || {}; } catch (e) { return {}; } };
-  const setHeadMiss = (id, on) => { const m = headMiss(); if (on) m[id] = Date.now(); else delete m[id]; try { localStorage.setItem(HEAD_MISS, JSON.stringify(m)); } catch (e) {} };
+  const setHeadMiss = (id, on) => { const m = headMiss(); if (on) m[id] = Date.now(); else delete m[id]; try { localStorage.setItem(HEAD_MISS, JSON.stringify(m)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
   const moodsOn = () => { try { return localStorage.getItem('ppvMoods') !== '0'; } catch (e) { return true; } };
   // Fetch with a hard deadline (response start AND stalls mid-download), so a dead host can never freeze the app.
   async function fetchTimed(url, ms, onProgress) {
@@ -1095,11 +1095,11 @@
     const ok = new Array(LIST.length).fill(null); let got = 0;
     const one = async (b, k) => {
       try {
-        let h = null; try { const c = await idbGet('tghm_' + b.id); if (c) h = JSON.parse(c); } catch (e) {}
+        let h = null; try { const c = await idbGet('tghm_' + b.id); if (c) h = JSON.parse(c); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         if (!h || !(NATIVE ? (await NP.exists({ id: 'tgh_' + b.id })).ready : await idbGet('tgh_' + b.id))) {
           h = { id: b.id, label: b.label, kind: b.kind || 'binary', group: b.group || 'mood', pos: b.pos, classes: b.classes ? b.classes.slice() : null };
           const buf = NATIVE ? (await nativeHeadFetch(b), null) : await fetchHeadFile(b, 'onnx', 8000);
-          let j = null; try { j = JSON.parse(new TextDecoder().decode(await fetchHeadFile(b, 'json', 4000))); } catch (e) {}
+          let j = null; try { j = JSON.parse(new TextDecoder().decode(await fetchHeadFile(b, 'json', 4000))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
           if (j && Array.isArray(j.classes) && j.classes.length >= 2 && (h.kind === 'multi' || j.classes.length === 2)) h.classes = j.classes;
           if (h.kind === 'binary' && h.classes && h.classes.length === 2) { const p = h.classes.findIndex(c => !/^(non|not)[_ -]/i.test(c)); if (p >= 0) h.pos = p; }
           if (h.kind !== 'binary' && !h.classes) throw new Error('class names (.json) not found');
@@ -1123,7 +1123,7 @@
     if (enabled === false) return [];
     if (headsMemo) return headsMemo;
     let man = null;
-    try { const c = await idbGet('tg_manifest'); if (c) man = JSON.parse(c); } catch (e) {}
+    try { const c = await idbGet('tg_manifest'); if (c) man = JSON.parse(c); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     if (!man) {
       try { man = JSON.parse(new TextDecoder().decode(await fetchTimed(HF_BASE + 'tagger-heads.json', 6000))); await idbPut('tg_manifest', JSON.stringify(man)); } catch (e) { man = null; }
     }
@@ -1142,7 +1142,7 @@
   }
   async function resetHeads() {
     headsMemo = null; headsFailed = false;
-    try { const c = await idbGet('tg_manifest'); if (c) for (const h of (JSON.parse(c).heads || [])) await idbDel('tgh_' + h.id); } catch (e) {}
+    try { const c = await idbGet('tg_manifest'); if (c) for (const h of (JSON.parse(c).heads || [])) await idbDel('tgh_' + h.id); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     await idbDel('tg_manifest').catch(() => {});
     try { localStorage.removeItem(HEAD_MISS); } catch (e) {}
     for (const b of BUILTIN_HEADS.concat(EXTRA_HEADS)) { if (NATIVE) await NP.remove({ id: 'tgh_' + b.id }).catch(() => {}); await idbDel('tgh_' + b.id).catch(() => {}); await idbDel('tghm_' + b.id).catch(() => {}); }
@@ -1438,7 +1438,7 @@
   // opt.cache : object that keeps ONNX sessions alive between tracks (batch mode).
   async function tagTrack(url, status, lv, opt) {
     opt = opt || {};
-    const P = f => { try { opt.progress && opt.progress(Math.max(0, Math.min(1, f))); } catch (e) {} };
+    const P = f => { try { opt.progress && opt.progress(Math.max(0, Math.min(1, f))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     P(0); await loadOrt();
     const low = !!(lv && lv.blob), r = { errors: [] }, own = [], dg = {};
     const TF = ['tg_effnet', 'tg_hinst', 'tg_hvoice', 'tg_mel', 'tg_mn10'];
@@ -1482,7 +1482,7 @@
       const hG = hasGenre ? await S('tg_hgenre') : null;
       const sNet = hasStyleNet ? await S('tg_effstyle') : null;
       const hs = [], okHeads = [];
-      for (const h of heads) { try { hs.push(await S('tgh_' + h.id)); okHeads.push(h); status('Loading mood models ' + okHeads.length + ' of ' + heads.length + '…'); P(0.2 + 0.05 * okHeads.length / heads.length); await tick(); } catch (e) { console.warn('mood head unusable', h.id, e); try { await idbDel('tgh_' + h.id); await idbDel('tghm_' + h.id); } catch (e2) {} headsMemo = null; } }
+      for (const h of heads) { try { hs.push(await S('tgh_' + h.id)); okHeads.push(h); status('Loading mood models ' + okHeads.length + ' of ' + heads.length + '…'); P(0.2 + 0.05 * okHeads.length / heads.length); await tick(); } catch (e) { console.warn('mood head unusable', h.id, e); try { await idbDel('tgh_' + h.id); await idbDel('tghm_' + h.id); } catch(e2){ if (typeof ppCaught === "function") ppCaught(e2); } headsMemo = null; } }
       const heads0 = heads; heads = okHeads; if (!okHeads.length && heads0.length) r.errors.push('Moods skipped: the mood models would not load (they will be re-downloaded next run).');
       // Reads a classifier head's answer by its own output shape. If a head hands back one row for the whole batch instead of one per patch
       // (or fewer values than expected), that row is used for every patch instead of reading past the end and producing NaN.
@@ -1677,7 +1677,7 @@
       if (c.bpm && (c.bpm < 30 || c.bpm > 300)) { delete c.bpm; fixed = true; }
       if (c.v != null && (c.v > 100 || c.v < 0)) { c.v = Math.max(0, Math.min(100, c.v)); fixed = true; }
     });
-    if (fixed) try { localStorage.setItem(TAGS_KEY, JSON.stringify(tagStore)); } catch (e) {}
+    if (fixed) try { localStorage.setItem(TAGS_KEY, JSON.stringify(tagStore)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     return tagStore;
   };
   const saveTagStore = () => { tagVer++; try { localStorage.setItem(TAGS_KEY, JSON.stringify(tagStore)); return true; } catch (e) { return false; } };
@@ -1799,8 +1799,8 @@
       const sig = l1.length + ':' + l2.length;
       if (sig !== txtSig) {
         txtSig = sig; txtLyr.clear();
-        try { const o = JSON.parse(l1) || {}; for (const k in o) txtLyr.set(k, strip(o[k]).toLowerCase().slice(0, 8000)); } catch (e) {}
-        try { const o = JSON.parse(l2) || {}; for (const k in o) { const v = o[k], cues = Array.isArray(v) ? v.map(c => c.text) : (v && v.c ? v.c.map(c => c[2]) : []); txtLyr.set(k, ((txtLyr.get(k) || '') + ' ' + cues.join(' ').toLowerCase()).slice(0, 8000)); } } catch (e) {}
+        try { const o = JSON.parse(l1) || {}; for (const k in o) txtLyr.set(k, strip(o[k]).toLowerCase().slice(0, 8000)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+        try { const o = JSON.parse(l2) || {}; for (const k in o) { const v = o[k], cues = Array.isArray(v) ? v.map(c => c.text) : (v && v.c ? v.c.map(c => c[2]) : []); txtLyr.set(k, ((txtLyr.get(k) || '') + ' ' + cues.join(' ').toLowerCase()).slice(0, 8000)); } } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       }
       if (txtTagVer !== tagVer) { txtTagVer = tagVer; txtTags.clear(); }
     }
@@ -1865,7 +1865,7 @@
   async function getAsr(id, status) {
     const ent0 = Object.values(WH).find(v => v[0] === id), dev = wGpu() && !(ent0 && ent0[2] && ent0[2].noGpu) ? 'webgpu' : 'wasm', key = id + '|' + dev;   // the biggest models are too large for the GPU path
     if (asr && asrId === key) return asr;
-    if (asr) { try { await asr.dispose(); } catch (e) {} asr = null; asrId = ''; }
+    if (asr) { try { await asr.dispose(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } asr = null; asrId = ''; }
     if (!tfMod) { status('Loading Whisper…'); tfMod = await import(TF_URL); }
     const cb = p => { if (p && p.status === 'progress' && p.file) status('Downloading ' + p.file.split('/').pop() + ' ' + Math.round(p.progress || 0) + '%'); else if (p && p.status === 'ready') status('Whisper ready.'); };
     if (dev === 'webgpu') {
@@ -2020,7 +2020,7 @@
         if (r.lang) langId = r.lang;
         if (hasF && !gpuNote) {                                          // first window tells us where the encoder really ran
           gpuNote = r.accel === 'GPU' ? 'Subtitles: encoder is running on the phone GPU/NPU.' : 'The phone GPU was not faster than the CPU here, so the CPU is used. The GPU option was turned off.';
-          if (r.accel !== 'GPU') { try { localStorage.setItem('ppvWGpu', '0'); const cb = document.getElementById('ppv-wgpu'); if (cb) cb.checked = false; await NP.remove({ id: k + '_encf' }); } catch (e) {} }
+          if (r.accel !== 'GPU') { try { localStorage.setItem('ppvWGpu', '0'); const cb = document.getElementById('ppv-wgpu'); if (cb) cb.checked = false; await NP.remove({ id: k + '_encf' }); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
           status(gpuNote); await tick();
         }
         const segs = whParse(r.tokens || [], c.tsBegin), complete = segs.filter(g => g.e != null);
@@ -2046,7 +2046,7 @@
   async function pkVocab() {                                           // vocab.txt lines look like "▁the 42"; saved after the first download so it works offline
     if (pkVoc) return pkVoc;
     let txt = ''; try { txt = localStorage.getItem('ppvPkVocab') || ''; } catch (e) {}
-    if (!txt) { txt = await (await fetch(PK_BASE + 'vocab.txt')).text(); try { localStorage.setItem('ppvPkVocab', txt); } catch (e) {} }
+    if (!txt) { txt = await (await fetch(PK_BASE + 'vocab.txt')).text(); try { localStorage.setItem('ppvPkVocab', txt); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
     const toks = []; let blank = -1;
     for (const line of txt.split('\n')) {
       const l = line.replace(/\r$/, ''); if (!l) continue;
@@ -2277,7 +2277,7 @@
   }
   const rpAltsLoad = id => { try { return (JSON.parse(localStorage.getItem('ppvAlts') || '{}')[id]) || []; } catch (e) { return []; } };
   const rpAltsSave = (id, items) => {
-    try { const all = JSON.parse(localStorage.getItem('ppvAlts') || '{}'), list = items.filter(c => c.alts && c.alts.length).map(c => [Math.round((c.s != null ? c.s : c.start) * 100) / 100, c.alts.slice(0, 3)]); if (list.length) all[id] = list; else delete all[id]; localStorage.setItem('ppvAlts', JSON.stringify(all)); } catch (e) {}
+    try { const all = JSON.parse(localStorage.getItem('ppvAlts') || '{}'), list = items.filter(c => c.alts && c.alts.length).map(c => [Math.round((c.s != null ? c.s : c.start) * 100) / 100, c.alts.slice(0, 3)]); if (list.length) all[id] = list; else delete all[id]; localStorage.setItem('ppvAlts', JSON.stringify(all)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
   };
   // Merge extra passes into alternatives, find repeated lines, and unify the wording when most repeats agree.
   async function rpFinish(passes, x) {
@@ -2319,7 +2319,7 @@
     try {
       if (o.lv && o.lv.wake && navigator.wakeLock) { try { wl = await navigator.wakeLock.request('screen'); } catch (e) {} }
       const cues = await transcribeRun(t, o, status);
-      try { rpAltsSave(t.dbId, cues); } catch (e) {}                  // alternative wordings live beside the subtitles, for the editor's Repeats tab
+      try { rpAltsSave(t.dbId, cues); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }                  // alternative wordings live beside the subtitles, for the editor's Repeats tab
       return cues.map(c => c.w ? { start: c.start, end: c.end, text: c.text, w: c.w } : { start: c.start, end: c.end, text: c.text });
     } finally { if (NATIVE) NP.keepAlive({ on: false }).catch(() => {}); wl && wl.release().catch(() => {}); heavyJob = false; }
   }
@@ -2648,7 +2648,7 @@
   const lyKey = t => lyNorm(t.title);
   // Not 'ppvLyAuto': that key is the on/off switch for this feature.
   const lyAutoGet = () => { try { const m = JSON.parse(localStorage.getItem('ppvLyAutoTitles')); return m && typeof m === 'object' ? m : {}; } catch (e) { return {}; } };
-  const lyAutoPut = m => { try { localStorage.setItem('ppvLyAutoTitles', JSON.stringify(m)); } catch (e) {} };
+  const lyAutoPut = m => { try { localStorage.setItem('ppvLyAutoTitles', JSON.stringify(m)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
   async function lyPrefetch(enabled) {
     if (lyRunning) { lyAgain = true; return; }
     if (!enabled() || !navigator.onLine) return; const A = window.__ppApi, lyr = window.__ppLyrics; if (!A || !lyr || !A.tracks) return;
@@ -2684,7 +2684,7 @@
         }
         if (offline) break;
         lyTried[t.dbId] = lyKey(t);
-        if (got) { try { if (got.syncedLyrics && durOk(got)) { const cues = lyParseLrc(got.syncedLyrics); lyr.set(t.dbId, got.syncedLyrics); if (cues.length) { try { A.setSubtitles(t.dbId, cues, 'Online.lrc'); } catch (e) {} } } else lyr.set(t.dbId, got.plainLyrics || lyLines(got.syncedLyrics || '').join('\n')); const m = lyAutoGet(); m[t.dbId] = lyKey(t); lyAutoPut(m); } catch (e) { console.warn('lyrics save failed', e); } }
+        if (got) { try { if (got.syncedLyrics && durOk(got)) { const cues = lyParseLrc(got.syncedLyrics); lyr.set(t.dbId, got.syncedLyrics); if (cues.length) { try { A.setSubtitles(t.dbId, cues, 'Online.lrc'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } } else lyr.set(t.dbId, got.plainLyrics || lyLines(got.syncedLyrics || '').join('\n')); const m = lyAutoGet(); m[t.dbId] = lyKey(t); lyAutoPut(m); } catch (e) { console.warn('lyrics save failed', e); } }
         await lyWait(1500);
       }
     } catch (e) { console.warn('lyrics background fetch', e); }
@@ -2727,7 +2727,7 @@
     return new Promise((res, rej) => { const tx = db.transaction('sums', mode); let out; fn(tx.objectStore('sums'), v => { out = v; }); tx.oncomplete = () => res(out); tx.onerror = tx.onabort = () => rej(tx.error); });
   };
   const sumLoad = () => sumCache;
-  const sumPing = () => { try { document.dispatchEvent(new Event('ppv-sums')); } catch (e) {} };
+  const sumPing = () => { try { document.dispatchEvent(new Event('ppv-sums')); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
   async function sumInit() {
     try {
       const rows = await sumTx('readonly', (st, set) => { const q = st.getAll(); q.onsuccess = () => set(q.result || []); });
@@ -2745,14 +2745,14 @@
   async function sumSave(id, v) {                                      // resolves true when the summary is safely stored on the device
     sumCache[id] = v; let ok = false;
     try { await sumTx('readwrite', st => { st.put({ id: String(id), v }); }); ok = true; } catch (e) { console.warn('summary save failed', e); }
-    if (!ok) { try { localStorage.setItem(SUM_KEY, JSON.stringify(sumCache)); ok = true; } catch (e) {} }   // database unavailable: fall back to the old place
-    try { if (ok && navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}   // ask the browser not to clear it when space is low
+    if (!ok) { try { localStorage.setItem(SUM_KEY, JSON.stringify(sumCache)); ok = true; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }   // database unavailable: fall back to the old place
+    try { if (ok && navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // ask the browser not to clear it when space is low
     sumPing(); return ok;
   }
   async function sumDelete(id) {
     delete sumCache[id];
-    try { await sumTx('readwrite', st => { st.delete(String(id)); }); } catch (e) {}
-    try { const o = JSON.parse(localStorage.getItem(SUM_KEY) || 'null'); if (o && id in o) { delete o[id]; localStorage.setItem(SUM_KEY, JSON.stringify(o)); } } catch (e) {}
+    try { await sumTx('readwrite', st => { st.delete(String(id)); }); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+    try { const o = JSON.parse(localStorage.getItem(SUM_KEY) || 'null'); if (o && id in o) { delete o[id]; localStorage.setItem(SUM_KEY, JSON.stringify(o)); } } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     sumPing();
   }
   sumInit();
@@ -2947,7 +2947,7 @@
   const ppvLs = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
   // The user's favourite topics (assistant setting, or learned from "my favourite topics are ..."), so Bloopy chats about them too.
   const favTopics = () => String(ppvLs('ppvTopics') || '').replace(/\s+/g, ' ').trim().slice(0, 200);
-  const setFavTopics = v => { try { localStorage.setItem('ppvTopics', String(v || '').replace(/\s+/g, ' ').trim().slice(0, 200)); } catch (e) {} document.querySelectorAll('#ppv-topics').forEach(x => { x.value = favTopics(); }); };
+  const setFavTopics = v => { try { localStorage.setItem('ppvTopics', String(v || '').replace(/\s+/g, ' ').trim().slice(0, 200)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } document.querySelectorAll('#ppv-topics').forEach(x => { x.value = favTopics(); }); };
   const CHAT_LENS = {
     short:  { label: 'Short (one sentence)', say: 'in one short plain sentence', bul: 'in two short bullet points', talk: 'in one short paragraph of two or three sentences', mul: 0.5 },
     normal: { label: 'Normal (one or two sentences, default)', say: 'in one or two short plain sentences', bul: 'in three short bullet points', talk: 'in one to three short paragraphs', mul: 1 },
@@ -2992,7 +2992,7 @@
   const menuOpts = o => Object.keys(o).map(k => '<option value="' + k + '">' + o[k].label + '</option>').join('');
   document.addEventListener('change', e => {                          // keep copies of the same menu in step, and save the choice
     const sel = e.target; if (!sel || !sel.dataset || !sel.dataset.sync) return;
-    try { localStorage.setItem(sel.dataset.sync, sel.value); } catch (x) {}
+    try { localStorage.setItem(sel.dataset.sync, sel.value); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
     document.querySelectorAll('select[data-sync="' + sel.dataset.sync + '"]').forEach(o => { if (o !== sel) o.value = sel.value; });
   });
   // A summary that hit the token cap ends mid-sentence: cut back to the last full sentence.
@@ -3162,7 +3162,7 @@
     if (sb) sb.addEventListener('click', () => placeWhisper('cap'), true);
     if (eb) eb.addEventListener('click', () => { if (curKind() !== 'video') placeWhisper('ly'); }, true);
     const $ = s => document.querySelector(s), A = () => window.__ppApi, cur = () => { const a = A(); return a && a.tracks()[a.currentIndex()]; };
-    const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} };
+    const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     let isBusy = false;
     const busy = on => { isBusy = on; document.querySelectorAll('#ppv-panel button, .ppv-scope button').forEach(b => { if (!b.dataset.keep && !b.classList.contains('ppv-x')) b.disabled = on; }); };
     const deep = $('#ppv-deep'), aeq = $('#ppv-aeq'), ask = $('#ppv-askip'), lib = $('#ppv-lib'), cnt = $('#ppv-count');
@@ -3211,7 +3211,7 @@
       });
       if (rows.length > savedLimit) { const m = document.createElement('button'); m.className = 'ppv-sec'; m.textContent = 'Show more (' + (rows.length - savedLimit) + ' left)'; m.onclick = () => { savedLimit += 100; renderSaved(); }; box.appendChild(m); }
     };
-    const refreshCount = () => { const a = A(); if (!a) return; try { syncSmartLive(); } catch (e) {} const tg = loadTags(), n = a.tracks().filter(t => tg[t.dbId]).length; cnt.textContent = n + ' of ' + a.tracks().length + ' tracks tagged'; renderSmart(); try { renderSaved(); } catch (e) {} };
+    const refreshCount = () => { const a = A(); if (!a) return; try { syncSmartLive(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } const tg = loadTags(), n = a.tracks().filter(t => tg[t.dbId]).length; cnt.textContent = n + ' of ' + a.tracks().length + ' tracks tagged'; renderSmart(); try { renderSaved(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     function renderSmart() {
       const a = A(), tg = loadTags(), box = $('#ppv-smart'); if (!a) return;
       const ticked = new Set([...box.querySelectorAll('input:checked')].map(i => i.value));
@@ -3221,7 +3221,7 @@
     d1.addEventListener('toggle', () => { if (d1.open) refreshCount(); });
     // remember open/closed across launches; with nothing tagged yet it starts closed, so it does not push the track list down
     try { const pref = localStorage.getItem('ppvSavedOpen'); if (pref === '0' || (pref == null && !Object.keys(loadTags() || {}).length)) savedEl.open = false; } catch (e) {}
-    savedEl.addEventListener('toggle', () => { try { localStorage.setItem('ppvSavedOpen', savedEl.open ? '1' : '0'); } catch (e) {} if (savedEl.open) renderSaved(); }); $('#ppv-sf').onchange = () => { savedLimit = 100; renderSaved(); }; $('#ppv-ss').oninput = () => { savedLimit = 100; renderSaved(); };
+    savedEl.addEventListener('toggle', () => { try { localStorage.setItem('ppvSavedOpen', savedEl.open ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } if (savedEl.open) renderSaved(); }); $('#ppv-sf').onchange = () => { savedLimit = 100; renderSaved(); }; $('#ppv-ss').oninput = () => { savedLimit = 100; renderSaved(); };
     $('#ppv-heads').onclick = async () => { await resetHeads(); h.status('Mood models will be downloaded again on the next tagging run.'); };
 
     // single track tagging (replaces the old button behaviour so results are kept)
@@ -3342,9 +3342,9 @@
         const o = tagged[rnd(tagged.length)], order = await similarTo(o.i, 'sound');
         const l = [o.t.dbId].concat(order.map(i => tr[i]).filter(t => t && !t.stem).slice(0, 19).map(t => t.dbId));
         if (l.length >= 8) themes.push({ key: 's:' + o.t.dbId, name: 'More like ' + o.t.title, ids: l });
-      } catch (e) {}
+      } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       if (!themes.length) return null;
-      let recent = []; try { recent = JSON.parse(ls('ppvSurpRecent')) || []; } catch (e) {}
+      let recent = []; try { recent = JSON.parse(ls('ppvSurpRecent')) || []; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       const pool = themes.filter(t => !recent.includes(t.key)), th = (pool.length ? pool : themes)[rnd((pool.length ? pool : themes).length)];
       recent.push(th.key); ls('ppvSurpRecent', JSON.stringify(recent.slice(-8)));
       return th;
@@ -3403,7 +3403,7 @@
       if (ls('ppLiteMode') === '1') return false;                     // Lite: no background AI work at all
       const focus = ls('ppFocusMode') === '1';                         // Focus mode: background AI work waits for the charger and for silence
       if ((ls('ppvBgPlay') !== '1' || focus) && mediaPlaying()) return false;
-      if ((ls('ppvBgChg') === '1' || focus) && navigator.getBattery) { try { const b = await navigator.getBattery(); if (!b.charging) return false; } catch (e) {} }
+      if ((ls('ppvBgChg') === '1' || focus) && navigator.getBattery) { try { const b = await navigator.getBattery(); if (!b.charging) return false; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       return true;
     }
     const freeBg = () => { if (bgCache) { Object.values(bgCache).forEach(s => s && s.release && s.release()); bgCache = null; } };
@@ -3421,7 +3421,7 @@
           setBg('Background: tagging ' + t.title + ' (' + list.filter(x => !tg[x.dbId] && !bgFailed.has(x.dbId)).length + ' left)\u2026');
           try { const r = await tagTrack(t.url, () => {}, lv, { deep: deep.checked, cache: lv ? null : bgCache, rest: 0.3 }); if (!r.emb && !r.genre) throw new Error('nothing detected'); await persistTags(t.dbId, r, aeq.checked); }
           catch (e) { console.warn('background tag failed', t.title, e); bgFailed.add(t.dbId); }
-          try { refreshCount(); } catch (e) {}
+          try { refreshCount(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
           await tick(); await ease(performance.now() - tb0, 0.3, 'bg');   // background work is deliberately gentle
         }
         if (ls('ppvSurp') === '1' && surpDue() && await isAway()) {
@@ -3483,14 +3483,14 @@
       try {
         const a = A(), t = cur(); if (!t) throw new Error('Play or select a track first.');
         const lyr = window.__ppLyrics;
-        { const m = WH[wsize.value][2]; if (m && m.big && localStorage.getItem('ppvWBig_' + wsize.value) !== '1') { if (!confirm('This model is a ~' + m.big + ' MB download and needs plenty of free memory. Continue?')) { busy(false); return; } try { localStorage.setItem('ppvWBig_' + wsize.value, '1'); } catch (e) {} } }
+        { const m = WH[wsize.value][2]; if (m && m.big && localStorage.getItem('ppvWBig_' + wsize.value) !== '1') { if (!confirm('This model is a ~' + m.big + ' MB download and needs plenty of free memory. Continue?')) { busy(false); return; } try { localStorage.setItem('ppvWBig_' + wsize.value, '1'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } }
         if (ls('ppvWClean') === null) wclean.checked = t.kind !== 'video';   // untouched: songs get their vocals separated first, videos do not
         if (t.kind !== 'video' && lyr && lyr.has(t.dbId) && !confirm('This track already has lyrics. Replace them?')) { busy(false); return; }
         document.querySelectorAll('.ppv-bar-wh i').forEach(e => e.style.width = '0');
         const wst = t => { h.status(t); const m = /(\d+)%/.exec(t); if (m) document.querySelectorAll('.ppv-bar-wh i').forEach(e => e.style.width = m[1] + '%'); };
         const cues = await transcribe(t, { size: wsize.value, lang: wlang.disabled ? '' : wlang.value, task: wtask.value, clean: wclean.checked, acc: +$('#ppv-wacc').value, model: h.sel.value, strength: +h.sl.value, lv: h.LV() }, wst);
         if (!cues.length) throw new Error('No speech found.');
-        if (t.kind === 'video' || !lyr) a.setSubtitles(t.dbId, cues, 'Whisper.srt'); else lyr.set(t.dbId, toLrc(cues)); if (t.kind !== 'video' && lyr) { try { a.setSubtitles(t.dbId, cues, 'Whisper.srt'); } catch (e) {} }
+        if (t.kind === 'video' || !lyr) a.setSubtitles(t.dbId, cues, 'Whisper.srt'); else lyr.set(t.dbId, toLrc(cues)); if (t.kind !== 'video' && lyr) { try { a.setSubtitles(t.dbId, cues, 'Whisper.srt'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
         lastSrt = { name: t.title, text: toSrt(cues) }; wsrt.style.display = '';
         wout.textContent = cues.length + ' lines added as ' + (t.kind === 'video' ? 'subtitles' : 'synced lyrics and subtitles (tap CC on the disc to show them)') + '.\n' + cues.slice(0, 4).map(c => mmss(c.start) + '  ' + c.text).join('\n');
         { const rp = window.__ppvRep; if (rp && (rp.fixed || rp.unsure)) wout.textContent += '\n' + (rp.fixed ? rp.fixed + ' repeated line' + (rp.fixed === 1 ? '' : 's') + ' made consistent. ' : '') + (rp.unsure ? rp.unsure + ' repeated line' + (rp.unsure === 1 ? ' is' : 's are') + ' still unsure: open the editor, Repeats tab, to choose the right wording.' : ''); }
@@ -3506,7 +3506,7 @@
         const t = cur(); if (!t) throw new Error('Play or select a track first.');
         const lyr = window.__ppLyrics, raw = t.kind !== 'video' && lyr && lyr.get ? lyr.get(t.dbId) : '';
         if (!raw || !/\[\d{1,3}:\d{1,2}/.test(raw)) throw new Error('This song has no synced lyrics yet. Find or load lyrics first (or use Transcribe). This button only times the words of lyrics the song already has.');
-        let sync = 0; try { sync = +JSON.parse(ls('ppvSongSync') || '{}')[t.dbId] || 0; } catch (e) {}
+        let sync = 0; try { sync = +JSON.parse(ls('ppvSongSync') || '{}')[t.dbId] || 0; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         const plan = wtLines(raw, sync); if (!plan.lines.length) throw new Error('No lyric lines with words to time.');
         if (ls('ppvWClean') === null) wclean.checked = true;          // untouched: listen to the vocals only
         { const m = WH[wsize.value] && WH[wsize.value][2]; if (m && m.big && ls('ppvWBig_' + wsize.value) !== '1') { if (!confirm('This model is a ~' + m.big + ' MB download and needs plenty of free memory. Continue?')) { busy(false); return; } ls('ppvWBig_' + wsize.value, '1'); } }
@@ -3532,11 +3532,11 @@
       a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 10000);
     };
     $('#ppv-wfree').onclick = async () => {
-      try { if (NATIVE) { const ids = PK_FILES.map(f => f[0]).concat(Object.values(WHN).flatMap(k => [k + '_enc', k + '_dec', k + '_encf'])); for (const id of ids) { try { await NP.remove({ id }); } catch (e) {} } } if (asr) { await asr.dispose(); asr = null; asrId = ''; } const ks = await caches.keys(); for (const k of ks) if (/transformers/i.test(k)) await caches.delete(k); h.status('Whisper download removed.'); } catch (e) { h.status('Error: ' + errText(e)); }
+      try { if (NATIVE) { const ids = PK_FILES.map(f => f[0]).concat(Object.values(WHN).flatMap(k => [k + '_enc', k + '_dec', k + '_encf'])); for (const id of ids) { try { await NP.remove({ id }); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } } if (asr) { await asr.dispose(); asr = null; asrId = ''; } const ks = await caches.keys(); for (const k of ks) if (/transformers/i.test(k)) await caches.delete(k); h.status('Whisper download removed.'); } catch (e) { h.status('Error: ' + errText(e)); }
     };
     // ---------- AI summary ----------
     { const ss = $('#ppv-sumstyle'); if (ss) ss.value = sumStyleKey(); }
-    { const sl = $('#ppv-sumlen'); sl.value = sumLenKey(); sl.onchange = () => { try { localStorage.setItem('ppvSumLen', sl.value); } catch (e) {} }; }
+    { const sl = $('#ppv-sumlen'); sl.value = sumLenKey(); sl.onchange = () => { try { localStorage.setItem('ppvSumLen', sl.value); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }; }
     $('#ppv-lyfix').onclick = () => { const a = window.__ppApi, i = a ? a.currentIndex() : -1; if (i < 0) { h.status('Play or select a track first.'); return; } if (h.mas && h.mas.lyricFix) h.mas.lyricFix(i); };
     $('#ppv-sumtalk').onclick = () => { const a = window.__ppApi, i = a ? a.currentIndex() : -1; if (i < 0) { h.status('Play or select a track first.'); return; } if (h.mas && h.mas.songTalk) h.mas.songTalk(i); };
     $('#ppv-sumgo').onclick = async () => {
@@ -3724,9 +3724,9 @@
         const t = edTrack || cur(); if (!t) { toast('Play or select a track first.'); return false; }
         const cues = toCues(); if (!cues.length) { toast('Nothing to save: add at least one line with text.'); return false; }
         const a = A(), lyr = window.__ppLyrics;
-        if (t.kind === 'video' || !lyr) a.setSubtitles(t.dbId, cues, 'Edited.srt'); else lyr.set(t.dbId, toLrc(cues)); if (t.kind !== 'video' && lyr) { try { a.setSubtitles(t.dbId, cues, 'Edited.srt'); } catch (e) {} }
+        if (t.kind === 'video' || !lyr) a.setSubtitles(t.dbId, cues, 'Edited.srt'); else lyr.set(t.dbId, toLrc(cues)); if (t.kind !== 'video' && lyr) { try { a.setSubtitles(t.dbId, cues, 'Edited.srt'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
         lastSrt = { name: t.title, text: toSrt(cues) }; wsrt.style.display = '';
-        edId = t.dbId; savedSnap = JSON.stringify(rows); try { rpAltsSave(t.dbId, rows.map(r => ({ s: r.s, alts: r.alts }))); } catch (e) {} upBar(); toast('Saved ' + cues.length + ' lines as ' + (t.kind === 'video' ? 'subtitles' : 'synced lyrics') + '.'); return true;
+        edId = t.dbId; savedSnap = JSON.stringify(rows); try { rpAltsSave(t.dbId, rows.map(r => ({ s: r.s, alts: r.alts }))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } upBar(); toast('Saved ' + cues.length + ' lines as ' + (t.kind === 'video' ? 'subtitles' : 'synced lyrics') + '.'); return true;
       };
       const dlFile = ext => {
         const t = edTrack || cur(); if (!t) return; const cues = toCues(); if (!cues.length) { toast('Nothing to download yet.'); return; }
@@ -4029,7 +4029,7 @@
             const t = cur();
             if (t && t.convertedFromVideo && vidOn != null) {
               vidOn = on;
-              try { const all = JSON.parse(localStorage.getItem('playerSubtitles') || '{}'), o = all[t.dbId]; if (o && !Array.isArray(o)) { o.on = on ? 1 : 0; localStorage.setItem('playerSubtitles', JSON.stringify(all)); } } catch (e) {}
+              try { const all = JSON.parse(localStorage.getItem('playerSubtitles') || '{}'), o = all[t.dbId]; if (o && !Array.isArray(o)) { o.on = on ? 1 : 0; localStorage.setItem('playerSubtitles', JSON.stringify(all)); } } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
             } else ls('ppvAudSub', on ? '1' : '0');
           };
           const loadCues = () => {
@@ -4041,7 +4041,7 @@
           const ST_DEF = { size: 100, pos: 'below', color: '#ffffff', font: 'default', look: 'outline', bg: 0, bold: 1, caps: 0, fx: 'fade', hl: 0, beat: 0, next: 1, sdh: 0 };
           const ST_FONTS = { default: 'inherit', serif: 'Georgia,serif', mono: "'Courier New',monospace", arial: 'Arial,Helvetica,sans-serif', condensed: "'Arial Narrow',sans-serif-condensed,Arial,sans-serif", impact: "Impact,'Arial Narrow Bold',sans-serif", casual: "'Comic Sans MS','Chalkboard SE',cursive" };
           const ST_LOOKS = { box: { bg: 70 }, outline: { bg: 0 }, cinema: { bg: 0 }, neon: { bg: 0 }, plain: { bg: 0 } };
-          const ST = Object.assign({}, ST_DEF); try { Object.assign(ST, JSON.parse(ls('ppvSongText') || '{}')); } catch (e) {}
+          const ST = Object.assign({}, ST_DEF); try { Object.assign(ST, JSON.parse(ls('ppvSongText') || '{}')); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
           const wrap = document.createElement('div'); wrap.id = 'ppv-st';
           const lyEl = document.getElementById('lyrics-overlay');
           viz.appendChild(wrap); wrap.appendChild(box); if (lyEl) wrap.appendChild(lyEl);
@@ -4156,7 +4156,7 @@
             box.style.display = txt && sp.__stT ? 'block' : 'none';
             stMark(sp, n);
             if (lyOn) stMark(lyEl.querySelector('.ly-cur'), now);
-            if (ST.beat) { let lv = -1; try { lv = aud.paused ? 0 : window.__ppBassLevel(); } catch (e) {} wrap.style.setProperty('--st-beat', (1 + Math.min(0.14, Math.max(0, lv - 0.02) * 0.7)).toFixed(3)); }
+            if (ST.beat) { let lv = -1; try { lv = aud.paused ? 0 : window.__ppBassLevel(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } wrap.style.setProperty('--st-beat', (1 + Math.min(0.14, Math.max(0, lv - 0.02) * 0.7)).toFixed(3)); }
             if (txt || lyOn) stLayout();
             if (ST.hl && !aud.paused && !stRaf && (txt || lyOn)) stRaf = requestAnimationFrame(stFrame);
           };
@@ -4203,12 +4203,12 @@
           ui.querySelector('#st-col').addEventListener('input', e => { ST.color = e.target.value; stChanged(); });
           new MutationObserver(() => { preview = panel.classList.contains('open'); shown = null; tick(); }).observe(panel, { attributes: true, attributeFilter: ['class'] });
           stApply(); stPaint(); stSyncUi();
-          try { const a = A(); if (a && a.setSubtitles && !a.__ppvW) { const o = a.setSubtitles; a.setSubtitles = function () { const r = o.apply(this, arguments); lastId = null; return r; }; a.__ppvW = 1; } } catch (e) {}
+          try { const a = A(); if (a && a.setSubtitles && !a.__ppvW) { const o = a.setSubtitles; a.setSubtitles = function () { const r = o.apply(this, arguments); lastId = null; return r; }; a.__ppvW = 1; } } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
           btn.onclick = () => { loadCues(); status(); placeWhisper('aud'); panel.classList.toggle('open'); };
           $('#ppv-apx').onclick = () => panel.classList.remove('open');
           $('#ppv-aton').onclick = () => { setOn(!isOn()); status(); tick(); };
           // the same words are often saved twice (subtitles and synced lyrics): Remove takes both away
-          $('#ppv-arm').onclick = () => { const t = cur(); if (!t) return; try { const all = JSON.parse(localStorage.getItem('playerSubtitles') || '{}'); delete all[t.dbId]; localStorage.setItem('playerSubtitles', JSON.stringify(all)); } catch (e) {} try { const L = window.__ppLyrics; if (L && L.has(t.dbId)) L.set(t.dbId, ''); } catch (e) {} loadCues(); status(); tick(); };
+          $('#ppv-arm').onclick = () => { const t = cur(); if (!t) return; try { const all = JSON.parse(localStorage.getItem('playerSubtitles') || '{}'); delete all[t.dbId]; localStorage.setItem('playerSubtitles', JSON.stringify(all)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } try { const L = window.__ppLyrics; if (L && L.has(t.dbId)) L.set(t.dbId, ''); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } loadCues(); status(); tick(); };
           $('#ppv-ald').onclick = () => $('#ppv-af').click();
           $('#ppv-af').onchange = async e => {
             const f = e.target.files[0]; e.target.value = ''; const t = cur(); if (!f || !t) return;
@@ -4258,7 +4258,7 @@
         const hr = whHost.previousElementSibling; if (hr && hr.tagName === 'HR') hr.style.display = on('lyrics') ? '' : 'none';   // the divider the captions menu got
         const sf = $('#ppv-sf'), vo = sf && sf.querySelector('option[value="video"]'), vid = on('savedvid');
         if (vo) { vo.hidden = !vid; vo.disabled = !vid; if (!vid && sf.value === 'video') sf.value = 'all'; }
-        try { renderSaved(); } catch (e) {}
+        try { renderSaved(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       }
       const setF = (f, v) => {
         if (f.key) ls(f.key, v ? '1' : '0');
@@ -4275,7 +4275,7 @@
       FEATS.forEach(f => { box.querySelector('#ppv-fs-' + f.id).onchange = e => { setF(f, e.target.checked); syncBoxes(); }; });
       box.querySelector('#ppv-fs-all').onchange = e => {
         if (!e.target.checked) { const snap = {}; FEATS.forEach(f => { snap[f.id] = isOn(f); }); if (Object.values(snap).some(Boolean)) ls('ppvSmartSnap', JSON.stringify(snap)); FEATS.forEach(f => setF(f, false)); }
-        else { let snap = null; try { snap = JSON.parse(ls('ppvSmartSnap')); } catch (er) {} if (snap && !Object.values(snap).some(Boolean)) snap = null; FEATS.forEach(f => setF(f, snap ? !!snap[f.id] : f.def === 1)); }
+        else { let snap = null; try { snap = JSON.parse(ls('ppvSmartSnap')); } catch(er){ if (typeof ppCaught === "function") ppCaught(er); } if (snap && !Object.values(snap).some(Boolean)) snap = null; FEATS.forEach(f => setF(f, snap ? !!snap[f.id] : f.def === 1)); }
         syncBoxes();
       };
       // keep these in step when the same switch is changed in its own panel
@@ -4295,7 +4295,7 @@
   function mascot(panel) {
     let uid = 0, mood = 'idle', key = '', tmr = null, ftmr = null, greeted = false;
     const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
-    const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+    const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     let on = lsGet('ppvMascot') !== '0';
     const bubblesOn = () => lsGet('ppvBlBubbles') === '1';             // speech bubbles that pop up over the app (off by default)
     const pick = a => a[Math.floor(Math.random() * a.length)];
@@ -4743,7 +4743,7 @@
     setAiOnly(aiOnly);
     const cm = m => { cball.className = 'ppv-ball m-' + m; blFace(cball, m); };
     const scrollDown = () => { clist.scrollTop = clist.scrollHeight; };
-    const add = (who, text) => { const d = document.createElement('div'); d.className = 'ch-m ' + who; d.textContent = text; clist.appendChild(d); scrollDown(); if (who === 'bot') { blReact(text); if (!aiOnly) blFollowUp(d, text); try { vSpeak(text); } catch (e) {} } return d; };
+    const add = (who, text) => { const d = document.createElement('div'); d.className = 'ch-m ' + who; d.textContent = text; clist.appendChild(d); scrollDown(); if (who === 'bot') { blReact(text); if (!aiOnly) blFollowUp(d, text); try { vSpeak(text); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } return d; };
     const actions = btns => { const d = document.createElement('div'); d.className = 'ch-a'; btns.forEach(([t, fn]) => { const b = document.createElement('button'); b.textContent = t; b.onclick = () => { fn(b, d); }; d.appendChild(b); }); clist.appendChild(d); scrollDown(); return d; };
     // ---------- Copy button on every chat message ----------
     // Replies are streamed by setting textContent, which would wipe a button put in by hand, so one observer keeps a small
@@ -4756,7 +4756,7 @@
       const ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
         TICK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
       const copyText = async txt => {
-        try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(txt); return true; } } catch (e) {}
+        try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(txt); return true; } } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         try { const ta = document.createElement('textarea'); ta.value = txt; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0'; document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok; } catch (e) { return false; }
       };
       const dress = d => {
@@ -4788,7 +4788,7 @@
     const vCat = (a, b) => { const o = new Float32Array(a.length + b.length); o.set(a); o.set(b, a.length); return o; };
     const vDot = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; };
     const vHash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return h >>> 0; };
-    const tfLoad = async () => { if (!tfMod) tfMod = await import(TF_URL); try { tfMod.env.backends.onnx.wasm.numThreads = self.crossOriginIsolated ? Math.min(2, navigator.hardwareConcurrency || 2) : 1; } catch (e) {} return tfMod; };
+    const tfLoad = async () => { if (!tfMod) tfMod = await import(TF_URL); try { tfMod.env.backends.onnx.wasm.numThreads = self.crossOriginIsolated ? Math.min(2, navigator.hardwareConcurrency || 2) : 1; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } return tfMod; };
     const dlSay = (say, what) => p => { if (say && p && p.status === 'progress' && p.file) say('Downloading ' + what + ' ' + Math.round(p.progress || 0) + '%'); };
     // Ask once before a big download (same pattern as the chat brain). Returns true when it asked, so the caller stops and waits for the answer.
     const dlAsk = (flag, msg, go) => { if (lsGet(flag) === '1') return false; add('bot', msg); actions([['Download', (b, d) => { d.remove(); lsSet(flag, '1'); go(); }], ['Not now', (b, d) => d.remove()]]); return true; };
@@ -4812,7 +4812,7 @@
             await PE.load({ id: 'minilm_q8' });
             await PE.loadVocab({ id: 'minilm_tok' });
             const fe = async texts => { const r = await PE.embed({ texts, maxLen: 128 }); return { dims: [r.count, r.dim], data: await fromB64(r.data) }; };   // already mean-pooled and normalized natively
-            fe.dispose = async () => { try { await PE.unload(); } catch (e) {} };
+            fe.dispose = async () => { try { await PE.unload(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
             return fe;
           } catch (e) { console.warn('fully native MiniLM unavailable, trying the older route', e); }
         }
@@ -4831,7 +4831,7 @@
               for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
               return { dims: [r.count, r.dim], data: new Float32Array(u8.buffer) };   // already mean-pooled and normalized natively
             };
-            fe.dispose = async () => { try { await PE.unload(); } catch (e) {} };
+            fe.dispose = async () => { try { await PE.unload(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
             return fe;
           } catch (e) { console.warn('native MiniLM unavailable, using the web version', e); }
         }
@@ -4840,7 +4840,7 @@
       miniP.catch(() => { miniP = null; });
       return miniP;
     }
-    async function freeMini() { clearTimeout(miniT); const p = miniP; miniP = null; if (p) { try { const fe = await p; await fe.dispose(); } catch (e) {} } }
+    async function freeMini() { clearTimeout(miniT); const p = miniP; miniP = null; if (p) { try { const fe = await p; await fe.dispose(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } }
     async function mEmbed(texts, say) {
       const fe = await getMini(say), out = [];
       for (let i = 0; i < texts.length; i += 16) {
@@ -4856,10 +4856,10 @@
       if (semCmd) return semCmd;
       const items = []; S_CAT.forEach(([cmd, safe, ph]) => ph.forEach(t => items.push({ cmd, safe, t })));
       const sig = vHash(items.map(x => x.t).join('|'));
-      let c = null; try { c = await idbGet('mini_cmd'); } catch (e) {}
+      let c = null; try { c = await idbGet('mini_cmd'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       if (c && c.sig === sig && c.v && c.v.length === items.length) { items.forEach((x, i) => { x.v = c.v[i]; }); return (semCmd = items); }
       const vs = await mEmbed(items.map(x => x.t), say); items.forEach((x, i) => { x.v = vs[i]; });
-      try { await idbPut('mini_cmd', { sig, v: vs }); } catch (e) {}
+      try { await idbPut('mini_cmd', { sig, v: vs }); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       return (semCmd = items);
     }
     // One short text per song: title, artist, tag words and the start of any lyrics. Re-embedded only when that text changes.
@@ -4873,7 +4873,7 @@
         part.forEach((w, k) => { semIdx[w.id] = { h: w.h, v: vs[k] }; });
         say && say('Learning songs\u2026 ' + Math.min(want.length, i + 48) + ' of ' + want.length);
       }
-      if (want.length) { try { await idbPut('mini_trk', semIdx); } catch (e) {} }
+      if (want.length) { try { await idbPut('mini_trk', semIdx); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       return tr.map((t, i) => !t.stem && semIdx[t.dbId] ? { i, v: semIdx[t.dbId].v } : null).filter(Boolean);
     }
     const MUSICWORD = /\b(song|songs|music|track|tracks|tune|tunes|playlist|vibe|mood|feel|feels|feeling|something|anything|play|listen|put on|about)\b/i;
@@ -4935,7 +4935,7 @@
       kP.catch(() => { kP = null; kLoaded = false; });
       return kP;
     }
-    async function freeVoice() { clearTimeout(kT); const p = kP; kP = null; kLoaded = false; if (p) { try { const t = await p; await t.model.dispose(); } catch (e) {} } }
+    async function freeVoice() { clearTimeout(kT); const p = kP; kP = null; kLoaded = false; if (p) { try { const t = await p; await t.model.dispose(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } }
     const SKIPSPEAK = /^(?:\u2026|\.\.\.|\(Reading that as|Downloading|Loading|Listening|Transcribing)/;
     // Calm, not bubbly: exclamation marks become full stops, and only the first few sentences are read out.
     function speechSentences(s, full) {
@@ -5017,7 +5017,7 @@
     const earsNat = () => !!NATIVE && !eNatFailed && vFlag('ppvEarsNat');
     async function earsNative(pcm, say) {
       let size = 'tiny_en';
-      try { if ((await NP.exists({ id: 'wh_base_en_enc' })).ready && (await NP.exists({ id: 'wh_base_en_dec' })).ready) size = 'base_en'; } catch (e) {}
+      try { if ((await NP.exists({ id: 'wh_base_en_enc' })).ready && (await NP.exists({ id: 'wh_base_en_dec' })).ready) size = 'base_en'; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       const raw = await whisperNative(pcm, [[0, pcm.length / 16000]], { size, lang: 'english', task: 'transcribe', quick: true }, m => { if (say) say(/^Transcribing/.test(m) ? 'Transcribing\u2026' : m); });
       clearTimeout(earsNT); earsNT = setTimeout(() => { if (!heavyBusy()) NP.whisperUnload().catch(() => {}); }, 120000);   // give the memory back, unless a subtitle job is using the engine
       return raw.map(r => r.text).join(' ');
@@ -5028,7 +5028,7 @@
       clearTimeout(earsT); earsT = setTimeout(freeEars, 120000);
       return String(out && out.text || '');
     }
-    async function freeEars() { clearTimeout(earsT); const p = earsP; earsP = null; if (p) { try { const a = await p; await a.dispose(); } catch (e) {} } }
+    async function freeEars() { clearTimeout(earsT); const p = earsP; earsP = null; if (p) { try { const a = await p; await a.dispose(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } }
     // One shared microphone: the wake word and the recorder both read its 16 kHz frames. It closes as soon as nobody needs it.
     const mic = { ctx: null, stream: null, node: null, src: null, subs: new Set(), users: 0, opening: null };
     function vResampler(inRate) {
@@ -5046,7 +5046,7 @@
       mic.opening = (async () => {
         const s = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
         const C = window.AudioContext || window.webkitAudioContext; let ctx; try { ctx = new C({ sampleRate: 16000 }); } catch (e) { ctx = new C(); }
-        if (ctx.state === 'suspended') { try { await ctx.resume(); } catch (e) {} }
+        if (ctx.state === 'suspended') { try { await ctx.resume(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
         const src = ctx.createMediaStreamSource(s), node = ctx.createScriptProcessor(4096, 1, 1), mute = ctx.createGain(), rs = vResampler(ctx.sampleRate); mute.gain.value = 0;
         node.onaudioprocess = e => { const f = rs(e.inputBuffer.getChannelData(0)); if (f.length) mic.subs.forEach(fn => { try { fn(f); } catch (er) { console.error(er); } }); };
         src.connect(node); node.connect(mute); mute.connect(ctx.destination);
@@ -5139,7 +5139,7 @@
     }
     function wakeStop() {
       const w = wk; if (!w) return; wk = null; mic.subs.delete(wakeSub);
-      [w.mel, w.emb, w.head].forEach(s => { try { s.release && s.release(); } catch (e) {} }); micRelease();
+      [w.mel, w.emb, w.head].forEach(s => { try { s.release && s.release(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }); micRelease();
     }
     function wakeSub(f) {
       const w = wk; if (!w) return;
@@ -5207,9 +5207,9 @@
       stopSpeak(); dictStop = true; if (wk) wakeStop();
       await freeVoice(); await freeEars(); await freeMini();
       ['ppvMiniDl', 'ppvVoiceDl', 'ppvEarsDl', 'ppvWake'].forEach(k => lsSet(k, '0')); voiceAsked = false; semAsked = false;
-      for (const k of ['ww_mel', 'ww_emb', 'ww_bloop', 'ww_jarvis', 'mini_cmd', 'mini_trk']) { try { await idbDel(k); } catch (e) {} }
+      for (const k of ['ww_mel', 'ww_emb', 'ww_bloop', 'ww_jarvis', 'mini_cmd', 'mini_trk']) { try { await idbDel(k); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       semIdx = null; semCmd = null;
-      try { for (const k of await caches.keys()) { if (k === 'kokoro-voices') await caches.delete(k); else if (/transformers/i.test(k)) { const c = await caches.open(k); for (const r of await c.keys()) if (/MiniLM|moonshine|Kokoro/i.test(r.url)) await c.delete(r); } } } catch (e) {}
+      try { for (const k of await caches.keys()) { if (k === 'kokoro-voices') await caches.delete(k); else if (/transformers/i.test(k)) { const c = await caches.open(k); for (const r of await c.keys()) if (/MiniLM|moonshine|Kokoro/i.test(r.url)) await c.delete(r); } } } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     }
     const ppVoiceApi = {
       get: k => vFlag(k), set: vSet, free: vFree, list: VOICES, who: voiceWho, when: voiceWhen,
@@ -5262,7 +5262,7 @@
         } catch (e) { console.error(e); }
       }, 80);
     }
-    const setChatOn = v => { chatOn = !!v; lsSet('ppvChat', chatOn ? '1' : '0'); cfab.style.display = chatOn ? 'block' : 'none'; if (!chatOn) cbox.style.display = 'none'; try { vSync(); } catch (e) {} };
+    const setChatOn = v => { chatOn = !!v; lsSet('ppvChat', chatOn ? '1' : '0'); cfab.style.display = chatOn ? 'block' : 'none'; if (!chatOn) cbox.style.display = 'none'; try { vSync(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     cfab.style.display = chatOn ? 'block' : 'none';
     cfab.onclick = () => {
       if (Date.now() < blSuppress) return;
@@ -5419,7 +5419,7 @@
       if (!(await NP.exists({ id: llmId() })).ready) await nativeFetch(llmId(), llmUrl(), say);
       await NP.llmLoad({ id: llmId() });
       const eos = [];                                                  // end-of-turn ids for the chosen model
-      for (const t of CHAT_MODELS[chatKey()].eos) { try { const e = tok.encode(t, { add_special_tokens: false }); if (e && e.length === 1) eos.push(Number(e[0])); } catch (x) {} }
+      for (const t of CHAT_MODELS[chatKey()].eos) { try { const e = tok.encode(t, { add_special_tokens: false }); if (e && e.length === 1) eos.push(Number(e[0])); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); } }
       if (!eos.length) eos.push(0, 2);
       const g = async (msgs, opts) => {
         opts = opts || {};
@@ -5437,7 +5437,7 @@
         return [{ generated_text: msgs.concat([{ role: 'assistant', content: text }]) }];
       };
       g.tokenizer = tok;
-      g.dispose = async () => { try { await NP.llmUnload(); } catch (e) {} };
+      g.dispose = async () => { try { await NP.llmUnload(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
       return g;
     }
     // Android app, LiteRT-LM: plain text goes in, text streams back. No tokenizer or token ids on this side.
@@ -5460,7 +5460,7 @@
         return [{ generated_text: msgs.concat([{ role: 'assistant', content: text }]) }];
       };
       g.lm = true;
-      g.dispose = async () => { try { await NP.lmUnload(); } catch (e) {} };
+      g.dispose = async () => { try { await NP.lmUnload(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
       return g;
     }
     async function ensureModel(say) {
@@ -5476,18 +5476,18 @@
           catch (e) { console.warn('Native chat model failed, using the web version', e); llmNativeFailed = true; say('Native brain unavailable, using the web version…'); }
         }
         const gpuOn = lsGet('ppvChatGpu') === '1' && navigator.gpu;
-        try { tfMod.env.backends.onnx.wasm.numThreads = self.crossOriginIsolated ? Math.min(2, navigator.hardwareConcurrency || 2) : 1; } catch (e) {}   // fewer threads = less RAM
+        try { tfMod.env.backends.onnx.wasm.numThreads = self.crossOriginIsolated ? Math.min(2, navigator.hardwareConcurrency || 2) : 1; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // fewer threads = less RAM
         const pcb = p => { if (p && p.status === 'progress' && p.file) say('Downloading ' + p.file.split('/').pop() + ' ' + Math.round(p.progress || 0) + '%'); };
         try { gen = await tfMod.pipeline('text-generation', CHAT_MODEL, { dtype: gpuOn ? 'fp16' : 'q8', device: gpuOn ? 'webgpu' : 'wasm', progress_callback: pcb }); }   // q4 is too lossy for a 135M model: it prints garbage
         catch (e) { if (!gpuOn) throw e; gen = await tfMod.pipeline('text-generation', CHAT_MODEL, { dtype: 'q8', device: 'wasm', progress_callback: pcb }); }
         lsSet('ppvChatDl', '1');
-        try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}   // ask the browser not to evict the downloaded model files
+        try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // ask the browser not to evict the downloaded model files
         return gen;
       })();
       try { return await genP; } finally { genP = null; }
     }
     // Take the language model out of RAM (it stays on disk and reloads later without asking).
-    async function unloadModel() { clearTimeout(idleT); if (gen) { const g = gen; gen = null; try { await g.dispose(); } catch (e) {} } }
+    async function unloadModel() { clearTimeout(idleT); if (gen) { const g = gen; gen = null; try { await g.dispose(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } }
     // How long the model may sit idle in RAM. Reloading a big model takes seconds, so phones with plenty of RAM keep it
     // around for 5 minutes; heavy jobs (split, lyrics, tagging) still free it first.
     const bigRam = () => { try { return (navigator.deviceMemory || 0) >= 8; } catch (e) { return false; } };
@@ -5582,8 +5582,8 @@
       actions([['Turn on chat AI', (b, d) => { d.remove(); setBrain(true); dlOk = true; send(text, true); }], ['No thanks', (b, d) => d.remove()]]);
     }
     async function freeChat() {
-      if (gen) { try { await gen.dispose(); } catch (e) {} gen = null; }
-      if (NATIVE) { for (const m of Object.values(CHAT_MODELS)) { try { await NP.remove({ id: m.lid }); } catch (e) {} } }
+      if (gen) { try { await gen.dispose(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } gen = null; }
+      if (NATIVE) { for (const m of Object.values(CHAT_MODELS)) { try { await NP.remove({ id: m.lid }); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } }
       lsSet('ppvChatDl', '0');
       const ks = await caches.keys();
       for (const k of ks) if (/transformers/i.test(k)) { const c = await caches.open(k); for (const r of await c.keys()) if (/SmolLM2|Qwen2\.5-0\.5B|Llama-3\.2-1B/i.test(r.url)) await c.delete(r); }
@@ -5591,7 +5591,7 @@
     // Switch the chat model: drop the loaded one, and ask for the new download the next time Bloopy chats.
     async function setChatModel(k) {
       if (!CHAT_MODELS[k]) return;
-      try { localStorage.setItem('ppvChatModel', k); } catch (e) {}
+      try { localStorage.setItem('ppvChatModel', k); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       CHAT_MODEL = webId(k); llmNativeFailed = false; dlOk = false;
       await unloadModel();
       lsSet('ppvChatDl', '0');
@@ -5776,7 +5776,7 @@
       if (c.v != null) L.push(c.v >= 50 ? 'Has vocals' : 'Mostly instrumental');
       if (c.fv != null) L.push('Vocals from ' + mmssT(c.fv) + ' to ' + mmssT(c.lv));
       if (c.d) L.push('Length: ' + mmssT(c.d));
-      try { const m = songMap(t.dbId, c); if (m) L.push('Song map (where the song changes and what changes in the music, from the lyrics and the sound):\n' + songMapRows(m).join('\n') + (m.duet ? '\n  (the voice changes between parts: maybe two singers)' : '')); } catch (e) {}
+      try { const m = songMap(t.dbId, c); if (m) L.push('Song map (where the song changes and what changes in the music, from the lyrics and the sound):\n' + songMapRows(m).join('\n') + (m.duet ? '\n  (the voice changes between parts: maybe two singers)' : '')); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       // Structure from the timed lyrics: lines that come back are the chorus / hook.
       let cues = []; try { const e = (JSON.parse(localStorage.getItem('playerSubtitles')) || {})[t.dbId]; if (e && e.c) cues = e.c.map(q => [+q[0], String(q[2] || '').trim()]).filter(q => q[1]); } catch (x) {}
       if (cues.length >= 6) {
@@ -5831,7 +5831,7 @@
         for (const q of tr.lines) { if (n + q.length + 3 > chars) break; ly.push(q); n += q.length + 3; }
         if (ly.length) out += '\nLyrics' + (ly.length < tr.lines.length ? ' (the start)' : '') + ': ' + ly.join(' / ');
       }
-      if (!sum && !tr.lines.length) { let tg = ''; try { tg = tagLine(x); } catch (e) {} out += '\n(No lyrics or summary are saved for this song' + (tg ? '; its sound: ' + tg : '') + '. Say that you have not read its words.)'; }
+      if (!sum && !tr.lines.length) { let tg = ''; try { tg = tagLine(x); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } out += '\n(No lyrics or summary are saved for this song' + (tg ? '; its sound: ' + tg : '') + '. Say that you have not read its words.)'; }
       return out;
     }
     // Several songs inside one token budget. The most recently asked-for songs get the room; the rest are only named.
@@ -5846,8 +5846,8 @@
     function ctxWanted(st, text) {
       const tr = window.__ppApi.tracks(), t = st.t, low = String(text).toLowerCase(), list = [], push = x => { if (x && !x.stem && x.dbId !== t.dbId && !list.includes(x)) list.push(x); };
       let note = '';
-      try { blNamed(text).forEach(i => push(tr[i])); } catch (e) {}
-      (String(text).match(/["“][^"“”]{2,60}["”]/g) || []).forEach(q => { try { const i = blFindSong(q); if (i >= 0) push(tr[i]); } catch (e) {} });
+      try { blNamed(text).forEach(i => push(tr[i])); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+      (String(text).match(/["“][^"“”]{2,60}["”]/g) || []).forEach(q => { try { const i = blFindSong(q); if (i >= 0) push(tr[i]); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } });
       const al = ctxAlbum(t), at = al.findIndex(x => x.dbId === t.dbId);
       if (al.length > 1 && at >= 0) {
         const closing = /\b(closing|final|last) (song|track) (on|of|in|from)\b|\bcloser\b/.test(low);
@@ -5937,7 +5937,7 @@
       const artist = t.artist && !/^(unknown artist|video|stream)$/i.test(t.artist) ? t.artist : '';
       songTalk = { t, idx: i, title: t.title, artist, hist: [], ctx: [], note: '', row: null };
       const st = songTalk;
-      cbox.style.display = 'flex'; try { blAnchor(); } catch (e) {}
+      cbox.style.display = 'flex'; try { blAnchor(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       stBar = document.createElement('div');
       stBar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid #2e2f36;font-size:12px;background:#22232a';
       const lab = document.createElement('span'); lab.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
@@ -5948,7 +5948,7 @@
       // A sister part ("Pt. 2", "Reprise") obviously belongs with this song, so it is read from the start.
       let sib = []; try { sib = ctxSiblings(t).filter(ctxHas).slice(0, 2); st.ctx = sib.map(x => x.dbId); } catch (e) { console.warn(e); }
       ctxChips(st);
-      let albumN = 0; try { const al = ctxAlbum(t); albumN = ctxCandidates(t).filter(x => al.includes(x)).length; } catch (e) {}
+      let albumN = 0; try { const al = ctxAlbum(t); albumN = ctxCandidates(t).filter(x => al.includes(x)).length; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       cin.placeholder = 'Ask about ' + t.title + '\u2026';
       const tr = getTranscript(t.dbId);
       add('bot', blTone('Let\'s talk about ' + t.title + (artist ? ' by ' + artist : '') + '. Ask me anything: what it literally says, what the images stand for, or how the music is built.' +
@@ -5987,9 +5987,9 @@
         const out = await g(fit.msgs, opts);
         let r = out && out[0] && out[0].generated_text; r = Array.isArray(r) ? (r[r.length - 1] || {}).content : (r || acc);
         r = finishSentence(String(r || acc).trim());
-        try { const tb = (loadTags()[st.t.dbId] || {}).bpm; r = fixNums(r, tb ? [tb] : []); } catch (e) {}
+        try { const tb = (loadTags()[st.t.dbId] || {}).bpm; r = fixNums(r, tb ? [tb] : []); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         if (!looksOk(r)) { el.textContent = 'Sorry, that came out garbled. Ask me again?'; return; }
-        el.textContent = r; scrollDown(); try { vSpeak(r); } catch (e) {}
+        el.textContent = r; scrollDown(); try { vSpeak(r); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         if (songTalk === st) { st.hist.push(uMsg, { role: 'assistant', content: r }); st.hist = st.hist.slice(-12); }
       } catch (e) { console.error(e); el.textContent = 'Oops, my brain would not load: ' + errText(e); }
       finally { chatBusy = false; holdModel = false; cm('greet'); setTimeout(() => cm('idle'), 1300); idleUnload(); }
@@ -6233,7 +6233,7 @@
       const A = window.__ppApi, t = A.tracks()[i]; if (!t) return;
       if (typeof songTalk !== 'undefined' && songTalk) endSongTalk(false);
       if (lyFix) endLyFix(false);
-      cbox.style.display = 'flex'; try { blAnchor(); } catch (e) {}
+      cbox.style.display = 'flex'; try { blAnchor(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       const data = lfLoad(t);
       if (!data) { add('bot', blTone('There are no lyrics or subtitles saved for ' + t.title + ' yet. Transcribe it first (Lyrics & subtitles), or let auto-lyrics find them, then ask me again.')); return; }
       const artist = t.artist && !/^(unknown artist|video|stream)$/i.test(t.artist) ? t.artist : '';
@@ -6659,7 +6659,7 @@
         shuffleIn(r); r = r.slice(0, 30); A.play(r[0], r); return done('Playing ' + label + '.');
       }
       // ---- Press Play Portfolio (the listening stats). Read-only: Bloopy reads the Portfolio's own saved stats and can open it. ----
-      const PF = () => { try { if (window.PPPortfolioApi && window.PPPortfolioApi.flush) window.PPPortfolioApi.flush(); } catch (e) {} try { return JSON.parse(localStorage.getItem('pppSaveV1')) || null; } catch (e) { return null; } };
+      const PF = () => { try { if (window.PPPortfolioApi && window.PPPortfolioApi.flush) window.PPPortfolioApi.flush(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } try { return JSON.parse(localStorage.getItem('pppSaveV1')) || null; } catch (e) { return null; } };
       const dur2 = ms => { const mn = Math.round(ms / 60000); return mn < 1 ? 'under a minute' : mn < 60 ? mn + ' min' : Math.floor(mn / 60) + ' h ' + (mn % 60) + ' min'; };
       const topN = (o, n, f) => Object.entries(o || {}).map(([k, v]) => [k, f ? f(v) : v]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, n);
       const NOPF = 'The Portfolio has no listening data yet. Play some music first.';
@@ -6806,7 +6806,7 @@
     const smartSt = { last: null, at: 0, snap: null, noRoute: '', get pu() { return null; }, set pu(v) { if (v) uPush(v); } };
     const sRec = (snap, cmd) => {
       smartSt.snap = snap; smartSt.last = cmd; smartSt.at = Date.now();
-      let ui = []; try { const A = window.__ppApi; if (snap && A && snap.idx === A.currentIndex()) ui = uiDiff(snap.ui, uiNow()); } catch (e) {}   // a track change reloads many controls by itself, so skip those
+      let ui = []; try { const A = window.__ppApi; if (snap && A && snap.idx === A.currentIndex()) ui = uiDiff(snap.ui, uiNow()); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }   // a track change reloads many controls by itself, so skip those
       uPush({ media: true, snap, ui, cmd });
     };
     const HELP_SMART = '\n\u2022 \u201cundo\u201d, \u201cagain\u201d, \u201ca bit more\u201d, \u201cmuch quieter\u201d, \u201cvolume up 15\u201d\n\u2022 several at once: \u201cplay something chill and turn it down a bit\u201d\n\u2022 goals: \u201cbedtime\u201d, \u201cgym time\u201d, \u201cstudy mode\u201d, \u201cparty mode\u201d\n\u2022 questions: \u201cis it paused\u201d, \u201cwhat\u2019s the volume\u201d, \u201cis shuffle on\u201d\n\u2022 \u201cmake a playlist for me\u201d, \u201csomething new\u201d, \u201cforgotten favorites\u201d, \u201cplaylist like <song>\u201d\n\u2022 \u201cmake a chill playlist with <song> without <artist>\u201d, \u201cadd <song> to <playlist>\u201d, \u201cremove the slow songs from <playlist>\u201d\n\u2022 typos are fine, and if I am unsure I will ask \u201cdid you mean\u2026\u201d';
@@ -7029,7 +7029,7 @@
     const sNrm = x => String(x).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
     const sReal = () => { const tr = window.__ppApi.tracks(); return tr.map((x, i) => i).filter(i => !tr[i].stem); };
     let sPFmemo = { at: 0, v: {} };
-    const sPF = () => { if (Date.now() - sPFmemo.at < 2000) return sPFmemo.v; try { if (window.PPPortfolioApi && window.PPPortfolioApi.flush) window.PPPortfolioApi.flush(); } catch (e) {} let v = {}; try { v = (JSON.parse(localStorage.getItem('pppSaveV1')) || {}).trackPlays || {}; } catch (e) {} sPFmemo = { at: Date.now(), v }; return v; };
+    const sPF = () => { if (Date.now() - sPFmemo.at < 2000) return sPFmemo.v; try { if (window.PPPortfolioApi && window.PPPortfolioApi.flush) window.PPPortfolioApi.flush(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } let v = {}; try { v = (JSON.parse(localStorage.getItem('pppSaveV1')) || {}).trackPlays || {}; } catch (e) {} sPFmemo = { at: Date.now(), v }; return v; };
     function sTaste() {   // what you actually listen to: top tracks weighted by plays, time listened and recency
       const A = window.__ppApi, tr = A.tracks(), pf = sPF(), now = Date.now(), idx = new Map(tr.map((t, i) => [String(t.dbId), i])), count = new Map(), last = new Map(), an = [];
       Object.entries(pf).forEach(([id, p]) => {
@@ -7263,7 +7263,7 @@
     // were removed by you, or are stale, then refills from your taste. "Your Pattern" is driven by what you play next to what:
     // a small co-listening matrix learned from your own play history (videos included), blended with sound similarity.
     // Songs you add yourself are never touched. Switch off with the "Auto mixes" checkbox in the Library tab.
-    const lvLs = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} };
+    const lvLs = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     const lvOn = () => lvLs('ppvLiveMix') !== '0' && !window.ppSaver;   // Lite and Focus: auto mixes stop changing playlists on their own
     const LV_DAY = 864e5;
     let lvS = null, lvCur = null, lvBusy = false, lvLast = 0, lvTimer = null, lvTagVer = -1;
@@ -7310,7 +7310,7 @@
       const cs = new Map();   // co-listening: how often each song showed up next to what you played lately
       anchors.forEach((w, a) => { const row = s.co[String(tr[a].dbId)]; if (!row) return; const tot = Object.values(row).reduce((x, y) => x + y, 0) || 1; Object.entries(row).forEach(([b, v]) => { const j = idx.get(b); if (j != null) cs.set(j, (cs.get(j) || 0) + w * v / tot); }); });
       let cmax = 0; cs.forEach(v => { if (v > cmax) cmax = v; });
-      const ids = [...anchors.keys()], wts = ids.map(i => anchors.get(i)); let emb = null; try { emb = await sEmbScores(ids, wts); } catch (e) {}
+      const ids = [...anchors.keys()], wts = ids.map(i => anchors.get(i)); let emb = null; try { emb = await sEmbScores(ids, wts); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       let lo = 9, hi = -9; if (emb) emb.forEach(e => { if (e < lo) lo = e; if (e > hi) hi = e; }); const span = (hi - lo) || 1;
       const F = new Map(real.map(i => [i, sFeat(tg[tr[i].dbId])])), now = Date.now(), R = new Map();
       const tagS = i => { let a = 0, b = 0; ids.forEach((sd, k) => { a += wts[k] * sFSim(F.get(i), F.get(sd)); b += wts[k]; }); return b ? a / b : 0; };
@@ -7417,7 +7417,7 @@
     const blSay = s => { add('bot', blTone(s)); return true; };
     const blDone = s => blSay('\u2713 ' + s);
     const blCtx = { id: null };                                      // the song you last asked about, so "why is it in..." works
-    const blSave = () => { try { if (window.PPPortfolioApi && window.PPPortfolioApi.flush) window.PPPortfolioApi.flush(); } catch (e) {} try { return JSON.parse(localStorage.getItem('pppSaveV1')) || {}; } catch (e) { return {}; } };
+    const blSave = () => { try { if (window.PPPortfolioApi && window.PPPortfolioApi.flush) window.PPPortfolioApi.flush(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } try { return JSON.parse(localStorage.getItem('pppSaveV1')) || {}; } catch (e) { return {}; } };
     const blDayKey = d => d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
     const blMin = ms => { const mn = Math.round(ms / 60000); return mn < 1 ? 'under a minute' : mn < 60 ? mn + ' min' : Math.floor(mn / 60) + ' h ' + (mn % 60) + ' min'; };
     const blPls = () => window.__ppApi.playlists().filter(p => !p.stemOf);
@@ -7484,7 +7484,7 @@
     }
     // ---- commands you teach him: stored on this device only, checked before everything else ----
     const blTaughtGet = () => { try { const v = JSON.parse(localStorage.getItem('ppvBloopTaught')); return Array.isArray(v) ? v.filter(e => e && e.p && e.c) : []; } catch (e) { return []; } };
-    const blTaughtSet = v => { try { localStorage.setItem('ppvBloopTaught', JSON.stringify(v.slice(-40))); } catch (e) {} };
+    const blTaughtSet = v => { try { localStorage.setItem('ppvBloopTaught', JSON.stringify(v.slice(-40))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     const blNormPhrase = s => String(s).toLowerCase().replace(/^["\u201c\u201d'\s]+|["\u201c\u201d'\s]+$/g, '').replace(/[?!.]+$/, '').replace(/\s+/g, ' ').trim();
     // "*" in a phrase is a slot: "play * vibes" matches "play happy vibes", and "*" in the command is filled with that word
     function blAlias(text) {
@@ -7794,7 +7794,7 @@
     document.head.appendChild(blDragCss);
     let blSuppress = 0, blAnchoring = false;                                              // a drag must not also count as a tap on the ball
     const blPosGet = k => { try { return JSON.parse(localStorage.getItem(k)) || null; } catch (e) { return null; } };
-    const blPosSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+    const blPosSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     const blClamp = (x, y, w, h) => ({ x: Math.max(4, Math.min(innerWidth - w - 4, x)), y: Math.max(4, Math.min(innerHeight - h - 4, y)) });
     function blMove(el, x, y) { const r = el.getBoundingClientRect(), c = blClamp(x, y, r.width, r.height); el.style.left = c.x + 'px'; el.style.top = c.y + 'px'; el.style.right = 'auto'; el.style.bottom = 'auto'; return c; }
     function blPlace(el, key) { const p = blPosGet(key); if (p) blMove(el, p.x, p.y); }
@@ -8843,8 +8843,8 @@
     };
     // Who Bloopy is, always in the prompt so the model answers "who are you / what are you / can you hear this" truthfully and in character.
     const selfCtx = () => {
-      let m = '', fs = '', fa = ''; try { m = CHAT_MODELS[chatKey()].label.replace(/\s*\(.*$/, ''); } catch (e) {}
-      try { const f = favSong(); if (f) fs = songLine(f); fa = favArtist() || ''; } catch (e) {}
+      let m = '', fs = '', fa = ''; try { m = CHAT_MODELS[chatKey()].label.replace(/\s*\(.*$/, ''); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+      try { const f = favSong(); if (f) fs = songLine(f); fa = favArtist() || ''; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       return ' WHO YOU ARE: your name is Bloopy (also Bloop). You are a small AI assistant that lives inside this music player and appears as a bouncy ball. You run on this device' + (m ? ' using the ' + m + ' language model' : '') + ' after a one-time download, so what the user says stays on their phone. You are not ChatGPT, Claude, Siri or a person, and you have no body, ears or phone number.' +
         ' You cannot hear the music. You only know a song\'s title, artist and the tags this app made for it. If you are unsure of a fact, say so once, briefly, then still give your best answer. Do not put yourself down or keep saying you are small or limited.' +
         ' You are a real chat buddy, not only a music helper: happily talk about anything the user brings up, such as games, films, shows, books, science, space, animals, sport, food, school, hobbies, ideas or their day. Never say you can only talk about music or the player, and never steer them back to music unless they ask.' +
@@ -8907,8 +8907,8 @@
     // free-form JSON tool calls they do not). Results are real data from the player and go into the final prompt.
     const lkIdx = (arg, text) => {                                        // which track does the message mean: named in the arg, named in the text, else the current one
       const A = window.__ppApi; let i = -1;
-      if (arg) { try { i = blFindSong(arg); } catch (e) {} }
-      if (i < 0) { try { const n = blNamed(text); if (n && n.length) i = n[0]; } catch (e) {} }
+      if (arg) { try { i = blFindSong(arg); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
+      if (i < 0) { try { const n = blNamed(text); if (n && n.length) i = n[0]; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
       return i >= 0 ? i : (A.currentIndex() >= 0 ? A.currentIndex() : -1);
     };
     const lkLine = t => songLine(t) + (tagLine(t) ? ' (' + tagLine(t) + ')' : ' (not tagged yet)');
@@ -8930,7 +8930,7 @@
       2: { name: 'find_song', what: 'your library', run: (arg, text) => {
         const A = window.__ppApi, tr = A.tracks(), q = blNrm(arg || ''), ids = sReal(), hit = [];
         if (q) ids.forEach(i => { if (blNrm(tr[i].title).includes(q) || blNrm(tr[i].artist || '').includes(q)) hit.push(i); });
-        if (!hit.length) { try { (blNamed(text) || []).forEach(i => hit.push(i)); } catch (e) {} }
+        if (!hit.length) { try { (blNamed(text) || []).forEach(i => hit.push(i)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
         return hit.length ? hit.slice(0, 5).map(i => lkLine(tr[i])).join('; ') + (hit.length > 5 ? '; and ' + (hit.length - 5) + ' more' : '') : 'no matching track in the library'; } },
       3: { name: 'song_info', what: 'the song details', run: (arg, text) => { const A = window.__ppApi, i = lkIdx(arg, text); return i < 0 ? 'no song found and nothing is playing' : lkLine(A.tracks()[i]); } },
       4: { name: 'lyrics', what: 'the lyrics', run: (arg, text) => {
@@ -8966,8 +8966,8 @@
       // What songs mean and how they connect: saved summaries and lyrics of the named songs, the current one, or its album (same reader as Song Talk).
       15: { name: 'song_meaning', what: 'the summaries and lyrics', cap: () => ctxOf() >= 4096 ? 2400 : 700, run: (arg, text) => {
         const A = window.__ppApi, tr = A.tracks(), list = [], push = x => { if (x && !x.stem && !list.includes(x)) list.push(x); }, both = (arg || '') + ' ' + text;
-        String(arg || '').split(/\s*(?:,|;|&|\band\b|\bvs\.?|\bversus\b)\s*/i).forEach(a => { a = a.replace(/\b(?:the )?album\b/i, '').trim(); if (a.length < 2) return; try { const i = blFindSong(a); if (i >= 0) push(tr[i]); } catch (e) {} });
-        try { blNamed(text).forEach(i => push(tr[i])); } catch (e) {}
+        String(arg || '').split(/\s*(?:,|;|&|\band\b|\bvs\.?|\bversus\b)\s*/i).forEach(a => { a = a.replace(/\b(?:the )?album\b/i, '').trim(); if (a.length < 2) return; try { const i = blFindSong(a); if (i >= 0) push(tr[i]); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } });
+        try { blNamed(text).forEach(i => push(tr[i])); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         const cur = A.currentIndex() >= 0 ? tr[A.currentIndex()] : null;
         if (cur && (!list.length || /\b(this|current|playing)\b/i.test(text))) { const k = list.indexOf(cur); if (k >= 0) list.splice(k, 1); list.unshift(cur); }
         if (!list.length) return 'no song found and nothing is playing';
@@ -8983,7 +8983,7 @@
       const t = String(text), low = t.toLowerCase(), plans = [], add = (id, arg) => { if (!plans.some(p => p.id === id)) plans.push({ id, arg: String(arg || '').trim().slice(0, 60) }); };
       const after = re => { const m = t.match(re); return m ? m[1].replace(/^["'“‘]+|["'”’.!?]+$/g, '').trim() : ''; };
       // Meaning and links between songs: the saved summary plus lyrics, for the songs named, the current one, or its album.
-      { let nm = 0; try { nm = (blNamed(t) || []).length; } catch (e) {}
+      { let nm = 0; try { nm = (blNamed(t) || []).length; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         const here = /\b(this|that|it|current|playing) ?(song|track|one|album)?\b/.test(low), mean = /\b(about|mean(s|t|ing)?|story|theme|message|summar\w+|interpret\w*|explain)\b/.test(low), link = /\b(relate[sd]?|related|connect\w*|compar\w+|sequel|prequel|differen\w+|in common|versus|vs|fit(s)? (in|into)|same story)\b/.test(low), alb = /\b(albums?|ep|lp|mixtape|soundtrack)\b/.test(low);
         if (/\bwhat('?s| is| was) (this|it|the) (song|track|one) about\b/.test(low) || (mean && nm >= 1 && !/\blyrics?\b/.test(low)) || (link && (nm >= 2 || (nm >= 1 && here))) || (alb && (mean || link) && (here || nm >= 1))) add(15, alb ? 'album' : ''); }
       if (/\b(lyrics?|words to|what (are|were) they (saying|singing))\b/.test(low)) add(4, after(/\blyrics (?:of |for )(.+)$/i));
@@ -8991,7 +8991,7 @@
       if (/\bplaylists?\b/.test(low) && !plans.some(p => p.id === 9)) add(8, after(/\b(?:in|on|from|of|called|named) (?:my |the )?(.{2,40}?) playlist\b/i) || after(/\bplaylist (?:called|named) (.+)$/i));
       if (/\b(most played|listen(ed)? (to )?(the )?most|top (songs?|tracks?|artists?)|favou?rite (songs?|tracks?|artists?)|play counts?|how (often|many times)|play history|my stats)\b/.test(low)) add(6, /artist/.test(low) ? 'artist' : 'song');
       if (/\bhow many (songs?|tracks?|videos?|playlists?|are tagged|have been tagged)\b|\b(library|collection) (size|stats)\b|\bhow big is (my|the) (library|collection)\b/.test(low)) add(7, '');
-      try { const ws = vibeWordsOf(t); if (ws.length && /\b(songs?|tracks?|music|anything|something|any|got|have|find|show|which|playlist)\b/.test(low)) add(5, ws.join(' ')); } catch (e) {}
+      try { const ws = vibeWordsOf(t); if (ws.length && /\b(songs?|tracks?|music|anything|something|any|got|have|find|show|which|playlist)\b/.test(low)) add(5, ws.join(' ')); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       if (/\b(do i have|have i got|got any|is there|are there|find|search( for)?|look(ing)? for)\b/.test(low) && !plans.some(p => p.id === 7)) add(2, after(/\b(?:by|called|named) (.+)$/i) || after(/\b(?:do i have|have i got|got any|find|search for|look for) (?:any |some |a |the |songs? |tracks? )*(?:by |called |named )?(.+)$/i));
       if (/\b(tempo|bpm|key|genre|mood|how fast|who (sings|sang|is the artist|made)|tell me about|info(rmation)? (on|about))\b/.test(low) && (/\b(this|that|it|current|playing)\b/.test(low) || (() => { try { return (blNamed(t) || []).length > 0; } catch (e) { return false; } })())) add(3, '');
       return plans;
@@ -9086,12 +9086,12 @@
         r = String(r || acc).trim().replace(/\s+\n/g, '\n') || "Hmm, I lost my words. Try again?";
         const prevBot = (hist.filter(m => m.role === 'assistant').pop() || {}).content, nz = z => String(z || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
         if (prevBot && looksOk(r) && nz(r) === nz(prevBot)) {
-          try { const o2 = await g(msgs, Object.assign({}, opts, { streamer: undefined, temperature: 1.0, repetition_penalty: 1.3 })); let r2 = o2 && o2[0] && o2[0].generated_text; r2 = Array.isArray(r2) ? (r2[r2.length - 1] || {}).content : r2; if (r2 && looksOk(String(r2)) && nz(r2) !== nz(prevBot)) r = String(r2).trim(); } catch (e) {}
+          try { const o2 = await g(msgs, Object.assign({}, opts, { streamer: undefined, temperature: 1.0, repetition_penalty: 1.3 })); let r2 = o2 && o2[0] && o2[0].generated_text; r2 = Array.isArray(r2) ? (r2[r2.length - 1] || {}).content : r2; if (r2 && looksOk(String(r2)) && nz(r2) !== nz(prevBot)) r = String(r2).trim(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         }
         if (!looksOk(r)) { el.textContent = "Sorry, that came out as gibberish. Try again, or tap Clear."; return void (chatBusy = false); }   // never feed garbage back into the history
         r = finishSentence(r);
-        try { const A = window.__ppApi, tg = loadTags(), cu = A && A.currentIndex() >= 0 ? A.tracks()[A.currentIndex()] : null; r = fixNums(r, cu && tg[cu.dbId] && tg[cu.dbId].bpm ? [tg[cu.dbId].bpm] : Object.values(tg).map(x => x && x.bpm).filter(Boolean)); } catch (e) {}
-        el.textContent = r; try { vSpeak(r); } catch (e) {} hist.push({ role: 'user', content: text }, { role: 'assistant', content: r }); hist = memN() ? hist.slice(-2 * memN()) : [];
+        try { const A = window.__ppApi, tg = loadTags(), cu = A && A.currentIndex() >= 0 ? A.tracks()[A.currentIndex()] : null; r = fixNums(r, cu && tg[cu.dbId] && tg[cu.dbId].bpm ? [tg[cu.dbId].bpm] : Object.values(tg).map(x => x && x.bpm).filter(Boolean)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+        el.textContent = r; try { vSpeak(r); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } hist.push({ role: 'user', content: text }, { role: 'assistant', content: r }); hist = memN() ? hist.slice(-2 * memN()) : [];
         if (!direct) moodChip(text);
       } catch (e) { console.error(e); dlOk = false; el.textContent = "Oops, my brain would not load: " + e.message; }
       chatBusy = false; scrollDown(); cm('greet'); setTimeout(() => cm('idle'), 1300);
@@ -9167,10 +9167,10 @@
       const hs = document.createElement('style'); hs.textContent = 'html.bl-nohead .bl-top,html.bl-nohead #ppv-mrow{display:none!important}'; document.head.appendChild(hs);
       const hc = p.querySelector('#ppv-hdr'), apply = () => document.documentElement.classList.toggle('bl-nohead', !hc.checked);
       try { hc.checked = localStorage.getItem('ppvBlHeaders') === '1'; } catch (e) {}
-      apply(); hc.onchange = () => { try { localStorage.setItem('ppvBlHeaders', hc.checked ? '1' : '0'); } catch (e) {} apply(); };
+      apply(); hc.onchange = () => { try { localStorage.setItem('ppvBlHeaders', hc.checked ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } apply(); };
     }
     const bc = p.querySelector('#ppv-bub'); try { bc.checked = localStorage.getItem('ppvBlBubbles') === '1'; } catch (e) {}
-    bc.onchange = () => { try { localStorage.setItem('ppvBlBubbles', bc.checked ? '1' : '0'); } catch (e) {} if (!bc.checked) { const f = document.getElementById('ppv-mfloat'), r = document.getElementById('bl-react'); f && (f.style.display = 'none'); r && r.classList.remove('show'); } };
+    bc.onchange = () => { try { localStorage.setItem('ppvBlBubbles', bc.checked ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } if (!bc.checked) { const f = document.getElementById('ppv-mfloat'), r = document.getElementById('bl-react'); f && (f.style.display = 'none'); r && r.classList.remove('show'); } };
     p.insertAdjacentHTML('beforeend', '<div class="ppv-bl-set"><label class="ppv-c" style="display:block;margin-top:8px"><input type="checkbox" id="ppv-chat-on"> Bloopy assistant (does things in the app, no AI download)</label>' +
       '<div class="ppv-note">Adds a Bloopy button. He can play music by mood, make mood and smart playlists, tag, split, get lyrics and control the player (volume, seek, speed, EQ, repeat\u2026). That all runs from the tagger and fixed rules, so it needs no chat AI.</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-brain-on"> Chat brain: talk about anything with a tiny AI (optional, one-time download)</label>' +
@@ -9202,12 +9202,12 @@
       ms.value = mas.chat.memory.get(); mv.textContent = memTxt(+ms.value);
       ms.oninput = () => { const n = mas.chat.memory.set(ms.value); mv.textContent = memTxt(n); };
       const ag = p.querySelector('#ppv-agent-on'); try { ag.checked = localStorage.getItem('ppvAgent') !== '0'; } catch (e) { ag.checked = true; }
-      ag.onchange = () => { try { localStorage.setItem('ppvAgent', ag.checked ? '1' : '0'); } catch (e) {} };
+      ag.onchange = () => { try { localStorage.setItem('ppvAgent', ag.checked ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
       if (navigator.gpu) cl.style.display = 'block'; try { cg.checked = localStorage.getItem('ppvChatGpu') === '1'; } catch (e) {}
       { const lg = p.querySelector('#ppv-lmgpu'), ll = p.querySelector('#ppv-lmgpul');
         if (NATIVE && lg && ll) { ll.style.display = 'block'; try { lg.checked = localStorage.getItem('ppvLmGpu') !== '0'; } catch (e) { lg.checked = true; }
-          lg.onchange = () => { try { localStorage.setItem('ppvLmGpu', lg.checked ? '1' : '0'); } catch (e) {} }; } }
-      cg.onchange = () => { try { localStorage.setItem('ppvChatGpu', cg.checked ? '1' : '0'); } catch (e) {} };
+          lg.onchange = () => { try { localStorage.setItem('ppvLmGpu', lg.checked ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }; } }
+      cg.onchange = () => { try { localStorage.setItem('ppvChatGpu', cg.checked ? '1' : '0'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
       p.querySelector('#ppv-chatfree').onclick = async () => { try { await mas.chat.free(); status('Chat download removed.'); } catch (e) { status('Error: ' + errText(e)); } }; }
     p.insertAdjacentHTML('beforeend', '<div class="ppv-bl-set"><div style="margin-top:10px"><b>Bloopy voice and listening</b></div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-mini-on"> Smarter understanding (MiniLM, ~25 MB download)</label>' +
@@ -9252,7 +9252,7 @@
     const $ = s => p.querySelector(s), st = $('#ppv-st'), bar = $('#ppv-bar i'), go = $('#ppv-go'), sel = $('#ppv-model'), sl = $('#ppv-sl'), sv = $('#ppv-sv'), gpu = $('#ppv-gpuc'), lsel = $('#ppv-lvl'), lvi = $('#ppv-lvi'), qsel = $('#ppv-q'), gsel = $('#ppv-gate'), msel = $('#ppv-mask');
     const LV = () => +lsel.value === 4 ? customLevel() : LEVELS[+lsel.value] || null, showLv = () => { const l = LV(); lvi.textContent = !l ? 'No limits. Fastest, but can crash weak phones.' : l.custom ? 'Custom: ' + (l.threads ? l.threads + ' thread' + (l.threads > 1 ? 's' : '') : 'auto threads') + ', ' + Math.round(l.duty * 100) + '% rest.' : l.info; };
     let holdUntil = 0;                                                // keep "Done"/"Error" visible instead of being wiped by "Ready" a split second later
-    const status = t => { st.textContent = t; document.querySelectorAll('.ppv-stx').forEach(e => { e.textContent = t; }); if (/^(Done|Error)/.test(t)) holdUntil = Date.now() + 5000; mas.react(t); }, ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} };
+    const status = t => { st.textContent = t; document.querySelectorAll('.ppv-stx').forEach(e => { e.textContent = t; }); if (/^(Done|Error)/.test(t)) holdUntil = Date.now() + 5000; mas.react(t); }, ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     const nnc = $('#ppv-nnc'); if (NATIVE) { $('#ppv-nn').style.display = 'block'; nnc.checked = ls('ppvNnapi') !== '0'; nnc.onchange = () => { ls('ppvNnapi', nnc.checked ? '1' : '0'); }; }
     const savedModel = ls('ppvModel'); if (savedModel && MODELS[savedModel]) sel.value = savedModel;
     if (ls('ppvStrength')) { sl.value = ls('ppvStrength'); sv.textContent = sl.value; }

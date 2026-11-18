@@ -9,7 +9,7 @@
   let selectMenuMode = null;       // 'add' | 'move' while the playlist menu is open
   let selectCtxPl = null;          // playlist id when selecting from a Home-screen playlist page
   function selFromPl(){ return selectCtxPl || activePlaylistView; }
-  function notifySelect(){ if (window.__ppOnSelect){ try { window.__ppOnSelect(); } catch(e){} } }
+  function notifySelect(){ if (window.__ppOnSelect){ try { window.__ppOnSelect(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } }
   const SELECT_LONGPRESS_MS = PPTouch.HOLD_MS;   // shared touch numbers (pp-touch.js)
   const SELECT_MOVE_TOLERANCE = PPTouch.SLOP;
   const selectBar = document.getElementById('select-bar');

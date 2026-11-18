@@ -267,7 +267,7 @@
         shuffleIn(r); r = r.slice(0, 30); A.play(r[0], r); return done('Playing ' + label + '.');
       }
       // ---- Press Play Portfolio (the listening stats). Read-only: Bloopy reads the Portfolio's own saved stats and can open it. ----
-      const PF = () => { try { if (window.PPPortfolioApi && window.PPPortfolioApi.flush) window.PPPortfolioApi.flush(); } catch (e) {} try { return JSON.parse(localStorage.getItem('pppSaveV1')) || null; } catch (e) { return null; } };
+      const PF = () => { try { if (window.PPPortfolioApi && window.PPPortfolioApi.flush) window.PPPortfolioApi.flush(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } try { return JSON.parse(localStorage.getItem('pppSaveV1')) || null; } catch (e) { return null; } };
       const dur2 = ms => { const mn = Math.round(ms / 60000); return mn < 1 ? 'under a minute' : mn < 60 ? mn + ' min' : Math.floor(mn / 60) + ' h ' + (mn % 60) + ' min'; };
       const topN = (o, n, f) => Object.entries(o || {}).map(([k, v]) => [k, f ? f(v) : v]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, n);
       const NOPF = 'The Portfolio has no listening data yet. Play some music first.';

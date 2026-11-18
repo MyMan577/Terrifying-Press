@@ -91,10 +91,10 @@
     const lg = ls0('ppvWLang');
     let ref;
     try { status('Whisper is checking where the lines really are…'); ref = await transcribeRun(t, { size, lang: whEn(size) ? '' : (lg === null ? 'english' : lg), task: 'transcribe', clean: true, acc: 0, strength: o.strength, lv: o.lv }, status); }
-    finally { if (asr) { try { await asr.dispose(); } catch (x) {} asr = null; asrId = ''; } }   // give the memory back before the real split
+    finally { if (asr) { try { await asr.dispose(); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); } asr = null; asrId = ''; } }   // give the memory back before the real split
     const cues = alignLines(raw, (ref || []).map(q => ({ start: q.start, end: q.end, text: q.text })));
     const out = { cues, matched: cues.filter(q => q.m).length, total: cues.length };
-    try { cache[t.dbId] = { sig, c: cues.map(q => [+q.start.toFixed(2), +q.end.toFixed(2), q.text, q.m ? 1 : 0]) }; localStorage.setItem('ppvAlign', JSON.stringify(cache)); } catch (x) {}
+    try { cache[t.dbId] = { sig, c: cues.map(q => [+q.start.toFixed(2), +q.end.toFixed(2), q.text, q.m ? 1 : 0]) }; localStorage.setItem('ppvAlign', JSON.stringify(cache)); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
     return out;
   }
 

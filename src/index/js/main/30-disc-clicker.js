@@ -429,7 +429,7 @@
     discBtn.addEventListener('click', (e) => {
       const power = clickPower();
       state.grooves += power;
-      try { if (window.PPPlayground) window.PPPlayground.stat('clicks', 1); } catch(e2){}
+      try { if (window.PPPlayground) window.PPPlayground.stat('clicks', 1); } catch(e2){ if (typeof ppCaught === "function") ppCaught(e2); }
       discBtn.classList.remove('dc-wobble');
       void discBtn.offsetWidth; // restart animation
       discBtn.classList.add('dc-wobble');

@@ -457,7 +457,7 @@
       if (btn) btn.textContent = 'Finishing…';
       await zip.add('manifest.json', new TextEncoder().encode(JSON.stringify({ version: 2, playlists, tracks: manifest }, null, 2)));
       // Every setting and all progress too (per-song EQ, overrides, loops, subtitles, XP...), so one file restores everything.
-      try { await zip.add('settings.json', new TextEncoder().encode(JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), data: progressBackupData() }))); } catch(e){}
+      try { await zip.add('settings.json', new TextEncoder().encode(JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), data: progressBackupData() }))); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
       if (sz){
         const r = await sz.finish(); sz = null;
         if (window.PPNative && PPNative.hooks && PPNative.hooks.toast) PPNative.hooks.toast('Saved to ' + ((r && r.location) || 'Downloads'));
@@ -627,7 +627,7 @@
       // merged above, so those two are left alone. Applying needs a reload, so it asks first.
       if (zip.has('settings.json')){
         let sdata = null;
-        try { const sj = JSON.parse(await zip.text('settings.json')); sdata = sj && typeof sj.data === 'object' ? sj.data : null; } catch(e){}
+        try { const sj = JSON.parse(await zip.text('settings.json')); sdata = sj && typeof sj.data === 'object' ? sj.data : null; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
         if (sdata && Object.keys(sdata).length && window.confirm('This backup also has your settings and progress (EQ, per-song settings, loops, XP and more). Restore those too? The app will reload.')){
           const n = progressBackupApply(sdata, [PLAYLIST_KEY, PLAYLISTS_KEY]);
           if (n){

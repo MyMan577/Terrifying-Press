@@ -97,7 +97,7 @@
     why = from === quiet ? 'You played it ' + plural(p.count, 'time') + ', last on ' + new Date(p.lastPlayed).toLocaleDateString(undefined, { day:'numeric', month:'short' }) + '.'
         : from === fresh ? 'You have never played this one.' : 'A pick from your library.';
     saved.id = String(t[i].dbId); saved.why = why; saved.seen.push(saved.id);
-    try { localStorage.setItem(SOTD_KEY, JSON.stringify(saved)); } catch(e){}
+    try { localStorage.setItem(SOTD_KEY, JSON.stringify(saved)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     return { i: i, why: why };
   }
   T.sotd = { name:'Song of the day', icon:'sparkle', kind:'box', zones:['home','page','player'], w:'full', desc:'One song a day you have not played in a while',
@@ -176,7 +176,7 @@
     return he == null ? be : be == null ? he : he * 0.55 + be * 0.45;
   }
   function moodQueue(stop){
-    var V = window.PPVocals, tags = null; try { tags = V && V.loadTags ? V.loadTags() : null; } catch(e){}
+    var V = window.PPVocals, tags = null; try { tags = V && V.loadTags ? V.loadTags() : null; } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     var A = api(); if (!A || !tags) return null;
     var t = A.tracks(), rated = [];
     playable().forEach(function(i){ var e = energyOf(tags[String(t[i].dbId)]); if (e != null && t[i].kind !== 'video') rated.push([i, e]); });
@@ -284,7 +284,7 @@
     var was = MIX.on, pos = mixPos();
     MIX.on = false; clearInterval(MIX.sync);
     MIX.els.forEach(function(a){ try { a.pause(); } catch(e){} });
-    if (quiet){ MIX.els.forEach(function(a){ a.removeAttribute('src'); try { a.load(); } catch(e){} }); MIX.els = []; MIX.forId = null; }
+    if (quiet){ MIX.els.forEach(function(a){ a.removeAttribute('src'); try { a.load(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }); MIX.els = []; MIX.forId = null; }
     if (was && back){ var w = wapi(); if (w) w.seek(pos); MIX.own = Date.now(); if (!liveState().playing) click('play-btn'); }
     liveSoon();
   }
