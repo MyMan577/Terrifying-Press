@@ -511,6 +511,7 @@
     var S = cur; if (!S || !S.active) return;
     try {
       var s = await Player.getState();
+      if (s.alarm) return;                               // an alarm is playing its songs (AlarmActivity.kt): not ours to follow
       if (s.uri && S.uri && !sameUri(s.uri, S.uri) && N.hooks.syncTo) N.hooks.syncTo(s.uri);
       else applySnap(S, s);
     } catch (e) {}

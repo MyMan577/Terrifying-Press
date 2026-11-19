@@ -477,6 +477,7 @@ class PlaybackService : MediaLibraryService() {
     // ---------- resume after a cold start (headset button, car connects) ----------
     private fun prefs() = getSharedPreferences("pp_resume", MODE_PRIVATE)
     private fun saveResume() {
+        if (AlarmRing.owns) return      // an alarm's song is not what you last played
         val it = player.currentMediaItem ?: return
         if (it.mediaMetadata.extras?.getBoolean("companion", false) == true) return   // a web video's soundtrack: the page keeps the resume point
         val md = it.mediaMetadata

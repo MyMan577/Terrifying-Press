@@ -139,6 +139,7 @@ class NativePlayerPlugin : Plugin() {
         val p = svc?.player
         val o = JSObject()
         o.put("why", why)
+        if (AlarmRing.owns) o.put("alarm", true)      // the alarm's song, not the app's (native-bridge.js leaves it alone)
         if (p == null) return o
         o.put("playing", p.isPlaying)
         o.put("playWhenReady", p.playWhenReady)
@@ -209,19 +210,24 @@ class NativePlayerPlugin : Plugin() {
         call.resolve()
     }
 
+    // While an alarm plays its songs on this player (AlarmActivity.kt), none of it is the app's: the page is told
+    // nothing, so it does not follow the alarm's songs (which loaded them again from where you last stopped) and the
+    // alarm's list is left whole. When the alarm stops, the player is back on the app's own song.
     private val listener = object : Player.Listener {
-        override fun onPlaybackStateChanged(state: Int) { notifyListeners("state", snapshot("state")); updateTicker() }
+        override fun onPlaybackStateChanged(state: Int) { if (AlarmRing.owns) return; notifyListeners("state", snapshot("state")); updateTicker() }
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (AlarmRing.owns) return
             videoPlaying = isPlaying && kind == "video"
             MainActivity.instance?.keepScreenOn(videoPlaying)
             notifyListeners("state", snapshot("playing")); updateTicker()
         }
         override fun onPositionDiscontinuity(o: Player.PositionInfo, n: Player.PositionInfo, reason: Int) {
-            if (svc?.xfAdvancing == true) return       // a crossfade moving on: reported as "advanced" below
+            if (AlarmRing.owns || svc?.xfAdvancing == true) return       // a crossfade moving on: reported as "advanced" below
             if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT)
                 notifyListeners("state", snapshot("seeked"))
         }
         override fun onMediaItemTransition(item: MediaItem?, reason: Int) {
+            if (AlarmRing.owns) return
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED && item != null) {
                 // Something outside the web UI (Android Auto, Assistant, a car kit, resume-on-button) started an item.
                 val u = item.localConfiguration?.uri?.toString()
@@ -253,12 +259,14 @@ class NativePlayerPlugin : Plugin() {
                 notifyListeners("advanced", snapshot("advanced"))
             }
         }
-        override fun onPlaybackParametersChanged(pp: PlaybackParameters) { notifyListeners("state", snapshot("rate")) }
+        override fun onPlaybackParametersChanged(pp: PlaybackParameters) { if (AlarmRing.owns) return; notifyListeners("state", snapshot("rate")) }
         override fun onVideoSizeChanged(v: VideoSize) {
+            if (AlarmRing.owns) return
             if (v.width > 0 && v.height > 0) videoAspect = v.width * v.pixelWidthHeightRatio / v.height
             notifyListeners("state", snapshot("size"))
         }
         override fun onTracksChanged(tracks: Tracks) {
+            if (AlarmRing.owns) return      // (a song of the alarm's that will not play: the alarm rings its own sound)
             notifyListeners("tracks", JSObject())
             // A file can open fine and still carry a stream no decoder here can take (WMA audio, RealAudio,
             // VC-1 video...). ExoPlayer then just leaves that stream out, so the film is silent or the song never
@@ -274,6 +282,7 @@ class NativePlayerPlugin : Plugin() {
             notifyListeners("unsupported", JSObject().put("audio", badA).put("video", badV).put("uri", srcOrig ?: ""))
         }
         override fun onPlayerError(e: PlaybackException) {
+            if (AlarmRing.owns) return
             if (vlcRescue(e)) return
             notifyListeners("error", JSObject().put("code", e.errorCodeName).put("message", e.message ?: "playback error"))
         }
