@@ -3,6 +3,8 @@
 
   www/index.html          <- src/index.html, with every "@@include path@@" line replaced by that file (paths are relative to src/)
   www/vocal-separator.js  <- every file in src/vocal-separator/, joined in name order
+  www/alarm.html          <- src/alarm.html, the same way (the small page an alarm opens on Android: the ringing
+                             screen and its widgets only; it shares parts with index.html and has its own in src/alarm/)
 
 The parts are plain cuts of the full files: joined back together they are the full file, byte for byte.
 Most parts are pieces of one long script, so a part is not a complete program by itself. Check the built files, not the parts.
@@ -32,20 +34,25 @@ def read(path):
     return text
 
 
-def build_index():
-    shell = read(os.path.join(SRC, 'index.html'))
+def build_page(name):
+    shell = read(os.path.join(SRC, name))
     used = set()
 
     def fill(m):
         rel = m.group(1)
         if rel in used:
-            die(rel + ' is included twice in src/index.html')
+            die(rel + ' is included twice in src/' + name)
         used.add(rel)
         return read(os.path.join(SRC, rel))
 
     page = INCLUDE.sub(fill, shell)
     if '@@include' in page:
-        die('a part contains an @@include line; includes only work in src/index.html, one per line')
+        die('a part contains an @@include line; includes only work in src/' + name + ', one per line')
+    return page, used
+
+
+def build_index():
+    page, used = build_page('index.html')
     on_disk = set()
     for base, _, files in os.walk(os.path.join(SRC, 'index')):
         for name in files:
@@ -63,10 +70,22 @@ def build_separator():
     return ''.join(read(p) for p in parts)
 
 
+def build_alarm():
+    page, used = build_page('alarm.html')
+    own = set()
+    for base, _, files in os.walk(os.path.join(SRC, 'alarm')):
+        for name in files:
+            own.add(os.path.relpath(os.path.join(base, name), SRC).replace(os.sep, '/'))
+    unused = sorted(own - used)
+    if unused:
+        die('not included anywhere in src/alarm.html: ' + ', '.join(unused))
+    return page
+
+
 def main():
     check = '--check' in sys.argv[1:]
     bad = 0
-    for name, text in (('index.html', build_index()), ('vocal-separator.js', build_separator())):
+    for name, text in (('index.html', build_index()), ('vocal-separator.js', build_separator()), ('alarm.html', build_alarm())):
         out = os.path.join(WWW, name)
         if check:
             same = os.path.isfile(out) and open(out, encoding='utf-8', newline='').read() == text

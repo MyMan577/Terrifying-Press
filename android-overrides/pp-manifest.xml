@@ -16,6 +16,8 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- "Display over other apps": lets the alarm screen open by itself while the phone is in use (asked in Pendulum) -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Media access. Android 13+ uses the per-type media permissions; older versions use the classic read permission.
          Declining is fine: files can always be added through the system picker. -->
@@ -184,6 +186,18 @@
             </intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/pp_widget_info" />
         </receiver>
+
+        <!-- The alarm screen (AlarmActivity.kt): opens by itself when an alarm goes off, over the lock screen, in a task of its own -->
+        <activity
+            android:name=".AlarmActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:taskAffinity="com.pressplay.media.alarm"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode|navigation|density" />
 
         <!-- Full-screen player on the VLC engine, for videos the normal players cannot decode -->
         <activity

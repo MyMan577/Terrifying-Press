@@ -51,6 +51,15 @@ class PlaybackService : MediaLibraryService() {
         private val waiters = mutableListOf<(PlaybackService) -> Unit>()
         private val main = Handler(Looper.getMainLooper())
 
+        /**
+         * Starts the service if it is not running, and says whether that worked. From the background (an alarm going off
+         * with the app closed) Android may refuse; the alarm screen then starts it once it is on screen.
+         */
+        fun tryStart(ctx: Context): Boolean {
+            if (instance != null) return true
+            return try { ctx.applicationContext.startService(Intent(ctx.applicationContext, PlaybackService::class.java)); true } catch (_: Exception) { false }
+        }
+
         /** Runs [cb] on the main thread once the service exists, starting it if needed. */
         fun whenReady(ctx: Context, cb: (PlaybackService) -> Unit) {
             val i = instance
@@ -258,6 +267,7 @@ class PlaybackService : MediaLibraryService() {
     private var userVolume = 1f
     private var duckMul = 1f
     fun setUserVolume(v: Float) { userVolume = v; applyVolume() }
+    val currentUserVolume: Float get() = userVolume
     /** The player's volume: your volume, turned down while another app talks (duck), and faded in during a crossfade. */
     private fun applyVolume() {
         if (!::player.isInitialized) return

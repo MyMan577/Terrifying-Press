@@ -3,3 +3,4 @@ __pycache__/
 # Built from src/ by tools/assemble.py
 /www/index.html
 /www/vocal-separator.js
+/www/alarm.html

@@ -163,7 +163,19 @@ class NotifyPlugin : Plugin() {
      */
     @PluginMethod fun alarms(call: PluginCall) {
         AlarmSched.replace(context, (call.getArray("items") ?: JSArray()).toString())
-        call.resolve(JSObject().put("exact", AlarmSched.exactAllowed(context)))
+        call.resolve(JSObject().put("exact", AlarmSched.exactAllowed(context)).put("screen", true)
+            .put("overlay", AlarmScreenAccess.overlay(context)).put("fullScreen", AlarmScreenAccess.fullScreen(context)))
+    }
+    /**
+     * The alarm screen opens by itself (AlarmActivity.kt) when Android allows it: { overlay, fullScreen }. overlay:
+     * "Display over other apps", for while the phone is in use; fullScreen: full-screen notifications (Android 14+),
+     * for a locked phone. { ask: "overlay" | "fullscreen" } opens the phone's settings page for that one.
+     */
+    @PluginMethod fun alarmScreen(call: PluginCall) {
+        val ask = call.getString("ask")
+        val a = activity
+        if (!ask.isNullOrEmpty() && a != null) a.runOnUiThread { AlarmScreenAccess.ask(a, ask) }
+        call.resolve(JSObject().put("overlay", AlarmScreenAccess.overlay(context)).put("fullScreen", AlarmScreenAccess.fullScreen(context)))
     }
     /**
      * Plays an alarm sound the page made (a WAV, base64): { wav, loop, speaker, louder }. speaker: on the alarm stream,
@@ -279,10 +291,59 @@ class NotifyReceiver : BroadcastReceiver() {
                 AlarmSound.play(ctx, if (f.exists()) f else null, true, true, false, true, if (timeout > 0) timeout else 10 * 60000L, id)
             }
         }
+        private const val CH_QUIET = "pp_alarms_music"
+        /**
+         * The notification of a ringing alarm that has its own screen (AlarmRing): it opens the alarm screen (full screen
+         * on a locked phone), rings like an alarm clock, or stays [quiet] when the alarm's songs are what you hear.
+         */
+        fun postAlarm(ctx: Context, id: String, it: org.json.JSONObject, quiet: Boolean) {
+            val loud = it.optBoolean("loud"); val timeout = it.optLong("timeout", 10 * 60000L)
+            val nm = ctx.getSystemService(NotificationManager::class.java)
+            val allowed = nm != null && NotificationManagerCompat.from(ctx).areNotificationsEnabled()
+            if (allowed && Build.VERSION.SDK_INT >= 26) {
+                val ch = NotificationChannel(CH_ALARMS, "Alarms", NotificationManager.IMPORTANCE_HIGH)
+                ch.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+                    AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+                ch.enableVibration(true); ch.vibrationPattern = longArrayOf(0, 700, 400, 700, 400, 700); ch.setBypassDnd(true)
+                nm!!.createNotificationChannel(ch)
+                val cl = NotificationChannel(CH_LOUD, "Alarms (super loud)", NotificationManager.IMPORTANCE_HIGH)
+                cl.setSound(null, null); cl.enableVibration(true); cl.vibrationPattern = longArrayOf(0, 1000, 300, 1000, 300, 1000); cl.setBypassDnd(true)
+                nm.createNotificationChannel(cl)
+                val cq = NotificationChannel(CH_QUIET, "Alarms (your music)", NotificationManager.IMPORTANCE_HIGH)
+                cq.setSound(null, null); cq.enableVibration(true); cq.vibrationPattern = longArrayOf(0, 500, 250, 500); cq.setBypassDnd(true)
+                nm.createNotificationChannel(cq)
+            }
+            if (allowed) {
+                val screen = AlarmRing.screenPending(ctx, id)
+                val b = NotificationCompat.Builder(ctx, if (quiet) CH_QUIET else if (loud) CH_LOUD else CH_ALARMS)
+                    .setSmallIcon(R.drawable.pp_w_note)
+                    .setContentTitle(it.optString("title", "Alarm")).setContentText(it.optString("text"))
+                    .setCategory(NotificationCompat.CATEGORY_ALARM).setPriority(NotificationCompat.PRIORITY_MAX)
+                    .setContentIntent(screen).setFullScreenIntent(screen, true)
+                    .setOngoing(true).setAutoCancel(false).setOnlyAlertOnce(quiet)
+                if (!quiet) b.setVibrate(longArrayOf(0, 700, 400, 700, 400, 700))
+                if (!quiet && !loud) b.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
+                if (timeout > 0) b.setTimeoutAfter(timeout)
+                val n = b.build()
+                if (!quiet && !loud) n.flags = n.flags or Notification.FLAG_INSISTENT
+                nm!!.notify(notifId(id), n)
+            }
+            // super loud rings through AlarmSound (speaker only); so does any alarm when notifications are switched off
+            if (!quiet && (loud || !allowed)) {
+                val f = AlarmSound.savedFile(ctx, it.optString("alarm"))
+                AlarmSound.play(ctx, if (loud && f.exists()) f else null, true, true, false, loud, if (timeout > 0) timeout else 10 * 60000L, id)
+            }
+        }
     }
     override fun onReceive(ctx: Context, i: Intent) {
         val stop = i.getStringExtra("stop")
         if (stop != null) { AlarmSound.stopFor(stop); return }
+        // an alarm set by this version: its own screen and its songs, without the app (AlarmActivity.kt)
+        val item = i.getStringExtra("item")
+        if (i.getStringExtra("kind") == "alarm" && !item.isNullOrEmpty()) {
+            val o = try { org.json.JSONObject(item) } catch (e: Exception) { null }
+            if (o != null) { AlarmRing.fire(ctx, o, i.getStringExtra("id") ?: o.optString("id")); return }
+        }
         post(ctx, i.getStringExtra("id") ?: "n", i.getStringExtra("title") ?: "", i.getStringExtra("text") ?: "", i.getStringExtra("kind") ?: "tip",
             i.getLongExtra("timeout", 0L), i.getBooleanExtra("loud", false), i.getStringExtra("alarm") ?: "")
     }
@@ -310,6 +371,15 @@ object AlarmSched {
         ctx.getSharedPreferences(NotifyReceiver.PREFS, 0).edit().putString(KEY, json).apply()
         scheduleAll(ctx)
     }
+    /** One more (a snooze set from the alarm screen); the page's next list replaces it like the rest. */
+    fun addOne(ctx: Context, o: org.json.JSONObject) {
+        val list = read(ctx); val id = o.optString("id")
+        val keep = org.json.JSONArray()
+        for (k in 0 until list.length()) { val x = list.optJSONObject(k) ?: continue; if (x.optString("id") != id) keep.put(x) }
+        keep.put(o)
+        ctx.getSharedPreferences(NotifyReceiver.PREFS, 0).edit().putString(KEY, keep.toString()).apply()
+        scheduleAll(ctx)
+    }
     fun scheduleAll(ctx: Context) {
         val am = ctx.getSystemService(AlarmManager::class.java) ?: return
         val list = read(ctx); val now = System.currentTimeMillis()
@@ -318,7 +388,8 @@ object AlarmSched {
             val id = o.optString("id"); val at = o.optLong("at")
             if (id.isEmpty() || at <= now) continue
             val b = Bundle().apply { putString("id", id); putString("title", o.optString("title")); putString("text", o.optString("text")); putString("kind", "alarm")
-                putLong("timeout", o.optLong("timeout", 10 * 60000L)); putBoolean("loud", o.optBoolean("loud", false)); putString("alarm", o.optString("alarm")) }
+                putLong("timeout", o.optLong("timeout", 10 * 60000L)); putBoolean("loud", o.optBoolean("loud", false)); putString("alarm", o.optString("alarm"))
+                putString("item", o.toString()) }
             val p = pending(ctx, id, b)
             try {
                 if (exactAllowed(ctx)) {
