@@ -783,6 +783,7 @@ import * as THREE from 'three';
   // touch physics exactly match the user's controls. Optional safeguards can
   // be enabled manually from Motion when a device needs extra headroom.
   let renderQualityScale = 1;
+  let superRes = false; // Super res toggle: native resolution, many more and finer particles, longer streaks
   let qualityMode = 'off';
   let pendingQualityScale = null;
   let slowFrameStreak = 0;
@@ -940,7 +941,8 @@ import * as THREE from 'three';
   function resize() {
     // Scale the internal pixel budget independently from CSS dimensions. This is
     // the strongest mobile-GPU safeguard because all trail and bloom passes use it.
-    DPR = Math.min(window.devicePixelRatio || 1, 2) * (sharpRender ? 1 : 0.5) * renderQualityScale;
+    // Super res renders at the screen's full native pixel density (up to 3x), whatever the other display settings say.
+    DPR = superRes ? Math.min(window.devicePixelRatio || 1, 3) : Math.min(window.devicePixelRatio || 1, 2) * (sharpRender ? 1 : 0.5) * renderQualityScale;
     W = window.innerWidth;
     H = window.innerHeight;
     DEPTH = Math.min(W, H) * 0.5;
@@ -978,6 +980,7 @@ import * as THREE from 'three';
     fbos = [makeFBO(bw, bh), makeFBO(bw, bh)];
     if (particleLayer) particleLayer.dispose();
     particleLayer = makeFBO(bw, bh);
+    if (particleMaterial) particleMaterial.uniforms.uRes.value.set(bw, bh);
     // clear both to the current palette background so a resize doesn't flash black
     clearTargetToColor(fbos[0], PALETTES[paletteKey].bg);
     clearTargetToColor(fbos[1], PALETTES[paletteKey].bg);
@@ -985,7 +988,7 @@ import * as THREE from 'three';
     // Bloom is already softer than the source image; on reduced-quality
     // devices it can safely use a smaller texture without a visible hard edge.
     destroyBloomFBOs();
-    const bloomDivisor = renderQualityScale <= 0.65 ? 6 : (renderQualityScale <= 0.85 ? 5 : 4);
+    const bloomDivisor = superRes ? 3 : (renderQualityScale <= 0.65 ? 6 : (renderQualityScale <= 0.85 ? 5 : 4));
     const blw = Math.max(1, Math.round(bw / bloomDivisor)), blh = Math.max(1, Math.round(bh / bloomDivisor));
     bloomFBOs = [makeFBO(blw, blh), makeFBO(blw, blh)];
   }
@@ -998,64 +1001,108 @@ import * as THREE from 'three';
   // bigger and brighter — that falloff is a big part of what sells the
   // depth. Calibrated so a particle at world depth 0 renders at exactly
   // its original, pre-3D pixel size when the camera is front-on.
+  // Particles are drawn as thin streaks, not round dots. Each one is an
+  // instanced quad stretched in screen space from where the particle was
+  // (iTail) to where it is now (iPos), so fast particles become long crisp
+  // lines and slow ones stay small sharp points. The fragment shader measures
+  // distance to that segment, which gives a pixel-sharp core with a 1px
+  // anti-aliased edge plus a faint halo, and fades the streak toward its tail.
+  // Blending is additive: where particles bunch up their light stacks toward
+  // white, which is what gives dense areas form and depth.
   const particleVS = `
+    attribute vec3 iPos;
+    attribute vec3 iTail;
     attribute vec3 aColor;
     attribute float aSize;
     attribute float aAlpha;
+    attribute float aHeat;
     uniform float uSizeScale;
+    uniform vec2 uRes;
+    uniform float uWidth;
     varying vec3 vColor;
     varying float vAlpha;
+    varying float vHeat;
+    varying vec2 vLocal;
+    varying float vLen;
+    varying float vR;
     void main() {
-      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-      gl_Position = projectionMatrix * mvPosition;
-      gl_PointSize = aSize * (uSizeScale / max(1.0, -mvPosition.z));
+      vec4 mvH = modelViewMatrix * vec4(iPos, 1.0);
+      vec4 mvT = modelViewMatrix * vec4(iTail, 1.0);
+      vec4 cH = projectionMatrix * mvH;
+      vec4 cT = projectionMatrix * mvT;
+      vec2 halfRes = 0.5 * uRes;
+      vec2 sH = cH.xy / cH.w * halfRes;
+      vec2 sT = cT.xy / cT.w * halfRes;
+      // aSize is a device-pixel diameter, same calibration the old point sprites used
+      float r = 0.5 * aSize * (uSizeScale / max(1.0, -mvH.z)) * uWidth;
+      // sub-pixel lines stay 1px wide but dim instead, so they never shimmer
+      float thin = clamp(r / 0.55, 0.0, 1.0);
+      r = max(r, 0.55);
+      vec2 d = sH - sT;
+      float len = length(d);
+      vec2 t = len > 0.001 ? d / len : vec2(1.0, 0.0);
+      vec2 n = vec2(-t.y, t.x);
+      float pad = r * 2.2 + 1.0;
+      float along = position.x > 0.0 ? len + pad : -pad;
+      vec2 p = sT + t * along + n * position.y * pad;
+      vLocal = vec2(along, position.y * pad);
+      vLen = len;
+      vR = r;
       vColor = aColor;
-      vAlpha = aAlpha;
+      vAlpha = aAlpha * thin;
+      vHeat = aHeat;
+      gl_Position = vec4(p / halfRes * cH.w, cH.z, cH.w);
     }
   `;
   const particleFS = `
     precision mediump float;
     varying vec3 vColor;
     varying float vAlpha;
+    varying float vHeat;
+    varying vec2 vLocal;
+    varying float vLen;
+    varying float vR;
     uniform float uCoreMix;
+    uniform float uHalo;
     void main() {
-      // soft round sprite: fades to 0 at the edge of the point instead of
-      // a hard square, mimicking the anti-aliased circle ctx.arc() drew
-      vec2 d = gl_PointCoord - vec2(0.5);
-      float dist = length(d) * 2.0;
-      // wide soft halo (the old single-term falloff) plus a small, sharper
-      // hot core layered on top — the contrast between a tiny bright center
-      // and a wider dim glow is what reads as "glowing" instead of "a
-      // blurred disc", and gives the bloom pass a distinct bright point to
-      // catch on top of the ambient halo. uCoreMix at 0 collapses this back
-      // to the original halo-only look exactly (haloWeight -> 1.0, core
-      // contribution -> 0) so the toggle has no discontinuity.
-      float halo = smoothstep(1.0, 0.0, dist);
-      float core = smoothstep(0.35, 0.0, dist);
-      float haloWeight = mix(1.0, 0.75, uCoreMix);
-      float a = (halo * haloWeight + core * 0.9 * uCoreMix) * vAlpha;
-      if (a <= 0.001) discard;
-      // push the core toward white so the very center reads hot rather
-      // than just a saturated flat color
-      vec3 col = mix(vColor, vec3(1.0), core * 0.65 * uCoreMix);
-      // Non-premultiplied: color stays true even at low alpha, so a black
-      // particle blends toward black (visible on any non-black background)
-      // instead of contributing nothing the way premultiplied-additive did.
-      gl_FragColor = vec4(col, a);
+      float x = clamp(vLocal.x, 0.0, vLen);
+      float dist = length(vec2(vLocal.x - x, vLocal.y));
+      // crisp core: full strength inside the radius, a 1px soft edge outside it
+      float core = 1.0 - smoothstep(vR - 0.5, vR + 0.6, dist);
+      // faint wide halo so lights still read as glowing, not as wire
+      float q = dist / (vR * 2.2);
+      float halo = max(0.0, 1.0 - q) ; halo *= halo * uHalo;
+      // the streak is brightest at the head and fades toward the tail
+      float head = vLen > 0.5 ? mix(0.3, 1.0, x / vLen) : 1.0;
+      float a = (core + halo * 0.45) * vAlpha * head;
+      if (a <= 0.002) discard;
+      // fast particles burn whiter; the core gets a touch of white heat too
+      float white = clamp(vHeat * 0.6 + core * 0.18 * uCoreMix, 0.0, 0.85);
+      vec3 col = mix(vColor, vec3(1.0), white);
+      // premultiplied, added on top of whatever is already in the layer
+      gl_FragColor = vec4(col * a, min(1.0, a));
     }
   `;
   const particleMaterial = new THREE.ShaderMaterial({
     vertexShader: particleVS,
     fragmentShader: particleFS,
-    uniforms: { uSizeScale: { value: camera.userData.orbitRadius || 800 }, uCoreMix: { value: 1 } },
+    uniforms: {
+      uSizeScale: { value: camera.userData.orbitRadius || 800 },
+      uCoreMix: { value: 1 },
+      uRes: { value: new THREE.Vector2(1, 1) },
+      uWidth: { value: 0.6 },
+      uHalo: { value: 1 }
+    },
     transparent: true,
     depthTest: false,
     depthWrite: false,
-    // Standard (non-additive) alpha blending: a particle's own color always
-    // shows through against the background, including pure black — additive
-    // blending added nothing for black (0,0,0), making it invisible on any
-    // background. The bloom/composite pass still adds the glow on top.
-    blending: THREE.NormalBlending
+    blending: THREE.CustomBlending,
+    blendEquation: THREE.AddEquation,
+    blendSrc: THREE.OneFactor,
+    blendDst: THREE.OneFactor,
+    blendEquationAlpha: THREE.AddEquation,
+    blendSrcAlpha: THREE.OneFactor,
+    blendDstAlpha: THREE.OneFactor
   });
 
   // Fullscreen-quad fade shader: draws the previous frame's texture back
@@ -1240,13 +1287,17 @@ import * as THREE from 'three';
   // Particle geometry — reused every frame, resized only when the particle
   // count changes, so no per-frame allocation.
   let particleCapacity = 0;
-  let posArr, colorArr, sizeArr, alphaArr;
-  let posAttr, colorAttr, sizeAttr, alphaAttr;
+  let posArr, tailArr, colorArr, sizeArr, alphaArr, heatArr;
+  let posAttr, tailAttr, colorAttr, sizeAttr, alphaAttr, heatAttr;
   // Particle colors change only when a palette changes or particles are added.
   // Avoid uploading the color buffer on every frame when it is unchanged.
   let particleColorDirty = true;
-  const particleGeometry = new THREE.BufferGeometry();
-  const points = new THREE.Points(particleGeometry, particleMaterial);
+  const particleGeometry = new THREE.InstancedBufferGeometry();
+  // one quad, corners at x = -1 (tail end) / +1 (head end), y = -1 / +1 (sides)
+  particleGeometry.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, -1, 1, 0, 1, 1, 0], 3));
+  particleGeometry.setIndex([0, 1, 2, 2, 1, 3]);
+  particleGeometry.instanceCount = 0;
+  const points = new THREE.Mesh(particleGeometry, particleMaterial);
   points.frustumCulled = false; // the field moves every frame; skip bounds bookkeeping we'd have to keep recomputing anyway
   particleScene.add(points);
 
@@ -1255,18 +1306,21 @@ import * as THREE from 'three';
     // Grow geometrically so a large density-slider jump does not trigger a new
     // GPU-buffer allocation on almost every simulation frame.
     particleCapacity = Math.max(1024, n + 512, Math.ceil(particleCapacity * 1.5));
+    const inst = (arr, size) => new THREE.InstancedBufferAttribute(arr, size).setUsage(THREE.DynamicDrawUsage);
     posArr = new Float32Array(particleCapacity * 3);
+    tailArr = new Float32Array(particleCapacity * 3);
     colorArr = new Float32Array(particleCapacity * 3);
     sizeArr = new Float32Array(particleCapacity);
     alphaArr = new Float32Array(particleCapacity);
-    posAttr = new THREE.BufferAttribute(posArr, 3).setUsage(THREE.DynamicDrawUsage);
-    colorAttr = new THREE.BufferAttribute(colorArr, 3).setUsage(THREE.DynamicDrawUsage);
-    sizeAttr = new THREE.BufferAttribute(sizeArr, 1).setUsage(THREE.DynamicDrawUsage);
-    alphaAttr = new THREE.BufferAttribute(alphaArr, 1).setUsage(THREE.DynamicDrawUsage);
-    particleGeometry.setAttribute('position', posAttr);
+    heatArr = new Float32Array(particleCapacity);
+    posAttr = inst(posArr, 3); tailAttr = inst(tailArr, 3); colorAttr = inst(colorArr, 3);
+    sizeAttr = inst(sizeArr, 1); alphaAttr = inst(alphaArr, 1); heatAttr = inst(heatArr, 1);
+    particleGeometry.setAttribute('iPos', posAttr);
+    particleGeometry.setAttribute('iTail', tailAttr);
     particleGeometry.setAttribute('aColor', colorAttr);
     particleGeometry.setAttribute('aSize', sizeAttr);
     particleGeometry.setAttribute('aAlpha', alphaAttr);
+    particleGeometry.setAttribute('aHeat', heatAttr);
     particleColorDirty = true;
   }
 
@@ -1332,7 +1386,7 @@ import * as THREE from 'three';
   const LATTICE_CELL = 42;
 
   // ---------- Params ----------
-  let targetCount = 250;  // desired number of particles on screen — set by slider
+  let targetCount = 2000;  // desired number of particles on screen — set by slider
   let trailAmt = 45;      // 0-95 -> alpha of fade rect, controls trail length
   let sizeScale = 1;      // multiplier applied to every particle's radius
   let dragCoef = 0.999 - (34 / 100) * 0.099; // friction -> per-frame velocity retention
@@ -1456,7 +1510,8 @@ import * as THREE from 'three';
   function reconcilePopulation() {
     // step scales with how far we are from the target so huge jumps (e.g.
     // toward the 50000 cap) settle in a couple seconds, not a minute.
-    effectiveTargetCount = qualityMode === 'auto' ? Math.min(targetCount, particleBudget()) : targetCount;
+    const wanted = superRes ? Math.max(targetCount, coarsePointer ? 14000 : 32000) : targetCount;
+    effectiveTargetCount = qualityMode === 'auto' ? Math.min(wanted, particleBudget()) : wanted;
     const previousCount = particles.length;
     const step = Math.max(6, Math.ceil(Math.abs(effectiveTargetCount - particles.length) / 30));
     if (particles.length < effectiveTargetCount) {
@@ -1488,8 +1543,8 @@ import * as THREE from 'three';
       p.ts = now;
       p.px = p.x; p.py = p.y;
       p.x = x; p.y = y;
-      p.vx = (p.x - p.px) * per60;
-      p.vy = (p.y - p.py) * per60;
+      p.vx += ((p.x - p.px) * per60 - p.vx) * 0.6;
+      p.vy += ((p.y - p.py) * per60 - p.vy) * 0.6;
     }
   }
   function removePointer(id) {
@@ -3213,7 +3268,9 @@ import * as THREE from 'three';
     if (complexity > 18000) return 2;
     return 1;
   }
-  const MOTION_SCALE = 0.5; // scales how far velocity actually moves particles per frame — halves visible speed while leaving momentum/overshoot physics (which run on velocity, not position) untouched
+  const MOTION_SCALE = 0.75; // scales how far velocity actually moves particles per frame — halves visible speed while leaving momentum/overshoot physics (which run on velocity, not position) untouched
+  const SUBSTEP_DT = 1;    // largest physics step, in 60 Hz frames: big steps make springs overshoot and jitter
+  const MAX_SUBSTEPS = 6;
   const EMPTY_POINTERS = []; // reused when no touches are active, so we don't allocate a new empty array every frame
   // Presets alter only audio-derived forces, size, glow, and trails. Touch
   // interaction and the user's own visual settings remain completely intact.
@@ -3338,14 +3395,12 @@ import * as THREE from 'three';
     // globalCompositeOperation = 'lighter' additive-glow blending.
     ensureParticleBuffers(particles.length);
     // These values are identical for every particle in this frame.
-    const frameDrag = Math.pow(dragCoef, dt);
     const basePointSize = sizeScale * (1 + audioEnergy.bass * visualizer.bassSize + audioEnergy.kick * visualizer.kickSize) * 2 * DPR;
     // Colors are static during normal animation frames, so skip both the CPU
     // writes and the GPU transfer until the palette or population changes.
     const updateColorBuffer = particleColorDirty;
     const is3DMode = MODES_3D.has(mode);
     const isFlowMode = FLOW_3D_MODES.has(mode);
-    if (isFlowMode) prepareFlowFrame(activePointers, reactiveDt, W * 0.5, H * 0.5);
     const flowKick = isFlowMode ? audioEnergy.kick * 2.2 * visualizer.kickForce : 0;
     const hasActivePointers = activePointers.length > 0;
     const hasKickForce = audioEnergy.kick > 0.015;
@@ -3355,16 +3410,27 @@ import * as THREE from 'three';
     const halfH = H * 0.5;
     const touchForceStride = touchForceStrideFor(activePointers.length, particles.length);
     const touchForcePhase = (touchSimulationPhase++) % touchForceStride;
-    const touchForceDt = Math.min(5, reactiveDt * touchForceStride * touchStrength);
     let totalVelocityActivity = 0;
+    const frameDt = dt;
+    // Physics runs in steps no bigger than one 60 Hz frame. At high Speed (or
+    // after a slow frame) one big step makes every spring and orbit overshoot,
+    // which is what made the field look frantic; several small steps cover the
+    // same time smoothly.
+    const substeps = Math.min(MAX_SUBSTEPS, Math.max(1, Math.ceil(frameDt / SUBSTEP_DT - 1e-6)));
+    for (let step = 0; step < substeps; step++) {
+    const dt = frameDt / substeps;
+    const stepReactiveDt = reactiveDt / substeps;
+    const lastStep = step === substeps - 1;
+    const frameDrag = Math.pow(dragCoef, dt);
+    const touchForceDt = Math.min(5, stepReactiveDt * touchForceStride * touchStrength);
+    if (isFlowMode) prepareFlowFrame(activePointers, stepReactiveDt, halfW, halfH);
 
     for (let i = 0; i < particles.length; i++) {
       const pt = particles[i];
-      const sparkleActive = pt.sparkle && sparkleEnabled;
       pt.formActive = false;
 
       if (isFlowMode) {
-        flowStep(pt, reactiveDt, activePointers, halfW, halfH, flowKick);
+        flowStep(pt, stepReactiveDt, activePointers, halfW, halfH, flowKick);
       } else {
         // gentle ambient drift so the field is always alive, even untouched —
         // skipped in every 3D mode, where it just fights the shape spring and
@@ -3447,7 +3513,7 @@ import * as THREE from 'three';
 
         pt.vx *= frameDrag;
         pt.vy *= frameDrag;
-        if (velocityTrails) {
+        if (velocityTrails && lastStep) {
           // Squared speed avoids an extra square root in this hot loop while
           // still mapping faster particles to a stronger trail extension.
           const postDragSpeedSquared = pt.vx * pt.vx + pt.vy * pt.vy;
@@ -3483,6 +3549,18 @@ import * as THREE from 'three';
         }
 
       }
+    }
+    }
+
+    // Streak length, in frames of motion. Divided by the real frame time so a
+    // streak is the same length at 60 and 120 Hz.
+    const streakFrames = Math.max(1.2, (superRes ? 4 : 3) / frameScale); // never shorter than one frame of movement, or slow frames show gaps
+    const maxStreak = (superRes ? 180 : 120);
+    const jumpSq = Math.pow(Math.min(W, H) * 0.3, 2);
+    const heatSpeed = 14 * frameScale; // movement per frame (world px) that reads as fully white-hot
+    for (let i = 0; i < particles.length; i++) {
+      const pt = particles[i];
+      const sparkleActive = pt.sparkle && sparkleEnabled;
 
       // Sparkles flicker on a sharper, faster cycle that dips low between
       // flares (Math.max floors it near 0) instead of the gentle sine
@@ -3535,9 +3613,27 @@ import * as THREE from 'three';
       const o3 = i * 3;
       // world space is centered on the field, with y flipped so pixel-down
       // maps to world-down the same way the old top-left screen space did
-      posArr[o3] = pt.x - halfW;
-      posArr[o3 + 1] = halfH - pt.y;
-      posArr[o3 + 2] = pt.z;
+      const hx = pt.x - halfW, hy = halfH - pt.y, hz = pt.z;
+      posArr[o3] = hx;
+      posArr[o3 + 1] = hy;
+      posArr[o3 + 2] = hz;
+      // The tail trails back along the last frame's movement. A wrap or a
+      // teleport is not movement, so it starts a fresh streak instead of
+      // drawing a line across the screen.
+      let mx = 0, my = 0, mz = 0;
+      if (pt.rx !== undefined) { mx = hx - pt.rx; my = hy - pt.ry; mz = hz - pt.rz; }
+      let moveSq = mx * mx + my * my + mz * mz;
+      if (moveSq > jumpSq) { mx = my = mz = 0; moveSq = 0; }
+      pt.rx = hx; pt.ry = hy; pt.rz = hz;
+      const move = Math.sqrt(moveSq);
+      let k = streakFrames;
+      if (move * k > maxStreak) k = maxStreak / move;
+      tailArr[o3] = hx - mx * k;
+      tailArr[o3 + 1] = hy - my * k;
+      tailArr[o3 + 2] = hz - mz * k;
+      const heatTarget = Math.min(1, move / heatSpeed);
+      pt.heat = (pt.heat || 0) + (heatTarget - (pt.heat || 0)) * 0.35;
+      heatArr[i] = pt.heat;
       if (updateColorBuffer) {
         colorArr[o3] = pt.colorR; colorArr[o3 + 1] = pt.colorG; colorArr[o3 + 2] = pt.colorB;
       }
@@ -3556,7 +3652,10 @@ import * as THREE from 'three';
       // Sparkles are allowed to overdrive slightly past 1 so their flares
       // reliably clear the bloom brightness threshold instead of just
       // sitting at the same ceiling as every other particle.
-      alphaArr[i] = Math.min(sparkleActive ? 1.3 : 1, alpha * (isFlowMode ? pt.flowLight : 1));
+      // Moving lights glow brighter than resting ones, so motion has energy.
+      // Super res has many more lights, so each one is a little dimmer.
+      const energy = 0.7 + pt.heat * 0.7;
+      alphaArr[i] = Math.min(sparkleActive ? 1.3 : 1.2, alpha * energy * (superRes ? 0.9 : 1) * (isFlowMode ? pt.flowLight : 1));
     }
 
     // Smooth the measured field activity for the next frame's fade pass.
@@ -3570,13 +3669,17 @@ import * as THREE from 'three';
 
     // ---------- One draw call for every particle on screen ----------
     posAttr.needsUpdate = true;
+    tailAttr.needsUpdate = true;
+    heatAttr.needsUpdate = true;
+    particleMaterial.uniforms.uWidth.value = (superRes ? 0.12 : 0.18) * (MODES_3D.has(mode) ? 1.3 : 1);
+    particleMaterial.uniforms.uHalo.value = superRes ? 0.3 : 0.45;
     if (particleColorDirty) {
       colorAttr.needsUpdate = true;
       particleColorDirty = false;
     }
     sizeAttr.needsUpdate = true;
     alphaAttr.needsUpdate = true;
-    particleGeometry.setDrawRange(0, particles.length);
+    particleGeometry.instanceCount = particles.length;
     renderer.setRenderTarget(particleLayer);
     renderer.setClearColor(_clearBlack, 0);
     renderer.clear(true, false, false);
@@ -3655,13 +3758,13 @@ import * as THREE from 'three';
   const pct = (v) => v + '%';
   const SLIDERS = [
     // group, key (saved name), label, hint, min, max, step, default, apply, format
-    { group: 'grp-field', key: 'density', label: 'Particles', hint: 'How many lights are in the field', min: 0, max: 1000, step: 1, def: 250,
+    { group: 'grp-field', key: 'density', label: 'Particles', hint: 'How many lights are in the field', min: 0, max: 1000, step: 1, def: 2000,
       toPos: densityToPos, fromPos: densityFromPos, apply: (v) => { targetCount = v; }, fmt: (v) => v >= 10000 ? (v / 1000).toFixed(v >= 20000 ? 0 : 1) + 'k' : String(v) },
     { group: 'grp-field', key: 'speed', label: 'Speed', hint: 'Pace of everything', min: 10, max: 300, step: 5, def: 100, apply: (v) => { simSpeed = v / 100; }, fmt: pct },
     { group: 'grp-field', key: 'glide', label: 'Glide', hint: 'How long particles coast after a push', min: 0, max: 100, step: 1, def: 66,
       apply: (v) => { dragCoef = 0.999 - ((100 - v) / 100) * 0.099; } },
     { group: 'grp-field', key: 'drift', label: 'Drift', hint: 'Gentle wandering when untouched', min: 0, max: 300, step: 5, def: 100, apply: (v) => { ambientDrift = v / 100; }, fmt: pct },
-    { group: 'grp-field', key: 'turbulence', label: 'Turbulence', hint: 'Swirling eddies through the field', min: 0, max: 100, step: 1, def: 0, apply: (v) => { turbulenceStrength = v / 100; } },
+    { group: 'grp-field', key: 'turbulence', label: 'Turbulence', hint: 'Swirling eddies through the field', min: 0, max: 100, step: 1, def: 10, apply: (v) => { turbulenceStrength = v / 100; } },
     { group: 'grp-field', key: 'vortex', label: 'Spin', hint: 'Whole field circles the centre', min: 0, max: 100, step: 1, def: 0, apply: (v) => { vortexStrength = v / 100; } },
     { group: 'grp-field', key: 'edge', label: 'Edge pull', hint: 'Steers lights away from the screen edges', min: 0, max: 100, step: 1, def: 0, apply: (v) => { edgeReturnStrength = v / 25; } },
     { group: 'grp-field', key: 'maxSpeed', label: 'Speed limit', hint: 'Top speed any particle can reach', min: 4, max: 48, step: 1, def: 32, apply: (v) => { maxParticleSpeed = v; } },
@@ -3669,13 +3772,14 @@ import * as THREE from 'three';
     { group: 'grp-touch', key: 'release', label: 'Release burst', hint: 'Kick when you lift a finger', min: 0, max: 200, step: 5, def: 100, apply: (v) => { releaseStrength = v / 100; }, fmt: pct },
     { group: 'grp-look', key: 'size', label: 'Size', min: 40, max: 220, step: 5, def: 100, apply: (v) => { sizeScale = v / 100; }, fmt: pct },
     { group: 'grp-look', key: 'brightness', label: 'Brightness', min: 30, max: 160, step: 5, def: 100, apply: (v) => { brightnessMult = v / 100; }, fmt: pct },
-    { group: 'grp-look', key: 'trail', label: 'Trail', hint: 'How long each light leaves a streak', min: 0, max: 100, step: 1, def: 45, apply: (v) => { trailAmt = v; },
+    { group: 'grp-look', key: 'trail', label: 'Trail', hint: 'How long each light leaves a streak', min: 0, max: 100, step: 1, def: 32, apply: (v) => { trailAmt = v; },
       fmt: (v) => { const hl = 1.6 * Math.pow(v / 100, 2.2); return v === 0 ? 'Off' : (hl < 1 ? Math.round(hl * 1000) + ' ms' : hl.toFixed(1) + ' s'); } },
     { group: 'grp-glow', key: 'glow', label: 'Glow', hint: '0 turns bloom off', min: 0, max: 200, step: 5, def: 100, apply: (v) => { bloomStrengthMult = v / 100; bloomEnabled = v > 0; }, fmt: (v) => v === 0 ? 'Off' : v + '%' },
     { group: 'grp-glow', key: 'glowReach', label: 'Glow reach', hint: 'Higher lets dimmer lights glow too', min: 0, max: 100, step: 1, def: 50, apply: (v) => { glowThreshold = 0.6 - v / 100 * 0.5; } },
     { group: 'grp-3d', key: 'idleSpin', label: 'View turn', hint: 'How fast the 3D volume turns so you see its depth', min: 0, max: 300, step: 10, def: 100, apply: (v) => { flowIdleSpinMult = v / 100; }, fmt: pct }
   ];
   const TOGGLES = [
+    { group: 'tog-look', key: 'superRes', label: 'Super res', hint: 'Native resolution, thousands more finer lights, longer streaks. Uses more battery', def: false, apply: (on) => { if (superRes !== on) { superRes = on; resize(); } } },
     { group: 'tog-look', key: 'velocityTrails', label: 'Motion trails', hint: 'Trails stretch while the field moves fast', def: false, apply: (on) => { velocityTrails = on; } },
     { group: 'tog-look', key: 'sparkleEnabled', label: 'Sparkles', hint: 'A few lights twinkle brighter', def: true, apply: (on) => { sparkleEnabled = on; } },
     { group: 'tog-glow', key: 'hotCoreEnabled', label: 'Hot core', hint: 'White-hot centre in each light', def: true, apply: (on) => { hotCoreEnabled = on; particleMaterial.uniforms.uCoreMix.value = on ? 1 : 0; } },
@@ -3692,7 +3796,7 @@ import * as THREE from 'three';
     if (!settingsReady) return;
     try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(Object.assign({
-        mode, paletteKey: paletteKey === '__draft' ? (editBefore || 'neon') : paletteKey
+        mode, v2: true, paletteKey: paletteKey === '__draft' ? (editBefore || 'neon') : paletteKey
       }, settingValues)));
     } catch (e) {}
   }
@@ -3747,6 +3851,8 @@ import * as THREE from 'three';
     saved = saved || {};
     // older saves: 'bloomEnabled' false meant glow off
     if (saved.glow === undefined && saved.bloomEnabled === false) saved.glow = 0;
+    // older saves: the old defaults were 250 particles, 45 trail and no turbulence
+    if (!saved.v2) { if (saved.density === 250) delete saved.density; if (saved.trail === 45) delete saved.trail; if (saved.turbulence === 0) delete saved.turbulence; }
     SLIDERS.forEach((def) => setSlider(def, typeof saved[def.key] === 'number' ? saved[def.key] : def.def));
     TOGGLES.forEach((def) => setToggle(def, typeof saved[def.key] === 'boolean' ? saved[def.key] : def.def));
   }
