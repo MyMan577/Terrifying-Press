@@ -536,6 +536,7 @@
           t = alNext(Object.assign({}, a, { snoozeAt: null }), t);
         }
       });
+      try { ringSnapSave(); } catch(e){ if (typeof ppCaught === 'function') ppCaught(e); }
       N.alarms({ items: items }).then(function(r){ natExact = r && r.exact; if (r && r.screen) natAcc = { overlay: !!r.overlay, fullScreen: r.fullScreen !== false }; alPaint(); }).catch(function(){});
       alSaveSounds();
     }, 300);
@@ -980,6 +981,69 @@
   })();
   // coming back to the app while an alarm rings: the screen is waiting
   document.addEventListener('visibilitychange', function(){ if (!document.hidden && RING && RS.alarm && !rsOn()) rsShow('alarm'); });
+  // ---------- what the ringing screen's widgets show, for the alarm page ----------
+  // The alarm page (www/alarm.html) does not load your library. So that its widgets still show your songs and
+  // playlists, the app draws the ringing screen's widgets off screen now and then (when the app is left, or the
+  // alarms change) and keeps just what they showed in 'ppRingSnapV1': every song whose cover or card was drawn, and the
+  // songs of each playlist shown (50 at most), in library order (so "Recently added", "Most played" and the rest
+  // pick the same ones there), plus the numbers the Stats widget shows. Nothing is kept when no widget shows a song.
+  var SNAP_KEY = 'ppRingSnapV1';
+  function ringSnapSave(){
+    if (ALPAGE) return;
+    var A = api(), K = kit(), items = zoneItems('ring', false) || [];
+    if (!A || !natScreen() || !items.length || !AL.some(function(a){ return a.on; })){ try { localStorage.removeItem(SNAP_KEY); } catch(e){} return; }
+    var t = A.tracks(), seen = {}, plSeen = {};
+    var mark = function(x){ if (x && x.dbId != null && !x.stem) seen[x.dbId] = 1; };
+    var thumb0 = window.__ppThumbSrc, card0 = K && K.cardHTML, row0 = K && K.listRowHTML, th0 = K && K.thumbHTML;
+    var box = document.createElement('div');
+    box.style.cssText = 'position:fixed;left:-10000px;top:0;width:420px;visibility:hidden;pointer-events:none;contain:strict';
+    try {
+      // every song a widget draws asks for its cover (or is drawn as a card): that is how the shown ones are found
+      window.__ppThumbSrc = function(x){ mark(x); return thumb0 ? thumb0(x) : null; };
+      if (K){ K.cardHTML = function(x){ mark(x); return card0.apply(this, arguments); }; K.listRowHTML = function(x){ mark(x); return row0.apply(this, arguments); };
+              K.thumbHTML = function(x){ mark(x); return th0.apply(this, arguments); }; }
+      box.innerHTML = renderZone('ring', null);
+      body.appendChild(box);
+      var st = liveState();
+      box.querySelectorAll('[data-pw-live]').forEach(function(el){ var d = T[el.dataset.pwLive]; if (d && d.live) try { d.live(el, st); } catch(e){} });
+      box.querySelectorAll('[data-pl], [data-pw-plt]').forEach(function(el){ plSeen[el.dataset.pl || el.dataset.pwPlt] = 1; });
+    } catch(e){ if (typeof ppCaught === 'function') ppCaught(e); }
+    finally {
+      window.__ppThumbSrc = thumb0;
+      if (K){ K.cardHTML = card0; K.listRowHTML = row0; K.thumbHTML = th0; }
+      box.remove();
+    }
+    var pls = A.playlists().filter(function(p){ return plSeen[p.id]; });
+    pls.forEach(function(pl){
+      var q = []; t.forEach(function(x, i){ if ((x.playlistIds || []).indexOf(pl.id) >= 0 && !x.stem) q.push(i); });
+      if (A.orderFor){ var o = A.orderFor(q, pl.id); if (Array.isArray(o)) q = o; }
+      q.slice(0, 50).forEach(function(i){ mark(t[i]); });
+    });
+    var ids = Object.keys(seen);
+    if (!ids.length && !pls.length){ try { localStorage.removeItem(SNAP_KEY); } catch(e){} return; }
+    var keepPl = {}; pls.forEach(function(p){ keepPl[p.id] = 1; });
+    var tags = null; try { tags = window.PPVocals && PPVocals.loadTags ? PPVocals.loadTags() : null; } catch(e){}
+    var pos = {}; try { pos = (A.w && A.w.positions && A.w.positions()) || {}; } catch(e){}
+    var out = [], gn = {}, ps = {}, v = 0, a = 0;
+    t.forEach(function(x){
+      if (!x.stem){ if (x.kind === 'video') v++; else a++; }
+      if (!seen[x.dbId] || out.length >= 300) return;
+      var o = { dbId: x.dbId, kind: x.kind, title: x.title, artist: x.artist, album: x.album, duration: x.duration, ext: x.ext,
+                width: x.width, height: x.height, playlistIds: (x.playlistIds || []).filter(function(id){ return keepPl[id]; }) };
+      var u = x.nativeUri || (x.remoteUrl && /^https?:/i.test(x.remoteUrl) ? x.remoteUrl : '');
+      if (u) o.u = String(u).split('#pp-cue=')[0];
+      if (x.nativeArt) o.nativeArt = String(x.nativeArt).replace(/^file:\/\//, '');
+      if (x.cueStart != null){ o.cueStart = x.cueStart; o.cueEnd = x.cueEnd; }
+      if (tags && tags[String(x.dbId)] && tags[String(x.dbId)].gn) gn[x.dbId] = { gn: tags[String(x.dbId)].gn.slice(0, 1) };
+      if (pos[x.dbId]) ps[x.dbId] = pos[x.dbId];
+      out.push(o);
+    });
+    var hist = (K ? K.history() : []).filter(function(h){ return seen[h.id]; }).slice(0, 40);
+    var snap = { at: Date.now(), tracks: out, hist: hist, tags: gn, pos: ps,
+      playlists: pls.map(function(p){ var c = {}; for (var k in p) if (k !== 'thumb' || String(p.thumb).length < 60000) c[k] = p[k]; return c; }),
+      counts: { videos: v, songs: a, playlists: A.playlists().filter(function(p){ return !p.libOnly; }).length } };
+    try { localStorage.setItem(SNAP_KEY, JSON.stringify(snap)); } catch(e){ try { localStorage.removeItem(SNAP_KEY); } catch(x){} }
+  }
   // the alarm page: its one job is this screen, for the alarm that is ringing (whether or not it is switched on for alarms)
   if (ALPAGE) ALPAGE.ring = function(id, at, until){ RING = { id: id, at: at || Date.now(), t0: Date.now(), until: until || 0 }; rsShow('alarm'); return !!alById(id); };
 

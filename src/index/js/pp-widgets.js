@@ -275,8 +275,9 @@
     fields:[['sv','Videos','toggle',true],['sa','Songs','toggle',true],['sp','Playlists','toggle',true],['shr','Hours played','toggle',true],['look','Look','seg',[['','Tiles'],['plain','Plain'],['line','One line']]]],
     render:function(o){
       var A = api(), t = A ? A.tracks() : [], v = 0, a = 0;
-      t.forEach(function(x){ if (x.stem) return; if (x.kind === 'video') v++; else a++; });
-      var pls = A ? A.playlists().filter(function(p){ return !p.libOnly; }).length : 0, hrs = 0;
+      var C = A && A.counts ? A.counts() : null;   // the alarm page has only some of the library: it has the totals too
+      if (C){ v = C.videos || 0; a = C.songs || 0; } else t.forEach(function(x){ if (x.stem) return; if (x.kind === 'video') v++; else a++; });
+      var pls = C ? C.playlists || 0 : A ? A.playlists().filter(function(p){ return !p.libOnly; }).length : 0, hrs = 0;
       try { var s = JSON.parse(localStorage.getItem('pppSaveV1')) || {}; hrs = (s.totalListenMs || 0) / 3600000; } catch(e){}
       var cell = function(n, l){ return '<div class="pw-stat"><b>' + n + '</b><span>' + l + '</span></div>'; };
       var cells = (o.sv === false ? '' : cell(v, 'videos')) + (o.sa === false ? '' : cell(a, 'songs')) + (o.sp === false ? '' : cell(pls, 'playlists')) + (o.shr === false ? '' : cell(hrs < 10 ? hrs.toFixed(1) : Math.round(hrs), 'hours played'));

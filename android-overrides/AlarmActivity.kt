@@ -131,11 +131,8 @@ object AlarmRing {
         NotifyReceiver.postAlarm(ctx, id, it, quiet = true)
     }
 
-    private fun play(ctx: Context, list: JSONArray, loop: Boolean, fadeMin: Double) {
-        val id = ringId
-        if (!PlaybackService.tryStart(ctx)) { musicStarted = false; return }   // the alarm screen tries again once it is up
-        PlaybackService.whenReady(ctx) { s ->
-            if (ringId != id || item == null) return@whenReady
+    /** The songs as the player takes them ({ id, u, t, a, al, art, cs, ce }, as the page sends them). */
+    private fun itemsOf(list: JSONArray): ArrayList<MediaItem> {
             val items = ArrayList<MediaItem>()
             for (k in 0 until list.length()) {
                 val o = list.optJSONObject(k) ?: continue
@@ -152,6 +149,14 @@ object AlarmRing {
                 }
                 items.add(b.build())
             }
+            return items
+    }
+    private fun play(ctx: Context, list: JSONArray, loop: Boolean, fadeMin: Double, start: Int = 0) {
+        val id = ringId
+        if (!PlaybackService.tryStart(ctx)) { musicStarted = false; return }   // the alarm screen tries again once it is up
+        PlaybackService.whenReady(ctx) { s ->
+            if (ringId != id || item == null) return@whenReady
+            val items = itemsOf(list)
             if (items.isEmpty()) return@whenReady
             try {
                 s.clearMirror(); s.cancelCrossfade()
@@ -161,7 +166,7 @@ object AlarmRing {
                 val p = s.player
                 if (before == null) before = Before((0 until p.mediaItemCount).map { k -> p.getMediaItemAt(k) },
                     maxOf(0, p.currentMediaItemIndex), maxOf(0L, p.currentPosition), p.repeatMode, p.shuffleModeEnabled)
-                p.setMediaItems(items, 0, 0L)
+                p.setMediaItems(items, start.coerceIn(0, items.size - 1), 0L)
                 p.shuffleModeEnabled = false
                 p.repeatMode = if (loop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_ALL
                 p.prepare()
@@ -189,7 +194,14 @@ object AlarmRing {
         if (s != null && musicStarted) try {
             val p = s.player
             val dur = p.duration
-            o.put("i", if (p.mediaItemCount > 0) p.currentMediaItemIndex else -1)
+            val n = p.mediaItemCount; val i = if (n > 0) p.currentMediaItemIndex else -1
+            o.put("i", i)
+            if (i >= 0) {
+                o.put("id", p.getMediaItemAt(i).mediaId)
+                val up = JSONArray(); var k = i + 1
+                while (k < n && up.length() < 60) { up.put(p.getMediaItemAt(k).mediaId); k++ }
+                o.put("up", up)
+            }
             o.put("playing", p.playWhenReady)
             o.put("pos", p.currentPosition / 1000.0)
             o.put("dur", if (dur == C.TIME_UNSET || dur < 0) 0.0 else dur / 1000.0)
@@ -201,6 +213,17 @@ object AlarmRing {
     /** The page's controls (from the page's thread). */
     fun cmd(c: String, v: String) = main.post {
         if (item == null) return@post
+        if (c == "queue") {
+            // a song picked on the alarm screen (and the rest of its row): it plays now, instead of the alarm's
+            val ctx = screen?.get() ?: return@post
+            val o = try { JSONObject(v) } catch (_: Exception) { return@post }
+            val list = arr(o, "items") ?: return@post
+            toMusicR?.let { main.removeCallbacks(it) }; toMusicR = null
+            fadeR?.let { main.removeCallbacks(it) }; fadeR = null; fade = 1f
+            musicStarted = true
+            play(ctx.applicationContext, list, false, 0.0, o.optInt("start", 0))
+            return@post
+        }
         val s = PlaybackService.instance ?: return@post
         val p = s.player
         try {
@@ -211,6 +234,10 @@ object AlarmRing {
                 "prev" -> if (p.currentPosition > 3000 || !p.hasPreviousMediaItem()) p.seekTo(0L) else p.seekToPreviousMediaItem()
                 "seek" -> p.seekTo(((v.toDoubleOrNull() ?: 0.0) * 1000).toLong().coerceAtLeast(0L))
                 "playAt" -> { val i = v.toIntOrNull() ?: 0; if (i in 0 until p.mediaItemCount) { p.seekTo(i, 0L); p.play() } }
+                "insert" -> { val o = JSONObject(v); val list = arr(o, "items")
+                    if (list != null && musicStarted) { val at = o.optInt("at", -1); val its = itemsOf(list)
+                        if (at < 0 || at > p.mediaItemCount) p.addMediaItems(its) else p.addMediaItems(at, its) } }
+                "removeAt" -> { val i = v.toIntOrNull() ?: -1; if (i in 0 until p.mediaItemCount && i != p.currentMediaItemIndex) p.removeMediaItem(i) }
                 "vol" -> { vol = ((v.toFloatOrNull() ?: 100f) / 100f).coerceIn(0f, 1f); s.setUserVolume(vol * fade) }
             }
         } catch (_: Exception) {}
