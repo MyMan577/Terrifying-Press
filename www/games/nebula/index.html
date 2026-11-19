@@ -852,8 +852,11 @@ import * as THREE from 'three';
   // same texture at once.
   let fbos = [];
   let particleLayer = null; // this frame's particles alone, on transparent black
-  function makeFBO(w, h) {
+  // Rendering into half-float needs WebGL2 plus a colour-buffer extension; without it the layer is 8-bit and light simply clips.
+  const hdrLayer = !!(renderer.capabilities.isWebGL2 && (renderer.extensions.has('EXT_color_buffer_half_float') || renderer.extensions.has('EXT_color_buffer_float')));
+  function makeFBO(w, h, type) {
     return new THREE.WebGLRenderTarget(w, h, {
+      type: type || THREE.UnsignedByteType,
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
       wrapS: THREE.ClampToEdgeWrapping,
@@ -979,7 +982,7 @@ import * as THREE from 'three';
     const bw = Math.max(1, Math.round(W * DPR)), bh = Math.max(1, Math.round(H * DPR));
     fbos = [makeFBO(bw, bh), makeFBO(bw, bh)];
     if (particleLayer) particleLayer.dispose();
-    particleLayer = makeFBO(bw, bh);
+    particleLayer = makeFBO(bw, bh, hdrLayer ? THREE.HalfFloatType : undefined);
     if (particleMaterial) particleMaterial.uniforms.uRes.value.set(bw, bh);
     // clear both to the current palette background so a resize doesn't flash black
     clearTargetToColor(fbos[0], PALETTES[paletteKey].bg);
@@ -1080,7 +1083,7 @@ import * as THREE from 'three';
       float white = clamp(vHeat * 0.6 + core * 0.18 * uCoreMix, 0.0, 0.85);
       vec3 col = mix(vColor, vec3(1.0), white);
       // premultiplied, added on top of whatever is already in the layer
-      gl_FragColor = vec4(col * a, min(1.0, a));
+      gl_FragColor = vec4(col * a, a);
     }
   `;
   const particleMaterial = new THREE.ShaderMaterial({
@@ -1156,6 +1159,20 @@ import * as THREE from 'three';
   const trailFS = `
     precision mediump float;
     varying vec2 vUv;
+    // The particle layer holds the SUM of every streak's light (additive, in a
+    // half-float target where supported). Mapping it here keeps the average
+    // colour of a crowd and rolls its brightness off smoothly, so dense areas
+    // glow brighter without flattening into a solid white blob; only very
+    // dense cores drift toward white.
+    vec3 toneLayer(vec4 l) {
+      float A = max(l.a, 0.0);
+      if (A < 0.0005) return vec3(0.0);
+      vec3 avg = l.rgb / A;
+      float light = 1.0 - exp(-A * 1.15);
+      float hot = smoothstep(3.0, 24.0, A) * 0.55;
+      return mix(avg, vec3(1.0), hot) * light;
+    }
+
     uniform sampler2D uPrev;
     uniform sampler2D uLayer;
     uniform vec3 uBg;
@@ -1168,8 +1185,7 @@ import * as THREE from 'three';
       // 8-bit buffers: always step at least ~1.5 levels so trails end exactly on the background
       vec3 minStep = sign(d) * min(abs(d), vec3(1.5 / 255.0)) * step(0.0001, f);
       vec3 faded = prevColor + mix(minStep, stepv, step(abs(minStep), abs(stepv)));
-      vec4 layer = texture2D(uLayer, vUv);
-      vec3 cur = uBg * (1.0 - layer.a) + layer.rgb;
+      vec3 cur = toneLayer(texture2D(uLayer, vUv));
       vec3 pick = step(abs(faded - uBg), abs(cur - uBg));
       gl_FragColor = vec4(mix(faded, cur, pick), 1.0);
     }
@@ -1208,10 +1224,24 @@ import * as THREE from 'three';
   const brightFS = `
     precision mediump float;
     varying vec2 vUv;
+    // The particle layer holds the SUM of every streak's light (additive, in a
+    // half-float target where supported). Mapping it here keeps the average
+    // colour of a crowd and rolls its brightness off smoothly, so dense areas
+    // glow brighter without flattening into a solid white blob; only very
+    // dense cores drift toward white.
+    vec3 toneLayer(vec4 l) {
+      float A = max(l.a, 0.0);
+      if (A < 0.0005) return vec3(0.0);
+      vec3 avg = l.rgb / A;
+      float light = 1.0 - exp(-A * 1.15);
+      float hot = smoothstep(3.0, 24.0, A) * 0.55;
+      return mix(avg, vec3(1.0), hot) * light;
+    }
+
     uniform sampler2D uSrc;
     uniform float uThreshold;
     void main() {
-      vec3 c = texture2D(uSrc, vUv).rgb;
+      vec3 c = toneLayer(texture2D(uSrc, vUv));
       float lum = dot(c, vec3(0.299, 0.587, 0.114));
       float mask = smoothstep(uThreshold, uThreshold + 0.25, lum);
       gl_FragColor = vec4(c * mask, 1.0);
@@ -1450,13 +1480,15 @@ import * as THREE from 'three';
     // every particle gets. Scattered among the regular field they read as
     // hero highlights/glints instead of a uniform haze of same-brightness dots.
     const isSparkle = rand(0, 1) < 0.08;
-    const g = isSparkle ? rand(1.3, 1.8) : rand(0.7, 1.15);
+    // Every regular light has the same brightness and nearly the same size, so
+    // none stands out at rest; only motion (heat) and Sparkles make one brighter.
+    const g = isSparkle ? rand(1.3, 1.8) : 1;
     return {
       x: x !== undefined ? x : rand(0, W),
       y: y !== undefined ? y : rand(0, H),
       vx: Math.cos(a) * speed,
       vy: Math.sin(a) * speed,
-      size: rand(1.4, 3.6),
+      size: rand(2.3, 2.7),
       color,
       colorR,
       colorG,
@@ -3568,7 +3600,7 @@ import * as THREE from 'three';
       // distinct glints rather than just "a slightly brighter dot".
       const twinkle = sparkleActive
         ? 0.55 + Math.max(0, Math.sin(pt.wobble * 5.5 + pt.sparklePhase)) * 0.85
-        : 0.85 + Math.sin(pt.wobble * 2.3) * 0.15;
+        : 0.95 + Math.sin(pt.wobble * 2.3) * 0.05;
       // Highs brighten the field; bass adds a smaller lift; a kick adds a
       // sharp extra flash on top so the hit reads instantly, before the
       // push has even had time to move anything. Hi-hats only touch glow
@@ -3781,7 +3813,7 @@ import * as THREE from 'three';
   const TOGGLES = [
     { group: 'tog-look', key: 'superRes', label: 'Super res', hint: 'Native resolution, thousands more finer lights, longer streaks. Uses more battery', def: false, apply: (on) => { if (superRes !== on) { superRes = on; resize(); } } },
     { group: 'tog-look', key: 'velocityTrails', label: 'Motion trails', hint: 'Trails stretch while the field moves fast', def: false, apply: (on) => { velocityTrails = on; } },
-    { group: 'tog-look', key: 'sparkleEnabled', label: 'Sparkles', hint: 'A few lights twinkle brighter', def: true, apply: (on) => { sparkleEnabled = on; } },
+    { group: 'tog-look', key: 'sparkleEnabled', label: 'Sparkles', hint: 'A few lights twinkle brighter', def: false, apply: (on) => { sparkleEnabled = on; } },
     { group: 'tog-glow', key: 'hotCoreEnabled', label: 'Hot core', hint: 'White-hot centre in each light', def: true, apply: (on) => { hotCoreEnabled = on; particleMaterial.uniforms.uCoreMix.value = on ? 1 : 0; } },
     { group: 'tog-touch', key: 'forceWrap', label: 'Forced scroll', hint: 'Particles leaving the screen wrap to the other side in every mode, like Wind', def: false, apply: (on) => { forceWrap = on; } },
     { group: 'tog-display', key: 'sharpRender', label: 'Sharp', hint: 'Full resolution (off is softer, lighter on battery)', def: true, apply: (on) => { if (sharpRender !== on) { sharpRender = on; resize(); } } },
@@ -3852,7 +3884,7 @@ import * as THREE from 'three';
     // older saves: 'bloomEnabled' false meant glow off
     if (saved.glow === undefined && saved.bloomEnabled === false) saved.glow = 0;
     // older saves: the old defaults were 250 particles, 45 trail and no turbulence
-    if (!saved.v2) { if (saved.density === 250) delete saved.density; if (saved.trail === 45) delete saved.trail; if (saved.turbulence === 0) delete saved.turbulence; }
+    if (!saved.v2) { if (saved.density === 250) delete saved.density; if (saved.trail === 45) delete saved.trail; if (saved.turbulence === 0) delete saved.turbulence; if (saved.sparkleEnabled === true) delete saved.sparkleEnabled; }
     SLIDERS.forEach((def) => setSlider(def, typeof saved[def.key] === 'number' ? saved[def.key] : def.def));
     TOGGLES.forEach((def) => setToggle(def, typeof saved[def.key] === 'boolean' ? saved[def.key] : def.def));
   }
