@@ -325,6 +325,18 @@
   // starts what an alarm plays: one song (kept going until the alarm is stopped), what you last played, a playlist
   // (shuffled or in order) or everything shuffled
   function alPlayFrom(m, a, shuf){
+    alPlayFrom0(m, a, shuf);
+    alSeekStart(a);
+  }
+  // the app's player may pick up a song where you last stopped it: put it where this alarm wants it
+  function alSeekStart(a){
+    if (!a) return;
+    setTimeout(function(){
+      var w = wapi(), st = liveState(); if (!w || !w.seek || !st.t) return;
+      var sec = alStartFor(a, st.t); w.seek(sec == null ? 0 : sec);
+    }, 700);
+  }
+  function alPlayFrom0(m, a, shuf){
     if (RING){ RING.loop = null; RING.played = false; }
     if (m === 'song'){
       var i = songIdx(a.song);
@@ -341,7 +353,7 @@
     if (liveState().playing){ RING.idle = 0; RING.played = true; return; }
     if (!RING.played || ++RING.idle < 2) return;
     RING.played = false;
-    RING.idle = 0; var i = songIdx(RING.loop); if (i >= 0) playQ([i]);
+    RING.idle = 0; var i = songIdx(RING.loop); if (i >= 0){ playQ([i]); alSeekStart(alById(RING.id)); }
   }, 1000);
   // the next time it goes off after `from`
   function alNext(a, from){
@@ -496,11 +508,32 @@
     if (t.cueStart != null){ o.cs = Math.round(t.cueStart * 1000); if (t.cueEnd > t.cueStart) o.ce = Math.round(t.cueEnd * 1000); }
     return o;
   }
+  // Where an alarm's songs start: from the beginning (always, whatever "Remember playback position" says), where you
+  // left off (that song's saved spot), or at a set time into each song (a.startAt, "1:30" or "90").
+  function alSongs(a){ return alWake(a) !== 'sound' || (songTone(a.tone) && !alLoud(a)); }
+  function alStartSec(a){
+    var v = String(a.startAt == null ? '' : a.startAt).trim(); if (!v) return 0;
+    var p = v.split(':').map(function(x){ return parseFloat(x) || 0; }), sec = 0;
+    p.forEach(function(x){ sec = sec * 60 + x; });
+    return Math.max(0, Math.min(6 * 3600, sec));
+  }
+  function alStartFor(a, t){   // seconds into song t (null: the beginning)
+    if (a.start === 'at'){ var at = alStartSec(a); return at > 0 && !(t && t.duration > 0 && at > t.duration - 5) ? at : null; }
+    if (a.start === 'resume'){
+      var A = api(), pos = {}; try { pos = (A && A.w && A.w.positions && A.w.positions()) || {}; } catch(e){}
+      var p = t && pos[t.dbId]; return p > 3 && !(t.duration > 0 && p > t.duration - 15) ? p : null;
+    }
+    return null;
+  }
   // m as in alPlayFrom: 'song', 'resume', a playlist id, or '' (everything, shuffled)
   function alQueue(m, a, shuf){
     var A = api(), K = kit(); if (!A) return null;
     var t = A.tracks(), idx = [];
-    if (m === 'song'){ var i = songIdx(a.song); var one = i >= 0 ? alTrackJ(t[i]) : null; if (one) return { q: [one], loop: true }; m = ''; }
+    if (m === 'song'){
+      var i = songIdx(a.song), one = i >= 0 ? alTrackJ(t[i]) : null;
+      if (one){ var s1 = alStartFor(a, t[i]); if (s1 != null) one.st = Math.round(s1 * 1000); return { q: [one], loop: true }; }
+      m = '';
+    }
     if (m === 'resume' && K){ var byId = new Map(t.map(function(x, k){ return [x.dbId, k]; })); idx = K.history().map(function(h){ return byId.get(h.id); }).filter(function(k){ return k != null; }); }
     else if (m && m !== 'none'){
       idx = t.map(function(x, k){ return (x.playlistIds || []).indexOf(m) >= 0 && !x.stem ? k : -1; }).filter(function(k){ return k >= 0; });
@@ -508,11 +541,16 @@
     }
     if (!idx.length) idx = shuffled(t.map(function(x, k){ return k; }));
     var q = [], seen = {};
-    for (var k = 0; k < idx.length && q.length < 40; k++){ var j = alTrackJ(t[idx[k]]); if (j && !seen[j.id]){ seen[j.id] = 1; q.push(j); } }
+    for (var k = 0; k < idx.length && q.length < 40; k++){
+      var j = alTrackJ(t[idx[k]]); if (!j || seen[j.id]) continue;
+      seen[j.id] = 1;
+      var st = alStartFor(a, t[idx[k]]); if (st != null) j.st = Math.round(st * 1000);   // ms into the song
+      q.push(j);
+    }
     return q.length ? { q: q, loop: false } : null;
   }
   function alItem(a, t){
-    var w = alWake(a), it = { id: a.id + '_' + t, at: t, alarm: a.id, timeout: alRingMin(a) * 60000, loud: alLoud(a), wake: w,
+    var w = alWake(a), it = { id: a.id + '_' + t, at: t, alarm: a.id, timeout: alRingMin(a) * 60000, loud: alLoud(a), wake: w, start: a.start === 'at' || a.start === 'resume' ? a.start : '',
       fade: +a.fade || 0, louder: a.louder !== false, label: a.label || 'Alarm', time: a.time,
       title: '⏰ ' + (a.label || 'Alarm') + ' · ' + fmtTime(a.time) };
     if (w !== 'sound'){ var m = alQueue(a.music === 'none' ? '' : a.music, a, !!a.shuf); if (m){ it.q = m.q; it.qLoop = m.loop; } }
@@ -623,6 +661,8 @@
           (a.music === 'song' && a.tone !== 'song' || a.music === 'song' && alWake(a) === 'music' ? songPick(a) : '') +
           (a.music && a.music !== 'none' && a.music !== 'resume' && a.music !== 'song' ? '<div class="ppp-f ppp-f-in"><span>The playlist plays</span>' + alSegS('shuf', [['', 'In order'], ['1', 'Shuffled']], a.shuf ? '1' : '') + '</div>' : '') +
           '<div class="ppp-f"><span>Music volume rises over</span>' + alSeg('fade', [[0, 'No fade'], [1, '1 min'], [3, '3 min'], [10, '10 min']], a.fade) + '</div>' : '') +
+        (alSongs(a) ? '<div class="ppp-f"><span>Songs start</span>' + alSegS('start', [['', 'From the beginning'], ['resume', 'Where I left off'], ['at', 'At a set time']], a.start === 'resume' || a.start === 'at' ? a.start : '') +
+          (a.start === 'at' ? '<label class="ppa-num ppa-startat"><input type="text" inputmode="decimal" maxlength="8" data-ppa-set="startAt" placeholder="1:30" value="' + esc(a.startAt || '') + '" aria-label="Time into the song"><span>into each song (minutes:seconds)</span></label>' : '') + '</div>' : '') +
         '<div class="ppp-f"><span>Stops by itself after</span>' + alSeg('ringFor', [[1, '1 min'], [5, '5 min'], [10, '10 min'], [20, '20 min'], [30, '30 min']], alRingMin(a)) +
           alNum('ringFor', alRingMin(a), 1, 60, 'min') + '</div>' +
         '<div class="ppp-f"><span>Snooze for</span>' + alSeg('snooze', [[5, '5 min'], [9, '9 min'], [10, '10 min'], [15, '15 min']], alSnoozeMin(a)) +

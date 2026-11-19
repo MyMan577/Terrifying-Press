@@ -49,6 +49,8 @@ object AlarmRing {
     @Volatile var stateJson: String = "{}"; private set
     @Volatile var screen: WeakReference<AlarmActivity>? = null
     private var musicStarted = false
+    /** The alarm's songs are on the player: the app's player code (NativePlayerPlugin) keeps out of it. */
+    val owns: Boolean get() = item != null && musicStarted
     private var toneQuiet = false        // the notification is not making a sound (the songs are the alarm sound)
     private var volBefore = -1f
     // what the player had before the alarm (the app's song, where it was, repeat and shuffle): put back afterwards
@@ -149,7 +151,10 @@ object AlarmRing {
                 val art = o.optString("art"); if (art.isNotEmpty()) md.setArtworkUri(Uri.parse(if (art.startsWith("/")) "file://$art" else art))
                 md.setExtras(Bundle().apply { putString("orig", u); putString("kind", "audio") })
                 val b = MediaItem.Builder().setMediaId(o.optString("id").ifEmpty { u }).setUri(Uri.parse(u)).setMediaMetadata(md.build())
-                val cs = o.optLong("cs", -1L); val ce = o.optLong("ce", -1L)
+                var cs = o.optLong("cs", -1L); val ce = o.optLong("ce", -1L)
+                // "Songs start at a set time": every time the song plays (over and over, too) it starts there
+                val st = o.optLong("st", 0L)
+                if (st > 0 && startMode == "at") cs = maxOf(0L, cs) + st
                 if (cs > 0 || ce > 0) {
                     val clip = MediaItem.ClippingConfiguration.Builder().setStartPositionMs(maxOf(0L, cs))
                     if (ce > cs) clip.setEndPositionMs(ce)
@@ -158,6 +163,17 @@ object AlarmRing {
                 items.add(b.build())
             }
             return items
+    }
+    /** Where the alarm's songs start: "" from the beginning, "resume" where you left off (once each), "at" a set time. */
+    private val startMode: String get() = item?.optString("start", "") ?: ""
+    // "Where I left off": each song's saved spot (ms), by its id; used up the first time that song comes on
+    private val resumeAt = HashMap<String, Long>()
+    private val startL = object : Player.Listener {
+        override fun onMediaItemTransition(mi: MediaItem?, reason: Int) {
+            if (mi == null || reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) return
+            val ms = resumeAt.remove(mi.mediaId) ?: return
+            try { PlaybackService.instance?.player?.seekTo(ms) } catch (_: Exception) {}
+        }
     }
     private fun play(ctx: Context, list: JSONArray, loop: Boolean, fadeMin: Double, start: Int = 0) {
         val id = ringId
@@ -177,7 +193,15 @@ object AlarmRing {
                 val p = s.player
                 if (before == null) before = Before((0 until p.mediaItemCount).map { k -> p.getMediaItemAt(k) },
                     maxOf(0, p.currentMediaItemIndex), maxOf(0L, p.currentPosition), p.repeatMode, p.shuffleModeEnabled)
-                p.setMediaItems(items, start.coerceIn(0, items.size - 1), 0L)
+                val first = start.coerceIn(0, items.size - 1)
+                resumeAt.clear()
+                if (startMode == "resume") for (k in 0 until list.length()) {
+                    val o = list.optJSONObject(k) ?: continue; val st = o.optLong("st", 0L)
+                    if (st > 0) resumeAt[o.optString("id").ifEmpty { o.optString("u") }] = st
+                }
+                val firstAt = resumeAt.remove(items[first].mediaId) ?: 0L
+                p.removeListener(startL); p.addListener(startL)
+                p.setMediaItems(items, first, firstAt)
                 p.shuffleModeEnabled = false
                 p.repeatMode = if (loop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_ALL
                 p.prepare()
@@ -334,6 +358,8 @@ object AlarmRing {
         }
         val s = PlaybackService.instance
         val b = before
+        resumeAt.clear()
+        try { s?.player?.removeListener(startL) } catch (_: Exception) {}
         if (s != null && b != null) try {
             val p = s.player
             p.pause()
