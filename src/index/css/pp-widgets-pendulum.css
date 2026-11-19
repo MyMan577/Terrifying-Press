@@ -120,6 +120,10 @@
   .ppa-t{ min-width:0; }
   @media (max-width:380px){ .ppa-t{ font-size:28px; } }
   .ppa-ed{ flex:1 1 100%; padding:10px 8px 6px; border-top:1px solid var(--line); margin-top:4px; }
+  /* A long song or playlist name is cut short with "…": it never makes the alarm wider than the screen (which pushed
+     the right-hand choices of every row off the edge). */
+  .ppa-al, .ppa-ed, .ppa-ed .ppp-f, .ppa-song, .ppa-song-now, .ppa-song-r, .ppa-song-r button{ min-width:0; max-width:100%; box-sizing:border-box; }
+  .ppa-ed select{ max-width:100%; text-overflow:ellipsis; }
   .ppa-ed input[type=time], .ppa-ed input[type=text]{ width:100%; box-sizing:border-box; height:42px; padding:0 12px; border-radius:calc(10px*var(--ui-round,1)); border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; font-size:15px; color-scheme:dark light; }
   .ppa-days{ display:flex; gap:6px; }
   .ppa-days button{ flex:1 1 0; aspect-ratio:1; max-width:44px; border-radius:50%; border:1px solid var(--line); background:var(--bg); color:var(--text-dim); font:inherit; font-size:13px; font-weight:750; cursor:pointer; padding:0; }
@@ -188,12 +192,24 @@
   body.pp-ring-open{ overflow:hidden; }
   .prs-bg, .prs-dim{ position:absolute; inset:0; }
   .prs-dim{ background:#000; pointer-events:none; }
-  .prs-in{ position:relative; height:100%; box-sizing:border-box; display:flex; flex-direction:column; gap:14px; overflow-y:auto;
+  .prs-in{ position:relative; height:100%; box-sizing:border-box; display:flex; flex-direction:column; gap:14px; overflow-y:auto; overflow-x:hidden; overflow-x:clip;
     padding:max(18px, env(safe-area-inset-top, 0px)) max(18px, env(safe-area-inset-right, 0px)) max(18px, env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px)); }
   body.pw-editing #pp-ringscreen .prs-in{ padding-top:calc(max(18px, env(safe-area-inset-top, 0px)) + 64px); }
   .prs-tag{ align-self:center; display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px; background:rgba(0,0,0,.32); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); font-size:14px; text-shadow:0 1px 3px rgba(0,0,0,.4); }
-  .prs-tag svg{ width:18px; height:18px; }
+  .prs-tag svg{ width:18px; height:18px; flex:none; }
   .prs-tag b{ font-weight:800; } .prs-tag span{ color:var(--text-dim); font-variant-numeric:tabular-nums; }
+  /* Long names (an alarm's label, a song or playlist title, an unbroken word) never make the screen wider than the phone:
+     the screen can only scroll up and down, so Snooze and Stop always stay where they are. */
+  .prs-tag{ max-width:100%; min-width:0; box-sizing:border-box; }
+  .prs-tag b{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .prs-tag span{ flex:none; }
+  .prs-left, .prs-zone, .prs-act{ min-width:0; max-width:100%; }
+  .prs-zone .pw-zone, .prs-zone .pw-row, .prs-zone .pw-box{ min-width:0; max-width:100%; }
+  .prs-zone{ overflow-wrap:anywhere; }
+  .prs-zone .ph-sec-head{ min-width:0; }
+  .prs-zone .ph-sec-head h2{ min-width:0; flex:0 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .prs-zone .ph-sec-head .ph-link, .prs-zone .ph-sec-head .ph-count{ flex:none; }
+  .prs-act button{ min-width:0; }
   .prs-zone{ flex:1 1 auto; display:flex; flex-direction:column; justify-content:center; min-height:0; }
   .prs-zone .pw-zone{ width:100%; max-width:620px; margin:0 auto; }
   .prs-zone .pw-card{ background:rgba(0,0,0,.28); border-color:rgba(255,255,255,.14); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); }
