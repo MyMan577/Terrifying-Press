@@ -312,6 +312,24 @@
   .customize-type-btn:hover{ border-color:var(--accent-dim); color:var(--text); }
   .customize-type-btn.active{ color:var(--accent); border-color:var(--accent-dim); background:rgba(var(--accent-rgb,110,231,208),0.08); }
 
+  .customize-type-row{ flex-wrap:wrap; }
+  .customize-type-btn{ min-width:max-content; }
+  /* OLED black: the looks, the "panels too" switch, and the black button by each colour picker */
+  .customize-oled-looks{ display:flex; gap:8px; }
+  .customize-oled-look{
+    flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:8px 4px; background:transparent;
+    border:1px solid var(--line); border-radius:calc(8px*var(--ui-round,1)); color:var(--text-dim); font-size:11.5px; cursor:pointer;
+  }
+  .customize-oled-look i{ display:block; width:100%; height:34px; border-radius:calc(6px*var(--ui-round,1)); border:1px solid #26262b; }
+  .customize-oled-look.active{ color:var(--accent); border-color:var(--accent-dim); }
+  .customize-row label.customize-oled-check{ display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text); margin:0; }
+  .customize-oled-check input{ width:18px; height:18px; accent-color:var(--accent); margin:0; }
+  #customize-oled-all-btn{ width:100%; }
+  .customize-black-btn{
+    margin-top:6px; padding:5px 10px; background:#000; color:#e8e8ea; border:1px solid #2a2a30;
+    border-radius:calc(7px*var(--ui-round,1)); font-size:11px; cursor:pointer;
+  }
+  .customize-gradient-colors > div{ display:flex; flex-direction:column; align-items:stretch; }
   .customize-group{ display:none; }
   .customize-group.show{ display:block; }
 

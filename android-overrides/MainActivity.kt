@@ -74,7 +74,8 @@ class MainActivity : BridgeActivity() {
         nativeVideo = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("native", false)
         installVideoLayer()
         installKeyboardFit()
-        installFullscreen()
+        installBack()
+        installFullscreen()   // after installBack: the last callback added runs first, so Back leaves fullscreen before anything else
         handleIntent(intent)
         askPermissions()
     }
@@ -191,6 +192,38 @@ class MainActivity : BridgeActivity() {
             else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
+
+    // ---------- Back button / back gesture ----------
+    /**
+     * Without this, Back went straight to the default and closed the app, whatever was open. Each press now goes to the page
+     * first: window.ppBack() closes the top-most thing (a menu, dialog, the queue, the player, a folder, a game, another tab)
+     * and says whether it did. Only when nothing is left does the app go to the background, like Home, so music keeps playing
+     * and the page is still there when you come back.
+     */
+    private var backBusy = false
+    private val pageBack = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            val web = bridge?.webView
+            if (web == null) { moveTaskToBack(true); return }
+            if (backBusy) return               // the page is still answering the last press
+            backBusy = true
+            var answered = false
+            val fallback = Runnable {          // a page that is stuck or still loading never answers
+                if (answered) return@Runnable
+                answered = true; backBusy = false
+                if (web.canGoBack()) web.goBack() else moveTaskToBack(true)
+            }
+            web.postDelayed(fallback, 1500)
+            web.evaluateJavascript("(function(){try{return !!(window.ppBack&&window.ppBack());}catch(e){return false;}})()") { r ->
+                if (answered) return@evaluateJavascript
+                answered = true; backBusy = false
+                web.removeCallbacks(fallback)
+                if (r != "true") { if (web.canGoBack()) web.goBack() else moveTaskToBack(true) }
+            }
+        }
+    }
+
+    private fun installBack() { onBackPressedDispatcher.addCallback(this, pageBack) }
 
     // ---------- Fullscreen (the page's requestFullscreen) ----------
     /**

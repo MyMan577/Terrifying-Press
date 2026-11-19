@@ -247,6 +247,24 @@
         <button class="customize-type-btn" data-type="color">Color</button>
         <button class="customize-type-btn" data-type="gradient">Gradient</button>
         <button class="customize-type-btn" data-type="image">Image</button>
+        <button class="customize-type-btn" data-type="oled">OLED black</button>
+      </div>
+
+      <div class="customize-group" id="customize-group-oled">
+        <div class="customize-row">
+          <label>Look</label>
+          <div class="customize-oled-looks">
+            <button type="button" class="customize-oled-look" data-look="pure"><i style="background:#000"></i>Pure black</button>
+            <button type="button" class="customize-oled-look" data-look="glow"><i style="background:#000 radial-gradient(140% 50% at 50% 108%, rgba(var(--accent-rgb,110,231,208),.45), transparent 72%)"></i>Accent glow</button>
+            <button type="button" class="customize-oled-look" data-look="dim"><i style="background:linear-gradient(180deg,#1a1a1d,#000 45%)"></i>Soft top</button>
+          </div>
+        </div>
+        <div class="customize-row">
+          <label class="customize-oled-check"><input type="checkbox" id="customize-oled-panels" checked> Menus, panels and cards in this area go black too</label>
+        </div>
+        <div class="customize-row">
+          <button type="button" class="settings-toggle-btn" id="customize-oled-all-btn">Use OLED black on every area</button>
+        </div>
       </div>
 
       <div class="customize-group" id="customize-group-color">

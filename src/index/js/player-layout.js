@@ -1084,3 +1084,29 @@
     if (h !== last){ last = h; document.body.style.setProperty('--cv-ctl-h', h + 'px'); }
   }).observe(col);
 })();
+
+// pp-quickbar-fit: the upright player's tools row shares a line with the volume while it fits. When it does not, it takes
+// its own line and its buttons spread edge to edge (CSS: #extra-transport.qb-full). Whether it fits is worked out from the
+// buttons' natural width, not from where the row ended up, so spreading it never feeds back into the decision.
+(function(){
+  const row = document.getElementById('extra-transport'), col = document.getElementById('controls-col');
+  if (!row || !col) return;
+  const FOOTER_MIN = 120 + 8;   // #controls-footer: flex-basis / min-width 120px, 8px left margin
+  let raf = 0;
+  function fit(){
+    raf = 0;
+    const btns = [...row.querySelectorAll('.pill-btn, .view-sel')].filter(b => b.getClientRects().length && getComputedStyle(b).display !== 'none');
+    const rowCs = getComputedStyle(row), gap = parseFloat(rowCs.columnGap) || 0;
+    if (!btns.length || rowCs.position === 'fixed' || rowCs.flexDirection === 'column'){ row.classList.remove('qb-full'); return; }   // landscape rail, or nothing to place
+    const need = btns.reduce((w, b) => w + b.offsetWidth, 0) + gap * (btns.length - 1);
+    const colCs = getComputedStyle(col);
+    const room = col.clientWidth - (parseFloat(colCs.paddingLeft) || 0) - (parseFloat(colCs.paddingRight) || 0);
+    row.classList.toggle('qb-full', need + FOOTER_MIN > room);
+  }
+  const soon = () => { if (!raf) raf = requestAnimationFrame(fit); };
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(soon).observe(col);
+  new MutationObserver(soon).observe(row, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+  new MutationObserver(soon).observe(document.body, { attributes: true, attributeFilter: ['class', 'data-pl-player'] });
+  window.addEventListener('orientationchange', soon);
+  soon();
+})();

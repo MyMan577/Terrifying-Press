@@ -190,6 +190,13 @@
     body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #transport #play-btn svg{ width:36px !important; height:36px !important; }
     /* last row: speed / marks / A-B / cut / sleep | volume, pin */
     body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport{ order:3; height:var(--cv-row); justify-content:flex-start; flex:0 1 auto; min-width:0; }
+    /* Too many tools to share a line with the volume: the row gets its own line, and its buttons spread over it edge to edge,
+       lined up with the play controls above (same 6px inset), instead of bunching on the left (pp-quickbar-fit in player-layout.js). */
+    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport.qb-full{
+      flex:1 1 100%; justify-content:space-between; padding:0 6px; box-sizing:border-box;
+    }
+    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport.qb-full + #controls-footer,
+    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport.qb-full ~ #controls-footer{ margin-left:6px; }
     body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #controls-footer{
       order:4; flex:1 1 120px; min-width:120px; height:var(--cv-row); margin:0 0 0 8px; padding:0;
     }
