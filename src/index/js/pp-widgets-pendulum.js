@@ -511,11 +511,36 @@
   // Where an alarm's songs start: from the beginning (always, whatever "Remember playback position" says), where you
   // left off (that song's saved spot), or at a set time into each song (a.startAt, "1:30" or "90").
   function alSongs(a){ return alWake(a) !== 'sound' || (songTone(a.tone) && !alLoud(a)); }
-  function alStartSec(a){
-    var v = String(a.startAt == null ? '' : a.startAt).trim(); if (!v) return 0;
-    var p = v.split(':').map(function(x){ return parseFloat(x) || 0; }), sec = 0;
-    p.forEach(function(x){ sec = sec * 60 + x; });
+  function alStartSec(a){ var s = parseClock(a.startAt); return isNaN(s) ? 0 : s; }
+  // A time into a song, written however people write it (seconds; 0 for nothing written; NaN when it can't be read):
+  //   1:30  1;30  1.30  1,30  1 30   minutes and seconds (and 1:02:30 with hours)
+  //   90    seconds on their own
+  //   1m30s  1 min 30  1 min 30 sec  1.5 min  90s  1h2m  1 hour 2 min   with units (a number after minutes is seconds)
+  function parseClock(v){
+    v = String(v == null ? '' : v).trim().toLowerCase(); if (!v) return 0;
+    var sec = 0;
+    if (/[a-z]/.test(v)){
+      var re = /(\d+(?:[.,]\d+)?)\s*(h(?:ours?|rs?)?|m(?:in(?:ute)?s?)?|s(?:ec(?:ond)?s?)?)?/g, m, last = '', any = false;
+      while ((m = re.exec(v))){
+        var n = parseFloat(m[1].replace(',', '.')), u = (m[2] || '')[0] || '';
+        if (!u) u = last === 'h' ? 'm' : last === 'm' || last === 's' ? 's' : 's';   // "1 min 30": the 30 is seconds
+        sec += u === 'h' ? n * 3600 : u === 'm' ? n * 60 : n; last = u; any = true;
+      }
+      if (!any || v.replace(re, '').replace(/\band\b|[\s:;.,]/g, '') !== '') return NaN;   // anything else in it: not a time
+    } else {
+      var parts = v.split(/\s*[:;.,]\s*|\s+/);
+      if (parts.length > 3 || parts.some(function(x){ return !/^\d+$/.test(x); })) return NaN;
+      parts.forEach(function(x){ sec = sec * 60 + (+x); });
+    }
     return Math.max(0, Math.min(6 * 3600, sec));
+  }
+  function fmtClockS(sec){
+    sec = Math.round(sec); var h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), x = sec % 60;
+    return (h ? h + ':' + (m < 10 ? '0' : '') + m : m) + ':' + (x < 10 ? '0' : '') + x;
+  }
+  function startAtNote(v){
+    var s = parseClock(v);
+    return isNaN(s) ? 'Not a time I can read. Try 1:30, 90 or 1m30s.' : s > 0 ? 'Starts ' + fmtClockS(s) + ' into each song' : 'Like 1:30, 90 or 1m30s';
   }
   function alStartFor(a, t){   // seconds into song t (null: the beginning)
     if (a.start === 'at'){ var at = alStartSec(a); return at > 0 && !(t && t.duration > 0 && at > t.duration - 5) ? at : null; }
@@ -662,7 +687,7 @@
           (a.music && a.music !== 'none' && a.music !== 'resume' && a.music !== 'song' ? '<div class="ppp-f ppp-f-in"><span>The playlist plays</span>' + alSegS('shuf', [['', 'In order'], ['1', 'Shuffled']], a.shuf ? '1' : '') + '</div>' : '') +
           '<div class="ppp-f"><span>Music volume rises over</span>' + alSeg('fade', [[0, 'No fade'], [1, '1 min'], [3, '3 min'], [10, '10 min']], a.fade) + '</div>' : '') +
         (alSongs(a) ? '<div class="ppp-f"><span>Songs start</span>' + alSegS('start', [['', 'From the beginning'], ['resume', 'Where I left off'], ['at', 'At a set time']], a.start === 'resume' || a.start === 'at' ? a.start : '') +
-          (a.start === 'at' ? '<label class="ppa-num ppa-startat"><input type="text" inputmode="decimal" maxlength="8" data-ppa-set="startAt" placeholder="1:30" value="' + esc(a.startAt || '') + '" aria-label="Time into the song"><span>into each song (minutes:seconds)</span></label>' : '') + '</div>' : '') +
+          (a.start === 'at' ? '<label class="ppa-num ppa-startat"><input type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="24" data-ppa-set="startAt" placeholder="1:30" value="' + esc(a.startAt || '') + '" aria-label="Time into the song"><span class="ppa-startat-v">' + esc(startAtNote(a.startAt)) + '</span></label>' : '') + '</div>' : '') +
         '<div class="ppp-f"><span>Stops by itself after</span>' + alSeg('ringFor', [[1, '1 min'], [5, '5 min'], [10, '10 min'], [20, '20 min'], [30, '30 min']], alRingMin(a)) +
           alNum('ringFor', alRingMin(a), 1, 60, 'min') + '</div>' +
         '<div class="ppp-f"><span>Snooze for</span>' + alSeg('snooze', [[5, '5 min'], [9, '9 min'], [10, '10 min'], [15, '15 min']], alSnoozeMin(a)) +
@@ -801,6 +826,11 @@
     var x = e.target; if (!x.dataset || !x.dataset.ppaQ) return;
     var row = x.closest('[data-al]'), a = row && alById(row.dataset.al); if (!a) return;
     songQ[a.id] = x.value; var r = x.parentNode.querySelector('.ppa-song-r'); if (r) r.innerHTML = songResults(a, x.value);
+  });
+  // the time a song starts at: what it was read as, while you type
+  document.addEventListener('input', function(e){
+    var x = e.target; if (!x.dataset || x.dataset.ppaSet !== 'startAt') return;
+    var v = x.parentNode.querySelector('.ppa-startat-v'); if (v){ v.textContent = startAtNote(x.value); v.classList.toggle('bad', isNaN(parseClock(x.value))); }
   });
   document.addEventListener('input', function(e){ var x = e.target; if (x.dataset && x.dataset.ppaSet === 'label'){ var a = alById(x.closest('[data-al]').dataset.al); if (a){ a.label = x.value.slice(0, 40); clearTimeout(x._t); x._t = setTimeout(alSave, 400); } } });
 
