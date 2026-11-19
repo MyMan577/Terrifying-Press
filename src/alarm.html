@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- The page an alarm opens on Android (AlarmActivity.kt), instead of the whole app: the ringing screen's background,
+     Snooze and Stop, and the widgets put on the ringing screen, nothing else. The music is already playing when this
+     loads (the phone's own player started it); the widgets work it through the stand-ins in src/alarm/alarm-shim.js.
+     Built into www/alarm.html by tools/assemble.py. -->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Alarm</title>
+<meta name="theme-color" content="#0c0d10">
+<script>window.__ppAlarmPage = {};</script>
+<style>
+@@include index/css/main/01-sidebar-settings-xp.css@@
+@@include index/css/main/08-layout-home-editions.css@@
+</style>
+<script id="pp-theme-boot">
+@@include index/js/pp-theme-boot.js@@
+</script>
+<style id="pp-refined-css">
+@@include index/css/pp-refined.css@@
+</style>
+<style id="pp-fonts-css">
+@@include index/css/pp-fonts.css@@
+</style>
+<style id="pp-theme-css">
+@@include index/css/pp-theme.css@@
+</style>
+<style id="pp-widgets-css">
+@@include index/css/pp-widgets.css@@
+@@include index/css/pp-fidgets.css@@
+@@include index/css/pp-widgets-more.css@@
+@@include index/css/pp-widgets-music.css@@
+@@include index/css/pp-widgets-tools.css@@
+@@include index/css/pp-widgets-toys.css@@
+@@include index/css/pp-widgets-extras.css@@
+@@include index/css/pp-widgets-pendulum.css@@
+</style>
+<style id="pp-alarm-css">
+@@include alarm/alarm.css@@
+</style>
+</head>
+<body class="pp-alarm-page">
+<script id="pp-alarm-shim">
+@@include alarm/alarm-shim.js@@
+</script>
+<script id="pp-theme">
+@@include index/js/pp-theme.js@@
+</script>
+<script id="pp-widgets">
+@@include index/js/pp-widgets.js@@
+@@include index/js/pp-widgets-fidgets.js@@
+@@include index/js/pp-widgets-more.js@@
+@@include index/js/pp-widgets-music.js@@
+@@include index/js/pp-widgets-tools.js@@
+@@include index/js/pp-widgets-toys.js@@
+@@include index/js/pp-widgets-extras.js@@
+@@include index/js/pp-widgets-pendulum.js@@
+@@include index/js/pp-widgets-settings.js@@
+@@include index/js/pp-widgets-layout.js@@
+</script>
+<script id="pp-alarm-main">
+@@include alarm/alarm-main.js@@
+</script>
+</body>
+</html>

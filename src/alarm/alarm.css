@@ -1,0 +1,9 @@
+/* The alarm page (www/alarm.html): just the ringing screen, full screen, nothing behind it. */
+html, body{ height:100%; overflow:hidden; }
+body.pp-alarm-page{ background:var(--bg); }
+body.pp-alarm-page #pp-ringscreen{ position:fixed; inset:0; }
+#pp-alarm-standins{ display:none !important; }
+#pp-alarm-toast{ position:fixed; left:50%; bottom:calc(max(16px, env(safe-area-inset-bottom, 0px)) + 90px); z-index:200; transform:translate(-50%, 12px);
+  max-width:calc(100% - 32px); padding:10px 16px; border-radius:14px; background:rgba(0,0,0,.72); color:#fff; font-size:14px; text-align:center;
+  opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; }
+#pp-alarm-toast.on{ opacity:1; transform:translate(-50%, 0); }

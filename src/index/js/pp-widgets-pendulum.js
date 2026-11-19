@@ -11,6 +11,9 @@
   // off (the phone's alarm clocks are taken away too). Everything is kept, and comes back when Lite is switched off.
   // Focus keeps it. Switching mode reloads the app, so this is read once.
   var PEND_OFF = (function(){ try { return localStorage.getItem('ppLiteMode') === '1'; } catch(e){ return false; } })();   // POMO_ID: the tab's page id (pp-widgets-layout.js treats it as this tab)
+  // The alarm page (www/alarm.html, opened by AlarmActivity.kt when an alarm goes off on Android) runs this file too,
+  // for the ringing screen and its widgets only: there nothing rings, ticks or is saved; Snooze and Stop go to the page.
+  var ALPAGE = window.__ppAlarmPage || null;
   var PO_DEF = { focus: 25, short: 5, long: 15, every: 4, auto: true, goal: 8, chime: true, buzz: true, awake: false, fm: 'resume', bm: 'pause' };
   var PO_NAME = { focus: 'Focus', short: 'Short break', long: 'Long break' };
   var PO = (function(){
@@ -20,7 +23,7 @@
     p.round = +p.round || 0; p.log = p.log || {}; p.hist = p.hist || []; p.task = p.task || '';
     return p;
   })();
-  function poSave(){ try { localStorage.setItem(PO_KEY, JSON.stringify(PO)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
+  function poSave(){ if (ALPAGE) return; try { localStorage.setItem(PO_KEY, JSON.stringify(PO)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } }
   function poLen(ph){ return Math.max(1, +PO.s[ph] || PO_DEF[ph]) * 60000; }
   function poLeft(){ return PO.run ? Math.max(0, PO.end - Date.now()) : PO.left != null ? PO.left : poLen(PO.ph); }
   function poToday(){ return PO.log[dayKey(new Date())] || { n: 0, ms: 0 }; }
@@ -42,7 +45,7 @@
     return next;
   }
   function poTick(){
-    if (PEND_OFF) return false;
+    if (PEND_OFF || ALPAGE) return false;
     if (!PO.run || Date.now() < PO.end) return false;
     var next, n = 0, focusDone = 0;
     while (PO.run && Date.now() >= PO.end && n++ < 12){ if (PO.ph === 'focus') focusDone++; next = poFinish(PO.end, true); }
@@ -297,7 +300,7 @@
   var AL_KEY = 'ppAlarmsV2', DAY_N = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
   var AL = (function(){ var a = []; try { a = JSON.parse(localStorage.getItem(AL_KEY)) || []; } catch(e){} return Array.isArray(a) ? a : []; })();
   var alOpen = null, RING = null;   // the alarm being edited in the tab; the alarm ringing now
-  function alSave(){ try { localStorage.setItem(AL_KEY, JSON.stringify(AL)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } alNative(); }
+  function alSave(){ if (ALPAGE) return; try { localStorage.setItem(AL_KEY, JSON.stringify(AL)); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } alNative(); }
   function alById(id){ return AL.filter(function(a){ return a.id === id; })[0] || null; }
   function alNew(){ return { id: 'a' + uid(), on: true, time: '07:30', days: [1, 2, 3, 4, 5], label: '', wake: 'sound', tone: 'classic', louder: true, out: 'speaker', music: '', fade: 1, snooze: 9, ringFor: 10, loud: false, pomo: false, last: Date.now() }; }
   // what an alarm wakes you to: 'sound' (an alarm tone), 'both' (the tone, then music after 30 s) or 'music'
@@ -378,8 +381,8 @@
 
   // ---------- ringing ----------
   function alTick(){
-    if (PEND_OFF) return;
-    var now = Date.now(), changed = false;
+    if (PEND_OFF || ALPAGE) return;
+    var now = Date.now(), changed = alMergeActs();
     AL.forEach(function(a){
       if (!a.on) return;
       var due = alNext(a, a.last || now - 60000);
@@ -387,12 +390,15 @@
       if (!(a.snoozeAt && due === a.snoozeAt)) a.snoozed = 0;   // on time (not a snooze): the snoozes start again
       a.last = due; a.snoozeAt = null; changed = true;
       if (!a.days || !a.days.length) a.on = false;   // a one-off alarm switches itself off
-      if (now - due < alRingMin(a) * 60000) alRing(a, due);   // it would have stopped by now (the phone was off): let it go
+      // it would have stopped by now (the phone was off): let it go. On Android the phone rings it, on its own
+      // alarm screen with the songs already playing (AlarmActivity.kt): the app only keeps count.
+      if (now - due < alRingMin(a) * 60000 && !natScreen()) alRing(a, due);
     });
     if (changed){ alSave(); alPaint(); }
   }
   setInterval(alTick, 1000);
   document.addEventListener('visibilitychange', function(){
+    if (ALPAGE) return;
     if (!document.hidden){
       alTick();
       var N = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PPNotify;
@@ -451,6 +457,11 @@
   function alStopSound(){ clearTimeout(beepT); clearInterval(fadeUpT); clearInterval(buzzT); beepT = fadeUpT = buzzT = 0; toneStop(); try { navigator.vibrate && navigator.vibrate(0); } catch(e){} }
   function alStop(snooze){
     if (!RING) return;
+    if (ALPAGE){   // the alarm page: Snooze and Stop go to the phone (and are noted for the app)
+      var ap = alById(RING.id), sn = !!(snooze && ap && alSnoozeLeft(ap)), at = RING.at; RING = null;
+      if (ALPAGE.done) ALPAGE.done(ap, at, sn, sn ? alSnoozeMin(ap) : 0, !!(ap && !sn && ap.pomo));
+      return;
+    }
     var a = alById(RING.id), vol = RING.vol;
     alStopSound(); RING = null;
     if (a && snooze && !alSnoozeLeft(a)) snooze = false;   // no snoozes left: it stops
@@ -468,26 +479,98 @@
 
   // ---------- Android: the alarms are real alarm clocks too ----------
   // The next two times of each alarm (and a snooze) go to the phone, which rings them even with the app closed.
-  // Tapping the notification opens the app, which starts the music (alTick finds the alarm due) and quiets the ring.
-  var natT = 0, natExact = null;
+  // With an app new enough for it (PPNotify.alarmScreen), the phone does all of it: its own alarm screen opens by
+  // itself (the ringing screen, with its widgets, www/alarm.html) and its player starts the songs straight away, no
+  // tap needed. So each alarm goes with its songs, worked out here: "q" the music, "tq" when the alarm sound is your
+  // own songs (up to 40 of them, in the order they play; songs not kept on the phone itself are left out).
+  var natT = 0, natExact = null, natAcc = null;
+  function natN(){ var N = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PPNotify; return N && N.alarms ? N : null; }
+  function natScreen(){ var N = natN(); return !!(N && typeof N.alarmScreen === 'function') && !PEND_OFF; }
+  function alTrackJ(t){
+    if (!t || t.kind === 'video' || t.stem) return null;
+    var u = t.nativeUri || (t.remoteUrl && /^https?:/i.test(t.remoteUrl) ? t.remoteUrl : ''); if (!u) return null;
+    var o = { id: String(t.dbId), u: String(u).split('#pp-cue=')[0], t: t.title || t.name || 'Song' };   // a CUE track: the album file, clipped (cs, ce)
+    if (t.artist && t.artist !== 'Unknown artist') o.a = t.artist;
+    if (t.album) o.al = t.album;
+    if (t.nativeArt) o.art = String(t.nativeArt).replace(/^file:\/\//, '');
+    if (t.cueStart != null){ o.cs = Math.round(t.cueStart * 1000); if (t.cueEnd > t.cueStart) o.ce = Math.round(t.cueEnd * 1000); }
+    return o;
+  }
+  // m as in alPlayFrom: 'song', 'resume', a playlist id, or '' (everything, shuffled)
+  function alQueue(m, a, shuf){
+    var A = api(), K = kit(); if (!A) return null;
+    var t = A.tracks(), idx = [];
+    if (m === 'song'){ var i = songIdx(a.song); var one = i >= 0 ? alTrackJ(t[i]) : null; if (one) return { q: [one], loop: true }; m = ''; }
+    if (m === 'resume' && K){ var byId = new Map(t.map(function(x, k){ return [x.dbId, k]; })); idx = K.history().map(function(h){ return byId.get(h.id); }).filter(function(k){ return k != null; }); }
+    else if (m && m !== 'none'){
+      idx = t.map(function(x, k){ return (x.playlistIds || []).indexOf(m) >= 0 && !x.stem ? k : -1; }).filter(function(k){ return k >= 0; });
+      if (idx.length){ if (shuf) idx = shuffled(idx); else if (A.orderFor){ var o = A.orderFor(idx, m); if (Array.isArray(o)) idx = o; } }
+    }
+    if (!idx.length) idx = shuffled(t.map(function(x, k){ return k; }));
+    var q = [], seen = {};
+    for (var k = 0; k < idx.length && q.length < 40; k++){ var j = alTrackJ(t[idx[k]]); if (j && !seen[j.id]){ seen[j.id] = 1; q.push(j); } }
+    return q.length ? { q: q, loop: false } : null;
+  }
+  function alItem(a, t){
+    var w = alWake(a), it = { id: a.id + '_' + t, at: t, alarm: a.id, timeout: alRingMin(a) * 60000, loud: alLoud(a), wake: w,
+      fade: +a.fade || 0, louder: a.louder !== false, label: a.label || 'Alarm', time: a.time,
+      title: '⏰ ' + (a.label || 'Alarm') + ' · ' + fmtTime(a.time) };
+    if (w !== 'sound'){ var m = alQueue(a.music === 'none' ? '' : a.music, a, !!a.shuf); if (m){ it.q = m.q; it.qLoop = m.loop; } }
+    if (w !== 'music' && songTone(a.tone) && !alLoud(a)){ var s = alQueue(a.tone === 'song' ? 'song' : a.toneFrom || '', a, true); if (s){ it.tq = s.q; it.tqLoop = a.tone === 'song'; } }
+    it.text = natScreen() ? (w === 'sound' ? 'Snooze or stop it.' : 'Your music is playing (' + musicText(a.music, a) + ').')
+                          : (w === 'sound' ? 'Tap to stop it.' : 'Tap to start your music (' + musicText(a.music) + ').');
+    return it;
+  }
   function alNative(){
+    if (ALPAGE) return;
     clearTimeout(natT);
     natT = setTimeout(function(){
-      var N = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PPNotify; if (!N || !N.alarms) return;
+      var N = natN(); if (!N) return;
+      alMergeActs();
       var items = [], now = Date.now();
       if (!PEND_OFF) AL.forEach(function(a){
         var t = alNext(a, now), n = 0;
         while (t && n++ < 2){
-          items.push({ id: a.id + '_' + t, at: t, alarm: a.id, timeout: alRingMin(a) * 60000, loud: alLoud(a), title: '⏰ ' + (a.label || 'Alarm') + ' · ' + fmtTime(a.time), text: alWake(a) === 'sound' ? 'Tap to stop it.' : 'Tap to start your music (' + musicText(a.music) + ').' });
+          items.push(alItem(a, t));
           if (!a.days || !a.days.length || a.snoozeAt === t) break;
           t = alNext(Object.assign({}, a, { snoozeAt: null }), t);
         }
       });
-      N.alarms({ items: items }).then(function(r){ natExact = r && r.exact; alPaint(); }).catch(function(){});
+      N.alarms({ items: items }).then(function(r){ natExact = r && r.exact; if (r && r.screen) natAcc = { overlay: !!r.overlay, fullScreen: r.fullScreen !== false }; alPaint(); }).catch(function(){});
       alSaveSounds();
     }, 300);
   }
   setTimeout(alNative, 2500);
+  // What Snooze and Stop did on the alarm screen (it leaves a note in 'ppAlarmActV1'): counted here, as if done in the
+  // app. "Stop and focus" starts the focus session. Says whether anything changed.
+  var ACT_KEY = 'ppAlarmActV1';
+  function alActs(){ var x = []; try { x = JSON.parse(localStorage.getItem(ACT_KEY)) || []; } catch(e){} return Array.isArray(x) ? x : []; }
+  function alMergeActs(){
+    var acts = alActs(); if (!acts.length) return false;
+    var focus = false;
+    acts.forEach(function(x){
+      var a = x && alById(x.id); if (!a) return;
+      if (x.at && !(a.last >= x.at)) a.last = x.at;
+      if (x.snooze){ a.snoozed = (+a.snoozed || 0) + 1; a.snoozeAt = x.snoozeAt; a.on = true; }
+      else { a.snoozed = 0; if (a.snoozeAt && a.snoozeAt <= (x.t || Date.now())) a.snoozeAt = null; if (!a.days || !a.days.length) a.on = false; if (x.focus) focus = true; }
+    });
+    if (ALPAGE) return true;   // the alarm page only reads them; the app clears them
+    try { localStorage.removeItem(ACT_KEY); } catch(e){}
+    alSave();
+    if (focus){ PO.ph = 'focus'; PO.left = null; PO.run = false; poDo('go'); setTimeout(function(){ pendGo('pomo'); }, 600); toast('🍅 Focus started.'); }
+    return true;
+  }
+  if (ALPAGE) alMergeActs();
+  // "Display over other apps": without it Android only lets the alarm screen open by itself on a locked phone. Asked
+  // for once when you set up your first alarm, and there is a button for it under the alarms.
+  function alAskAccess(what){ var N = natN(); if (N && N.alarmScreen) N.alarmScreen({ ask: what }).catch(function(){}); }
+  function alAccessOnce(){
+    if (!natAcc || natAcc.overlay) return;
+    try { if (localStorage.getItem('ppAlarmOverlayAsked')) return; localStorage.setItem('ppAlarmOverlayAsked', '1'); } catch(e){ return; }
+    toast('So alarms can open by themselves, let Press Play display over other apps.');
+    setTimeout(function(){ alAskAccess('overlay'); }, 1200);
+  }
+  document.addEventListener('visibilitychange', function(){ if (!document.hidden && natAcc) alNative(); });   // back from the settings page
   // a super loud alarm rings with the app closed through the phone (AlarmSound in JobsPlugin.kt, speaker only): it gets
   // its sound, rendered loud, ahead of time. The phone's own alarm sound needs nothing (the phone plays it).
   var savedSnd = {};
@@ -595,15 +678,24 @@
       var N = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.PPNotify;
       setText(box.querySelector('.ppa-note'), !N ? 'In this browser alarms ring while Press Play is open. In the Android app they ring like a clock alarm, even with the app closed.'
         : natExact === false ? 'Android has not allowed exact alarms for Press Play, so an alarm may come a few minutes late. You can allow it in the phone’s settings under Alarms & reminders.'
+        : natScreen() ? 'Alarms ring even with the app closed: the alarm screen opens by itself and your music starts on its own.'
         : 'Alarms ring even with the app closed. Tap the alarm to start your music.');
+      var acc = box.querySelector('.ppa-acc'), need = natAcc && AL.length ? (!natAcc.fullScreen ? 'fullscreen' : !natAcc.overlay ? 'overlay' : '') : '';
+      if (!need && acc) acc.remove();
+      else if (need && (!acc || acc.dataset.ppaAcc !== need)){
+        if (acc) acc.remove();
+        box.querySelector('.ppa-note').insertAdjacentHTML('afterend', '<button type="button" class="ppa-acc" data-ppa-acc="' + need + '">' +
+          (need === 'fullscreen' ? 'Let alarms show full screen on the lock screen' : 'Let alarms open by themselves while you use the phone') + '</button>');
+      }
     }
     document.querySelectorAll('[data-pw-live="alarm"]').forEach(function(w){ T.alarm.live(w); });
   }
   document.addEventListener('click', function(e){
-    var b = e.target.closest && e.target.closest('[data-pend]'); if (b){ pendGo(b.dataset.pend); return; }
+    var b = e.target.closest && e.target.closest('[data-ppa-acc]'); if (b){ alAskAccess(b.dataset.ppaAcc); return; }
+    b = e.target.closest && e.target.closest('[data-pend]'); if (b){ pendGo(b.dataset.pend); return; }
     b = e.target.closest && e.target.closest('[data-ppa]'); if (!b || editing) return;
     var op = b.dataset.ppa, row = b.closest('[data-al]'), a = row ? alById(row.dataset.al) : null;
-    if (op === 'add'){ var n = alNew(); AL.push(n); alOpen = n.id; alSave(); alPaint(); var r = pageEl.querySelector('[data-al="' + n.id + '"]'); if (r) r.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+    if (op === 'add'){ var n = alNew(); AL.push(n); alOpen = n.id; alSave(); alPaint(); alAccessOnce(); var r = pageEl.querySelector('[data-al="' + n.id + '"]'); if (r) r.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
     if (op === 'stop' || op === 'snooze'){ alStop(op === 'snooze'); return; }
     if (!a) return;
     if (op === 'edit') alOpen = alOpen === a.id ? null : a.id;
@@ -888,6 +980,8 @@
   })();
   // coming back to the app while an alarm rings: the screen is waiting
   document.addEventListener('visibilitychange', function(){ if (!document.hidden && RING && RS.alarm && !rsOn()) rsShow('alarm'); });
+  // the alarm page: its one job is this screen, for the alarm that is ringing (whether or not it is switched on for alarms)
+  if (ALPAGE) ALPAGE.ring = function(id, at, until){ RING = { id: id, at: at || Date.now(), t0: Date.now(), until: until || 0 }; rsShow('alarm'); return !!alById(id); };
 
   // ---------- its settings, in both parts of the Pendulum tab ----------
   function rsCardHTML(){

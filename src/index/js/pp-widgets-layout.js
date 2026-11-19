@@ -1352,7 +1352,8 @@
       setTimeout(function(){ var t = document.querySelector('.ppth-switch button[data-p="' + k + '"]'); if (t) t.click(); }, 0);
     });
   }
-  function boot(){ settingsEntry(); applyTabs(); renderPlayer(); buildPanel(); renderMids(); renderSettingsZones(); setTimeout(renderSettingsZones, 1600); if (L.zones.home && kit()) kit().renderHome(true); }
+  function boot(){ if (window.__ppAlarmPage) return;   // the alarm page (www/alarm.html) draws only the ringing screen
+    settingsEntry(); applyTabs(); renderPlayer(); buildPanel(); renderMids(); renderSettingsZones(); setTimeout(renderSettingsZones, 1600); if (L.zones.home && kit()) kit().renderHome(true); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
   // Back button leaves a page or edit mode first.
   window.addEventListener('keydown', function(e){ if (e.key === 'Escape'){ if (!sheet.hidden) closeSheet(); else if (editing) stopEdit(); } });
