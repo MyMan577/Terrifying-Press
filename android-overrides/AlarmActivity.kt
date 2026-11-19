@@ -78,6 +78,14 @@ object AlarmRing {
             NotifyReceiver.postAlarm(app, id, it, quiet = toneQuiet)
             show(app, id)
             if (canPlay) startMusic(app)
+            // whatever happens to the player (it never starts, a song will not open...): when the notification is quiet
+            // and nothing is playing a little later, the phone's own alarm sound rings
+            main.postDelayed({
+                if (ringId == id && item != null && toneQuiet && !userPaused) {
+                    val ok = try { PlaybackService.instance?.player?.isPlaying == true } catch (_: Exception) { false }
+                    if (!ok) fallback(app, id)
+                }
+            }, 12000L)
             val timeout = it.optLong("timeout", 10 * 60000L).coerceAtLeast(60000L)
             endR = Runnable { if (ringId == id) { finishRing(app, false); closeScreen() } }.also { r -> main.postDelayed(r, timeout) }
             main.removeCallbacks(tickR); main.post(tickR)
@@ -157,12 +165,15 @@ object AlarmRing {
         PlaybackService.whenReady(ctx) { s ->
             if (ringId != id || item == null) return@whenReady
             val items = itemsOf(list)
-            if (items.isEmpty()) return@whenReady
+            if (items.isEmpty()) { fallback(ctx, id); return@whenReady }
             try {
                 s.clearMirror(); s.cancelCrossfade()
                 if (volBefore < 0f) volBefore = s.currentUserVolume
-                // on the alarm stream: the phone's alarm volume, and it is heard even when media is turned down
-                s.setMediaAudio(AudioAttributes.Builder().setUsage(C.USAGE_ALARM).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
+                // On the alarm stream: the phone's alarm volume, and it is heard even when media is turned down. Media3
+                // only handles audio focus itself for media and games (for an alarm it refuses, and nothing played), so
+                // the alarm asks for the focus itself (other apps go quiet while it rings).
+                s.setMediaAudio(AudioAttributes.Builder().setUsage(C.USAGE_ALARM).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), false)
+                takeFocus(ctx)
                 val p = s.player
                 if (before == null) before = Before((0 until p.mediaItemCount).map { k -> p.getMediaItemAt(k) },
                     maxOf(0, p.currentMediaItemIndex), maxOf(0L, p.currentPosition), p.repeatMode, p.shuffleModeEnabled)
@@ -172,9 +183,42 @@ object AlarmRing {
                 p.prepare()
                 fadeIn(s, fadeMin)
                 p.play()
+                userPaused = false
                 quietTone(ctx, id)      // the songs are playing: the phone's alarm sound (if it rang) stops
-            } catch (_: Exception) {}
+                // and if they are not really playing a few seconds from now (a file that will not open...), the phone's
+                // own alarm sound rings instead: an alarm is never silent
+                checkR?.let { main.removeCallbacks(it) }
+                checkR = Runnable {
+                    if (ringId != id || item == null || userPaused) return@Runnable
+                    val ok = try { s.player.isPlaying } catch (_: Exception) { false }
+                    if (!ok) fallback(ctx, id)
+                }.also { r -> main.postDelayed(r, 8000L) }
+            } catch (_: Exception) { fallback(ctx, id) }
         }
+    }
+    @Volatile private var userPaused = false   // paused on the alarm screen on purpose: not a failure
+    private var checkR: Runnable? = null
+    private var focusReq: Any? = null
+    private fun takeFocus(ctx: Context) {
+        if (focusReq != null || Build.VERSION.SDK_INT < 26) return
+        val am = ctx.getSystemService(android.media.AudioManager::class.java) ?: return
+        val req = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+            .setAudioAttributes(android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build())
+            .setOnAudioFocusChangeListener { }      // an alarm keeps ringing whatever else wants to play
+            .build()
+        try { am.requestAudioFocus(req); focusReq = req } catch (_: Exception) {}
+    }
+    private fun dropFocus(ctx: Context) {
+        val r = focusReq ?: return; focusReq = null
+        if (Build.VERSION.SDK_INT >= 26) try { ctx.getSystemService(android.media.AudioManager::class.java)?.abandonAudioFocusRequest(r as android.media.AudioFocusRequest) } catch (_: Exception) {}
+    }
+    /** The songs could not play: the phone's own alarm sound rings (on the alarm volume, through the speaker) until Snooze or Stop. */
+    private fun fallback(ctx: Context, id: String) {
+        if (ringId != id || item == null) return
+        val it = item ?: return
+        val left = maxOf(60000L, it.optLong("at", System.currentTimeMillis()) + it.optLong("timeout", 10 * 60000L) - System.currentTimeMillis())
+        AlarmSound.play(ctx, null, true, true, false, false, left, id)
     }
     private fun fadeIn(s: PlaybackService, minutes: Double) {
         fadeR?.let { main.removeCallbacks(it) }; fadeR = null
@@ -228,8 +272,8 @@ object AlarmRing {
         val p = s.player
         try {
             when (c) {
-                "play" -> { if (!musicStarted) { val ctx = screen?.get(); if (ctx != null) startMusic(ctx) } else p.play() }
-                "pause" -> p.pause()
+                "play" -> { userPaused = false; if (!musicStarted) { val ctx = screen?.get(); if (ctx != null) startMusic(ctx) } else p.play() }
+                "pause" -> { userPaused = true; p.pause() }
                 "next" -> if (p.hasNextMediaItem()) p.seekToNextMediaItem() else p.seekTo(0, 0L)
                 "prev" -> if (p.currentPosition > 3000 || !p.hasPreviousMediaItem()) p.seekTo(0L) else p.seekToPreviousMediaItem()
                 "seek" -> p.seekTo(((v.toDoubleOrNull() ?: 0.0) * 1000).toLong().coerceAtLeast(0L))
@@ -280,8 +324,9 @@ object AlarmRing {
     /** Everything about this ring stops: the sound, the music, the notification, the timers. The player goes back to normal. */
     fun finishRing(ctx: Context, @Suppress("UNUSED_PARAMETER") quietOnly: Boolean) {
         val id = ringId
-        listOf(fadeR, toMusicR, endR).forEach { r -> r?.let { main.removeCallbacks(it) } }
-        fadeR = null; toMusicR = null; endR = null
+        listOf(fadeR, toMusicR, endR, checkR).forEach { r -> r?.let { main.removeCallbacks(it) } }
+        fadeR = null; toMusicR = null; endR = null; checkR = null
+        dropFocus(ctx)
         main.removeCallbacks(tickR)
         if (id.isNotEmpty()) {
             NotificationManagerCompat.from(ctx).cancel(NotifyReceiver.notifId(id))
