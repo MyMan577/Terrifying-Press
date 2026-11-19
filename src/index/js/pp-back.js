@@ -78,7 +78,7 @@
       return out.filter(function(b){ var l = b.parentElement; while (l && l !== el && !(l.matches && isLayer(l))) l = l.parentElement; return l === el && shown(b); });
     }
     function gone(el){ return !shown(el) || (el._ppWasOpen && !el.classList.contains('open')); }
-    function click(el){
+    function click(el){   // a tap on a backdrop
       ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(function(t){
         var Ev = t.indexOf('pointer') === 0 && window.PointerEvent ? PointerEvent : MouseEvent;
         el.dispatchEvent(new Ev(t, { bubbles: true, cancelable: true, view: window }));
@@ -93,8 +93,15 @@
       //    dropdown inside the menu must not take the whole menu with it.
       var ov = el.matches('[id$="-overlay"]') ? el : (el.parentElement && el.parentElement.matches('[id$="-overlay"]') ? el.parentElement : null);
       if (ov && shown(ov)){ click(ov); if (gone(el)) return; }
-      // 3. dropdowns and popovers close on a tap anywhere else
-      if (!ov){ click(body); if (gone(el)) return; }
+      // 3. a dropdown or popover: closed directly, with its button. (Not by a pretend tap elsewhere: that tap also reached
+      //    whatever was under it, and closed the player or ended multi-select along with the dropdown.)
+      if (!ov && el.classList.contains('open')){
+        el.classList.remove('open');
+        var owner = el.id && document.getElementById(el.id.replace(/-(dropdown|popover|menu|panel)$/, '-btn'));
+        if (owner && owner !== el){ owner.classList.remove('open'); if (owner.hasAttribute('aria-expanded')) owner.setAttribute('aria-expanded', 'false'); }
+        document.querySelectorAll('[aria-expanded="true"]').forEach(function(b){ var c = b.getAttribute('aria-controls'); if (c && c === el.id) b.setAttribute('aria-expanded', 'false'); });
+        return;
+      }
       // 4. last resort: just hide it
       if (el.classList.contains('open')) el.classList.remove('open');
       else if (el.matches('[role="dialog"], [aria-modal="true"]')) el.hidden = true;
