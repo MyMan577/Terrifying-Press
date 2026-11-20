@@ -1354,12 +1354,714 @@ import * as THREE from 'three';
     particleColorDirty = true;
   }
 
+
+  // ---------- GPU particle engine ----------
+  // Every touch mode can run entirely on the graphics chip. Each particle's
+  // position and velocity live in float textures; a physics step is one
+  // full-screen shader pass over those textures (every particle updated in
+  // parallel), and the streak renderer reads the textures directly, so
+  // nothing is copied back to JavaScript. That is what lets the field hold
+  // hundreds of thousands of lights at 120 Hz instead of the few tens of
+  // thousands a JavaScript loop manages. The forces are the same formulas as
+  // the JavaScript engine (applyTouchForces, the shape springs, flowStep),
+  // which still runs everything on phones without float render targets.
+  //
+  // Three families share the textures:
+  //   flat  (ids 0-10)  screen space:  pos = (x, y, z, teleported)  vel = (vx, vy, glow, teleport)
+  //   shape (20, 21)    Sphere/Cosmos: same layout; z springs onto the shape
+  //   flow  (30-33)     3D physics:    pos = world (x, y, z, 0)       vel = (vx, vy, vz, light; < 0 = re-seed)
+  // Switching between screen and world families converts the textures in
+  // place, so the lights carry over instead of being scattered afresh.
+  const GPU_TEX_W = 512;
+  const GPU_SUPER_COUNT = 262144; // Super res: 512 x 512 lights
+  const GPU_MODE_ID = { Swirl: 0, Repel: 1, Attract: 2, Orbit: 3, Wind: 4, 'Gravity Well': 5, Comet: 6, Bloom: 7, Lattice: 8, Whirlpool: 9, Pulse: 10,
+    Sphere: 20, Cosmos: 21, 'Orbit 3D': 30, Tornado: 31, Magnet: 32, Fluid: 33 };
+  const gpuSupported = !!(renderer.capabilities.isWebGL2 && renderer.extensions.has('EXT_color_buffer_float'));
+  let gpu = null; // { rows, count, pos: [rt, rt], vel: [rt, rt], cur, space: 'screen' | 'world' }
+  let gpuFrameNo = 0;
+  const v4s = (n) => Array.from({ length: n }, () => new THREE.Vector4());
+  const gpuPointers = v4s(5);   // screen: x, y, vx, vy
+  const gpuFingersW = v4s(5);   // world position of each finger (flow modes)
+  const gpuFingersWV = v4s(5);  // world velocity of each finger
+  const gpuBursts = v4s(5);     // x, y, kick, kind (0 spin, 1 out, 2 scattered, 3 Scatter button) or world x, y, z, -strength
+  let gpuBurstCount = 0;
+  const gpuPalette = Array.from({ length: 8 }, () => new THREE.Vector3());
+  const gpuRot = new THREE.Vector4(1, 0, 1, 0); // world <-> view: cos/sin yaw, cos/sin pitch
+  const gpuViewZ = new THREE.Vector3(0, 0, 1);
+
+  const GPU_HASH = `
+    uint pcgHash(uint v) {
+      uint st = v * 747796405u + 2891336453u;
+      uint w = ((st >> ((st >> 28u) + 4u)) ^ st) * 277803737u;
+      return (w >> 22u) ^ w;
+    }
+    float h1(uint v) { return float(pcgHash(v)) / 4294967295.0; }
+    // each particle's fixed point on a unit sphere (Sphere's formX/Y/Z)
+    vec3 unitSphere(uint idx) {
+      float u = h1(idx * 8u + 1u) * 2.0 - 1.0;
+      float th = h1(idx * 8u + 2u) * 6.2831853;
+      float r = sqrt(max(0.0, 1.0 - u * u));
+      return vec3(r * cos(th), r * sin(th), u);
+    }
+    uniform vec4 uRot;
+    vec3 viewToWorld(vec3 v) {
+      float y1 = v.y * uRot.z + v.z * uRot.w;
+      float z1 = -v.y * uRot.w + v.z * uRot.z;
+      return vec3(v.x * uRot.x - z1 * uRot.y, y1, v.x * uRot.y + z1 * uRot.x);
+    }
+    vec3 worldToView(vec3 w) {
+      float x1 = w.x * uRot.x + w.z * uRot.y;
+      float z1 = -w.x * uRot.y + w.z * uRot.x;
+      return vec3(x1, w.y * uRot.z - z1 * uRot.w, w.y * uRot.w + z1 * uRot.z);
+    }
+  `;
+  const GPU_SIM_HEAD = `
+    precision highp float;
+    precision highp int;
+    uniform sampler2D uPos;
+    uniform sampler2D uVel;
+    uniform vec2 uView;
+    uniform float uTexW;
+    uniform float uFrame;
+    uniform int uNP;
+    uniform vec4 uP[5];
+    uniform float uHZ;
+    uniform int uMode;
+    // shape modes
+    uniform float uSpin, uTilt, uRing, uRadius, uDepth;
+    uniform int uShapeN;
+  ` + GPU_HASH + `
+    float sgn1(float v) { return v < 0.0 ? -1.0 : 1.0; }
+    // Sphere's finger ladder (sphere, cube, pyramid, helix, torus) and
+    // Cosmos's (galaxy, vortex, Saturn, nebula, wormhole), from shapePoint*.
+    vec3 shapeRaw(bool cosmos, int n, vec3 f, uint idx) {
+      const float PI = 3.14159265, TAU = 6.2831853;
+      if (!cosmos) {
+        if (n <= 1) return f;
+        if (n == 2) {
+          vec3 a = abs(f), o = f;
+          if (a.x >= a.y && a.x >= a.z) o.x = sgn1(f.x); else if (a.y >= a.x && a.y >= a.z) o.y = sgn1(f.y); else o.z = sgn1(f.z);
+          return o;
+        }
+        if (n == 3) {
+          float t = (f.y + 1.0) * 0.5, hf = 1.0 - t, x, z;
+          if (abs(f.x) >= abs(f.z)) { x = sgn1(f.x) * hf; z = f.z * hf; } else { z = sgn1(f.z) * hf; x = f.x * hf; }
+          return vec3(x, t * 2.0 - 1.0, z);
+        }
+        if (n == 4) {
+          float a = f.y * PI * 2.4 + (h1(idx * 8u + 3u) < 0.5 ? PI : 0.0);
+          return vec3(cos(a) * 0.55, f.y, sin(a) * 0.55);
+        }
+        float th = atan(f.z, f.x), ph = f.y * PI, rr = 0.75 + cos(ph) * 0.32;
+        return vec3(cos(th) * rr, sin(ph) * 0.32, sin(th) * rr);
+      }
+      if (n <= 1) {
+        float t = (f.y + 1.0) * 0.5, r = pow(t, 1.6);
+        float th = floor((f.x + 1.0) * 0.5 * 3.0) / 3.0 * TAU + r * TAU * 3.2 + f.z * 0.4;
+        return vec3(cos(th) * r, f.z * 0.05 * (1.0 - r * 0.6), sin(th) * r);
+      }
+      if (n == 2) {
+        float t = (f.y + 1.0) * 0.5, rad = 1.0 - t * 0.82, th = t * TAU * 3.5 + f.x * PI;
+        return vec3(cos(th) * rad, 1.0 - t * 2.0, sin(th) * rad);
+      }
+      if (n == 3) {
+        if (h1(idx * 8u + 4u) < 0.38) {
+          float th = atan(f.z, f.x), rr = 0.82 + f.y * 0.14, fz = sin(th) * rr;
+          vec3 o = vec3(cos(th) * rr, fz * sin(0.45), fz * cos(0.45));
+          float c = cos(uRing), s = sin(uRing);
+          return vec3(o.x * c - o.z * s, o.y, o.x * s + o.z * c);
+        }
+        return f * 0.42;
+      }
+      if (n == 4) return vec3(f.x * 0.7 + sin(f.y * 5.0 + f.z * 3.1) * 0.4, f.y * 0.5 + sin(f.z * 4.2 + f.x * 6.0) * 0.4, f.z * 0.7 + sin(f.x * 3.4 + f.y * 5.3) * 0.4);
+      float t = (f.y + 1.0) * 0.5, rad = 0.16 + abs(t - 0.5) * 2.0 * 0.78, th = t * TAU * 3.0 + f.x * PI;
+      return vec3(cos(th) * rad, 1.0 - t * 2.0, sin(th) * rad);
+    }
+    // where this particle sits on the current shape: screen x, y and depth
+    vec3 shapeTarget(uint idx) {
+      vec3 raw = shapeRaw(uMode == 21, uShapeN, unitSphere(idx), idx);
+      float ct = cos(uTilt), st = sin(uTilt);
+      float ty = raw.y * ct - raw.z * st, tz = raw.y * st + raw.z * ct;
+      float cs = cos(uSpin), sn = sin(uSpin);
+      return vec3(uView * 0.5 + vec2(raw.x * cs - tz * sn, ty) * uRadius, (raw.x * sn + tz * cs) * uRadius);
+    }
+    ivec2 cellOf() { return ivec2(gl_FragCoord.xy); }
+    uint indexOf(ivec2 c) { return uint(c.y) * uint(uTexW) + uint(c.x); }
+  `;
+  const simUniforms = () => ({
+    uPos: { value: null }, uVel: { value: null }, uView: { value: new THREE.Vector2() }, uTexW: { value: GPU_TEX_W }, uFrame: { value: 0 },
+    uNP: { value: 0 }, uP: { value: gpuPointers }, uHZ: { value: 200 }, uMode: { value: 0 }, uRot: { value: gpuRot },
+    uSpin: { value: 0 }, uTilt: { value: 0 }, uRing: { value: 0 }, uRadius: { value: 130 }, uDepth: { value: 200 }, uShapeN: { value: 1 }
+  });
+  const simMat = (fs, extra) => new THREE.ShaderMaterial({ vertexShader: fadeVS, fragmentShader: GPU_SIM_HEAD + fs, uniforms: Object.assign(simUniforms(), extra || {}), depthTest: false, depthWrite: false });
+
+  // Fresh field: random spots on screen, gentle random drift.
+  const gpuInitMat = simMat(`
+    uniform float uSeed;
+    uniform float uWhich;
+    void main() {
+      uint idx = indexOf(cellOf());
+      uint sd = uint(uSeed);
+      if (uWhich < 0.5) gl_FragColor = vec4(h1(idx * 2u + sd) * uView.x, h1(idx * 2u + 1u + sd) * uView.y, 0.0, 0.0);
+      else {
+        float a = h1(idx * 3u + sd) * 6.2831853;
+        float sp = 0.15 + 0.35 * h1(idx * 5u + sd);
+        gl_FragColor = vec4(cos(a) * sp, sin(a) * sp, 1.0, 0.0);
+      }
+    }`, { uSeed: { value: 0 }, uWhich: { value: 0 } });
+
+  // Screen <-> world conversion when moving between flat/shape and 3D physics
+  // modes: the same lights, at the same place on screen (seedPhys and the
+  // flow projection, done for every particle at once).
+  const gpuConvMat = simMat(`
+    uniform float uToWorld;
+    uniform float uWhich;
+    void main() {
+      ivec2 c = cellOf();
+      uint idx = indexOf(c);
+      vec4 P = texelFetch(uPos, c, 0);
+      vec4 V = texelFetch(uVel, c, 0);
+      vec2 hv = uView * 0.5;
+      if (uToWorld > 0.5) {
+        if (uWhich < 0.5) gl_FragColor = vec4(viewToWorld(vec3(P.x - hv.x, hv.y - P.y, (h1(idx * 31u + uint(uFrame)) * 2.0 - 1.0) * uHZ * 0.8)), 0.0);
+        else gl_FragColor = vec4(viewToWorld(vec3(V.x * 0.5, -V.y * 0.5, h1(idx * 37u + uint(uFrame)) * 1.2 - 0.6)), 1.0);
+      } else {
+        vec3 v = worldToView(P.xyz);
+        if (uWhich < 0.5) gl_FragColor = vec4(hv.x + v.x, hv.y - v.y, v.z, 0.0);
+        else gl_FragColor = vec4(0.0, 0.0, 1.0, 0.0);
+      }
+    }`, { uToWorld: { value: 0 }, uWhich: { value: 0 } });
+
+  // Velocity pass: every force, then speed limit and drag.
+  const gpuVelMat = simMat(`
+    uniform float uDt, uTouchDt, uDrag, uTime, uAmbient, uTurb, uVortex, uEdge, uMaxSpeed, uMS, uPointerScale, uWrapOnly, uReach;
+    uniform int uNB;
+    uniform vec4 uB[5];
+    // flow modes
+    uniform vec4 uFW[5];
+    uniform vec4 uFV[5];
+    uniform vec3 uViewZ;
+    uniform float uRC, uHY, uT, uTS, uFlowDrag;
+
+    vec4 flowVelocity(uint idx, vec4 P, vec4 V) {
+      vec3 x3 = P.xyz, v3 = V.xyz, acc = vec3(0.0);
+      float x = x3.x, y = x3.y, z = x3.z;
+      float light = 0.0, T = uT, ts = uTS, dt = uDt;
+      float wob = h1(idx * 4u + 1u) * 6.2831853;
+      if (uMode == 30) { // Orbit 3D: every finger is a star; each light orbits on its own tilted plane
+        vec3 oa = unitSphere(idx);
+        for (int i = 0; i < 5; i++) {
+          if (i >= uNP) break;
+          vec3 d = uFW[i].xyz - x3;
+          float r2 = dot(d, d) + 1225.0, r = sqrt(r2);
+          float g = 2600.0 * ts / (r2 * r);
+          acc += d * g + cross(oa, d) * g * 0.32;
+        }
+      } else if (uMode == 31) { // Tornado
+        for (int i = 0; i < 5; i++) {
+          if (i >= uNP) break;
+          vec3 f = uFW[i].xyz;
+          float dx = x - f.x, dz = z - f.z;
+          float r = sqrt(dx * dx + dz * dz) + 0.5;
+          float ux = dx / r, uz = dz / r, h = y - f.y;
+          float rt = 16.0 + max(0.0, h) * 0.34 + max(0.0, -h) * 0.25;
+          float wall = (r - rt) / 60.0, near = exp(-wall * wall);
+          float reach = 1.0 / (1.0 + (r / 280.0) * (r / 280.0));
+          float vt = -v3.x * uz + v3.z * ux;
+          float tk = ((2.4 + 6.5 * near) * reach * ts - vt) * 0.07;
+          acc.x += -uz * tk; acc.z += ux * tk;
+          float top = min(uHY * 0.6, f.y + uHY * 0.9);
+          float below = clamp((top - y) / 120.0, 0.0, 1.0);
+          float pull = (-(r - rt) * 0.0035 - 0.05) * reach * ts * below;
+          acc.x += ux * pull; acc.z += uz * pull;
+          float lift = near * below;
+          acc.y += ((4.2 * lift - 2.6 * (1.0 - lift)) * ts - v3.y) * 0.05 * max(reach, 1.0 - lift);
+          if (y > top - 40.0) { float o = 0.55 * min(1.0, (y - top + 40.0) / 80.0); acc.x += ux * o; acc.z += uz * o; }
+          light += near * reach;
+        }
+      } else if (uMode == 32) { // Magnet: lights run along dipole field lines between fingers
+        vec3 b = vec3(0.0);
+        float near = 0.0;
+        int inCore = -1;
+        for (int i = 0; i < 5; i++) {
+          if (i >= uNP) break;
+          vec3 d = x3 - uFW[i].xyz;
+          float r2 = dot(d, d);
+          if (r2 < 676.0) { inCore = i; break; }
+          float r = sqrt(r2);
+          vec3 rr = d / r;
+          float k = 1.1e7 / (r2 * r);
+          b += vec3(3.0 * rr.y * rr.x, 3.0 * rr.y * rr.y - 1.0, 3.0 * rr.y * rr.z) * k;
+          near = max(near, 1.0 / (1.0 + r / 90.0));
+        }
+        if (uNP > 0) {
+          vec3 t; float speed;
+          if (inCore >= 0) { t = vec3(0.0, 1.0, 0.0); speed = 5.0; }
+          else { float bl = length(b) + 1e-6; t = b / bl; speed = min(5.5, bl) * ts; }
+          acc += (t * speed - v3) * 0.12;
+          light += near;
+        }
+      } else { // Fluid: a slowly shifting current; fingers drag and curl it
+        float k = 6.2831853 / (min(uView.x, uView.y) * 1.1);
+        float p1 = T * 0.21, p2 = T * 0.17 + 1.3, p3 = T * 0.13 + 2.1;
+        vec3 fl = vec3(sin(k * z + p1) + 0.6 * cos(k * y + p2), 0.8 * sin(k * x + p3) + cos(k * z + p1), 0.6 * sin(k * y + p2) + 0.8 * cos(k * x + p3));
+        acc += (fl * 1.7 - v3) * 0.03;
+        for (int i = 0; i < 5; i++) {
+          if (i >= uNP) break;
+          vec3 d = x3 - uFW[i].xyz;
+          float r2 = dot(d, d);
+          float fall = exp(-r2 / 28900.0);
+          if (fall < 0.01) continue;
+          acc += uFV[i].xyz * 0.09 * fall * ts;
+          acc += cross(uViewZ, d) * (0.9 * fall * ts / (sqrt(r2) + 30.0));
+          light += fall;
+        }
+      }
+      float amb = ((uNP == 0 || uMode == 33) ? 0.012 : 0.004) * uAmbient;
+      acc += vec3(sin(y * 0.011 + T * 0.7 + wob), sin(z * 0.012 + T * 0.6 + wob), sin(x * 0.010 + T * 0.8 + wob)) * amb;
+      if (uTurb > 0.0) acc += vec3(cos(y * 0.02 + z * 0.013 + T * 1.3), cos(z * 0.02 + x * 0.017 + T * 1.1), cos(x * 0.02 + y * 0.015 + T * 1.7)) * uTurb * 0.05;
+      if (uVortex > 0.0) { float rr = sqrt(x * x + z * z) + 30.0; acc.x += -z / rr * uVortex * 0.04; acc.z += x / rr * uVortex * 0.04; }
+      float rxz = sqrt(x * x + z * z);
+      if (uMode != 33) {
+        if (rxz > uRC) { float w = (rxz - uRC) * 0.004; acc.x -= x / rxz * w; acc.z -= z / rxz * w; }
+        if (y > uHY) acc.y -= (y - uHY) * 0.004; else if (y < -uHY) acc.y -= (y + uHY) * 0.004;
+      }
+      // a finger lifting: an outward kick through the volume (physRelease)
+      for (int i = 0; i < 5; i++) {
+        if (i >= uNB) break;
+        if (uB[i].w > -0.5) continue;
+        vec3 d = x3 - uB[i].xyz;
+        float r = length(d) + 20.0;
+        v3 += d * (-uB[i].w * 0.55 * (260.0 / (260.0 + r)) / r);
+      }
+      v3 = (v3 + acc * dt) * uFlowDrag;
+      float speed = length(v3);
+      float cap = uMaxSpeed * 0.4;
+      if (speed > cap) v3 *= cap / speed;
+      vec3 np = x3 + v3 * dt;
+      float z2 = worldToView(np).z;
+      float depth = 0.62 + 0.38 * clamp((z2 / max(1.0, uHZ) + 1.0) * 0.5, 0.0, 1.0);
+      float target = (0.55 + min(0.85, speed / 7.0) + min(0.5, light * 0.35)) * depth;
+      float fl = abs(V.w);
+      fl += (target - fl) * min(1.0, 0.2 * dt);
+      // far outside the volume: re-seed where it shows on screen, at a random depth
+      if (abs(np.y) > uHY * 2.0 || rxz > uRC * 2.5) return vec4(viewToWorld(vec3(0.0, 0.0, h1(idx * 41u + uint(uFrame)) * 1.2 - 0.6)), -max(fl, 0.01));
+      return vec4(v3, max(fl, 0.01));
+    }
+
+    void main() {
+      ivec2 c = cellOf();
+      uint idx = indexOf(c);
+      vec4 P = texelFetch(uPos, c, 0);
+      vec4 V = texelFetch(uVel, c, 0);
+      if (uMode >= 30) { gl_FragColor = flowVelocity(idx, P, V); return; }
+
+      bool isFlat = uMode < 20;
+      vec2 p = P.xy, v = V.xy;
+      float glow = V.z;
+      float dt = uDt, tdt = uTouchDt;
+      float r1 = h1(idx * 4u + 2u), r2 = h1(idx * 4u + 3u);
+      float wob = h1(idx * 4u + 1u) * 6.2831853 + 0.02 * uTime;
+
+      if (isFlat) {
+        // gentle ambient drift and flowing turbulence, so the field is never still
+        v += vec2(cos(wob), sin(wob * 0.8)) * 0.008 * uAmbient * dt;
+        if (uTurb > 0.0) {
+          float ph = p.x * 0.018 + p.y * 0.014 + wob * 2.7;
+          v += vec2(cos(ph), sin(ph * 1.23)) * uTurb * 0.035 * dt;
+        }
+        for (int i = 0; i < 5; i++) {
+          if (i >= uNP) break;
+          vec4 F = uP[i];
+          vec2 d = p - F.xy;
+          float dist = sqrt(max(36.0, dot(d, d)));
+          vec2 n = d / dist;
+          vec2 tg = vec2(-n.y, n.x);
+          float fall = uReach / (uReach + dist);
+          if (uMode == 0) { // Swirl: stir; with 3+ fingers alternate the spin
+            float sgn = (uNP >= 3 && (i - (i / 2) * 2) == 1) ? -1.0 : 1.0;
+            v += tg * fall * 0.9 * tdt * sgn;
+          } else if (uMode == 1) { // Repel
+            v += n * fall * fall * 2.4 * tdt;
+          } else if (uMode == 2) { // Attract
+            v -= n * fall * 0.7 * tdt * uPointerScale;
+          } else if (uMode == 3) { // Orbit: spring to a breathing ring, and spin
+            float tr = 70.0 * (0.92 + r1 * 0.16) * (1.0 + 0.18 * sin(wob * 0.6));
+            v -= n * (dist - tr) * 0.07 * tdt * uPointerScale;
+            v += tg * 1.5 * (0.75 + r2 * 0.55) * fall * tdt;
+          } else if (uMode == 4) { // Wind: push along the finger's motion
+            v += F.zw * fall * 0.6 * tdt * uPointerScale;
+          } else if (uMode == 5) { // Gravity Well
+            float g = min(90.0, uReach * uReach / (dist * dist));
+            v -= n * g * 0.016 * tdt;
+          } else if (uMode == 6) { // Comet
+            if (dist < 70.0) {
+              float near = 1.0 - dist / 70.0;
+              float w = length(F.zw);
+              if (w > 0.6) v -= F.zw / w * near * near * 5.5 * tdt;
+              else v += n * near * near * 4.5 * tdt;
+              glow = min(2.2, glow + near * 0.1 * tdt);
+            } else v += n * fall * 0.05 * tdt;
+          } else if (uMode == 7) { // Bloom: rhythmic inhale and exhale
+            float wave = sin(dist * 0.04 - uTime * 2.2);
+            float f = wave > 0.0 ? wave * 1.8 : wave * 0.8;
+            v += n * f * fall * tdt * uPointerScale;
+            if (dist < 20.0) v += n * 0.2 * tdt;
+            if (wave > 0.7) glow = min(2.2, glow + (wave - 0.7) * 0.2 * tdt);
+          } else if (uMode == 8) { // Lattice
+            vec2 cell = floor(d / 42.0 + 0.5);
+            vec2 e = p - (F.xy + cell * 42.0);
+            float chk = mod(cell.x + cell.y + floor(r1 * 5.0), 2.0) > 0.5 ? 1.0 : -1.0;
+            v -= e * 0.045 * fall * tdt * uPointerScale;
+            v += vec2(-e.y, e.x) * 0.006 * chk * fall * tdt;
+            if (abs(e.x) + abs(e.y) < 12.0) glow = min(2.2, glow + 0.025 * tdt);
+          } else if (uMode == 9) { // Whirlpool
+            float cl = 1.0 - min(1.0, dist / uReach);
+            v += tg * fall * 0.8 * (1.0 + cl * cl * 3.0) * tdt;
+            if (dist < 34.0) {
+              float ej = (1.0 - dist / 34.0) * 3.2;
+              v += (tg + n * 0.5) * ej * tdt;
+              glow = min(2.2, glow + ej * 0.02 * tdt);
+            } else v -= n * fall * fall * 1.7 * tdt * uPointerScale;
+          } else if (uMode == 10) { // Pulse: rings that travel outward
+            float wave = sin(dist * 0.09 - uTime * 6.0);
+            v += n * wave * fall * 1.3 * tdt;
+            if (wave > 0.6) glow = min(2.2, glow + (wave - 0.6) * 0.3 * tdt);
+          }
+        }
+      } else if (uNP > 0) {
+        // Sphere / Cosmos: spring onto this particle's spot on the shape
+        v += (shapeTarget(idx).xy - p) * 0.07 * tdt;
+      }
+
+      // one-shot kicks: a finger lifting (B.w 0 = spin, 1 = outward,
+      // 2 = outward with scatter) or the Scatter button (3)
+      for (int i = 0; i < 5; i++) {
+        if (i >= uNB) break;
+        vec4 B = uB[i];
+        if (B.w < -0.5) continue;
+        if (B.w > 2.5) {
+          float a = h1(idx * 9u + uint(uFrame)) * 6.2831853;
+          v += vec2(cos(a), sin(a)) * (1.5 + 2.5 * h1(idx * 13u + uint(uFrame)));
+          continue;
+        }
+        vec2 d = p - B.xy;
+        float dist = max(6.0, length(d));
+        vec2 n = d / dist;
+        float kick = B.z * 260.0 / (260.0 + dist);
+        if (B.w < 0.5) v += vec2(-n.y, n.x) * kick;
+        else if (B.w < 1.5) v += n * kick;
+        else {
+          float a = atan(n.y, n.x) + (h1(idx * 7u + uint(uFrame)) - 0.5);
+          v += vec2(cos(a), sin(a)) * kick * 1.3;
+        }
+      }
+
+      if (isFlat) {
+        vec2 hv = uView * 0.5;
+        if (uVortex > 0.0) {
+          vec2 vd = p - hv;
+          float vdist = sqrt(max(36.0, dot(vd, vd)));
+          float vf = min(1.0, vdist / max(1.0, min(hv.x, hv.y)));
+          v += vec2(-vd.y, vd.x) / vdist * uVortex * 0.012 * vf * dt;
+        }
+        if (uEdge > 0.0) {
+          float m = max(24.0, min(uView.x, uView.y) * 0.16);
+          float ef = uEdge * 0.008 * dt;
+          if (p.x < m) v.x += (m - p.x) / m * ef; else if (p.x > uView.x - m) v.x -= (p.x - (uView.x - m)) / m * ef;
+          if (p.y < m) v.y += (m - p.y) / m * ef; else if (p.y > uView.y - m) v.y -= (p.y - (uView.y - m)) / m * ef;
+        }
+      }
+      float sp2 = dot(v, v);
+      if (sp2 > uMaxSpeed * uMaxSpeed) v *= uMaxSpeed / sqrt(sp2);
+      v *= uDrag;
+      glow += (1.0 - glow) * min(1.0, 0.12 * dt);
+
+      // Leaving the screen while a finger is down: come back beside a finger
+      // (the position pass does the move), unless this mode scrolls.
+      float tele = 0.0;
+      vec2 np = p + v * dt * uMS;
+      bool off = np.x < -10.0 || np.x > uView.x + 10.0 || np.y < -10.0 || np.y > uView.y + 10.0;
+      if (off && uNP > 0 && uWrapOnly < 0.5) {
+        tele = 1.0;
+        float a = h1(idx * 17u + uint(uFrame)) * 6.2831853;
+        v = vec2(cos(a), sin(a)) * (0.4 + 0.8 * h1(idx * 19u + uint(uFrame)));
+      }
+      gl_FragColor = vec4(v, glow, tele);
+    }`, {
+    uDt: { value: 1 }, uTouchDt: { value: 1 }, uDrag: { value: 1 }, uTime: { value: 0 }, uAmbient: { value: 1 }, uTurb: { value: 0 },
+    uVortex: { value: 0 }, uEdge: { value: 0 }, uMaxSpeed: { value: 32 }, uMS: { value: 1 }, uPointerScale: { value: 1 }, uWrapOnly: { value: 0 }, uReach: { value: 260 },
+    uNB: { value: 0 }, uB: { value: gpuBursts }, uFW: { value: gpuFingersW }, uFV: { value: gpuFingersWV }, uViewZ: { value: gpuViewZ },
+    uRC: { value: 200 }, uHY: { value: 300 }, uT: { value: 0 }, uTS: { value: 1 }, uFlowDrag: { value: 0.99 }
+  });
+
+  // Position pass: move by the new velocity; wrap, bring a teleported light
+  // back beside a finger, settle depth (shape modes) or re-seed (flow modes).
+  const gpuPosMat = simMat(`
+    uniform float uDt, uMS, uTime, uRC, uHY;
+    void main() {
+      ivec2 c = cellOf();
+      uint idx = indexOf(c);
+      vec4 P = texelFetch(uPos, c, 0);
+      vec4 V = texelFetch(uVel, c, 0);
+      if (uMode >= 30) {
+        vec3 p = P.xyz;
+        if (V.w < 0.0) {
+          vec3 sv = worldToView(p);
+          p = viewToWorld(vec3(sv.x, sv.y, (h1(idx * 43u + uint(uFrame)) * 2.0 - 1.0) * uHZ * 0.8));
+        } else {
+          p += V.xyz * uDt;
+          if (uMode == 33) { // Fluid wraps around inside its cylinder
+            float r2 = length(p.xz);
+            if (r2 > uRC) p.xz *= -(uRC * 0.96) / r2;
+            if (p.y > uHY) p.y -= uHY * 2.0; else if (p.y < -uHY) p.y += uHY * 2.0;
+          }
+        }
+        gl_FragColor = vec4(p, 0.0);
+        return;
+      }
+      vec2 p = P.xy;
+      float z = P.z;
+      if (V.w > 0.5 && uNP > 0) {
+        int k = min(uNP - 1, int(floor(h1(idx * 23u + uint(uFrame)) * float(uNP))));
+        float a = atan(V.y, V.x);
+        p = uP[k].xy + vec2(cos(a), sin(a)) * (14.0 + 32.0 * h1(idx * 29u + uint(uFrame)));
+      } else {
+        p += V.xy * uDt * uMS;
+        if (p.x < -10.0) p.x = uView.x + 10.0; else if (p.x > uView.x + 10.0) p.x = -10.0;
+        if (p.y < -10.0) p.y = uView.y + 10.0; else if (p.y > uView.y + 10.0) p.y = -10.0;
+      }
+      if (uMode < 20) z += (0.0 - z) * min(1.0, 0.12 * uDt); // flat modes settle back to a plane
+      else if (uNP > 0) z += (shapeTarget(idx).z - z) * min(1.0, 0.12 * uDt);
+      else { // untouched shape mode: each light breathes around its own depth
+        float zw = h1(idx * 8u + 7u) * 6.2831853 + 0.012 * uTime;
+        z = (h1(idx * 8u + 5u) * 2.0 - 1.0) * uDepth + sin(zw * (0.5 + 0.65 * h1(idx * 8u + 6u))) * uDepth * 0.12;
+      }
+      gl_FragColor = vec4(p, z, V.w);
+    }`, { uDt: { value: 1 }, uMS: { value: 1 }, uTime: { value: 0 }, uRC: { value: 200 }, uHY: { value: 300 } });
+
+  // The streak renderer, reading each particle straight from the textures.
+  // Same streak shader as the JavaScript engine; only where the per-particle
+  // values come from changes.
+  const gpuVS = particleVS.replace(/attribute vec3 iPos;[\s\S]*?attribute float aHeat;/, `
+    uniform sampler2D uPosTex;
+    uniform sampler2D uVelTex;
+    uniform float uTexW;
+    uniform vec2 uHalfView;
+    uniform vec3 uPal[8];
+    uniform float uPalN;
+    uniform float uGSize;
+    uniform float uTailK;
+    uniform float uMaxStreak;
+    uniform float uHeatK;
+    uniform float uLight;
+    uniform float uTime;
+    uniform float uWorld;
+    attribute float aIndex;
+    vec3 iPos; vec3 iTail; vec3 aColor; float aSize; float aAlpha; float aHeat;
+    ` + GPU_HASH + `
+    void fetchParticle() {
+      uint idx = uint(aIndex);
+      ivec2 c = ivec2(int(idx % uint(uTexW)), int(idx / uint(uTexW)));
+      vec4 P = texelFetch(uPosTex, c, 0);
+      vec4 V = texelFetch(uVelTex, c, 0);
+      vec3 mv;
+      float glow = 1.0, light = 1.0, sizeK = 1.0;
+      if (uWorld > 0.5) {
+        iPos = worldToView(P.xyz);
+        mv = worldToView(V.xyz) * uTailK * (V.w < 0.0 ? 0.0 : 1.0);
+        light = abs(V.w);
+        sizeK = 0.85 + min(1.6, light) * 0.15;
+        aHeat = clamp(length(V.xyz) * uHeatK, 0.0, 1.0);
+      } else {
+        iPos = vec3(P.x - uHalfView.x, uHalfView.y - P.y, P.z);
+        mv = vec3(V.x, -V.y, 0.0) * uTailK * (1.0 - P.w);
+        glow = V.z;
+        aHeat = clamp(length(V.xy) * uHeatK, 0.0, 1.0);
+      }
+      float ml = length(mv);
+      if (ml > uMaxStreak) mv *= uMaxStreak / ml;
+      iTail = iPos - mv;
+      int ci = min(int(uPalN) - 1, int(floor(h1(idx * 4u + 5u) * uPalN)));
+      aColor = uPal[ci];
+      aSize = uGSize * (2.3 + 0.4 * h1(idx * 4u + 6u)) * sizeK;
+      float wob = h1(idx * 4u + 1u) * 6.2831853 + 0.02 * uTime;
+      aAlpha = 0.75 * glow * light * (0.95 + 0.05 * sin(wob * 2.3)) * (0.7 + aHeat * 0.7) * uLight;
+    }
+  `).replace('void main() {', 'void main() {\n      fetchParticle();');
+  const gpuMaterial = new THREE.ShaderMaterial({
+    vertexShader: gpuVS,
+    fragmentShader: particleFS,
+    uniforms: {
+      uSizeScale: particleMaterial.uniforms.uSizeScale, uCoreMix: particleMaterial.uniforms.uCoreMix, uRes: particleMaterial.uniforms.uRes,
+      uWidth: particleMaterial.uniforms.uWidth, uHalo: particleMaterial.uniforms.uHalo,
+      uPosTex: { value: null }, uVelTex: { value: null }, uTexW: { value: GPU_TEX_W }, uHalfView: { value: new THREE.Vector2() },
+      uPal: { value: gpuPalette }, uPalN: { value: 1 }, uGSize: { value: 1 }, uTailK: { value: 1 }, uMaxStreak: { value: 120 },
+      uHeatK: { value: 0 }, uLight: { value: 1 }, uTime: { value: 0 }, uWorld: { value: 0 }, uRot: { value: gpuRot }
+    },
+    transparent: true, depthTest: false, depthWrite: false,
+    blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
+    blendEquationAlpha: THREE.AddEquation, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneFactor
+  });
+  const gpuGeometry = new THREE.InstancedBufferGeometry();
+  gpuGeometry.setAttribute('position', particleGeometry.getAttribute('position'));
+  gpuGeometry.setIndex(particleGeometry.getIndex());
+  gpuGeometry.instanceCount = 0;
+  const gpuMesh = new THREE.Mesh(gpuGeometry, gpuMaterial);
+  gpuMesh.frustumCulled = false;
+  gpuMesh.visible = false;
+  particleScene.add(gpuMesh);
+
+  const simScene = new THREE.Scene();
+  const simQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), gpuInitMat);
+  simQuad.frustumCulled = false;
+  simScene.add(simQuad);
+  function gpuPass(mat, target) {
+    simQuad.material = mat;
+    renderer.setRenderTarget(target);
+    renderer.render(simScene, postCamera);
+  }
+  function makeSimRT(w, h) {
+    return new THREE.WebGLRenderTarget(w, h, { type: THREE.FloatType, format: THREE.RGBAFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false, stencilBuffer: false });
+  }
+  function gpuSeed() {
+    const u = gpuInitMat.uniforms;
+    u.uView.value.set(W, H);
+    u.uSeed.value = (Math.random() * 1e6) | 0;
+    u.uWhich.value = 0; gpuPass(gpuInitMat, gpu.pos[0]); gpuPass(gpuInitMat, gpu.pos[1]);
+    u.uWhich.value = 1; gpuPass(gpuInitMat, gpu.vel[0]); gpuPass(gpuInitMat, gpu.vel[1]);
+    gpu.cur = 0;
+    gpu.space = 'screen';
+  }
+  // Size the textures for `count` lights. Growing re-seeds the field;
+  // shrinking just draws fewer of the lights already there.
+  function gpuEnsure(count) {
+    const rows = Math.max(1, Math.ceil(count / GPU_TEX_W));
+    if (!gpu || gpu.rows < rows) {
+      if (gpu) [...gpu.pos, ...gpu.vel].forEach((rt) => rt.dispose());
+      gpu = { rows, count, cur: 0, space: 'screen', pos: [makeSimRT(GPU_TEX_W, rows), makeSimRT(GPU_TEX_W, rows)], vel: [makeSimRT(GPU_TEX_W, rows), makeSimRT(GPU_TEX_W, rows)] };
+      const idx = new Float32Array(GPU_TEX_W * rows);
+      for (let i = 0; i < idx.length; i++) idx[i] = i;
+      gpuGeometry.setAttribute('aIndex', new THREE.InstancedBufferAttribute(idx, 1));
+      gpuSeed();
+    }
+    gpu.count = count;
+    gpuGeometry.instanceCount = count;
+  }
+  function gpuActive() { return gpuSupported && GPU_MODE_ID[mode] !== undefined; }
+  function gpuQueueBurst(x, y, kick, kind) {
+    if (gpuBurstCount >= gpuBursts.length) return;
+    gpuBursts[gpuBurstCount++].set(x, y, kick, kind);
+  }
+  // A finger lifting in a 3D physics mode: kick outward through the volume.
+  function gpuQueueWorldBurst(p, strength) {
+    if (strength <= 0) return;
+    viewToWorld(p.x - W / 2, H / 2 - p.y, 0, _v);
+    gpuQueueBurst(_v.x, _v.y, _v.z, -Math.max(0.6, strength));
+  }
+  function gpuSyncRotation() {
+    gpuRot.set(P.cy, P.sy, P.cp, P.sp);
+    viewToWorld(0, 0, 1, _v);
+    gpuViewZ.set(_v.x, _v.y, _v.z);
+  }
+  // Move the field between screen space and world space in place.
+  function gpuConvert(toWorld) {
+    const u = gpuConvMat.uniforms;
+    u.uView.value.set(W, H);
+    u.uHZ.value = DEPTH;
+    u.uToWorld.value = toWorld ? 1 : 0;
+    u.uFrame.value = gpuFrameNo;
+    const a = gpu.cur, b = 1 - a;
+    u.uPos.value = gpu.pos[a].texture; u.uVel.value = gpu.vel[a].texture;
+    u.uWhich.value = 0; gpuPass(gpuConvMat, gpu.pos[b]);
+    u.uWhich.value = 1; gpuPass(gpuConvMat, gpu.vel[b]);
+    gpu.cur = b;
+    gpu.space = toWorld ? 'world' : 'screen';
+  }
+
+  // One frame of the GPU engine: `substeps` physics passes, then point the
+  // streak renderer at the result. Called from frame() in place of the
+  // JavaScript particle loop.
+  function gpuFrame(frameDt, reactiveDt, activePointers, frameScale) {
+    const count = superRes ? GPU_SUPER_COUNT : targetCount;
+    gpuEnsure(count);
+    const halfW = W * 0.5, halfH = H * 0.5;
+    const flow = FLOW_3D_MODES.has(mode);
+    const np = Math.min(5, activePointers.length);
+    if (flow) prepareFlowFrame(activePointers, 0, halfW, halfH); // up-to-date view rotation and finger positions
+    gpuSyncRotation();
+    if ((gpu.space === 'world') !== flow) gpuConvert(flow);
+    for (let i = 0; i < np; i++) { const p = activePointers[i]; gpuPointers[i].set(p.x, p.y, p.vx, p.vy); }
+    const substeps = Math.min(MAX_SUBSTEPS, Math.max(1, Math.ceil(frameDt / SUBSTEP_DT - 1e-6)));
+    const dt = frameDt / substeps;
+    const stepReactiveDt = reactiveDt / substeps;
+    const vu = gpuVelMat.uniforms, pu = gpuPosMat.uniforms;
+    for (const u of [vu, pu]) {
+      u.uView.value.set(W, H); u.uNP.value = np; u.uMode.value = GPU_MODE_ID[mode]; u.uHZ.value = DEPTH;
+      u.uSpin.value = formSpin; u.uTilt.value = formTilt; u.uRing.value = saturnRingSpin; u.uRadius.value = SPHERE_RADIUS; u.uDepth.value = DEPTH;
+      u.uShapeN.value = Math.max(1, np);
+    }
+    vu.uDt.value = flow ? stepReactiveDt : dt; pu.uDt.value = flow ? stepReactiveDt : dt;
+    vu.uTouchDt.value = Math.min(5, stepReactiveDt * touchStrength);
+    vu.uDrag.value = Math.pow(dragCoef, dt);
+    vu.uTime.value = simTime; pu.uTime.value = simTime;
+    vu.uAmbient.value = ambientDrift; vu.uTurb.value = turbulenceStrength; vu.uVortex.value = vortexStrength; vu.uEdge.value = edgeReturnStrength;
+    vu.uMaxSpeed.value = maxParticleSpeed;
+    vu.uMS.value = MOTION_SCALE; pu.uMS.value = MOTION_SCALE;
+    vu.uPointerScale.value = np > 2 ? Math.min(1, 2 / np) : 1;
+    vu.uWrapOnly.value = (mode === 'Wind' || mode === 'Lattice' || forceWrap) ? 1 : 0;
+    vu.uReach.value = REACH_BY_MODE[mode] || FALLOFF_REACH;
+    vu.uTS.value = touchStrength;
+    if (flow) vu.uFlowDrag.value = Math.pow(Math.min(0.999, PHYS_DRAG[mode] * (1 + ((dragCoef - 0.9) / 0.099 - 0.66) * 0.03)), stepReactiveDt);
+    for (let step = 0; step < substeps; step++) {
+      if (flow) {
+        prepareFlowFrame(activePointers, stepReactiveDt, halfW, halfH); // turns the view, places fingers in the volume
+        gpuSyncRotation();
+        for (let i = 0; i < np; i++) { const f = P.fingers[i]; gpuFingersW[i].set(f.x, f.y, f.z, 0); gpuFingersWV[i].set(f.vx, f.vy, f.vz, 0); }
+        vu.uRC.value = P.rc; vu.uHY.value = P.hy; vu.uT.value = P.T; pu.uRC.value = P.rc; pu.uHY.value = P.hy;
+      }
+      vu.uNB.value = step === 0 ? gpuBurstCount : 0;
+      const a = gpu.cur, b = 1 - a;
+      gpuFrameNo = (gpuFrameNo + 1) % 100000;
+      vu.uFrame.value = gpuFrameNo; pu.uFrame.value = gpuFrameNo;
+      vu.uPos.value = gpu.pos[a].texture; vu.uVel.value = gpu.vel[a].texture;
+      gpuPass(gpuVelMat, gpu.vel[b]);
+      pu.uPos.value = gpu.pos[a].texture; pu.uVel.value = gpu.vel[b].texture;
+      gpuPass(gpuPosMat, gpu.pos[b]);
+      gpu.cur = b;
+    }
+    gpuBurstCount = 0;
+
+    // drawing
+    const gu = gpuMaterial.uniforms;
+    gu.uPosTex.value = gpu.pos[gpu.cur].texture;
+    gu.uVelTex.value = gpu.vel[gpu.cur].texture;
+    gu.uHalfView.value.set(halfW, halfH);
+    gu.uWorld.value = flow ? 1 : 0;
+    const cols = PALETTES[paletteKey].colors;
+    const nc = Math.min(8, cols.length);
+    for (let i = 0; i < nc; i++) { const c = colorFloat(cols[i]); gpuPalette[i].set(c[0], c[1], c[2]); }
+    gu.uPalN.value = nc;
+    gu.uGSize.value = sizeScale * 2 * DPR;
+    const streakFrames = Math.max(1.2, (superRes ? 4 : 3) / frameScale);
+    const perFrame = (flow ? 1 : MOTION_SCALE) * frameDt; // world px a light moves per frame, per unit of velocity
+    gu.uTailK.value = perFrame * streakFrames;
+    gu.uMaxStreak.value = superRes ? 180 : 120;
+    gu.uHeatK.value = perFrame / (14 * frameScale);
+    // Thousands of lights adding up would turn the screen white, so each
+    // light gets dimmer as the count climbs past a few thousand.
+    gu.uLight.value = brightnessMult * (superRes ? 0.9 : 1) * Math.min(1, 4000 / Math.max(1, count)); // past 4,000 the total light stays the same: more lights means more detail, not a whiter screen
+    gu.uTime.value = simTime;
+    particleMaterial.uniforms.uWidth.value = (superRes ? 0.12 : 0.18) * (MODES_3D.has(mode) ? 1.3 : 1);
+    particleMaterial.uniforms.uHalo.value = superRes ? 0.3 : 0.45;
+  }
+
   resize();
 
   // ---------- Interaction modes ----------
   // These describe HOW touch pushes the always-on field of particles around,
   // not spawn effects — the particle count never changes when you touch.
-  const MODES = ['Swirl', 'Repel', 'Attract', 'Orbit', 'Wind', 'Gravity Well', 'Comet', 'Sphere', 'Cosmos', 'Whirlpool', 'Pulse', 'Bloom', 'Lattice', 'Orbit 3D', 'Tornado', 'Flock', 'Magnet', 'Fluid'];
+  const MODES = ['Swirl', 'Repel', 'Attract', 'Orbit', 'Wind', 'Gravity Well', 'Comet', 'Sphere', 'Cosmos', 'Whirlpool', 'Pulse', 'Bloom', 'Lattice', 'Orbit 3D', 'Tornado', 'Magnet', 'Fluid'];
   let mode = 'Swirl';
   // Every mode in this set gets the same real-depth treatment Sphere
   // pioneered: wider orbitRadius camera framing, a rotating formX/Y/Z
@@ -1371,7 +2073,7 @@ import * as THREE from 'three';
   // even though what it actually renders changes with finger count.
   // The 3D physics modes (Orbit 3D .. Fluid, see FLOW_3D_MODES) share the
   // 3D camera framing but run real 3D forces instead of shape springs.
-  const MODES_3D = new Set(['Sphere', 'Cosmos', 'Orbit 3D', 'Tornado', 'Flock', 'Magnet', 'Fluid']);
+  const MODES_3D = new Set(['Sphere', 'Cosmos', 'Orbit 3D', 'Tornado', 'Magnet', 'Fluid']);
 
   // simTime (accumulated dt, not wall-clock time) — used by any mode whose
   // force depends on elapsed time rather than just current finger position,
@@ -1625,7 +2327,16 @@ import * as THREE from 'three';
   function releaseBurst(id) {
     const p = pointers.get(id);
     if (!p) return;
-    if (FLOW_3D_MODES.has(mode)) { physRelease(p, RELEASE_STRENGTH * releaseStrength); return; }
+    if (FLOW_3D_MODES.has(mode)) {
+      if (gpuActive()) gpuQueueWorldBurst(p, RELEASE_STRENGTH * releaseStrength);
+      else physRelease(p, RELEASE_STRENGTH * releaseStrength);
+      return;
+    }
+    if (gpuActive()) {
+      const kick = (RELEASE_STRENGTH_BY_MODE[mode] || RELEASE_STRENGTH) * releaseStrength;
+      gpuQueueBurst(p.x, p.y, kick, mode === 'Swirl' ? 0 : ((mode === 'Repel' || mode === 'Sphere' || mode === 'Cosmos') ? 1 : 2));
+      return;
+    }
 
     // center of the current field — used so Attract/Orbit bursts scatter
     // outward from where the particles actually are, not just the touch
@@ -1795,6 +2506,7 @@ import * as THREE from 'three';
 
   // A gentle random kick applied to the existing field — never changes count.
   function scatterField() {
+    if (gpuActive()) gpuQueueBurst(0, 0, 0, 3);
     particles.forEach((pt) => {
       const a = rand(0, Math.PI * 2);
       const kick = rand(1.5, 4);
@@ -1966,23 +2678,23 @@ import * as THREE from 'three';
   // of the geometric one.
   const COSMOS_SHAPE_BY_FINGERS = { 1: shapePointGalaxy, 2: shapePointVortex, 3: shapePointSaturn, 4: shapePointNebula, 5: shapePointWormhole };
 
-  // ---------- 3D physics modes (Orbit 3D, Tornado, Flock, Magnet, Fluid) ----------
+  // ---------- 3D physics modes (Orbit 3D, Tornado, Magnet, Fluid) ----------
   // These are the 3D cousins of Attract / Repel / Orbit: no target shapes at
   // all. Every particle has a real position and velocity in a 3D volume
   // (wx/wy/wz, wvx/wvy/wvz; pixels, origin at the centre, y up) and only
-  // forces move it — gravity wells, twisters, a self-steering flock, magnetic
+  // forces move it — gravity wells, twisters, magnetic
   // field lines, a swirling current. Whatever pattern shows up comes out of
   // the motion. Fingers sit on the plane through the middle of the volume
   // facing you. The whole volume turns slowly (View turn in Effects) so the
   // depth reads; drawing just rotates world -> view each frame.
   const TAU = Math.PI * 2;
-  const FLOW_3D_MODES = new Set(['Orbit 3D', 'Tornado', 'Flock', 'Magnet', 'Fluid']);
-  const PHYS_DRAG = { 'Orbit 3D': 0.996, 'Tornado': 0.982, 'Flock': 0.995, 'Magnet': 0.96, 'Fluid': 0.985 };
+  const FLOW_3D_MODES = new Set(['Orbit 3D', 'Tornado', 'Magnet', 'Fluid']);
+  const PHYS_DRAG = { 'Orbit 3D': 0.996, 'Tornado': 0.982, 'Magnet': 0.96, 'Fluid': 0.985 };
   let viewYaw = 0.5;
   const VIEW_PITCH = 0.2;
   const VIEW_TURN = 0.0014; // radians per 60 Hz frame at View turn 100%
   let physEpoch = 1;        // bumped on entering a 3D physics mode; particles re-seed lazily
-  const P = { cy: 1, sy: 0, cp: 1, sp: 0, T: 0, n: 0, fingers: [], rc: 200, hy: 300, hz: 200, flock: null };
+  const P = { cy: 1, sy: 0, cp: 1, sp: 0, T: 0, n: 0, fingers: [], rc: 200, hy: 300, hz: 200 };
   for (let i = 0; i < 5; i++) P.fingers.push({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, s: 1 });
 
   // view-space (x right, y up, z toward you) -> world, inverse of the draw rotation
@@ -1998,7 +2710,6 @@ import * as THREE from 'three';
 
   function resetFlowMode() {
     physEpoch++;
-    if (P.flock) P.flock.dirty = true;
   }
 
   function seedPhys(pt, halfW, halfH) {
@@ -2010,63 +2721,6 @@ import * as THREE from 'three';
     // each particle leans its orbits around its own axis (Orbit 3D)
     pt.oax = pt.formX; pt.oay = pt.formY; pt.oaz = pt.formZ;
     pt.physEpoch = physEpoch;
-  }
-
-  // ---- Flock: neighbourhood averages from a coarse 3D grid, O(particles) ----
-  const FLOCK_CELL = 70;
-  function flockGrid() {
-    const nx = Math.max(3, Math.ceil(P.rc * 2.6 / FLOCK_CELL) + 1);
-    const ny = Math.max(3, Math.ceil(P.hy * 2.6 / FLOCK_CELL) + 1);
-    const nz = nx;
-    let g = P.flock;
-    if (!g || g.nx !== nx || g.ny !== ny) {
-      const n = nx * ny * nz;
-      g = P.flock = { nx, ny, nz, n, raw: new Float32Array(n * 7), sum: new Float32Array(n * 7), tmp: new Float32Array(n * 7) };
-    }
-    return g;
-  }
-  function flockCell(g, x, y, z) {
-    const ix = Math.max(0, Math.min(g.nx - 1, ((x + P.rc * 1.3) / FLOCK_CELL) | 0));
-    const iy = Math.max(0, Math.min(g.ny - 1, ((y + P.hy * 1.3) / FLOCK_CELL) | 0));
-    const iz = Math.max(0, Math.min(g.nz - 1, ((z + P.rc * 1.3) / FLOCK_CELL) | 0));
-    return (iz * g.ny + iy) * g.nx + ix;
-  }
-  function flockCount(g, X, Y, Z, fallback) {
-    return (X < 0 || Y < 0 || Z < 0 || X >= g.nx || Y >= g.ny || Z >= g.nz) ? fallback : g.sum[((Z * g.ny + Y) * g.nx + X) * 7];
-  }
-  function buildFlock() {
-    const g = flockGrid();
-    g.raw.fill(0);
-    for (let i = 0; i < particles.length; i++) {
-      const pt = particles[i];
-      if (pt.physEpoch !== physEpoch) continue;
-      const o = flockCell(g, pt.wx, pt.wy, pt.wz) * 7;
-      g.raw[o]++; g.raw[o + 1] += pt.wx; g.raw[o + 2] += pt.wy; g.raw[o + 3] += pt.wz;
-      g.raw[o + 4] += pt.wvx; g.raw[o + 5] += pt.wvy; g.raw[o + 6] += pt.wvz;
-    }
-    // 3x3x3 box sum, done as three separable passes
-    const { nx, ny, nz } = g;
-    const pass = (src, dst, sx, sy, sz) => {
-      for (let z = 0; z < nz; z++) for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
-        const o = ((z * ny + y) * nx + x) * 7;
-        for (let k = 0; k < 7; k++) dst[o + k] = src[o + k];
-        for (let d = -1; d <= 1; d += 2) {
-          const X = x + d * sx, Y = y + d * sy, Z = z + d * sz;
-          if (X < 0 || Y < 0 || Z < 0 || X >= nx || Y >= ny || Z >= nz) continue;
-          const q = ((Z * ny + Y) * nx + X) * 7;
-          for (let k = 0; k < 7; k++) dst[o + k] += src[q + k];
-        }
-      }
-    };
-    pass(g.raw, g.tmp, 1, 0, 0);
-    pass(g.tmp, g.sum, 0, 1, 0);
-    pass(g.sum, g.tmp, 0, 0, 1);
-    const t = g.sum; g.sum = g.tmp; g.tmp = t;
-    // whole-flock centre and heading, so it moves as one body
-    let n = 0, cx = 0, cy = 0, cz = 0, vx = 0, vy = 0, vz = 0;
-    for (let i = 0; i < g.n; i++) { const o = i * 7; n += g.raw[o]; cx += g.raw[o + 1]; cy += g.raw[o + 2]; cz += g.raw[o + 3]; vx += g.raw[o + 4]; vy += g.raw[o + 5]; vz += g.raw[o + 6]; }
-    n = Math.max(1, n);
-    g.cx = cx / n; g.cy = cy / n; g.cz = cz / n; g.vx = vx / n; g.vy = vy / n; g.vz = vz / n;
   }
 
   function prepareFlowFrame(activePointers, dt, halfW, halfH) {
@@ -2087,7 +2741,6 @@ import * as THREE from 'three';
       f.vx = _v.x; f.vy = _v.y; f.vz = _v.z;
       f.s = 1; // Magnet: all poles point up, so field lines chain from finger to finger
     }
-    if (mode === 'Flock') buildFlock();
   }
 
   // One particle, one frame of 3D physics, then project it for drawing.
@@ -2149,46 +2802,6 @@ import * as THREE from 'three';
         if (y > top - 40) { const o = 0.55 * Math.min(1, (y - top + 40) / 80); ax += ux * o; az += uz * o; }
         light += near * reach;
       }
-    } else if (mode === 'Flock') {
-      const g = P.flock;
-      const c = flockCell(g, x, y, z) * 7;
-      const s = g.sum, raw = g.raw;
-      const n = s[c];
-      if (n > 1) {
-        const inv = 1 / n;
-        // alignment and cohesion with the neighbourhood
-        ax += (s[c + 4] * inv - pt.wvx) * 0.1; ay += (s[c + 5] * inv - pt.wvy) * 0.1; az += (s[c + 6] * inv - pt.wvz) * 0.1;
-        ax += (s[c + 1] * inv - x) * 0.0012; ay += (s[c + 2] * inv - y) * 0.0012; az += (s[c + 3] * inv - z) * 0.0012;
-        // separation: move down the crowding gradient, so dense knots spread
-        // into sheets and ribbons instead of piling into balls
-        const ix = c / 7 % g.nx, iy = ((c / 7 / g.nx) | 0) % g.ny, iz = (c / 7 / (g.nx * g.ny)) | 0;
-        const at = (X, Y, Z) => flockCount(g, X, Y, Z, n);
-        const sep = 0.0005;
-        ax -= (at(ix + 1, iy, iz) - at(ix - 1, iy, iz)) * sep;
-        ay -= (at(ix, iy + 1, iz) - at(ix, iy - 1, iz)) * sep;
-        az -= (at(ix, iy, iz + 1) - at(ix, iy, iz - 1)) * sep;
-        // a little individual wobble so birds aren't in perfect lockstep
-        ax += Math.sin(T * 2.1 + pt.wobble * 7) * 0.008; ay += Math.sin(T * 1.7 + pt.wobble * 5) * 0.008; az += Math.cos(T * 1.9 + pt.wobble * 6) * 0.008;
-      }
-      // stay with the whole flock and share its heading
-      ax += (g.cx - x) * 0.0005 + (g.vx - pt.wvx) * 0.012;
-      ay += (g.cy - y) * 0.0005 + (g.vy - pt.wvy) * 0.012;
-      az += (g.cz - z) * 0.0005 + (g.vz - pt.wvz) * 0.012;
-      // the flock roams after a slowly wandering point, sweeping and turning
-      const lx = P.rc * 0.6 * Math.sin(T * 0.31), ly = P.hy * 0.5 * Math.sin(T * 0.23 + 1), lz = P.rc * 0.6 * Math.cos(T * 0.27);
-      ax += (lx - x) * 0.0011; ay += (ly - y) * 0.0011; az += (lz - z) * 0.0011;
-      // fingers are predators: a hard swerve away close in
-      for (let i = 0; i < P.n; i++) {
-        const f = P.fingers[i];
-        const dx = x - f.x, dy = y - f.y, dz = z - f.z;
-        const r = Math.sqrt(dx * dx + dy * dy + dz * dz) + 1;
-        const R = 230 * Math.sqrt(ts);
-        if (r < R) { const k = (1 - r / R); const a = k * k * 2.2 / r; ax += dx * a; ay += dy * a; az += dz * a; light += k; }
-      }
-      // birds hold a cruising speed
-      const sp = Math.sqrt(pt.wvx * pt.wvx + pt.wvy * pt.wvy + pt.wvz * pt.wvz) + 1e-3;
-      const cruise = (3.4 / sp - 1) * 0.06;
-      ax += pt.wvx * cruise; ay += pt.wvy * cruise; az += pt.wvz * cruise;
     } else if (mode === 'Magnet') {
       // Fingers are bar magnets (vertical, all north-up). Particles flow
       // along the summed field: out of the north pole, round in a loop, into
@@ -2244,7 +2857,7 @@ import * as THREE from 'three';
 
     // shared extras: drift, turbulence and Spin from Motion settings
     const amb = (P.n === 0 || mode === 'Fluid' ? 0.012 : 0.004) * ambientDrift;
-    if (mode !== 'Flock') {
+    {
       ax += Math.sin(y * 0.011 + T * 0.7 + pt.wobble) * amb;
       ay += Math.sin(z * 0.012 + T * 0.6 + pt.wobble) * amb;
       az += Math.sin(x * 0.010 + T * 0.8 + pt.wobble) * amb;
@@ -3355,7 +3968,11 @@ import * as THREE from 'three';
     // the same at 60 and 120 Hz.
     const frameScale = Math.min(4, Math.max(0.25, rawFrameMs / 16.67)) || 1;
 
-    reconcilePopulation();
+    const useGpu = gpuActive();
+    if (!useGpu) reconcilePopulation();
+    points.visible = !useGpu;
+    if (document.body.dataset.engine !== (useGpu ? 'gpu' : 'cpu')) document.body.dataset.engine = useGpu ? 'gpu' : 'cpu'; // which particle engine is running
+    gpuMesh.visible = useGpu;
 
     // Build the active-touch list once per frame, not once per particle —
     // this single array is reused by every particle's applyTouchForces call
@@ -3442,6 +4059,9 @@ import * as THREE from 'three';
     const halfH = H * 0.5;
     const touchForceStride = touchForceStrideFor(activePointers.length, particles.length);
     const touchForcePhase = (touchSimulationPhase++) % touchForceStride;
+    if (useGpu) {
+      gpuFrame(dt, reactiveDt, activePointers, frameScale);
+    } else {
     let totalVelocityActivity = 0;
     const frameDt = dt;
     // Physics runs in steps no bigger than one 60 Hz frame. At high Speed (or
@@ -3712,6 +4332,7 @@ import * as THREE from 'three';
     sizeAttr.needsUpdate = true;
     alphaAttr.needsUpdate = true;
     particleGeometry.instanceCount = particles.length;
+    }
     renderer.setRenderTarget(particleLayer);
     renderer.setClearColor(_clearBlack, 0);
     renderer.clear(true, false, false);
