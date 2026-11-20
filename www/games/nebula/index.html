@@ -1550,14 +1550,28 @@ import * as THREE from 'three';
       float x = x3.x, y = x3.y, z = x3.z;
       float light = 0.0, T = uT, ts = uTS, dt = uDt;
       float wob = h1(idx * 4u + 1u) * 6.2831853;
-      if (uMode == 30) { // Orbit 3D: every finger is a star; each light orbits on its own tilted plane
-        vec3 oa = unitSphere(idx);
+      if (uMode == 30) { // Orbit 3D: an atom. Each light circles the finger on its own ring:
+        // its own size and its own tilt, so together they draw a 3D cage of orbits.
+        // six orbits, like an atom diagram: every light belongs to one, and the
+        // lights of an orbit share its tilt and size, so each reads as a clear ring
+        float k = floor(h1(idx * 8u + 5u) * 6.0);
+        float tilt = 0.85 + 0.4 * mod(k, 2.0), az = k * 2.62;
+        vec3 oa = vec3(sin(tilt) * cos(az), cos(tilt), sin(tilt) * sin(az));
+        float ringR = uRC * (0.32 + 0.11 * k) * (0.95 + 0.1 * h1(idx * 8u + 6u));
+        float share = 1.0 / float(max(uNP, 1));
         for (int i = 0; i < 5; i++) {
           if (i >= uNP) break;
           vec3 d = uFW[i].xyz - x3;
-          float r2 = dot(d, d) + 1225.0, r = sqrt(r2);
-          float g = 2600.0 * ts / (r2 * r);
-          acc += d * g + cross(oa, d) * g * 0.32;
+          float r = length(d) + 1.0;
+          vec3 n = d / r;
+          float vr = dot(v3, n);
+          // settle onto its ring radius, without bouncing
+          acc += n * ((r - ringR) * 0.004 - vr * 0.03) * ts * share;
+          // and travel around it, on the plane its axis sets
+          vec3 t = cross(oa, n);
+          float tl = length(t);
+          if (tl > 0.05) acc += ((t / tl) * 3.4 * ts - (v3 - n * vr)) * 0.04 * share;
+          light += 0.5 * exp(-abs(r - ringR) / 40.0);
         }
       } else if (uMode == 31) { // Tornado
         for (int i = 0; i < 5; i++) {
@@ -1566,8 +1580,9 @@ import * as THREE from 'three';
           float dx = x - f.x, dz = z - f.z;
           float r = sqrt(dx * dx + dz * dz) + 0.5;
           float ux = dx / r, uz = dz / r, h = y - f.y;
-          float rt = 16.0 + max(0.0, h) * 0.34 + max(0.0, -h) * 0.25;
-          float wall = (r - rt) / 60.0, near = exp(-wall * wall);
+          // each light rides its own layer of the funnel wall, so the cone has body
+          float rt = (16.0 + max(0.0, h) * 0.34 + max(0.0, -h) * 0.25) * (0.6 + 0.8 * h1(idx * 8u + 6u));
+          float wall = (r - rt) / 95.0, near = exp(-wall * wall);
           float reach = 1.0 / (1.0 + (r / 280.0) * (r / 280.0));
           float vt = -v3.x * uz + v3.z * ux;
           float tk = ((2.4 + 6.5 * near) * reach * ts - vt) * 0.07;
@@ -1685,8 +1700,15 @@ import * as THREE from 'three';
             v += tg * fall * 0.9 * tdt * sgn;
           } else if (uMode == 1) { // Repel
             v += n * fall * fall * 2.4 * tdt;
-          } else if (uMode == 2) { // Attract
-            v -= n * fall * 0.7 * tdt * uPointerScale;
+          } else if (uMode == 2) { // Attract: lights fall through the finger and swing back out,
+            // tracing slim petal loops, so the field becomes a slowly turning starburst
+            // instead of collapsing into one dot. Near the finger the pull grows with
+            // distance (a spring, which makes clean loops); far away it is constant.
+            v -= d * 0.0035 * min(1.0, 220.0 / dist) * tdt * uPointerScale;
+            // each light keeps a set amount of sideways speed, so its loop stays a
+            // narrow petal (not a line, not a ring); half go each way round
+            float side = (r2 < 0.5 ? -1.0 : 1.0) * (0.5 + r1 * 0.9) * fall;
+            v += tg * (side - dot(v, tg)) * 0.02 * tdt;
           } else if (uMode == 3) { // Orbit: spring to a breathing ring, and spin
             float tr = 70.0 * (0.92 + r1 * 0.16) * (1.0 + 0.18 * sin(wob * 0.6));
             v -= n * (dist - tr) * 0.07 * tdt * uPointerScale;
@@ -1776,7 +1798,8 @@ import * as THREE from 'three';
       }
       float sp2 = dot(v, v);
       if (sp2 > uMaxSpeed * uMaxSpeed) v *= uMaxSpeed / sqrt(sp2);
-      v *= uDrag;
+      // Attract's loops need to keep their energy, or they shrink back into a dot
+      v *= (uMode == 2 && uNP > 0) ? pow(0.9985, dt) : uDrag;
       glow += (1.0 - glow) * min(1.0, 0.12 * dt);
 
       // Leaving the screen while a finger is down: come back beside a finger
