@@ -854,6 +854,11 @@ import * as THREE from 'three';
   let particleLayer = null; // this frame's particles alone, on transparent black
   // Rendering into half-float needs WebGL2 plus a colour-buffer extension; without it the layer is 8-bit and light simply clips.
   const hdrLayer = !!(renderer.capabilities.isWebGL2 && (renderer.extensions.has('EXT_color_buffer_half_float') || renderer.extensions.has('EXT_color_buffer_float')));
+  // Where the GPU can blend into 32-bit float, the light sums use it: half
+  // float has so few digits that, with hundreds of thousands of lights, the
+  // small amount each light adds gets rounded away in bright areas, and which
+  // ones get lost changes every frame, so crowds shimmered and flickered.
+  const fullFloatLayer = hdrLayer && renderer.extensions.has('EXT_color_buffer_float') && renderer.extensions.has('EXT_float_blend');
   function makeFBO(w, h, type) {
     return new THREE.WebGLRenderTarget(w, h, {
       type: type || THREE.UnsignedByteType,
@@ -982,7 +987,7 @@ import * as THREE from 'three';
     const bw = Math.max(1, Math.round(W * DPR)), bh = Math.max(1, Math.round(H * DPR));
     fbos = [makeFBO(bw, bh), makeFBO(bw, bh)];
     if (particleLayer) particleLayer.dispose();
-    particleLayer = makeFBO(bw, bh, hdrLayer ? THREE.HalfFloatType : undefined);
+    particleLayer = makeFBO(bw, bh, hdrLayer ? (fullFloatLayer ? THREE.FloatType : THREE.HalfFloatType) : undefined);
     if (particleMaterial) particleMaterial.uniforms.uRes.value.set(bw, bh);
     // clear both to the current palette background so a resize doesn't flash black
     clearTargetToColor(fbos[0], PALETTES[paletteKey].bg);
@@ -1169,7 +1174,11 @@ import * as THREE from 'three';
       // Thousands of lights on one pixel can overflow the half-float layer to
       // infinity, and infinity / infinity is not a number: that showed up as
       // big flashes once the glow blur spread it. Cap the sums first.
-      l = clamp(l, vec4(0.0), vec4(30000.0));
+      // Scale all four together, so a very bright spot never changes colour
+      // (capping each channel on its own made hues jump frame to frame).
+      l = clamp(l, vec4(0.0), vec4(65000.0));
+      float big = max(max(l.r, l.g), max(l.b, l.a));
+      if (big > 30000.0) l *= 30000.0 / big;
       float A = l.a;
       if (A < 0.0005) return vec3(0.0);
       vec3 avg = l.rgb / A;
@@ -1243,7 +1252,11 @@ import * as THREE from 'three';
       // Thousands of lights on one pixel can overflow the half-float layer to
       // infinity, and infinity / infinity is not a number: that showed up as
       // big flashes once the glow blur spread it. Cap the sums first.
-      l = clamp(l, vec4(0.0), vec4(30000.0));
+      // Scale all four together, so a very bright spot never changes colour
+      // (capping each channel on its own made hues jump frame to frame).
+      l = clamp(l, vec4(0.0), vec4(65000.0));
+      float big = max(max(l.r, l.g), max(l.b, l.a));
+      if (big > 30000.0) l *= 30000.0 / big;
       float A = l.a;
       if (A < 0.0005) return vec3(0.0);
       vec3 avg = l.rgb / A;
