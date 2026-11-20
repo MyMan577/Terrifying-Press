@@ -1843,17 +1843,18 @@ import * as THREE from 'three';
       v *= ((uMode == 2 || uMode == 5) && uNP > 0) ? pow(0.9985, dt) : uDrag;
       glow += (1.0 - glow) * min(1.0, 0.12 * dt);
 
-      // Leaving the screen while a finger is down: come back beside a finger
-      // (the position pass does the move), unless this mode scrolls.
-      float tele = 0.0;
+      // While a finger is down the screen edges are soft walls: a light about
+      // to leave bounces back in, losing most of its speed. (It used to be
+      // moved to just beside a finger instead; with tens of thousands of
+      // lights, Repel sent thousands a frame back into the finger, where they
+      // popped in and were blasted straight out again: a constant flicker.)
+      // Modes that scroll, and an untouched field, still wrap round.
       vec2 np = p + v * dt * uMS;
-      bool off = np.x < -10.0 || np.x > uView.x + 10.0 || np.y < -10.0 || np.y > uView.y + 10.0;
-      if (off && uNP > 0 && uWrapOnly < 0.5) {
-        tele = 1.0;
-        float a = h1(idx * 17u + uint(uFrame)) * 6.2831853;
-        v = vec2(cos(a), sin(a)) * (0.4 + 0.8 * h1(idx * 19u + uint(uFrame)));
+      if (uNP > 0 && uWrapOnly < 0.5) {
+        if (np.x < 0.0) v.x = abs(v.x) * 0.25; else if (np.x > uView.x) v.x = -abs(v.x) * 0.25;
+        if (np.y < 0.0) v.y = abs(v.y) * 0.25; else if (np.y > uView.y) v.y = -abs(v.y) * 0.25;
       }
-      gl_FragColor = vec4(v, glow, tele);
+      gl_FragColor = vec4(v, glow, 0.0);
     }`, {
     uDt: { value: 1 }, uTouchDt: { value: 1 }, uDrag: { value: 1 }, uTime: { value: 0 }, uAmbient: { value: 1 }, uTurb: { value: 0 },
     uVortex: { value: 0 }, uEdge: { value: 0 }, uMaxSpeed: { value: 32 }, uMS: { value: 1 }, uPointerScale: { value: 1 }, uWrapOnly: { value: 0 }, uReach: { value: 260 },
@@ -1864,7 +1865,7 @@ import * as THREE from 'three';
   // Position pass: move by the new velocity; wrap, bring a teleported light
   // back beside a finger, settle depth (shape modes) or re-seed (flow modes).
   const gpuPosMat = simMat(`
-    uniform float uDt, uMS, uTime, uRC, uHY;
+    uniform float uDt, uMS, uTime, uRC, uHY, uWrapOnly;
     void main() {
       ivec2 c = cellOf();
       uint idx = indexOf(c);
@@ -1888,12 +1889,10 @@ import * as THREE from 'three';
       }
       vec2 p = P.xy;
       float z = P.z;
-      if (V.w > 0.5 && uNP > 0) {
-        int k = min(uNP - 1, int(floor(h1(idx * 23u + uint(uFrame)) * float(uNP))));
-        float a = atan(V.y, V.x);
-        p = uP[k].xy + vec2(cos(a), sin(a)) * (14.0 + 32.0 * h1(idx * 29u + uint(uFrame)));
+      p += V.xy * uDt * uMS;
+      if (uNP > 0 && uWrapOnly < 0.5) {
+        p = clamp(p, vec2(0.0), uView); // soft walls while touched (see the velocity pass)
       } else {
-        p += V.xy * uDt * uMS;
         if (p.x < -10.0) p.x = uView.x + 10.0; else if (p.x > uView.x + 10.0) p.x = -10.0;
         if (p.y < -10.0) p.y = uView.y + 10.0; else if (p.y > uView.y + 10.0) p.y = -10.0;
       }
@@ -1904,7 +1903,7 @@ import * as THREE from 'three';
         z = (h1(idx * 8u + 5u) * 2.0 - 1.0) * uDepth + sin(zw * (0.5 + 0.65 * h1(idx * 8u + 6u))) * uDepth * 0.12;
       }
       gl_FragColor = vec4(p, z, V.w);
-    }`, { uDt: { value: 1 }, uMS: { value: 1 }, uTime: { value: 0 }, uRC: { value: 200 }, uHY: { value: 300 } });
+    }`, { uDt: { value: 1 }, uMS: { value: 1 }, uTime: { value: 0 }, uRC: { value: 200 }, uHY: { value: 300 }, uWrapOnly: { value: 0 } });
 
   // The streak renderer, reading each particle straight from the textures.
   // Same streak shader as the JavaScript engine; only where the per-particle
@@ -2092,6 +2091,7 @@ import * as THREE from 'three';
     vu.uMS.value = MOTION_SCALE; pu.uMS.value = MOTION_SCALE;
     vu.uPointerScale.value = np > 2 ? Math.min(1, 2 / np) : 1;
     vu.uWrapOnly.value = (mode === 'Wind' || mode === 'Lattice' || forceWrap) ? 1 : 0;
+    pu.uWrapOnly.value = vu.uWrapOnly.value;
     vu.uReach.value = REACH_BY_MODE[mode] || FALLOFF_REACH;
     vu.uTS.value = touchStrength;
     if (flow) vu.uFlowDrag.value = Math.pow(Math.min(0.999, PHYS_DRAG[mode] * (1 + ((dragCoef - 0.9) / 0.099 - 0.66) * 0.03)), stepReactiveDt);
