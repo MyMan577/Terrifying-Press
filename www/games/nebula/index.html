@@ -1164,12 +1164,13 @@ import * as THREE from 'three';
     // colour of a crowd and rolls its brightness off smoothly, so dense areas
     // glow brighter without flattening into a solid white blob; only very
     // dense cores drift toward white.
+    uniform float uDense; // how much light a crowd must hold before it turns white; grows with the light count
     vec3 toneLayer(vec4 l) {
       float A = max(l.a, 0.0);
       if (A < 0.0005) return vec3(0.0);
       vec3 avg = l.rgb / A;
       float light = 1.0 - exp(-A * 1.15);
-      float hot = smoothstep(3.0, 24.0, A) * 0.55;
+      float hot = smoothstep(3.0 * uDense, 24.0 * uDense, A) * 0.55;
       return mix(avg, vec3(1.0), hot) * light;
     }
 
@@ -1193,7 +1194,7 @@ import * as THREE from 'three';
   const trailMaterial = new THREE.ShaderMaterial({
     vertexShader: fadeVS,
     fragmentShader: trailFS,
-    uniforms: { uPrev: { value: null }, uLayer: { value: null }, uBg: { value: new THREE.Color(0, 0, 0) }, uFadeAlpha: { value: 1 } },
+    uniforms: { uPrev: { value: null }, uLayer: { value: null }, uBg: { value: new THREE.Color(0, 0, 0) }, uFadeAlpha: { value: 1 }, uDense: { value: 1 } },
     depthTest: false,
     depthWrite: false
   });
@@ -1229,12 +1230,13 @@ import * as THREE from 'three';
     // colour of a crowd and rolls its brightness off smoothly, so dense areas
     // glow brighter without flattening into a solid white blob; only very
     // dense cores drift toward white.
+    uniform float uDense; // how much light a crowd must hold before it turns white; grows with the light count
     vec3 toneLayer(vec4 l) {
       float A = max(l.a, 0.0);
       if (A < 0.0005) return vec3(0.0);
       vec3 avg = l.rgb / A;
       float light = 1.0 - exp(-A * 1.15);
-      float hot = smoothstep(3.0, 24.0, A) * 0.55;
+      float hot = smoothstep(3.0 * uDense, 24.0 * uDense, A) * 0.55;
       return mix(avg, vec3(1.0), hot) * light;
     }
 
@@ -1250,7 +1252,7 @@ import * as THREE from 'three';
   const brightMaterial = new THREE.ShaderMaterial({
     vertexShader: fadeVS,
     fragmentShader: brightFS,
-    uniforms: { uSrc: { value: null }, uThreshold: { value: BLOOM_THRESHOLD } },
+    uniforms: { uSrc: { value: null }, uThreshold: { value: BLOOM_THRESHOLD }, uDense: { value: 1 } },
     depthTest: false,
     depthWrite: false
   });
@@ -2050,7 +2052,15 @@ import * as THREE from 'three';
     gu.uHeatK.value = perFrame / (14 * frameScale);
     // Thousands of lights adding up would turn the screen white, so each
     // light gets dimmer as the count climbs past a few thousand.
-    gu.uLight.value = brightnessMult * (superRes ? 0.9 : 1) * Math.min(1, 4000 / Math.max(1, count)); // past 4,000 the total light stays the same: more lights means more detail, not a whiter screen
+    // Every light stays clearly visible on its own, however many there are:
+    // past 4,000 each one dims a little, but never below 40%. Crowds are kept
+    // from washing out to white by the tone map instead (uDense), which needs
+    // proportionally more light before a dense spot turns white.
+    const perLight = Math.max(0.4, Math.min(1, Math.sqrt(4000 / Math.max(1, count))));
+    gu.uLight.value = brightnessMult * perLight;
+    const dense = Math.max(1, (count / 4000) * perLight);
+    trailMaterial.uniforms.uDense.value = dense;
+    brightMaterial.uniforms.uDense.value = dense;
     gu.uTime.value = simTime;
     particleMaterial.uniforms.uWidth.value = (superRes ? 0.12 : 0.18) * (MODES_3D.has(mode) ? 1.3 : 1);
     particleMaterial.uniforms.uHalo.value = superRes ? 0.3 : 0.45;
@@ -4322,6 +4332,8 @@ import * as THREE from 'three';
     // ---------- One draw call for every particle on screen ----------
     posAttr.needsUpdate = true;
     tailAttr.needsUpdate = true;
+    trailMaterial.uniforms.uDense.value = 1;
+    brightMaterial.uniforms.uDense.value = 1;
     heatAttr.needsUpdate = true;
     particleMaterial.uniforms.uWidth.value = (superRes ? 0.12 : 0.18) * (MODES_3D.has(mode) ? 1.3 : 1);
     particleMaterial.uniforms.uHalo.value = superRes ? 0.3 : 0.45;
