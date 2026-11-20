@@ -3085,6 +3085,24 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
   .customize-type-btn:hover{ border-color:var(--accent-dim); color:var(--text); }
   .customize-type-btn.active{ color:var(--accent); border-color:var(--accent-dim); background:rgba(var(--accent-rgb,110,231,208),0.08); }
 
+  .customize-type-row{ flex-wrap:wrap; }
+  .customize-type-btn{ min-width:max-content; }
+  /* OLED black: the looks, the "panels too" switch, and the black button by each colour picker */
+  .customize-oled-looks{ display:flex; gap:8px; }
+  .customize-oled-look{
+    flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:8px 4px; background:transparent;
+    border:1px solid var(--line); border-radius:calc(8px*var(--ui-round,1)); color:var(--text-dim); font-size:11.5px; cursor:pointer;
+  }
+  .customize-oled-look i{ display:block; width:100%; height:34px; border-radius:calc(6px*var(--ui-round,1)); border:1px solid #26262b; }
+  .customize-oled-look.active{ color:var(--accent); border-color:var(--accent-dim); }
+  .customize-row label.customize-oled-check{ display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--text); margin:0; }
+  .customize-oled-check input{ width:18px; height:18px; accent-color:var(--accent); margin:0; }
+  #customize-oled-all-btn{ width:100%; }
+  .customize-black-btn{
+    margin-top:6px; padding:5px 10px; background:#000; color:#e8e8ea; border:1px solid #2a2a30;
+    border-radius:calc(7px*var(--ui-round,1)); font-size:11px; cursor:pointer;
+  }
+  .customize-gradient-colors > div{ display:flex; flex-direction:column; align-items:stretch; }
   .customize-group{ display:none; }
   .customize-group.show{ display:block; }
 
@@ -6338,6 +6356,24 @@ window.ppSaveBlob = async function(blob, filename, onProgress){
         <button class="customize-type-btn" data-type="color">Color</button>
         <button class="customize-type-btn" data-type="gradient">Gradient</button>
         <button class="customize-type-btn" data-type="image">Image</button>
+        <button class="customize-type-btn" data-type="oled">OLED black</button>
+      </div>
+
+      <div class="customize-group" id="customize-group-oled">
+        <div class="customize-row">
+          <label>Look</label>
+          <div class="customize-oled-looks">
+            <button type="button" class="customize-oled-look" data-look="pure"><i style="background:#000"></i>Pure black</button>
+            <button type="button" class="customize-oled-look" data-look="glow"><i style="background:#000 radial-gradient(140% 50% at 50% 108%, rgba(var(--accent-rgb,110,231,208),.45), transparent 72%)"></i>Accent glow</button>
+            <button type="button" class="customize-oled-look" data-look="dim"><i style="background:linear-gradient(180deg,#1a1a1d,#000 45%)"></i>Soft top</button>
+          </div>
+        </div>
+        <div class="customize-row">
+          <label class="customize-oled-check"><input type="checkbox" id="customize-oled-panels" checked> Menus, panels and cards in this area go black too</label>
+        </div>
+        <div class="customize-row">
+          <button type="button" class="settings-toggle-btn" id="customize-oled-all-btn">Use OLED black on every area</button>
+        </div>
       </div>
 
       <div class="customize-group" id="customize-group-color">
@@ -15017,6 +15053,10 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
   const customizeGroupColor = document.getElementById('customize-group-color');
   const customizeGroupGradient = document.getElementById('customize-group-gradient');
   const customizeGroupImage = document.getElementById('customize-group-image');
+  const customizeGroupOled = document.getElementById('customize-group-oled');
+  const customizeOledPanels = document.getElementById('customize-oled-panels');
+  const customizeOledLooks = document.querySelectorAll('.customize-oled-look');
+  const customizeOledAllBtn = document.getElementById('customize-oled-all-btn');
   const customizeColorInput = document.getElementById('customize-color-input');
   const customizeGradientColor1 = document.getElementById('customize-gradient-color1');
   const customizeGradientColor2 = document.getElementById('customize-gradient-color2');
@@ -15065,6 +15105,13 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       const ang = cfg.angle != null ? cfg.angle : 135;
       return { backgroundImage: `linear-gradient(${ang}deg, ${c1}, ${c2}, ${c1})`, backgroundColor: 'transparent' };
     }
+    if (cfg.type === 'oled'){
+      // True black (#000): an OLED screen switches those pixels off. 'glow' keeps it black with a faint accent light
+      // rising from the bottom edge; 'dim' a barely-there grey fade at the top. Both stay black almost everywhere.
+      if (cfg.look === 'glow') return { backgroundColor: '#000', backgroundImage: 'radial-gradient(140% 50% at 50% 108%, rgba(var(--accent-rgb,110,231,208),0.20), rgba(var(--accent-rgb,110,231,208),0) 72%)' };
+      if (cfg.look === 'dim') return { backgroundColor: '#000', backgroundImage: 'linear-gradient(180deg, #0d0d0f 0%, #000 38%)' };
+      return { backgroundColor: '#000', backgroundImage: 'none' };
+    }
     if (cfg.type === 'image' && cfg.dataUrl){
       const dim = (cfg.dim != null ? cfg.dim : 30) / 100;
       const overlay = dim > 0 ? `linear-gradient(rgba(0,0,0,${dim}), rgba(0,0,0,${dim})), ` : '';
@@ -15092,7 +15139,37 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     el.style.removeProperty('--flat-c2');
   }
 
+  // OLED black: besides the area's own background, everything drawn inside it (menus, panels, dropdowns, cards, the
+  // theme's fixed greys) goes black too, so no grey box lights up the screen. Set on the area's element, so it only
+  // reaches what is inside that area, and inline, so it wins over a saved theme. Borders stay just visible.
+  const OLED_GREYS = ['0c0d10','101114','111216','131419','14151b','16171c','17181c','1a1b20','1c1d22','1c1e26','1d1e23',
+                      '1d1f26','1e1f26','22242a','23242c','2a2b31','2a2c33','2b2d35','333333'];
+  function oledGrey(g){
+    const n = parseInt(g, 16), avg = (((n >> 16) & 255) + ((n >> 8) & 255) + (n & 255)) / 3;
+    if (avg < 30) return '#000000';                                   // backgrounds and panels: off
+    const v = Math.round(10 + (avg - 30) * 0.45);                     // raised bits and lines: a faint grey
+    return rgbToHex(v, v, v + 2);
+  }
+  const OLED_VARS = { '--bg': '#000000', '--bg-elev': '#000000', '--line': '#1e1e22', '--accent-soft': 'rgba(var(--accent-rgb,110,231,208),0.10)' };
+  OLED_GREYS.forEach(g => { const m = oledGrey(g); OLED_VARS['--g-' + g] = m; OLED_VARS['--g-' + g + '-rgb'] = hexToRgb(m).r + ',' + hexToRgb(m).g + ',' + hexToRgb(m).b; });
+  function setOledVars(el, on){
+    Object.keys(OLED_VARS).forEach(k => { if (on) el.style.setProperty(k, OLED_VARS[k]); else el.style.removeProperty(k); });
+    el.classList.toggle('pp-oled', on);
+  }
+  function syncOledChrome(){
+    // The phone's status bar colour (theme-color) follows an all-black app.
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) return;
+    if (!meta.dataset.ppBefore) meta.dataset.ppBefore = meta.getAttribute('content') || '#0c0d10';
+    const appOled = uiCustomization.app && uiCustomization.app.type === 'oled';
+    if (appOled) meta.setAttribute('content', '#000000');
+    else if (meta.getAttribute('content') === '#000000' && meta.dataset.ppOled) meta.setAttribute('content', meta.dataset.ppBefore);
+    meta.dataset.ppOled = appOled ? '1' : '';
+  }
+
   function applyStyleTo(el, cfg){
+    setOledVars(el, !!(cfg && cfg.type === 'oled' && cfg.panels !== false));
+    if (el === document.body) syncOledChrome();
     if (el === sidebarEl && window.__ppOnCustomize) window.__ppOnCustomize();
     clearCustomStyle(el);
     const css = buildBackgroundCSS(cfg);
@@ -15154,6 +15231,7 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       applyStyleTo(mainEl, uiCustomization.immersive);
     } else {
       clearCustomStyle(mainEl);
+      setOledVars(mainEl, false);
       mainEl.classList.remove('custom-bg-active');
     }
   }
@@ -15201,6 +15279,9 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
     customizeGroupColor.classList.toggle('show', cfg.type === 'color');
     customizeGroupGradient.classList.toggle('show', cfg.type === 'gradient');
     customizeGroupImage.classList.toggle('show', cfg.type === 'image');
+    customizeGroupOled.classList.toggle('show', cfg.type === 'oled');
+    customizeOledLooks.forEach(b => b.classList.toggle('active', (cfg.look || 'pure') === b.dataset.look));
+    customizeOledPanels.checked = cfg.panels !== false;
 
     customizeColorInput.value = cfg.color || '#0c0d10';
     customizeGradientColor1.value = cfg.color1 || '#0c0d10';
@@ -15259,6 +15340,8 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       customizeGroupColor.classList.toggle('show', type === 'color');
       customizeGroupGradient.classList.toggle('show', type === 'gradient');
       customizeGroupImage.classList.toggle('show', type === 'image');
+      customizeGroupOled.classList.toggle('show', type === 'oled');
+      if (type === 'oled') refreshCustomizeControls();
       applyActiveTabLive();
     });
   });
@@ -15302,11 +15385,50 @@ if (typeof module === "object" && typeof module.exports === "object") Object.ass
       customizeGroupColor.classList.remove('show');
       customizeGroupGradient.classList.remove('show');
       customizeGroupImage.classList.add('show');
+      customizeGroupOled.classList.remove('show');
       customizeImageName.textContent = file.name;
       customizeImageUploadLabel.textContent = 'Change image…';
       applyActiveTabLive();
     };
     reader.readAsDataURL(file);
+  });
+
+  // ---------- OLED black ----------
+  function oledCfg(){
+    const cfg = uiCustomization[customizeActiveTab] || {};
+    cfg.type = 'oled';
+    uiCustomization[customizeActiveTab] = cfg;
+    return cfg;
+  }
+  customizeOledLooks.forEach(b => b.addEventListener('click', () => {
+    oledCfg().look = b.dataset.look;
+    customizeOledLooks.forEach(x => x.classList.toggle('active', x === b));
+    applyActiveTabLive();
+  }));
+  customizeOledPanels.addEventListener('change', () => {
+    oledCfg().panels = customizeOledPanels.checked;
+    applyActiveTabLive();
+  });
+  // Every area at once, with this area's look; images and gradients elsewhere are replaced (Reset brings back the default).
+  customizeOledAllBtn.addEventListener('click', () => {
+    const cur = oledCfg();
+    CUSTOMIZE_TARGETS.forEach(t => {
+      const keep = t === 'controls' && uiCustomization.controls.buttonColor;
+      uiCustomization[t] = { type: 'oled', look: cur.look || 'pure', panels: cur.panels !== false };
+      if (keep) uiCustomization.controls.buttonColor = keep;
+    });
+    applyAllCustomization();
+    saveCustomization();
+    refreshCustomizeControls();
+    if (typeof showToast === 'function') showToast('OLED black on every area');
+  });
+  // A one-tap pure black next to each background colour picker.
+  [customizeColorInput, customizeGradientColor1, customizeGradientColor2].forEach(input => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'customize-black-btn'; b.textContent = 'OLED black';
+    b.title = 'Pure black (#000000): pixels off on an OLED screen';
+    b.addEventListener('click', () => { input.value = '#000000'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+    input.insertAdjacentElement('afterend', b);
   });
 
   function updateImageOptions(){
@@ -31370,6 +31492,32 @@ async function ppMp4Chapters(blob){
     if (h !== last){ last = h; document.body.style.setProperty('--cv-ctl-h', h + 'px'); }
   }).observe(col);
 })();
+
+// pp-quickbar-fit: the upright player's tools row shares a line with the volume while it fits. When it does not, it takes
+// its own line and its buttons spread edge to edge (CSS: #extra-transport.qb-full). Whether it fits is worked out from the
+// buttons' natural width, not from where the row ended up, so spreading it never feeds back into the decision.
+(function(){
+  const row = document.getElementById('extra-transport'), col = document.getElementById('controls-col');
+  if (!row || !col) return;
+  const FOOTER_MIN = 120 + 8;   // #controls-footer: flex-basis / min-width 120px, 8px left margin
+  let raf = 0;
+  function fit(){
+    raf = 0;
+    const btns = [...row.querySelectorAll('.pill-btn, .view-sel')].filter(b => b.getClientRects().length && getComputedStyle(b).display !== 'none');
+    const rowCs = getComputedStyle(row), gap = parseFloat(rowCs.columnGap) || 0;
+    if (!btns.length || rowCs.position === 'fixed' || rowCs.flexDirection === 'column'){ row.classList.remove('qb-full'); return; }   // landscape rail, or nothing to place
+    const need = btns.reduce((w, b) => w + b.offsetWidth, 0) + gap * (btns.length - 1);
+    const colCs = getComputedStyle(col);
+    const room = col.clientWidth - (parseFloat(colCs.paddingLeft) || 0) - (parseFloat(colCs.paddingRight) || 0);
+    row.classList.toggle('qb-full', need + FOOTER_MIN > room);
+  }
+  const soon = () => { if (!raf) raf = requestAnimationFrame(fit); };
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(soon).observe(col);
+  new MutationObserver(soon).observe(row, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+  new MutationObserver(soon).observe(document.body, { attributes: true, attributeFilter: ['class', 'data-pl-player'] });
+  window.addEventListener('orientationchange', soon);
+  soon();
+})();
 </script>
 <script id="pp-leave">
 // ===================== Settings > Playback > Leaving the player =====================
@@ -33913,6 +34061,13 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #transport #play-btn svg{ width:36px !important; height:36px !important; }
     /* last row: speed / marks / A-B / cut / sleep | volume, pin */
     body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport{ order:3; height:var(--cv-row); justify-content:flex-start; flex:0 1 auto; min-width:0; }
+    /* Too many tools to share a line with the volume: the row gets its own line, and its buttons spread over it edge to edge,
+       lined up with the play controls above (same 6px inset), instead of bunching on the left (pp-quickbar-fit in player-layout.js). */
+    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport.qb-full{
+      flex:1 1 100%; justify-content:space-between; padding:0 6px; box-sizing:border-box;
+    }
+    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport.qb-full + #controls-footer,
+    body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #extra-transport.qb-full ~ #controls-footer{ margin-left:6px; }
     body.player-layout[data-pl-player]:is(.pl-video, :not(.pl-video)) #controls-footer{
       order:4; flex:1 1 120px; min-width:120px; height:var(--cv-row); margin:0 0 0 8px; padding:0;
     }
@@ -44252,6 +44407,169 @@ body.pp-lite .pp-adv, body.pp-lite .pp-sg[data-sg="fun"], body.pp-lite #pw-custo
     dragging: function(){ return Sortable.active(); }
   };
 })();
+</script>
+<!-- The phone's Back button: closes the top-most layer, one per press (MainActivity calls window.ppBack) -->
+<script id="pp-back">
+  // ---------- The phone's Back button ----------
+  // MainActivity asks window.ppBack() what to do with each Back press. It closes the top-most thing on screen, one per press:
+  //   1. a menu, dialog, dropdown or popover   2. the layout studio / widget editing   3. the queue board
+  //   4. multi-select   5. the player, a library folder, a game, immersive (the history steps those already push)
+  //   6. any tab but Home goes back to Home
+  // It returns false only when nothing is left to close; the app then goes to the background (music keeps playing).
+  (function(){
+    'use strict';
+    var body = document.body;
+    // Things that open and close: any element whose id names it a layer (overlay, modal, sheet, panel, menu...) while it shows
+    // with an "open" class or sits fixed on screen, and every visible dialog. Ids, not a fixed list, so panels added later
+    // (and the ones the separate scripts build, like the CC panel) are covered too.
+    var LAYER_ID = /overlay|modal|dropdown|popover|popup|menu|sheet|panel|dialog|picker|drawer|hub|-ask|-box$|sub-tx|-tester|licences/i;
+    // Always-on displays, banners that go by themselves, and layers that close through the history (their popstate handlers).
+    var SKIP = '#lyrics-overlay, #subtitle-overlay, #pp-ringscreen, #menu-panel, #pl-home, #main, #sidebar, [id*="banner"], [id*="toast"], ' +
+               '#pq-root, #pq-root *, #pp-games, #pp-games *, #pp-game, #pp-game *, #ppx-hub, #ppx-hub *';
+    // Layers that pushed a history step when they opened: Back must leave that step, or the next press would do nothing.
+    var HIST_LAYERS = ['ppx-hub', 'pp-game', 'pp-games'];
+    var CLOSE = '[id$="-close"], [id$="-close-btn"], [id$="-cancel"], [id$="-cancel-btn"], [id$="-done"], .modal-close, .close-btn, .pw-sheet-close, ' +
+                '[class*="-close"], [data-act="close"], [data-act="cancel"], [aria-label="Close"], [aria-label="Cancel"], [aria-label^="Close "], [aria-label="Back"], [title="Close"]';
+    var CLOSE_TEXT = /^(\u00d7|\u2715|\u2716|\u2573|x|close|cancel|done|back|\u2190|\u2039)$/i;
+
+    function shown(el){
+      if (!el || el.hidden || !el.isConnected) return false;
+      if (!el.getClientRects().length) return false;
+      var r = el.getBoundingClientRect();   // on screen, not slid out of view or squeezed to nothing
+      if (r.width < 2 || r.height < 2 || r.bottom <= 0 || r.right <= 0 || r.top >= innerHeight || r.left >= innerWidth) return false;
+      var cs = getComputedStyle(el);
+      return cs.display !== 'none' && cs.visibility !== 'hidden' && cs.pointerEvents !== 'none' && parseFloat(cs.opacity || '1') > 0.05;
+    }
+    // Paint order, roughly as the browser does it: the z-index of every stacking context from the page down to the element.
+    // Comparing these lists (not single numbers) keeps a dropdown inside the menu above the menu, whatever its own z-index.
+    function zChain(el){
+      var chain = [];
+      for (var e = el; e && e !== document.documentElement; e = e.parentElement){
+        var cs = getComputedStyle(e), z = cs.zIndex;
+        if (z !== 'auto' && z !== '' && (cs.position !== 'static' || cs.display === 'flex' || cs.display === 'grid')) chain.unshift(parseInt(z, 10) || 0);
+        else if (cs.position === 'fixed' || cs.position === 'sticky') chain.unshift(0);
+      }
+      return chain;
+    }
+    function above(a, b){   // is a painted over b?
+      if (b.contains(a)) return true;
+      if (a.contains(b)) return false;
+      var ca = zChain(a), cb = zChain(b);
+      for (var i = 0; i < Math.min(ca.length, cb.length); i++) if (ca[i] !== cb[i]) return ca[i] > cb[i];
+      if (ca.length !== cb.length){
+        var x = ca.length > cb.length ? ca[cb.length] : cb[ca.length];   // the deeper one's next level against 0
+        if (x !== 0) return ca.length > cb.length ? x > 0 : x < 0;
+      }
+      return !!(b.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING);
+    }
+    function isLayer(el){
+      if (el.matches('[role="dialog"], [aria-modal="true"]')) return true;
+      if (!el.id || !LAYER_ID.test(el.id)) return false;
+      if (el.classList.contains('open')) return true;
+      // A fixed layer that shows by display alone: only a big one (not a fixed button or bar that happens to match).
+      if (el.matches('button, a, input, [role="button"]') || getComputedStyle(el).position !== 'fixed') return false;
+      var r = el.getBoundingClientRect();
+      return r.width * r.height >= innerWidth * innerHeight * 0.15;
+    }
+    function topLayer(){
+      var best = null;
+      document.querySelectorAll('[id], [role="dialog"], [aria-modal="true"]').forEach(function(el){
+        if (!isLayer(el) || el.matches(SKIP) || !shown(el)) return;
+        var r = el.getBoundingClientRect();
+        if (r.width < 24 || r.height < 24) return;
+        if (!best || above(el, best)) best = el;
+      });
+      return best;
+    }
+    function closeButtons(el){
+      var out = [].slice.call(el.querySelectorAll(CLOSE));
+      el.querySelectorAll('button, [role="button"]').forEach(function(b){
+        if (out.indexOf(b) < 0 && CLOSE_TEXT.test((b.textContent || '').trim())) out.push(b);
+      });
+      // Only the layer's own buttons, not those of another layer inside it.
+      return out.filter(function(b){ var l = b.parentElement; while (l && l !== el && !(l.matches && isLayer(l))) l = l.parentElement; return l === el && shown(b); });
+    }
+    function gone(el){ return !shown(el) || (el._ppWasOpen && !el.classList.contains('open')); }
+    function click(el){   // a tap on a backdrop
+      ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(function(t){
+        var Ev = t.indexOf('pointer') === 0 && window.PointerEvent ? PointerEvent : MouseEvent;
+        el.dispatchEvent(new Ev(t, { bubbles: true, cancelable: true, view: window }));
+      });
+    }
+    function closeLayer(el){
+      el._ppWasOpen = el.classList.contains('open');
+      // 1. its own close / cancel button
+      var btns = closeButtons(el);
+      if (btns.length){ btns[0].click(); if (gone(el)) return; }
+      // 2. a tap on its backdrop: the overlay itself, or the overlay it is the box of. Never an overlay further out: a
+      //    dropdown inside the menu must not take the whole menu with it.
+      var ov = el.matches('[id$="-overlay"]') ? el : (el.parentElement && el.parentElement.matches('[id$="-overlay"]') ? el.parentElement : null);
+      if (ov && shown(ov)){ click(ov); if (gone(el)) return; }
+      // 3. a dropdown or popover: closed directly, with its button. (Not by a pretend tap elsewhere: that tap also reached
+      //    whatever was under it, and closed the player or ended multi-select along with the dropdown.)
+      if (!ov && el.classList.contains('open')){
+        el.classList.remove('open');
+        var owner = el.id && document.getElementById(el.id.replace(/-(dropdown|popover|menu|panel)$/, '-btn'));
+        if (owner && owner !== el){ owner.classList.remove('open'); if (owner.hasAttribute('aria-expanded')) owner.setAttribute('aria-expanded', 'false'); }
+        document.querySelectorAll('[aria-expanded="true"]').forEach(function(b){ var c = b.getAttribute('aria-controls'); if (c && c === el.id) b.setAttribute('aria-expanded', 'false'); });
+        return;
+      }
+      // 4. last resort: just hide it
+      if (el.classList.contains('open')) el.classList.remove('open');
+      else if (el.matches('[role="dialog"], [aria-modal="true"]')) el.hidden = true;
+    }
+    // Escape sent to the window only: the studio and widget editor listen there, and nothing on the document sees it.
+    function escapeOnWindow(){ window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: false })); }
+
+    var HISTORY_FLAGS = ['ppPlayer', 'ppQueue', 'ppBrowse', 'ppGame', 'ppGames', 'ppHub', 'ppImm'];
+    function historyLayer(){
+      var st = history.state;
+      if (!st || typeof st !== 'object') return false;
+      return HISTORY_FLAGS.some(function(k){ return !!st[k]; });
+    }
+
+    // What the last press did, for checking by hand: window.ppBack.last
+    function did(what){ window.ppBack.last = what; return true; }
+    window.ppBack = function(){
+      try {
+        // (The on-screen keyboard takes the first Back itself, before it ever reaches the app, so there is no step for it here.)
+        var a = document.activeElement;
+        if (a && a !== body && a.blur) try { a.blur(); } catch(e){}
+        var queueOpen = body.classList.contains('pq-open');
+        var layer = topLayer();
+        // The queue board sits above the page's own menus; anything opened from inside it is closed by its Escape.
+        if (queueOpen && (!layer || !above(layer, document.getElementById('pq-root')))){
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+          return did('queue');
+        }
+        // A layer with its own history step (the Points hub, a game, the games page) above everything else: leave the step.
+        if (historyLayer()){
+          var hl = null;
+          HIST_LAYERS.forEach(function(id){ var e = document.getElementById(id); if (e && shown(e) && (!hl || above(e, hl))) hl = e; });
+          if (hl && (!layer || above(hl, layer))){ history.back(); return did('history #' + hl.id); }
+        }
+        if (layer){ closeLayer(layer); return did('layer ' + (layer.id ? '#' + layer.id : layer.className)); }
+        if (body.classList.contains('ls-open') || body.classList.contains('pw-editing')){
+          escapeOnWindow(); return did('editor');
+        }
+        var cancel = document.querySelector('#select-bar [data-act="cancel"], #ph-select-bar [data-act="cancel"]');
+        if (cancel && shown(cancel)){ cancel.click(); return did('select'); }
+        if (historyLayer()){ history.back(); return did('history ' + JSON.stringify(history.state)); }
+        // The disc clicker's slide-out panel.
+        var dc = document.getElementById('dc-widget'), dcTab = document.getElementById('dc-tab');
+        if (dc && dcTab && dc.classList.contains('dc-open') && shown(dc)){ dcTab.click(); return did('disc clicker'); }
+        // The mini player flipped over to Up next: flip it back.
+        var qb = window.__ppQueueBoard;
+        if (qb && qb.flipped && qb.flipped()){ qb.flip(false); return did('up next'); }
+        var tabs = document.getElementById('pl-tabbar');
+        if (tabs && shown(tabs)){
+          var on = tabs.querySelector('button.active'), home = tabs.querySelector('[data-pl-view="home"]');
+          if (on && home && on !== home && shown(home)){ home.click(); return did('home tab'); }
+        }
+      } catch(e){ if (typeof ppCaught === 'function') ppCaught(e); }
+      return did('') && false;
+    };
+  })();
 </script>
 </body>
 </html>

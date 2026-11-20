@@ -144,6 +144,10 @@
   const customizeGroupColor = document.getElementById('customize-group-color');
   const customizeGroupGradient = document.getElementById('customize-group-gradient');
   const customizeGroupImage = document.getElementById('customize-group-image');
+  const customizeGroupOled = document.getElementById('customize-group-oled');
+  const customizeOledPanels = document.getElementById('customize-oled-panels');
+  const customizeOledLooks = document.querySelectorAll('.customize-oled-look');
+  const customizeOledAllBtn = document.getElementById('customize-oled-all-btn');
   const customizeColorInput = document.getElementById('customize-color-input');
   const customizeGradientColor1 = document.getElementById('customize-gradient-color1');
   const customizeGradientColor2 = document.getElementById('customize-gradient-color2');
@@ -192,6 +196,13 @@
       const ang = cfg.angle != null ? cfg.angle : 135;
       return { backgroundImage: `linear-gradient(${ang}deg, ${c1}, ${c2}, ${c1})`, backgroundColor: 'transparent' };
     }
+    if (cfg.type === 'oled'){
+      // True black (#000): an OLED screen switches those pixels off. 'glow' keeps it black with a faint accent light
+      // rising from the bottom edge; 'dim' a barely-there grey fade at the top. Both stay black almost everywhere.
+      if (cfg.look === 'glow') return { backgroundColor: '#000', backgroundImage: 'radial-gradient(140% 50% at 50% 108%, rgba(var(--accent-rgb,110,231,208),0.20), rgba(var(--accent-rgb,110,231,208),0) 72%)' };
+      if (cfg.look === 'dim') return { backgroundColor: '#000', backgroundImage: 'linear-gradient(180deg, #0d0d0f 0%, #000 38%)' };
+      return { backgroundColor: '#000', backgroundImage: 'none' };
+    }
     if (cfg.type === 'image' && cfg.dataUrl){
       const dim = (cfg.dim != null ? cfg.dim : 30) / 100;
       const overlay = dim > 0 ? `linear-gradient(rgba(0,0,0,${dim}), rgba(0,0,0,${dim})), ` : '';
@@ -219,7 +230,37 @@
     el.style.removeProperty('--flat-c2');
   }
 
+  // OLED black: besides the area's own background, everything drawn inside it (menus, panels, dropdowns, cards, the
+  // theme's fixed greys) goes black too, so no grey box lights up the screen. Set on the area's element, so it only
+  // reaches what is inside that area, and inline, so it wins over a saved theme. Borders stay just visible.
+  const OLED_GREYS = ['0c0d10','101114','111216','131419','14151b','16171c','17181c','1a1b20','1c1d22','1c1e26','1d1e23',
+                      '1d1f26','1e1f26','22242a','23242c','2a2b31','2a2c33','2b2d35','333333'];
+  function oledGrey(g){
+    const n = parseInt(g, 16), avg = (((n >> 16) & 255) + ((n >> 8) & 255) + (n & 255)) / 3;
+    if (avg < 30) return '#000000';                                   // backgrounds and panels: off
+    const v = Math.round(10 + (avg - 30) * 0.45);                     // raised bits and lines: a faint grey
+    return rgbToHex(v, v, v + 2);
+  }
+  const OLED_VARS = { '--bg': '#000000', '--bg-elev': '#000000', '--line': '#1e1e22', '--accent-soft': 'rgba(var(--accent-rgb,110,231,208),0.10)' };
+  OLED_GREYS.forEach(g => { const m = oledGrey(g); OLED_VARS['--g-' + g] = m; OLED_VARS['--g-' + g + '-rgb'] = hexToRgb(m).r + ',' + hexToRgb(m).g + ',' + hexToRgb(m).b; });
+  function setOledVars(el, on){
+    Object.keys(OLED_VARS).forEach(k => { if (on) el.style.setProperty(k, OLED_VARS[k]); else el.style.removeProperty(k); });
+    el.classList.toggle('pp-oled', on);
+  }
+  function syncOledChrome(){
+    // The phone's status bar colour (theme-color) follows an all-black app.
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) return;
+    if (!meta.dataset.ppBefore) meta.dataset.ppBefore = meta.getAttribute('content') || '#0c0d10';
+    const appOled = uiCustomization.app && uiCustomization.app.type === 'oled';
+    if (appOled) meta.setAttribute('content', '#000000');
+    else if (meta.getAttribute('content') === '#000000' && meta.dataset.ppOled) meta.setAttribute('content', meta.dataset.ppBefore);
+    meta.dataset.ppOled = appOled ? '1' : '';
+  }
+
   function applyStyleTo(el, cfg){
+    setOledVars(el, !!(cfg && cfg.type === 'oled' && cfg.panels !== false));
+    if (el === document.body) syncOledChrome();
     if (el === sidebarEl && window.__ppOnCustomize) window.__ppOnCustomize();
     clearCustomStyle(el);
     const css = buildBackgroundCSS(cfg);
@@ -281,6 +322,7 @@
       applyStyleTo(mainEl, uiCustomization.immersive);
     } else {
       clearCustomStyle(mainEl);
+      setOledVars(mainEl, false);
       mainEl.classList.remove('custom-bg-active');
     }
   }
@@ -328,6 +370,9 @@
     customizeGroupColor.classList.toggle('show', cfg.type === 'color');
     customizeGroupGradient.classList.toggle('show', cfg.type === 'gradient');
     customizeGroupImage.classList.toggle('show', cfg.type === 'image');
+    customizeGroupOled.classList.toggle('show', cfg.type === 'oled');
+    customizeOledLooks.forEach(b => b.classList.toggle('active', (cfg.look || 'pure') === b.dataset.look));
+    customizeOledPanels.checked = cfg.panels !== false;
 
     customizeColorInput.value = cfg.color || '#0c0d10';
     customizeGradientColor1.value = cfg.color1 || '#0c0d10';
@@ -386,6 +431,8 @@
       customizeGroupColor.classList.toggle('show', type === 'color');
       customizeGroupGradient.classList.toggle('show', type === 'gradient');
       customizeGroupImage.classList.toggle('show', type === 'image');
+      customizeGroupOled.classList.toggle('show', type === 'oled');
+      if (type === 'oled') refreshCustomizeControls();
       applyActiveTabLive();
     });
   });
@@ -429,11 +476,50 @@
       customizeGroupColor.classList.remove('show');
       customizeGroupGradient.classList.remove('show');
       customizeGroupImage.classList.add('show');
+      customizeGroupOled.classList.remove('show');
       customizeImageName.textContent = file.name;
       customizeImageUploadLabel.textContent = 'Change image…';
       applyActiveTabLive();
     };
     reader.readAsDataURL(file);
+  });
+
+  // ---------- OLED black ----------
+  function oledCfg(){
+    const cfg = uiCustomization[customizeActiveTab] || {};
+    cfg.type = 'oled';
+    uiCustomization[customizeActiveTab] = cfg;
+    return cfg;
+  }
+  customizeOledLooks.forEach(b => b.addEventListener('click', () => {
+    oledCfg().look = b.dataset.look;
+    customizeOledLooks.forEach(x => x.classList.toggle('active', x === b));
+    applyActiveTabLive();
+  }));
+  customizeOledPanels.addEventListener('change', () => {
+    oledCfg().panels = customizeOledPanels.checked;
+    applyActiveTabLive();
+  });
+  // Every area at once, with this area's look; images and gradients elsewhere are replaced (Reset brings back the default).
+  customizeOledAllBtn.addEventListener('click', () => {
+    const cur = oledCfg();
+    CUSTOMIZE_TARGETS.forEach(t => {
+      const keep = t === 'controls' && uiCustomization.controls.buttonColor;
+      uiCustomization[t] = { type: 'oled', look: cur.look || 'pure', panels: cur.panels !== false };
+      if (keep) uiCustomization.controls.buttonColor = keep;
+    });
+    applyAllCustomization();
+    saveCustomization();
+    refreshCustomizeControls();
+    if (typeof showToast === 'function') showToast('OLED black on every area');
+  });
+  // A one-tap pure black next to each background colour picker.
+  [customizeColorInput, customizeGradientColor1, customizeGradientColor2].forEach(input => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'customize-black-btn'; b.textContent = 'OLED black';
+    b.title = 'Pure black (#000000): pixels off on an OLED screen';
+    b.addEventListener('click', () => { input.value = '#000000'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+    input.insertAdjacentElement('afterend', b);
   });
 
   function updateImageOptions(){
