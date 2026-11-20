@@ -1166,11 +1166,19 @@ import * as THREE from 'three';
     // dense cores drift toward white.
     uniform float uDense; // how much light a crowd must hold before it turns white; grows with the light count
     vec3 toneLayer(vec4 l) {
-      float A = max(l.a, 0.0);
+      // Thousands of lights on one pixel can overflow the half-float layer to
+      // infinity, and infinity / infinity is not a number: that showed up as
+      // big flashes once the glow blur spread it. Cap the sums first.
+      l = clamp(l, vec4(0.0), vec4(30000.0));
+      float A = l.a;
       if (A < 0.0005) return vec3(0.0);
       vec3 avg = l.rgb / A;
-      float light = 1.0 - exp(-A * 1.15);
-      float hot = smoothstep(3.0 * uDense, 24.0 * uDense, A) * 0.55;
+      // Mixed colours average toward grey; push the crowd's colour back out
+      // so dense areas keep their hue.
+      float lum = dot(avg, vec3(0.299, 0.587, 0.114));
+      avg = clamp(mix(vec3(lum), avg, 1.7), 0.0, 1.0);
+      float light = 1.0 - exp(-A * 0.9);
+      float hot = smoothstep(12.0 * uDense, 140.0 * uDense, A) * 0.25;
       return mix(avg, vec3(1.0), hot) * light;
     }
 
@@ -1232,11 +1240,19 @@ import * as THREE from 'three';
     // dense cores drift toward white.
     uniform float uDense; // how much light a crowd must hold before it turns white; grows with the light count
     vec3 toneLayer(vec4 l) {
-      float A = max(l.a, 0.0);
+      // Thousands of lights on one pixel can overflow the half-float layer to
+      // infinity, and infinity / infinity is not a number: that showed up as
+      // big flashes once the glow blur spread it. Cap the sums first.
+      l = clamp(l, vec4(0.0), vec4(30000.0));
+      float A = l.a;
       if (A < 0.0005) return vec3(0.0);
       vec3 avg = l.rgb / A;
-      float light = 1.0 - exp(-A * 1.15);
-      float hot = smoothstep(3.0 * uDense, 24.0 * uDense, A) * 0.55;
+      // Mixed colours average toward grey; push the crowd's colour back out
+      // so dense areas keep their hue.
+      float lum = dot(avg, vec3(0.299, 0.587, 0.114));
+      avg = clamp(mix(vec3(lum), avg, 1.7), 0.0, 1.0);
+      float light = 1.0 - exp(-A * 0.9);
+      float hot = smoothstep(12.0 * uDense, 140.0 * uDense, A) * 0.25;
       return mix(avg, vec3(1.0), hot) * light;
     }
 
@@ -1897,6 +1913,13 @@ import * as THREE from 'three';
     attribute float aIndex;
     vec3 iPos; vec3 iTail; vec3 aColor; float aSize; float aAlpha; float aHeat;
     ` + GPU_HASH + `
+    // the palette as a smooth loop: 0..1 runs through every colour and back to the first
+    vec3 paletteAt(float t) {
+      float x = fract(t) * uPalN;
+      int i0 = int(floor(x));
+      int i1 = i0 + 1 >= int(uPalN) ? 0 : i0 + 1;
+      return mix(uPal[i0], uPal[i1], smoothstep(0.0, 1.0, fract(x)));
+    }
     void fetchParticle() {
       uint idx = uint(aIndex);
       ivec2 c = ivec2(int(idx % uint(uTexW)), int(idx / uint(uTexW)));
@@ -1919,8 +1942,17 @@ import * as THREE from 'three';
       float ml = length(mv);
       if (ml > uMaxStreak) mv *= uMaxStreak / ml;
       iTail = iPos - mv;
-      int ci = min(int(uPalN) - 1, int(floor(h1(idx * 4u + 5u) * uPalN)));
-      aColor = uPal[ci];
+      // Colour follows place and motion instead of being random per light:
+      // a slow wash of the palette drifts across the field, and lights moving
+      // the same way lean toward the same hue, so neighbours share colours and
+      // the field shows real colour regions instead of averaging to grey.
+      // A small per-light offset keeps it from looking flat.
+      vec2 dir2 = uWorld > 0.5 ? worldToView(V.xyz).xy : vec2(V.x, -V.y);
+      float moving = clamp(length(dir2) * uHeatK * 3.0, 0.0, 1.0);
+      float hue = dot(iPos.xy, vec2(0.0011, 0.0008)) + uTime * 0.0004
+        + (atan(dir2.y, dir2.x) / 6.2831853) * 0.2 * moving
+        + h1(idx * 4u + 5u) * 0.08;
+      aColor = paletteAt(hue);
       aSize = uGSize * (2.3 + 0.4 * h1(idx * 4u + 6u)) * sizeK;
       float wob = h1(idx * 4u + 1u) * 6.2831853 + 0.02 * uTime;
       aAlpha = 0.75 * glow * light * (0.95 + 0.05 * sin(wob * 2.3)) * (0.7 + aHeat * 0.7) * uLight;
