@@ -1727,8 +1727,12 @@ import * as THREE from 'three';
           if (uMode == 0) { // Swirl: stir; with 3+ fingers alternate the spin
             float sgn = (uNP >= 3 && (i - (i / 2) * 2) == 1) ? -1.0 : 1.0;
             v += tg * fall * 0.9 * tdt * sgn;
-          } else if (uMode == 1) { // Repel
-            v += n * fall * fall * 2.4 * tdt;
+          } else if (uMode == 1) { // Repel: clears a round space around the finger. The push
+            // only reaches so far, so the lights it moves pile into a bright ring at the
+            // space's edge and the rest of the field stays where it is (an endless push
+            // drove every light into the screen edges and left the screen empty)
+            float R = 170.0;
+            if (dist < R) { float k = 1.0 - dist / R; v += n * k * k * 4.0 * tdt; }
           } else if (uMode == 2) { // Attract: lights fall through the finger and swing back out,
             // tracing slim petal loops, so the field becomes a slowly turning starburst
             // instead of collapsing into one dot. Near the finger the pull grows with
