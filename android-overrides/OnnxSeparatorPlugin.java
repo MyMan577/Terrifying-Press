@@ -510,14 +510,15 @@ public class OnnxSeparatorPlugin extends Plugin {
         final double comp = call.getDouble("comp", 1.021);
         final int cThreads = call.getInt("threads", 0);        // custom level: 0 = automatic
         final boolean cSpin = call.getBoolean("spin", false), cLean = call.getBoolean("lean", false);
+        final boolean fast = call.getBoolean("fast", false);   // no optimization level picked: full speed, rest only at critical heat
         final double duty = call.getDouble("duty", 0.0);   // optional fixed extra rest (0.2 = sleep 20% of each chunk's time); thermal easing is always on
         if (kind == null || input == null || stemsJ == null) { call.reject("kind, input and stems are required"); return; }
         new Thread(() -> {
             // Slightly below the UI/audio threads, but NOT the background cgroup (that pins work to the little cores).
             // Set before any session opens so the ONNX Runtime thread pool inherits it.
             try { Process.setThreadPriority(5); } catch (Throwable ignored) { }
-            Accel.setCustom(cThreads, cSpin, cLean);   // before any session opens; cleared in the finally below
-            final Throttle th = new Throttle(getContext(), duty);
+            Accel.setCustom(cThreads, cSpin, cLean, fast);   // before any session opens; cleared in the finally below
+            final Throttle th = new Throttle(getContext(), duty, fast);
             final List<Accel.Sess> open = new ArrayList<>();
             final Map<String, File> outs = new LinkedHashMap<>();
             long t0 = System.currentTimeMillis();
@@ -586,7 +587,7 @@ public class OnnxSeparatorPlugin extends Plugin {
                         }
                         files[i] = outs.get(want[i]);
                     }
-                    StemNative.demucs(env(), s, au, rows, files, prog);
+                    StemNative.demucs(env(), s, au, rows, files, prog, fast);
                     accel = s.accel();
                 } else {
                     File mf = modelFile(model);
