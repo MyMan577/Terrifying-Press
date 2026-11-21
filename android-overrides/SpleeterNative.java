@@ -325,7 +325,7 @@ final class SpleeterNative {
                 if (prog != null) prog.onProgress((s + 1) / (double) nSeg);
             }
         } finally {
-            accelUsed = sv.nn && sa.nn ? "NNAPI" : (sv.nn || sa.nn ? "NNAPI+CPU" : "CPU");
+            accelUsed = sv.nn && sa.nn ? Accel.accelName() : (sv.nn || sa.nn ? Accel.accelName() + "+CPU" : "CPU");
             if (sv.s != vS) { Accel.close(sv); }   // a CPU replacement made after an NNAPI failure
             if (sa.s != aS) { Accel.close(sa); }
         }

@@ -837,7 +837,7 @@
     const h = await NP.addListener('progress', e => { onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
     const nm = opts.nmask || null, hid = !!nm && !wanted.includes('Vocals') && (wanted.includes('Instrumental') || wanted.includes('Other'));
     const W = hid ? wanted.concat('Vocals') : wanted;                 // vocals are needed to put the removed sound back
-    const accKey = 'ppvAccel_' + id, remembered = ls0(accKey);
+    const accKey = 'ppvAccel2_' + id, remembered = ls0(accKey);
     const useNn = opts.nnapi !== false && !/^demucs/.test(id) && !cpuOnly.has(id) && remembered !== 'cpu';   // Demucs is always CPU; a model that already lost or gave NaN stays on CPU
     // tune: race NNAPI against the CPU once per model per phone (the verdict is remembered natively), so a slow NNAPI driver is never used blindly.
     // fast: no optimization level picked, so run flat out (spinning pool, big-model memory arena, less Demucs overlap, rest only at critical heat).
@@ -9262,7 +9262,7 @@
     let holdUntil = 0;                                                // keep "Done"/"Error" visible instead of being wiped by "Ready" a split second later
     const status = t => { st.textContent = t; document.querySelectorAll('.ppv-stx').forEach(e => { e.textContent = t; }); if (/^(Done|Error)/.test(t)) holdUntil = Date.now() + 5000; mas.react(t); }, ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     const nnc = $('#ppv-nnc'); if (NATIVE) { $('#ppv-nn').style.display = 'block'; nnc.checked = ls('ppvNnapi') !== '0'; nnc.onchange = () => { ls('ppvNnapi', nnc.checked ? '1' : '0'); }; }
-    const savedModel = ls('ppvModel'); if (savedModel && MODELS[savedModel]) sel.value = savedModel;
+    const savedModel = ls('ppvModel'); if (savedModel && MODELS[savedModel] && (NATIVE || !MODELS[savedModel].nativeOnly)) sel.value = savedModel;
     if (ls('ppvStrength')) { sl.value = ls('ppvStrength'); sv.textContent = sl.value; }
     lsel.value = ls('ppvLevel') || (ls('ppvLow') === '0' ? '0' : '2'); showLv(); gpu.checked = ls('ppvGpu') === '1'; if (navigator.gpu) $('#ppv-gpu').style.display = 'block';
     sl.oninput = () => { sv.textContent = sl.value; ls('ppvStrength', sl.value); };
