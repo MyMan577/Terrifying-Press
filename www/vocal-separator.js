@@ -839,9 +839,10 @@
     const W = hid ? wanted.concat('Vocals') : wanted;                 // vocals are needed to put the removed sound back
     const accKey = 'ppvAccel2_' + id, remembered = ls0(accKey);
     const useNn = opts.nnapi !== false && !/^demucs/.test(id) && !cpuOnly.has(id) && remembered !== 'cpu';   // Demucs is always CPU; a model that already lost or gave NaN stays on CPU
-    // tune: race NNAPI against the CPU once per model per phone (the verdict is remembered natively), so a slow NNAPI driver is never used blindly.
+    // tune (optional checkbox): race the NPU/NNAPI against the CPU once per model per phone (verdict remembered natively). Off: the NPU is
+    // used straight away, and only a crash or NaN output moves that model to the CPU (also remembered).
     // fast: no optimization level picked, so run flat out (spinning pool, big-model memory arena, less Demucs overlap, rest only at critical heat).
-    const base = { tune: true, fast: !opts.lv, input: saved.path, stems: W, nnapi: useNn, duty: opts.lv ? (opts.lv.custom ? opts.lv.duty : ({ Light: 0, Medium: 0.2, Max: 0.5 }[opts.lv.name] || 0)) : 0,
+    const base = { tune: !!opts.tune, fast: !opts.lv, input: saved.path, stems: W, nnapi: useNn, duty: opts.lv ? (opts.lv.custom ? opts.lv.duty : ({ Light: 0, Medium: 0.2, Max: 0.5 }[opts.lv.name] || 0)) : 0,
       threads: opts.lv && opts.lv.custom ? opts.lv.threads : 0, spin: !!(opts.lv && opts.lv.custom && opts.lv.spin), lean: !!(opts.lv && opts.lv.custom && opts.lv.lean) };
     let out;
     try {
@@ -9155,6 +9156,7 @@
       '<div id="ppv-spl" style="margin-top:8px">Strength: <span id="ppv-sv">1</span><input id="ppv-sl" type="range" min="1" max="4" step="0.5" value="1" style="width:100%"><div style="opacity:.6;font-size:11px">Higher = less bleed, more watery artifacts</div><div style="margin-top:8px">Quality</div><select id="ppv-q"><option value="0">Standard</option><option value="1">Better (smooth seams, ~1.3x time)</option><option value="2">Best (+ averaged 2nd pass, ~2.7x time)</option></select></div>' +
       '<label id="ppv-gpu" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-gpuc"> Use GPU (faster, experimental)</label>' +
       '<label id="ppv-nn" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-nnc"> Phone GPU/NPU (experimental). Demucs always uses the CPU</label>' +
+      '<label id="ppv-tn" class="ppv-c" style="display:none;margin-top:4px;margin-left:22px"><input type="checkbox" id="ppv-tnc"> Speed test NPU vs CPU on first use (slower first split, then keeps the faster one)</label>' +
       '<label id=\"ppv-vidl\" class=\"ppv-c\" style=\"display:block;margin-top:8px\"><input type=\"checkbox\" id=\"ppv-vid\"> Keep the original video (video tracks only)</label><div class=\"ppv-note\">Saves each stem as a video with its sound replaced. Takes the video\u2019s full length per stem, keep the screen on.</div>' +
       '<details><summary>Where split tracks go</summary><div class="ppv-note">Split tracks never count as new library tracks. They are all kept together under \u201cSplit tracks\u201d in the library\u2019s view selector.</div>' +
       '<label class="ppv-c" style="display:block"><input type="checkbox" id="ppv-mkpl"> Also make a playlist for each split song</label>' +
@@ -9261,7 +9263,9 @@
     const LV = () => +lsel.value === 4 ? customLevel() : LEVELS[+lsel.value] || null, showLv = () => { const l = LV(); lvi.textContent = !l ? 'No limits. Fastest, but can crash weak phones.' : l.custom ? 'Custom: ' + (l.threads ? l.threads + ' thread' + (l.threads > 1 ? 's' : '') : 'auto threads') + ', ' + Math.round(l.duty * 100) + '% rest.' : l.info; };
     let holdUntil = 0;                                                // keep "Done"/"Error" visible instead of being wiped by "Ready" a split second later
     const status = t => { st.textContent = t; document.querySelectorAll('.ppv-stx').forEach(e => { e.textContent = t; }); if (/^(Done|Error)/.test(t)) holdUntil = Date.now() + 5000; mas.react(t); }, ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
-    const nnc = $('#ppv-nnc'); if (NATIVE) { $('#ppv-nn').style.display = 'block'; nnc.checked = ls('ppvNnapi') !== '0'; nnc.onchange = () => { ls('ppvNnapi', nnc.checked ? '1' : '0'); }; }
+    const nnc = $('#ppv-nnc'); if (NATIVE) { $('#ppv-nn').style.display = 'block'; nnc.checked = ls('ppvNnapi') !== '0'; nnc.onchange = () => { ls('ppvNnapi', nnc.checked ? '1' : '0'); syncTn(); }; }
+    const tnc = $('#ppv-tnc'), syncTn = () => { $('#ppv-tn').style.opacity = nnc.checked ? 1 : .4; tnc.disabled = !nnc.checked; };
+    if (NATIVE) { $('#ppv-tn').style.display = 'block'; tnc.checked = ls('ppvTune') === '1'; tnc.onchange = () => ls('ppvTune', tnc.checked ? '1' : '0'); syncTn(); }
     const savedModel = ls('ppvModel'); if (savedModel && MODELS[savedModel] && (NATIVE || !MODELS[savedModel].nativeOnly)) sel.value = savedModel;
     if (ls('ppvStrength')) { sl.value = ls('ppvStrength'); sv.textContent = sl.value; }
     lsel.value = ls('ppvLevel') || (ls('ppvLow') === '0' ? '0' : '2'); showLv(); gpu.checked = ls('ppvGpu') === '1'; if (navigator.gpu) $('#ppv-gpu').style.display = 'block';
@@ -9330,7 +9334,7 @@
           else if (pcm) mask = makeMask(r.spans, +msel.value);
           else nmask = { spans: r.spans, floor: lvl.floor, fade: lvl.fade };   // applied in Java to the finished stems
         }
-        const res = await run(id, pcm, want, { strength: +sl.value, gpu: gpu.checked && !LV(), lv: LV(), quality: +qsel.value, gate: +gsel.value, mask, nmask, track: t, nnapi: NATIVE ? nnc.checked : false }, status, f => { bar.style.width = (f * 100) + '%'; status('Separating… ' + Math.round(f * 100) + '%'); });
+        const res = await run(id, pcm, want, { strength: +sl.value, gpu: gpu.checked && !LV(), lv: LV(), quality: +qsel.value, gate: +gsel.value, mask, nmask, track: t, nnapi: NATIVE ? nnc.checked : false, tune: NATIVE && nnc.checked && tnc.checked }, status, f => { bar.style.width = (f * 100) + '%'; status('Separating… ' + Math.round(f * 100) + '%'); });
         pcm = null;
         const files = []; let vidFail = 0;
         for (const n of want) {                                          // encode one at a time, free each stem after
