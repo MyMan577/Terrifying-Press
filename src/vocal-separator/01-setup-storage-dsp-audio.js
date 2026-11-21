@@ -7,9 +7,15 @@
 (() => {
   const HF_BASE = 'https://huggingface.co/Myman577/Splitter/resolve/main/';
   const SP4 = 'https://huggingface.co/Best-Practice/spleeter-4stems-onnx/resolve/main/';   // fallback host if a 4-stem file isn't in HF_BASE
+  // Official UVR5 model release (settings from UVR's mdx_model_data/model_data.json). GitHub sends no CORS headers,
+  // so these files can only be downloaded by the Android app (Java); models marked nativeOnly are hidden in the browser.
+  const UVR = 'https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/';
   const MODELS = {
     spleeter2: { label: 'Fast · 2 stems (~80 MB)', kind: 'spleeter', files: { vocals: 'spleeter-vocals.onnx', accomp: 'spleeter-accompaniment.onnx' }, sources: [] },
     spleeter4: { label: 'Spleeter · 4 stems (~79 MB)', kind: 'sp4', files: { vocals: 'vocals.fp16.onnx', drums: 'drums.fp16.onnx', bass: 'bass.fp16.onnx', other: 'other.fp16.onnx' }, sources: ['vocals', 'drums', 'bass', 'other'] },
+    // Middle tier: MDX-Net with 2048 bins, about 3x faster than Voc_FT on CPU, far cleaner than Spleeter.
+    mdx_lite:  { label: 'Balanced vocals · MDX-Net Lite (~30 MB)', kind: 'mdx', file: UVR + 'UVR_MDXNET_1_9703.onnx', nativeOnly: true, sources: [], nfft: 6144, dimF: 2048, comp: 1.03 },
+    mdx_kara:  { label: 'Karaoke · lead vocal only, keeps backing vocals (~30 MB)', kind: 'mdx', file: UVR + 'UVR_MDXNET_KARA.onnx', nativeOnly: true, sources: [], nfft: 6144, dimF: 2048, comp: 1.035 },
     mdx_voc:   { label: 'Cleaner vocals · MDX-Net (~67 MB)', kind: 'mdx', file: 'UVR-MDX-NET-Voc_FT.onnx', sources: [], nfft: 7680, dimF: 3072, comp: 1.021 },
     demucs4:   { label: 'Best · 4 stems (316 MB)', kind: 'demucs', file: 'htdemucs.onnx',    sources: ['drums', 'bass', 'other', 'vocals'] },
     demucs6:   { label: '6 stems + guitar/piano (~316 MB)', kind: 'demucs', file: 'htdemucs_6s.onnx', sources: ['drums', 'bass', 'other', 'vocals', 'guitar', 'piano'] }
