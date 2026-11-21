@@ -31,12 +31,19 @@ final class Accel {
     private static volatile int customThreads = 0;       // 0 = automatic (fast cores only, max MAX_THREADS)
     private static volatile boolean customSpin = false;  // true = idle pool threads busy-wait (faster, hotter)
     private static volatile boolean customLean = false;  // true = low-RAM session settings even for small models
+    private static volatile boolean fastMode = false;    // no optimization level: spinning pool, and the memory arena stays on for big models when RAM allows
+    private static long totalRam = 0;
 
-    static void setCustom(int threads, boolean spin, boolean lean) {
-        customThreads = Math.max(0, threads); customSpin = spin; customLean = lean;
+    static void setCustom(int threads, boolean spin, boolean lean) { setCustom(threads, spin, lean, false); }
+
+    static void setCustom(int threads, boolean spin, boolean lean, boolean fast) {
+        customThreads = Math.max(0, threads); customSpin = spin || fast; customLean = lean; fastMode = fast && !lean;
     }
 
-    static void clearCustom() { customThreads = 0; customSpin = false; customLean = false; }
+    static void clearCustom() { customThreads = 0; customSpin = false; customLean = false; fastMode = false; }
+
+    /** Demucs (316 MB) with the arena on peaks around 1-1.5 GB: only on phones with about 6 GB of RAM or more. */
+    private static boolean roomy() { return totalRam >= 5_500_000_000L; }
     /** Upper limit for inference threads. 4 fast cores finish about as quickly as 6 (the slower mid cores
      *  make the pool wait at every sync point) and draw noticeably less power. Raise to 5 or 6 if you prefer speed. */
     private static final int MAX_THREADS = 4;
@@ -47,6 +54,14 @@ final class Accel {
 
     static synchronized void init(Context c) {
         if (prefs == null) prefs = c.getApplicationContext().getSharedPreferences("ppv_accel", Context.MODE_PRIVATE);
+        if (totalRam == 0) {
+            try {
+                android.app.ActivityManager am = (android.app.ActivityManager) c.getSystemService(Context.ACTIVITY_SERVICE);
+                android.app.ActivityManager.MemoryInfo mi = new android.app.ActivityManager.MemoryInfo();
+                am.getMemoryInfo(mi);
+                totalRam = mi.totalMem;
+            } catch (Throwable ignored) { totalRam = -1; }
+        }
     }
 
     static void clearTune() {
@@ -109,7 +124,7 @@ final class Accel {
     }
 
     static OrtSession build(OrtEnvironment env, File f, boolean nnapi) throws Exception {
-        return build(env, f, nnapi, customLean || f.length() > 100000000L);
+        return build(env, f, nnapi, customLean || (f.length() > 100000000L && !(fastMode && roomy())));
     }
 
     /** lowMem = no extra memory pools or copies of the weights (right for one huge model, wrong for loops that run a session thousands of times). */

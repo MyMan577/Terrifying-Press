@@ -20,11 +20,15 @@ final class Throttle {
     private final Context ctx;
     private final PowerManager pm;
     private final double baseline;   // fixed extra duty from the app (0 = adaptive only)
+    private final boolean fast;      // no optimization level picked: only rest when the phone itself reports critical heat
     private long last = 0;           // when the current chunk started
     private long probedAt = 0;
     private double cached = 0;
 
-    Throttle(Context c, double baselineDuty) {
+    Throttle(Context c, double baselineDuty) { this(c, baselineDuty, false); }
+
+    Throttle(Context c, double baselineDuty, boolean fastMode) {
+        fast = fastMode;
         ctx = c.getApplicationContext();
         pm = (PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
         baseline = Math.max(0, Math.min(2, baselineDuty));
@@ -50,6 +54,7 @@ final class Throttle {
     private double factor(long now) {
         if (now - probedAt < 1500) return cached;              // headroom must not be polled faster than ~1/s
         probedAt = now;
+        if (fast) return (cached = fastFactor());
         double f = 0;
         try {
             if (Build.VERSION.SDK_INT >= 30 && pm != null) {   // forecast 10 s ahead; 1.0 = severe throttling
@@ -67,6 +72,25 @@ final class Throttle {
             }
         } catch (Throwable ignored) { }
         return (cached = f);
+    }
+
+    /** Fast mode: Android already lowers the clocks itself as the chip warms, so extra rest is only added at
+     *  critical heat. The battery-temperature fallback is only used on phones with no thermal API (below Android 10). */
+    private double fastFactor() {
+        double f = 0;
+        try {
+            if (Build.VERSION.SDK_INT >= 29 && pm != null) {
+                int s = pm.getCurrentThermalStatus();
+                f = s >= 5 ? 2.0 : s == 4 ? 0.5 : 0;               // CRITICAL = 4, EMERGENCY = 5, SHUTDOWN = 6
+            } else {
+                Intent b = ctx.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+                if (b != null) {
+                    double t = b.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) / 10.0;
+                    if (t > 0) f = ramp(t, 45, 50, 1.5);
+                }
+            }
+        } catch (Throwable ignored) { }
+        return f;
     }
 
     private static double ramp(double v, double lo, double hi, double max) {

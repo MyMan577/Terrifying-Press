@@ -287,7 +287,13 @@ final class StemNative {
 
     static void demucs(OrtEnvironment env, Accel.Sess ss, SpleeterNative.Audio au, int[][] rows, File[] files,
                        SpleeterNative.Progress prog) throws Exception {
-        final int SEGN = DEMUCS_SEG, overlap = SEGN >> 2, stride = SEGN - overlap;
+        demucs(env, ss, au, rows, files, prog, false);
+    }
+
+    /** fast = 12.5% overlap instead of 25%: about 15% less model time; the seams are still cross-faded. */
+    static void demucs(OrtEnvironment env, Accel.Sess ss, SpleeterNative.Audio au, int[][] rows, File[] files,
+                       SpleeterNative.Progress prog, boolean fast) throws Exception {
+        final int SEGN = DEMUCS_SEG, overlap = fast ? SEGN >> 3 : SEGN >> 2, stride = SEGN - overlap;
         final int len = au.len, no = files.length, nChunks = Math.max(1, (int) Math.ceil(len / (double) stride));
         final float[][] pcm = au.ch;
         final float[][][] acc = new float[no][2][SEGN];
