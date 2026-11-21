@@ -20,7 +20,7 @@
     ort.env.wasm.wasmPaths = ORT;
     const threads = lv && lv.custom ? (self.crossOriginIsolated && lv.threads ? Math.min(lv.threads, navigator.hardwareConcurrency || lv.threads) : 1) : !lv && self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;   // custom: the person's pick
     const big = u8.length > 100e6;                                       // Demucs (316 MB): keep every extra copy of the weights out of memory
-    const base = { graphOptimizationLevel: lv || big || key === 'mdx_voc' ? 'basic' : 'all' };
+    const base = { graphOptimizationLevel: lv || big || /^mdx_/.test(key) ? 'basic' : 'all' };
     if (big) { base.enableCpuMemArena = false; base.enableMemPattern = false; base.executionMode = 'sequential'; }   // MDX: 'all' makes the load slow and memory hungry
     if (lv && lv.lean) { base.enableCpuMemArena = false; base.enableMemPattern = false; base.executionMode = 'sequential'; }
     // try in order: WebGPU (if asked) -> wasm with threads -> wasm single thread, basic optimization (smallest memory)

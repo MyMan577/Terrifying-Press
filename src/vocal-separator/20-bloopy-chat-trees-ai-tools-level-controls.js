@@ -436,7 +436,7 @@
       b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg><span>Stems</span>';
     }
     const p = document.createElement('div'); p.id = 'ppv-panel';
-    p.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><b>Stem separator</b><button id="ppv-x" class="ppv-x" type="button" aria-label="Close">&times;</button></div><select id="ppv-model">' + Object.entries(MODELS).map(([k, m]) => '<option value="' + k + '">' + m.label + '</option>').join('') + '</select>' +
+    p.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><b>Stem separator</b><button id="ppv-x" class="ppv-x" type="button" aria-label="Close">&times;</button></div><select id="ppv-model">' + Object.entries(MODELS).filter(([, m]) => NATIVE || !m.nativeOnly).map(([k, m]) => '<option value="' + k + '">' + m.label + '</option>').join('') + '</select>' +
       '<div style="margin-top:8px">Optimization</div><select id="ppv-lvl"><option value="0">Off</option><option value="1">Light</option><option value="2">Medium</option><option value="3">Max</option><option value="4">Custom (pick each setting)</option></select><div id="ppv-lvi" style="opacity:.6;font-size:11px;margin-top:4px"></div>' +
       '<div id="ppv-cust" style="display:none;margin-top:6px;padding:8px;border:1px solid rgba(128,128,128,.35);border-radius:8px">' +
       '<div>CPU threads</div><select id="ppv-c-th"><option value="0">Auto (fast cores)</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="6">6</option><option value="8">8</option></select><div id="ppv-c-thn" style="opacity:.6;font-size:11px;margin-top:2px"></div>' +
@@ -560,7 +560,7 @@
     let holdUntil = 0;                                                // keep "Done"/"Error" visible instead of being wiped by "Ready" a split second later
     const status = t => { st.textContent = t; document.querySelectorAll('.ppv-stx').forEach(e => { e.textContent = t; }); if (/^(Done|Error)/.test(t)) holdUntil = Date.now() + 5000; mas.react(t); }, ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
     const nnc = $('#ppv-nnc'); if (NATIVE) { $('#ppv-nn').style.display = 'block'; nnc.checked = ls('ppvNnapi') !== '0'; nnc.onchange = () => { ls('ppvNnapi', nnc.checked ? '1' : '0'); }; }
-    const savedModel = ls('ppvModel'); if (savedModel && MODELS[savedModel]) sel.value = savedModel;
+    const savedModel = ls('ppvModel'); if (savedModel && MODELS[savedModel] && (NATIVE || !MODELS[savedModel].nativeOnly)) sel.value = savedModel;
     if (ls('ppvStrength')) { sl.value = ls('ppvStrength'); sv.textContent = sl.value; }
     lsel.value = ls('ppvLevel') || (ls('ppvLow') === '0' ? '0' : '2'); showLv(); gpu.checked = ls('ppvGpu') === '1'; if (navigator.gpu) $('#ppv-gpu').style.display = 'block';
     sl.oninput = () => { sv.textContent = sl.value; ls('ppvStrength', sl.value); };
@@ -619,7 +619,7 @@
           catch (e) { console.warn('Whisper timing failed', e); maskNote = ' Whisper timing failed (' + errText(e) + '), so line lengths were estimated.'; }
         }
         status('Decoding audio…');
-        let pcm = NATIVE && ['spleeter2', 'spleeter4', 'mdx_voc', 'demucs4', 'demucs6'].includes(id) ? null : await decode(t.url);
+        let pcm = NATIVE && ['spleeter', 'sp4', 'mdx', 'demucs'].includes((MODELS[id] || {}).kind) ? null : await decode(t.url);
         let mask = null, nmask = null;
         if (+msel.value) {
           const dur = pcm ? pcm[0].length / SR : await mediaDur(t.url);   // native engines decode in Java, so ask the media element for the length
