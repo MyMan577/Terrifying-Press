@@ -102,7 +102,12 @@ jobs:
           mkdir -p "$PKG_DIR"
           cp android-overrides/*.java "$PKG_DIR"/
           rm -f "$PKG_DIR/LiteRtLlm.java"   # LiteRtLlm is Kotlin now; an old Java copy would clash with it
-          sed -i '/^dependencies {/a\    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.22.0"' android/app/build.gradle
+          # Qualcomm build of ONNX Runtime: adds the QNN provider (Snapdragon NPU) and pulls in com.qualcomm.qti:qnn-runtime.
+          # It has no NNAPI or XNNPACK and is 64-bit ARM only; other phones run the models on the plain CPU provider.
+          sed -i '/^dependencies {/a\    implementation "com.microsoft.onnxruntime:onnxruntime-android-qnn:1.22.0"' android/app/build.gradle
+          # QNN: only the HTP (NPU) backend is used, so drop the old-DSP and GPU backends (~10 MB). Libraries are
+          # unpacked on install (legacy packaging) because the NPU loads its skel library from a real folder.
+          sed -i '/^android {/a\    packaging { jniLibs { useLegacyPackaging = true\n        excludes += ["lib/arm64-v8a/libQnnDsp.so", "lib/arm64-v8a/libQnnDspV66Skel.so", "lib/arm64-v8a/libQnnDspV66Stub.so", "lib/arm64-v8a/libQnnGpu.so"] } }' android/app/build.gradle
           # LiteRT-LM (chat models in .litertlm files). Pin this to an exact version after the first green build.
           sed -i '/^dependencies {/a\    implementation "com.google.ai.edge.litertlm:litertlm-android:latest.release"' android/app/build.gradle
           # ML Kit on-device translation + language detection (TranslatePlugin). Language packs download on first use.
@@ -130,6 +135,8 @@ jobs:
               s = s.replace('</application>', '    <service android:name=".KeepAliveService" android:exported="false" android:foregroundServiceType="dataSync" />\n    </application>', 1)
           if 'libOpenCL.so' not in s:
               s = s.replace('</application>', '    <uses-native-library android:name="libOpenCL.so" android:required="false" />\n    <uses-native-library android:name="libvndksupport.so" android:required="false" />\n    </application>', 1)
+          if 'libcdsprpc.so' not in s:   # FastRPC to the Snapdragon NPU (QNN HTP); apps must ask for it on Android 12+
+              s = s.replace('</application>', '    <uses-native-library android:name="libcdsprpc.so" android:required="false" />\n    </application>', 1)
           open(p, 'w').write(s)
           PY
 

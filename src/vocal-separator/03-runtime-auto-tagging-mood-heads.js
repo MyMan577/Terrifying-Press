@@ -84,7 +84,7 @@
     const h = await NP.addListener('progress', e => { onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
     const nm = opts.nmask || null, hid = !!nm && !wanted.includes('Vocals') && (wanted.includes('Instrumental') || wanted.includes('Other'));
     const W = hid ? wanted.concat('Vocals') : wanted;                 // vocals are needed to put the removed sound back
-    const accKey = 'ppvAccel_' + id, remembered = ls0(accKey);
+    const accKey = 'ppvAccel2_' + id, remembered = ls0(accKey);
     const useNn = opts.nnapi !== false && !/^demucs/.test(id) && !cpuOnly.has(id) && remembered !== 'cpu';   // Demucs is always CPU; a model that already lost or gave NaN stays on CPU
     // tune: race NNAPI against the CPU once per model per phone (the verdict is remembered natively), so a slow NNAPI driver is never used blindly.
     // fast: no optimization level picked, so run flat out (spinning pool, big-model memory arena, less Demucs overlap, rest only at critical heat).

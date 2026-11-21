@@ -75,6 +75,7 @@ public class OnnxSeparatorPlugin extends Plugin {
             unloadById(id);
             if (id.startsWith("llm_")) { llm.cancel(); llm.close(); }
             if (id.startsWith("lm_")) { lite.close(); }
+            Accel.qnnCache(modelFile(id)).delete();
             modelFile(id).delete();
         }
         call.resolve();
@@ -564,7 +565,7 @@ public class OnnxSeparatorPlugin extends Plugin {
                     StemNative.sp4(env(), ss, au, idx, files, prog);
                     int nn = 0;
                     for (Accel.Sess s : ss) if (s.nn) nn++;
-                    accel = nn == 4 ? "NNAPI" : nn == 0 ? "CPU" : "NNAPI+CPU";
+                    accel = nn == 4 ? Accel.accelName() : nn == 0 ? "CPU" : Accel.accelName() + "+CPU";
                 } else if ("demucs".equals(kind)) {
                     File mf = modelFile(model);
                     if (!mf.exists()) throw new IOException("Model not downloaded: " + model);

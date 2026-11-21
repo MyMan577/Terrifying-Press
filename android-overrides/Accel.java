@@ -48,12 +48,17 @@ final class Accel {
      *  make the pool wait at every sync point) and draw noticeably less power. Raise to 5 or 6 if you prefer speed. */
     private static final int MAX_THREADS = 4;
     /** Bump this when session settings change, so old "NNAPI vs CPU" timing verdicts are measured again. */
-    private static final String TUNE_VER = ":v3";
+    private static final String TUNE_VER = ":v4";   // v4: the accelerated road is the Qualcomm NPU (QNN HTP) on Snapdragon
     private static String tuneKey(String key, File f) { return key + ":" + f.length() + TUNE_VER; }
     private static final Map<OrtSession, Sess> REG = Collections.synchronizedMap(new IdentityHashMap<OrtSession, Sess>());
 
     static synchronized void init(Context c) {
         if (prefs == null) prefs = c.getApplicationContext().getSharedPreferences("ppv_accel", Context.MODE_PRIVATE);
+        if (libDir == null) {
+            libDir = c.getApplicationInfo().nativeLibraryDir;
+            // The NPU (cDSP) loads its half of QNN (libQnnHtpV**Skel.so) from these folders: the app's own libraries first.
+            try { android.system.Os.setenv("ADSP_LIBRARY_PATH", libDir + ";/vendor/dsp/cdsp;/vendor/lib/rfsa/adsp;/system/lib/rfsa/adsp;/dsp", true); } catch (Throwable ignored) { }
+        }
         if (totalRam == 0) {
             try {
                 android.app.ActivityManager am = (android.app.ActivityManager) c.getSystemService(Context.ACTIVITY_SERVICE);
@@ -72,6 +77,23 @@ final class Accel {
         if (prefs != null) prefs.edit().putString(k, v).apply();
     }
 
+    private static String libDir = null;
+    private static Boolean qnnOk = null;
+
+    /** Snapdragon phone with the QNN HTP backend packed in the APK. */
+    static synchronized boolean qnn() {
+        if (qnnOk != null) return qnnOk;
+        boolean soc = false;
+        try {
+            String m = android.os.Build.VERSION.SDK_INT >= 31 ? android.os.Build.SOC_MANUFACTURER : "";
+            soc = "QTI".equalsIgnoreCase(m) || "Qualcomm".equalsIgnoreCase(m) || android.os.Build.HARDWARE.toLowerCase().contains("qcom");
+        } catch (Throwable ignored) { }
+        return qnnOk = soc && libDir != null && new File(libDir, "libQnnHtp.so").exists();
+    }
+
+    /** Name of the accelerated road on this phone, for the result line. */
+    static String accelName() { return qnn() ? "NPU" : "NNAPI"; }
+
     /** A loaded model plus where it runs. s is replaced if NNAPI fails at run time. */
     static final class Sess {
         OrtSession s;
@@ -85,7 +107,7 @@ final class Accel {
             inName = s.getInputNames().iterator().next();
             outName = s.getOutputNames().iterator().next();
         }
-        String accel() { return nn ? "NNAPI" : "CPU"; }
+        String accel() { return nn ? accelName() : "CPU"; }
     }
 
     private static Sess reg(Sess x) { REG.put(x.s, x); return x; }
@@ -129,6 +151,51 @@ final class Accel {
 
     /** lowMem = no extra memory pools or copies of the weights (right for one huge model, wrong for loops that run a session thousands of times). */
     static OrtSession build(OrtEnvironment env, File f, boolean nnapi, boolean lowMem) throws Exception {
+        if (nnapi && qnn()) return buildQnn(env, f);
+        return buildPlain(env, f, nnapi, lowMem);
+    }
+
+    /** Compiled NPU graph saved next to the model, so only the first load pays the (long) compile. */
+    static File qnnCache(File f) { return new File(f.getParentFile(), f.getName() + ".qnn.onnx"); }
+
+    /**
+     * Qualcomm NPU (HTP) in fp16. Ops the NPU cannot take stay on the CPU. Free batch dims are fixed to 1 (the NPU
+     * needs static shapes). The first load compiles the graph and saves it (EP context); later loads read that file.
+     */
+    private static OrtSession buildQnn(OrtEnvironment env, File f) throws Exception {
+        File ctx = qnnCache(f);
+        if (ctx.exists() && ctx.lastModified() < f.lastModified()) ctx.delete();   // model replaced: compile again
+        if (ctx.exists()) {
+            try { return env.createSession(ctx.getAbsolutePath(), qnnOpts(false, ctx)); }
+            catch (Throwable e) { ctx.delete(); }
+        }
+        try { return env.createSession(f.getAbsolutePath(), qnnOpts(true, ctx)); }
+        catch (Throwable e) {
+            ctx.delete();
+            return env.createSession(f.getAbsolutePath(), qnnOpts(false, ctx));    // the context dump itself can fail on some graphs
+        }
+    }
+
+    private static OrtSession.SessionOptions qnnOpts(boolean dump, File ctx) throws Exception {
+        OrtSession.SessionOptions o = new OrtSession.SessionOptions();
+        o.setIntraOpNumThreads(threads());                  // for the ops left on the CPU
+        try { o.addConfigEntry("session.intra_op.allow_spinning", customSpin ? "1" : "0"); } catch (Throwable ignored) { }
+        o.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
+        for (String d : new String[] {"batch_size", "batch", "N"}) { try { o.setSymbolicDimensionValue(d, 1); } catch (Throwable ignored) { } }
+        if (dump) {
+            o.addConfigEntry("ep.context_enable", "1");
+            o.addConfigEntry("ep.context_embed_mode", "1");
+            o.addConfigEntry("ep.context_file_path", ctx.getAbsolutePath());
+        }
+        Map<String, String> q = new HashMap<>();
+        q.put("backend_path", "libQnnHtp.so");
+        q.put("htp_performance_mode", "sustained_high_performance");   // long splits: fast without the burst-mode heat spike
+        q.put("enable_htp_fp16_precision", "1");                       // float models run in fp16 on the NPU
+        o.addQnn(q);
+        return o;
+    }
+
+    private static OrtSession buildPlain(OrtEnvironment env, File f, boolean nnapi, boolean lowMem) throws Exception {
         OrtSession.SessionOptions o = new OrtSession.SessionOptions();
         int th = threads();
         o.setIntraOpNumThreads(th);
