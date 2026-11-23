@@ -114,7 +114,9 @@
       catch (e) { last = e; }
     }
     curStatus = null;
-    throw new Error('Download failed for ' + file + ': ' + errText(last));
+    const why = errText(last);
+    if (/\b(401|403)\b/.test(why) && /huggingface\.co/.test(file)) throw new Error('Download refused for ' + file.split('/').pop() + ': Hugging Face wants a signed-in account for this model. Pick another one.');
+    throw new Error('Download failed for ' + file + ': ' + why);
   }
   // NNAPI (phone GPU/NPU) for everything except Demucs, whose transformer ops run better on CPU. The Java side falls back to CPU by itself.
   // The tiny classifier heads (a few hundred KB) lose time compiling for NNAPI and copying data over: CPU is faster for them.
@@ -4751,6 +4753,9 @@
       // To add another, copy this line and use the exact file name from the model's "Files" page on Hugging Face.
       gemma4:  { id: 'litert-community/gemma-4-E2B-it-litert-lm', label: 'Gemma 4 E2B (LiteRT-LM, app only, ~2.4 GB, strong phone)', mb: 2400, lm: true, lid: 'lm_gemma4_e2b', url: 'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm' },
       gemma4e4b: { id: 'litert-community/gemma-4-E4B-it-litert-lm', label: 'Gemma 4 E4B (LiteRT-LM, app only, ~3.7 GB, flagship phones)', mb: 3650, lm: true, lid: 'lm_gemma4_e4b', url: 'https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm' },
+      // From Google's AI Edge Gallery list, pinned to the version it tested. Gemma 3 1B: quick and small. Phi-4-mini (3.8B): the smartest here at reasoning and instructions.
+      gemma3_1b: { id: 'litert-community/Gemma3-1B-IT', label: 'Gemma 3 1B (LiteRT-LM, app only, ~560 MB, fast)', mb: 560, lm: true, lid: 'lm_gemma3_1b', url: 'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/42d538a932e8d5b12e6b3b455f5572560bd60b2c/gemma3-1b-it-int4.litertlm' },
+      phi4mini:  { id: 'litert-community/Phi-4-mini-instruct', label: 'Phi-4-mini 3.8B (LiteRT-LM, app only, ~3.7 GB, smartest, flagship phones)', mb: 3730, lm: true, lid: 'lm_phi4mini', url: 'https://huggingface.co/litert-community/Phi-4-mini-instruct/resolve/054f4e2694a86f81a129a40596e08b8d74770a9d/Phi-4-mini-instruct_multi-prefill-seq_q8_ekv4096.litertlm' },
       qwen15lm:  { id: 'litert-community/Qwen2.5-1.5B-Instruct', label: 'Qwen2.5 1.5B (LiteRT-LM, app only, ~1.6 GB)', mb: 1600, lm: true, lid: 'lm_qwen15_q8', url: 'https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/main/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.litertlm' },
       qwen15i4:  { id: 'leuconoe/litert-lm-unity-quantized', label: 'Qwen2.5 1.5B 4-bit (LiteRT-LM, app only, ~790 MB, community build)', mb: 790, lm: true, lid: 'lm_qwen15_i4', url: 'https://huggingface.co/leuconoe/litert-lm-unity-quantized/resolve/main/qwen2.5-1.5b-instruct/Qwen2.5-1.5B-Instruct_wi4b64_ekv4096.litertlm' },
       qwen05i4:  { id: 'leuconoe/litert-lm-unity-quantized', label: 'Qwen2.5 0.5B 4-bit (LiteRT-LM, app only, ~265 MB, community build, short memory)', mb: 265, lm: true, lid: 'lm_qwen05_i4', url: 'https://huggingface.co/leuconoe/litert-lm-unity-quantized/resolve/main/qwen2.5-0.5b-instruct/Qwen2.5-0.5B-Instruct_wi4b64_ekv1280.litertlm' },

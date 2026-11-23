@@ -114,7 +114,9 @@
       catch (e) { last = e; }
     }
     curStatus = null;
-    throw new Error('Download failed for ' + file + ': ' + errText(last));
+    const why = errText(last);
+    if (/\b(401|403)\b/.test(why) && /huggingface\.co/.test(file)) throw new Error('Download refused for ' + file.split('/').pop() + ': Hugging Face wants a signed-in account for this model. Pick another one.');
+    throw new Error('Download failed for ' + file + ': ' + why);
   }
   // NNAPI (phone GPU/NPU) for everything except Demucs, whose transformer ops run better on CPU. The Java side falls back to CPU by itself.
   // The tiny classifier heads (a few hundred KB) lose time compiling for NNAPI and copying data over: CPU is faster for them.
