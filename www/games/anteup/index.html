@@ -13,7 +13,8 @@
 * { box-sizing: border-box; }
 html, body {
   margin: 0; padding: 0;
-  background: radial-gradient(ellipse at 50% -10%, #1B2A1E 0%, #0F1811 55%, #0A100C 100%);
+  background: radial-gradient(ellipse at 50% -10%, var(--f1, #1B2A1E) 0%, var(--f2, #0F1811) 55%, var(--f3, #0A100C) 100%);
+  background-attachment: fixed;
   color: #F3ECD9;
   font-family: 'Manrope', 'Segoe UI', system-ui, sans-serif;
   min-height: 100vh;
@@ -73,28 +74,6 @@ html, body {
 .stat-value { font-size: 20px; font-weight: 700; }
 .stat-label { font-size: 10px; letter-spacing: 1px; color: #8B8368; text-transform: uppercase; }
 
-.menu-wrap { position: fixed; top: 16px; right: 16px; z-index: 500; }
-.menu-btn {
-  width: 38px; height: 38px; border-radius: 10px;
-  background: #1B241C; border: 1px solid #3A4A38; color: #F3ECD9;
-  font-size: 16px; letter-spacing: 2px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 2px 10px #00000055;
-}
-.menu-btn:hover { background: #23301F; border-color: #C9A227; }
-.menu-dropdown {
-  position: absolute; top: 46px; right: 0; min-width: 160px;
-  background: #1B241C; border: 1px solid #3A4A38; border-radius: 10px;
-  padding: 6px; box-shadow: 0 6px 20px #00000077;
-  display: flex; flex-direction: column; gap: 4px;
-}
-.menu-dropdown-item {
-  background: transparent; border: none; color: #F3ECD9;
-  font-family: 'Manrope', sans-serif; font-size: 13px; font-weight: 600;
-  text-align: left; padding: 9px 10px; border-radius: 7px; cursor: pointer;
-}
-.menu-dropdown-item:hover { background: #A23B3B33; color: #E8A8A8; }
-
 .preview-bar {
   min-height: 54px; display: flex; align-items: center; gap: 14px; margin-bottom: 8px;
 }
@@ -112,7 +91,7 @@ html, body {
 .bottom-bar {
   position: fixed; left: 0; right: 0; bottom: 0;
   display: flex; flex-direction: column; align-items: center;
-  background: linear-gradient(to top, #0A100C 55%, #0A100Ccc 80%, transparent 100%);
+  background: linear-gradient(to top, var(--f3, #0A100C) 55%, color-mix(in srgb, var(--f3, #0A100C) 80%, transparent) 80%, transparent 100%);
   padding-bottom: max(8px, env(safe-area-inset-bottom));
   z-index: 4;
 }
@@ -419,7 +398,7 @@ html, body {
 /* ============================== SHOP — COUNTERTOP ============================== */
 .shop-overlay {
   position: fixed; inset: 0;
-  background: radial-gradient(ellipse at 50% -8%, #24391F 0%, #16241A 45%, #0A100C 100%);
+  background: radial-gradient(ellipse at 50% -8%, var(--f1s, #24391F) 0%, var(--f2s, #16241A) 45%, var(--f3, #0A100C) 100%);
   display: flex; flex-direction: column; align-items: center;
   z-index: 30; padding: 16px 14px max(12px, env(safe-area-inset-bottom));
   overflow: hidden;
@@ -428,7 +407,6 @@ html, body {
   width: 100%; max-width: 640px;
   display: flex; align-items: center; justify-content: space-between;
   gap: 10px; margin-bottom: 4px; flex-shrink: 0;
-  padding-right: 48px; /* keeps content clear of the fixed top-right menu button */
 }
 .shop-header-left { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .shop-title {
@@ -856,7 +834,7 @@ body.landscape .bcard-name { font-size: 10.5px; }
 /* ============================== BOOSTER PACK SCREEN ============================== */
 .pack-overlay {
   position: fixed; inset: 0; z-index: 90; overflow-y: auto; overscroll-behavior: contain;
-  background: radial-gradient(ellipse at 50% 45%, color-mix(in srgb, var(--pc, #C9A227) 22%, #16241A) 0%, #16241A 45%, #0A100C 100%);
+  background: radial-gradient(ellipse at 50% 45%, color-mix(in srgb, var(--pc, #C9A227) 22%, var(--f2s, #16241A)) 0%, var(--f2s, #16241A) 45%, var(--f3, #0A100C) 100%);
   display: flex; flex-direction: column; align-items: center; gap: 0;
   padding: 16px 14px max(12px, env(safe-area-inset-bottom));
   animation: zonesIn .2s ease-out;
@@ -1070,6 +1048,154 @@ body.landscape .pack-hand-card .pack-card { zoom: .66 !important; }
 .sleeve-line b { color: var(--sc); }
 .bcard-face.is-playing-ware { display: flex; align-items: center; justify-content: center; }
 .bcard-face.is-playing-ware .bcard-art { display: flex; justify-content: center; filter: drop-shadow(0 6px 8px #000b); }
+/* ============================== MENUS ============================== */
+:root { --f1: #1B2A1E; --f2: #0F1811; --f3: #0A100C; --f1s: #24391F; --f2s: #16241A; }
+.opt-btn {
+  display: flex; align-items: center; gap: 6px; cursor: pointer; font-family: 'Manrope', sans-serif;
+  padding: 6px 10px; border-radius: 10px; border: 2px solid #0a0f0c; color: #fff;
+  background: linear-gradient(180deg, #F29A2E 0%, #D9761B 100%); box-shadow: 0 3px 0 #8a4a10, 0 6px 12px #0006;
+}
+.opt-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #8a4a10; }
+.opt-lines { display: flex; flex-direction: column; gap: 2.5px; }
+.opt-lines i { display: block; width: 13px; height: 2.4px; border-radius: 2px; background: #fff; }
+.opt-txt { font-size: 10px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; }
+.opt-btn.compact .opt-txt { display: none; }
+.opt-btn.compact { padding: 8px 9px; }
+.sub-controls-row .opt-btn { align-self: center; }
+
+.mbtn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; width: 100%;
+  font-family: 'Fraunces', Georgia, serif; color: #fff; cursor: pointer; text-shadow: 0 2px 0 #0006;
+  border: 2px solid #0a0f0c; border-radius: 12px; padding: 12px 10px; min-height: 52px;
+  transition: transform .08s ease, box-shadow .08s ease, filter .12s ease;
+}
+.mbtn:active { transform: translateY(4px); }
+.mbtn:hover { filter: brightness(1.08); }
+.mbtn-label { font-size: 21px; font-weight: 700; letter-spacing: .5px; }
+.mbtn-sub { font-family: 'Manrope', sans-serif; font-size: 10.5px; font-weight: 600; opacity: .85; text-shadow: none; }
+.mbtn-blue { background: linear-gradient(180deg, #4a90d9, #2f6fb8); box-shadow: 0 5px 0 #1a3f6e, 0 9px 16px #0007; }
+.mbtn-orange { background: linear-gradient(180deg, #F29A2E, #D9761B); box-shadow: 0 5px 0 #8a4a10, 0 9px 16px #0007; }
+.mbtn-purple { background: linear-gradient(180deg, #9b6fd6, #7550b5); box-shadow: 0 5px 0 #452a72, 0 9px 16px #0007; }
+.mbtn-red { background: linear-gradient(180deg, #E5574A, #C23A30); box-shadow: 0 5px 0 #7d231c, 0 9px 16px #0007; }
+.mbtn-green { background: linear-gradient(180deg, #4DB873, #2E8E50); box-shadow: 0 5px 0 #1b5a31, 0 9px 16px #0007; }
+.mbtn-grey { background: linear-gradient(180deg, #6b7a72, #4a5751); box-shadow: 0 5px 0 #2a332e, 0 9px 16px #0007; }
+.mbtn:active { box-shadow: 0 1px 0 #0008; }
+.mbtn-small { min-height: 40px; padding: 7px 10px; }
+.mbtn-small .mbtn-label { font-size: 15px; }
+
+.pause-back {
+  position: fixed; inset: 0; z-index: 400; background: #050805d9; backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center; padding: 20px; animation: zonesIn .18s ease-out;
+}
+.mpanel {
+  position: relative; width: 100%; max-width: 320px; max-height: calc(100vh - 40px); display: flex; flex-direction: column; gap: 12px;
+  padding: 18px 16px 16px; border-radius: 18px; border: 2px solid #0a0f0c;
+  background: linear-gradient(180deg, #2c3f36 0%, #23332c 60%, #1b2822 100%);
+  box-shadow: 0 0 0 2px #C9A22766, 0 24px 60px -12px #000c;
+}
+.mpanel.wide { max-width: 420px; }
+.mpanel-title { text-align: center; font-size: 26px; font-weight: 700; color: #FFE9A8; letter-spacing: 1px; text-shadow: 0 2px 0 #0008; }
+.mpanel-sub { text-align: center; font-size: 11px; color: #9A917A; margin-top: -8px; letter-spacing: .5px; text-transform: uppercase; font-weight: 700; }
+.mpanel-scroll { overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+.mrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: 10px; background: #131d18; box-shadow: inset 0 2px 6px #0008; }
+.mrow-label { font-size: 13px; font-weight: 700; color: #F3ECD9; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.mrow-label span { font-size: 10.5px; font-weight: 500; color: #9A917A; }
+.mrow-btns { display: flex; gap: 8px; }
+.mseg { display: flex; flex-shrink: 0; border: 2px solid #0a0f0c; border-radius: 9px; overflow: hidden; background: #0a0f0c; }
+.mseg-opt { font: inherit; font-size: 11.5px; font-weight: 800; color: #9A917A; background: #1b2822; border: none; padding: 6px 9px; cursor: pointer; }
+.mseg-opt + .mseg-opt { border-left: 1px solid #0a0f0c; }
+.mseg-opt.on { color: #16230E; background: linear-gradient(180deg, #FFD45E, #E9A83A); }
+.mpanel > .mseg { align-self: center; }
+.mskin-head { font-size: 10px; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase; color: #E9C568; margin-top: 4px; }
+.mskin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 10px; overflow-y: auto; min-height: 0; padding: 4px 2px; }
+.mskin { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 8px 4px; border-radius: 12px; cursor: pointer; font: inherit; color: #C9BFA4; background: #131d18; border: 2px solid transparent; }
+.mskin.on { border-color: #FFD45E; color: #FFE9A8; box-shadow: 0 0 14px -2px #FFD45E; }
+.mskin-name { font-size: 11px; font-weight: 700; }
+.fp-card, .bp-card { width: 48px; height: 67px; border-radius: 6px; position: relative; box-shadow: 0 4px 8px #0008; }
+.fp-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; background: linear-gradient(160deg, #FBF6E8 0%, #F3ECD9 55%, #ECE2C5 100%); }
+.fp-card b { font-family: 'Fraunces', Georgia, serif; font-size: 20px; line-height: 1; }
+.fp-pips { display: grid; grid-template-columns: 1fr 1fr; gap: 0 4px; font-size: 13px; line-height: 1; font-style: normal; }
+.fp-pips i { font-style: normal; }
+.bp-card .bp-inner { position: absolute; inset: 4px; border-radius: 4px; border: 1px solid #ffffff33; }
+.felt-swatch { width: 64px; height: 46px; border-radius: 8px; border: 2px solid #0a0f0c; box-shadow: inset 0 0 14px #0008, 0 4px 8px #0008; }
+
+/* ----- main menu ----- */
+.main-menu {
+  position: fixed; inset: 0; z-index: 300; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at 50% 30%, var(--f1s) 0%, var(--f2) 55%, var(--f3) 100%);
+  padding: 24px 18px max(24px, env(safe-area-inset-bottom));
+}
+.mm-swirl {
+  position: absolute; inset: -40%; pointer-events: none; opacity: .55;
+  background: repeating-conic-gradient(from 0deg at 50% 50%, #ffffff08 0deg 10deg, transparent 10deg 20deg);
+  animation: packSpin 90s linear infinite;
+}
+.mm-cards { position: relative; width: 300px; height: 170px; margin-bottom: -40px; }
+.mm-card {
+  position: absolute; left: 50%; top: 20px; transform-origin: 50% 140%;
+  transform: translateX(-50%) rotate(calc((var(--i) - 2) * 14deg)) translateY(calc(var(--d) * 6px));
+  animation: mmCard 4s ease-in-out infinite; animation-delay: calc(var(--i) * -0.8s);
+  filter: drop-shadow(0 10px 14px #000a);
+}
+@keyframes mmCard { 0%, 100% { margin-top: 0; } 50% { margin-top: -8px; } }
+.mm-title { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; line-height: .82; filter: drop-shadow(0 6px 0 #0a0f0c) drop-shadow(0 14px 24px #000c); }
+.mm-ante { font-size: 72px; font-weight: 700; letter-spacing: 6px; color: #FFE9A8; -webkit-text-stroke: 2px #0a0f0c; }
+.mm-up { font-size: 92px; font-weight: 700; letter-spacing: 10px; color: #E5574A; -webkit-text-stroke: 2.5px #0a0f0c; margin-top: -4px; animation: mmUp 3s ease-in-out infinite; }
+@keyframes mmUp { 0%, 100% { transform: rotate(-3deg) scale(1); } 50% { transform: rotate(3deg) scale(1.05); } }
+.mm-tag { position: relative; z-index: 2; margin-top: 14px; font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; color: #C9BFA4; font-weight: 700; }
+.mm-bar {
+  position: relative; z-index: 2; margin-top: 34px; width: 100%; max-width: 360px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  padding: 14px; border-radius: 18px; border: 2px solid #0a0f0c; background: #131d18e6; box-shadow: 0 0 0 2px #C9A22755, 0 18px 40px #000a;
+}
+.mm-bar .mbtn-blue:first-child { grid-column: 1 / -1; min-height: 64px; }
+.mm-bar .mbtn-blue:first-child .mbtn-label { font-size: 28px; }
+.mm-bar.choosing .mbtn-grey { grid-column: 1 / -1; min-height: 40px; }
+body.landscape .main-menu { flex-direction: row; gap: 30px; }
+.mm-head { position: relative; display: flex; flex-direction: column; align-items: center; }
+body.landscape .mm-cards { width: 260px; height: 150px; margin-bottom: -46px; transform: scale(.85); }
+body.landscape .mm-ante { font-size: 58px; }
+body.landscape .mm-up { font-size: 74px; }
+.mm-bar .mbtn-red { grid-column: 1 / -1; }
+body.landscape .mm-bar { margin-top: 0; max-width: 340px; }
+
+/* ----- settings: left-handed, badges ----- */
+body.lefty .actions-row { flex-direction: row-reverse; }
+body.lefty.landscape .bottom-bar .actions-row { grid-column: 1; justify-self: end; }
+body.lefty.landscape .bottom-bar .sub-controls-row { grid-column: 3; justify-self: start; }
+body.no-badges .prog-stat, body.no-badges .prog-bar { display: none; }
+body.reduce-motion .bcard-face, body.reduce-motion .bvoucher-art, body.reduce-motion .pchoice-face,
+body.reduce-motion .pack-rays, body.reduce-motion .mm-swirl, body.reduce-motion .mm-card, body.reduce-motion .mm-up,
+body.reduce-motion .shelf-piece.csl-prismatic svg { animation: none !important; }
+
+/* ----- skins: card faces ----- */
+body.face-contrast .card { background: linear-gradient(160deg, #ffffff 0%, #f6f4ee 100%); }
+body.face-midnight .card { background: linear-gradient(160deg, #2b3252 0%, #1c2139 60%, #141829 100%); }
+body.face-parchment .card { background: linear-gradient(160deg, #eedcae 0%, #dcc28a 60%, #c9a86a 100%); }
+body.face-neon .card { background: linear-gradient(160deg, #1a1530 0%, #0e0b1c 100%); box-shadow: 0 0 0 1px #5ff2ff55; }
+body.face-neon .card > * { filter: drop-shadow(0 0 2px currentColor); }
+body.face-rose .card { background: linear-gradient(160deg, #fbe9ec 0%, #f3d2d8 60%, #e9bcc5 100%); }
+body.face-slate .card { background: linear-gradient(160deg, #eef2f6 0%, #dde4ec 60%, #cbd5df 100%); }
+body.face-jade .card { background: linear-gradient(160deg, #eaf5ec 0%, #d4ebd9 60%, #bcdcc3 100%); }
+.face-prev-contrast .fp-card { background: linear-gradient(160deg, #ffffff 0%, #f6f4ee 100%); }
+.face-prev-midnight .fp-card { background: linear-gradient(160deg, #2b3252 0%, #141829 100%); }
+.face-prev-parchment .fp-card { background: linear-gradient(160deg, #eedcae 0%, #c9a86a 100%); }
+.face-prev-neon .fp-card { background: linear-gradient(160deg, #1a1530 0%, #0e0b1c 100%); }
+.face-prev-neon .fp-card * { text-shadow: 0 0 6px currentColor; }
+.face-prev-rose .fp-card { background: linear-gradient(160deg, #fbe9ec 0%, #e9bcc5 100%); }
+.face-prev-slate .fp-card { background: linear-gradient(160deg, #eef2f6 0%, #cbd5df 100%); }
+.face-prev-jade .fp-card { background: linear-gradient(160deg, #eaf5ec 0%, #bcdcc3 100%); }
+
+/* ----- skins: card backs (the deck pile and the previews) ----- */
+.back-prev-emerald .bp-card { background: repeating-linear-gradient(135deg, #2E4A38 0px, #2E4A38 4px, #24391F 4px, #24391F 8px); }
+body.back-crimson .deck-card-back, .back-prev-crimson .bp-card { background: repeating-linear-gradient(135deg, #7a2420 0 4px, #5a1814 4px 8px); }
+body.back-royal .deck-card-back, .back-prev-royal .bp-card { background: repeating-linear-gradient(45deg, #23428a 0 4px, #1a3170 4px 8px); }
+body.back-gold .deck-card-back, .back-prev-gold .bp-card { background: radial-gradient(circle at 50% 50%, #F2C94C 0 18%, transparent 19%), repeating-linear-gradient(135deg, #a8801e 0 4px, #8a6814 4px 8px); }
+body.back-onyx .deck-card-back, .back-prev-onyx .bp-card { background: linear-gradient(135deg, transparent 46%, #C9A227 47% 53%, transparent 54%), linear-gradient(45deg, transparent 46%, #C9A22788 47% 53%, transparent 54%), #141414; }
+body.back-plaid .deck-card-back, .back-prev-plaid .bp-card { background: repeating-linear-gradient(0deg, #a8352d55 0 3px, transparent 3px 9px), repeating-linear-gradient(90deg, #1f5c3a88 0 3px, transparent 3px 9px), #5a1e1a; }
+body.back-stars .deck-card-back, .back-prev-stars .bp-card { background: radial-gradient(circle at 20% 30%, #fff 0 1px, transparent 1.5px), radial-gradient(circle at 70% 20%, #fff 0 1px, transparent 1.5px), radial-gradient(circle at 40% 70%, #fff 0 1px, transparent 1.5px), radial-gradient(circle at 80% 80%, #ffe28a 0 1.2px, transparent 1.7px), radial-gradient(circle at 55% 45%, #9fb8ff55 0 30%, transparent 60%), #141a3a; }
+body.back-checker .deck-card-back, .back-prev-checker .bp-card { background: repeating-conic-gradient(#b0302a 0 25%, #1a1a1a 0 50%) 0 0 / 8px 8px; }
+body.back-sunset .deck-card-back, .back-prev-sunset .bp-card { background: radial-gradient(circle at 50% 70%, #ffd36b 0 14%, transparent 15%), linear-gradient(180deg, #4a2a6a 0%, #c2416b 55%, #f29a2e 100%); }
+
 /* ============================== CARD NOTE (double tap) ============================== */
 .card-note {
   position: fixed; z-index: 120; max-width: 260px; padding: 9px 11px; border-radius: 12px;
@@ -3515,6 +3641,255 @@ function rollVoucher() {
   return pool.length ? { ...randomOf(pool) } : null;
 }
 
+/* ============================== MENUS ==============================
+   Main menu (title screen) and the pause menu, both with Play / Settings /
+   Skins / Quit. Settings and Skins are panels that open over either.
+   Preferences live in their own localStorage key, apart from the run. */
+const SETTINGS_KEY = "anteup_settings_v1";
+const SETTINGS_DEFAULTS = { speed: 1, reduceMotion: false, packAnim: true, preview: true, sort: "rank", lefty: false, haptics: true, badges: true, face: "classic", back: "emerald", felt: "emerald" };
+const SETTINGS = { ...SETTINGS_DEFAULTS };
+try { Object.assign(SETTINGS, JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}")); } catch (e) {}
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(SETTINGS)); } catch (e) {}
+}
+const MENU = { screen: "main", pause: false, panel: null, confirmAbandon: false, confirmReset: false, choosingRun: false, skinTab: "face" };
+
+const FACE_SKINS = {
+  classic: { name: "Classic", suits: { spades: "#201D19", clubs: "#201D19", hearts: "#A23B3B", diamonds: "#A23B3B" } },
+  contrast: { name: "High Contrast", suits: { spades: "#1d2a4a", clubs: "#1f7a46", hearts: "#d0342c", diamonds: "#e07b12" } },
+  midnight: { name: "Midnight", suits: { spades: "#e9e3d2", clubs: "#e9e3d2", hearts: "#ff7f73", diamonds: "#ff7f73" } },
+  parchment: { name: "Parchment", suits: { spades: "#3d2a16", clubs: "#3d2a16", hearts: "#8e2a1a", diamonds: "#8e2a1a" } },
+  neon: { name: "Neon", suits: { spades: "#5ff2ff", clubs: "#9dff5f", hearts: "#ff4fd8", diamonds: "#ffd84f" } },
+  rose: { name: "Rosewood", suits: { spades: "#4a1f3a", clubs: "#4a1f3a", hearts: "#c2185b", diamonds: "#c2185b" } },
+  slate: { name: "Slate", suits: { spades: "#16243a", clubs: "#1f5c5c", hearts: "#b33a3a", diamonds: "#c46a1a" } },
+  jade: { name: "Jade", suits: { spades: "#12352a", clubs: "#12352a", hearts: "#a8322d", diamonds: "#a8322d" } },
+};
+const BACK_SKINS = {
+  emerald: { name: "Emerald" },
+  crimson: { name: "Crimson" },
+  royal: { name: "Royal" },
+  gold: { name: "Gilt" },
+  onyx: { name: "Onyx" },
+  plaid: { name: "Tartan" },
+  stars: { name: "Starfield" },
+  checker: { name: "Checker" },
+  sunset: { name: "Sunset" },
+};
+const FELT_SKINS = {
+  emerald: { name: "Emerald", c: ["#1B2A1E", "#0F1811", "#0A100C", "#24391F", "#16241A"] },
+  ocean: { name: "Ocean", c: ["#17283a", "#0d1824", "#080f17", "#1f3650", "#132336"] },
+  burgundy: { name: "Burgundy", c: ["#3a1b20", "#22100f", "#140909", "#4a2229", "#2c1418"] },
+  violet: { name: "Violet", c: ["#2a1b3a", "#180f24", "#0e0916", "#35234a", "#21162f"] },
+  teal: { name: "Teal", c: ["#123a36", "#0a221f", "#061513", "#1a4a44", "#10302c"] },
+  charcoal: { name: "Charcoal", c: ["#262626", "#151515", "#0b0b0b", "#303030", "#1c1c1c"] },
+};
+function applySkins() {
+  const face = FACE_SKINS[SETTINGS.face] || FACE_SKINS.classic;
+  Object.entries(face.suits).forEach(([s, c]) => { SUITS[s].color = c; });
+  Object.keys(FACE_SKINS).forEach((k) => document.body.classList.toggle("face-" + k, k === SETTINGS.face));
+  Object.keys(BACK_SKINS).forEach((k) => document.body.classList.toggle("back-" + k, k === SETTINGS.back));
+  document.body.classList.toggle("reduce-motion", !!SETTINGS.reduceMotion);
+  document.body.classList.toggle("lefty", !!SETTINGS.lefty);
+  document.body.classList.toggle("no-badges", !SETTINGS.badges);
+  const felt = (FELT_SKINS[SETTINGS.felt] || FELT_SKINS.emerald).c;
+  ["--f1", "--f2", "--f3", "--f1s", "--f2s"].forEach((v, i) => document.documentElement.style.setProperty(v, felt[i]));
+}
+// A short buzz on phones that support it (Settings > Haptics).
+function buzz(ms) {
+  try { if (SETTINGS.haptics && navigator.vibrate) navigator.vibrate(ms); } catch (e) {}
+}
+function gameSpeed() {
+  return SETTINGS.speed || 1;
+}
+// A run worth continuing: anything but a finished or lost one.
+function hasLiveRun() {
+  return state.overlay && !["start", "over", "won"].includes(state.overlay) && state.deck && state.deck.length + state.hand.length > 0;
+}
+function quitGame() {
+  saveGame();
+  if (window.PPHub && PPHub.quit) PPHub.quit();
+}
+
+function openPause() { MENU.pause = true; MENU.panel = null; MENU.confirmAbandon = false; render(); }
+function closePause() { MENU.pause = false; MENU.panel = null; render(); }
+function toMainMenu() { saveGame(); MENU.screen = "main"; MENU.pause = false; MENU.panel = null; MENU.choosingRun = false; render(); }
+function continueRun() {
+  MENU.screen = null; MENU.choosingRun = false;
+  // a run picks up Pocket Money when it resumes
+  const ppCash = PPHub.take('cash');
+  if (ppCash) { state.money += ppCash; saveGame(); }
+  render();
+}
+function newRun() { MENU.screen = null; MENU.choosingRun = false; MENU.pause = false; clearSave(); startGame(); }
+
+// The small button that opens the pause menu.
+function OptionsButton(extraClass = "") {
+  const b = document.createElement("button");
+  b.className = "opt-btn " + extraClass;
+  b.setAttribute("aria-label", "Options");
+  b.innerHTML = `<span class="opt-lines"><i></i><i></i><i></i></span><span class="opt-txt">Options</span>`;
+  b.onclick = (e) => { e.stopPropagation(); openPause(); };
+  return b;
+}
+function MenuButton(label, color, onClick, sub) {
+  const b = document.createElement("button");
+  b.className = "mbtn mbtn-" + color;
+  b.innerHTML = `<span class="mbtn-label">${label}</span>${sub ? `<span class="mbtn-sub">${sub}</span>` : ""}`;
+  b.onclick = (e) => { e.stopPropagation(); onClick(); };
+  return b;
+}
+
+function MainMenu() {
+  const wrap = document.createElement("div");
+  wrap.className = "main-menu";
+  // drifting cards behind the title
+  const fan = document.createElement("div");
+  fan.className = "mm-cards";
+  [["A", "spades"], ["K", "hearts"], ["Q", "clubs"], ["J", "diamonds"], ["10", "hearts"]].forEach(([r, s], i) => {
+    const el = playingCardEl(makeCard(r, s), 1.5);
+    const slot = document.createElement("div");
+    slot.className = "mm-card";
+    slot.style.setProperty("--i", i);
+    slot.style.setProperty("--d", Math.abs(i - 2));
+    slot.appendChild(el);
+    fan.appendChild(slot);
+  });
+  wrap.innerHTML = `<div class="mm-swirl"></div>`;
+  const head = document.createElement("div");
+  head.className = "mm-head";
+  head.appendChild(fan);
+  head.insertAdjacentHTML("beforeend", `<div class="mm-title serif"><span class="mm-ante">ANTE</span><span class="mm-up">UP</span></div><div class="mm-tag">A poker roguelike</div>`);
+  wrap.appendChild(head);
+
+  const bar = document.createElement("div");
+  bar.className = "mm-bar";
+  if (MENU.choosingRun) {
+    bar.classList.add("choosing");
+    bar.appendChild(MenuButton("Continue", "blue", continueRun, `Ante ${state.ante} · $${state.money}`));
+    bar.appendChild(MenuButton("New Run", "green", newRun));
+    bar.appendChild(MenuButton("Back", "grey", () => { MENU.choosingRun = false; render(); }));
+  } else {
+    bar.appendChild(MenuButton("Play", "blue", () => { if (hasLiveRun()) { MENU.choosingRun = true; render(); } else newRun(); }));
+    bar.appendChild(MenuButton("Settings", "orange", () => { MENU.panel = "settings"; render(); }));
+    bar.appendChild(MenuButton("Skins", "purple", () => { MENU.panel = "skins"; render(); }));
+    bar.appendChild(MenuButton("Quit", "red", quitGame));
+  }
+  wrap.appendChild(bar);
+  if (MENU.panel) wrap.appendChild(MenuPanel());
+  return wrap;
+}
+
+function PauseMenu() {
+  const back = document.createElement("div");
+  back.className = "pause-back";
+  back.onclick = (e) => { if (e.target === back) closePause(); };
+  if (MENU.panel) { back.appendChild(MenuPanel()); return back; }
+  const box = document.createElement("div");
+  box.className = "mpanel pause-panel";
+  box.innerHTML = `<div class="mpanel-title serif">Paused</div><div class="mpanel-sub">Ante ${state.ante} · ${BLIND_TYPES[state.blindIdx].label}</div>`;
+  box.appendChild(MenuButton("Play", "blue", closePause));
+  box.appendChild(MenuButton("Settings", "orange", () => { MENU.panel = "settings"; render(); }));
+  box.appendChild(MenuButton("Skins", "purple", () => { MENU.panel = "skins"; render(); }));
+  box.appendChild(MenuButton("Quit", "red", toMainMenu, "to the main menu · your run is saved"));
+  back.appendChild(box);
+  return back;
+}
+
+function seg(options, value, onPick) {
+  const w = document.createElement("div");
+  w.className = "mseg";
+  options.forEach(([v, label]) => {
+    const b = document.createElement("button");
+    b.className = "mseg-opt" + (v === value ? " on" : "");
+    b.textContent = label;
+    b.onclick = (e) => { e.stopPropagation(); onPick(v); };
+    w.appendChild(b);
+  });
+  return w;
+}
+function row(label, control, hint) {
+  const r = document.createElement("div");
+  r.className = "mrow";
+  r.innerHTML = `<div class="mrow-label">${label}${hint ? `<span>${hint}</span>` : ""}</div>`;
+  r.appendChild(control);
+  return r;
+}
+
+function MenuPanel() {
+  const box = document.createElement("div");
+  box.className = "mpanel wide";
+  const done = () => { MENU.panel = null; MENU.confirmAbandon = false; render(); };
+  if (MENU.panel === "settings") {
+    box.innerHTML = `<div class="mpanel-title serif">Settings</div>`;
+    const list = document.createElement("div");
+    list.className = "mpanel-scroll";
+    const set = (k, v, re = true) => { SETTINGS[k] = v; saveSettings(); applySkins(); if (re) render(); };
+    list.insertAdjacentHTML("beforeend", `<div class="mskin-head">Gameplay</div>`);
+    list.appendChild(row("Game speed", seg([[1, "1×"], [2, "2×"], [4, "4×"], [8, "8×"]], SETTINGS.speed, (v) => set("speed", v)), "How fast hands score"));
+    list.appendChild(row("Hand preview", seg([[true, "On"], [false, "Off"]], !!SETTINGS.preview, (v) => set("preview", v)), "Show the hand and score before you play"));
+    list.appendChild(row("Sort new hands by", seg([["rank", "Rank"], ["suit", "Suit"]], SETTINGS.sort, (v) => set("sort", v)), "Used when a run starts"));
+    list.appendChild(row("Pack opening", seg([[true, "Animate"], [false, "Skip"]], !!SETTINGS.packAnim, (v) => set("packAnim", v))));
+    list.insertAdjacentHTML("beforeend", `<div class="mskin-head">Display</div>`);
+    list.appendChild(row("Left-handed", seg([[false, "Off"], [true, "On"]], !!SETTINGS.lefty, (v) => set("lefty", v)), "Swaps Play Hand and Discard"));
+    list.appendChild(row("Progress badges", seg([[true, "Show"], [false, "Hide"]], !!SETTINGS.badges, (v) => set("badges", v)), "Values and bars on artifacts"));
+    list.appendChild(row("Reduce motion", seg([[false, "Off"], [true, "On"]], !!SETTINGS.reduceMotion, (v) => set("reduceMotion", v)), "Stops floating cards and spinning rays"));
+    list.appendChild(row("Haptics", seg([[true, "On"], [false, "Off"]], !!SETTINGS.haptics, (v) => { set("haptics", v); buzz(30); }), "Buzz on scoring and buying"));
+    list.insertAdjacentHTML("beforeend", `<div class="mskin-head">Data</div>`);
+    const danger = document.createElement("div");
+    danger.className = "mrow-btns";
+    if (hasLiveRun() && MENU.screen !== "main") {
+      const ab = MenuButton(MENU.confirmAbandon ? "Tap again" : "Abandon run", "red", () => {
+        if (!MENU.confirmAbandon) { MENU.confirmAbandon = true; render(); return; }
+        MENU.confirmAbandon = false; MENU.panel = null; newRun();
+      });
+      ab.classList.add("mbtn-small");
+      danger.appendChild(ab);
+    }
+    const rs = MenuButton(MENU.confirmReset ? "Tap again" : "Reset settings", "grey", () => {
+      if (!MENU.confirmReset) { MENU.confirmReset = true; render(); return; }
+      MENU.confirmReset = false; Object.assign(SETTINGS, SETTINGS_DEFAULTS); saveSettings(); applySkins(); render();
+    });
+    rs.classList.add("mbtn-small");
+    danger.appendChild(rs);
+    list.appendChild(danger);
+    box.appendChild(list);
+  } else {
+    box.innerHTML = `<div class="mpanel-title serif">Skins</div>`;
+    box.appendChild(seg([["face", "Card faces"], ["back", "Card backs"], ["felt", "Table"]], MENU.skinTab, (v) => { MENU.skinTab = v; render(); }));
+    const grid = document.createElement("div");
+    grid.className = "mskin-grid";
+    const pick = (k, v) => { SETTINGS[k] = v; saveSettings(); applySkins(); buzz(15); render(); };
+    if (MENU.skinTab === "face") {
+      Object.entries(FACE_SKINS).forEach(([k, sk]) => {
+        const t = document.createElement("button");
+        t.className = "mskin face-prev face-prev-" + k + (SETTINGS.face === k ? " on" : "");
+        t.innerHTML = `<span class="fp-card"><b style="color:${sk.suits.hearts}">K</b><span class="fp-pips"><i style="color:${sk.suits.spades}">♠</i><i style="color:${sk.suits.hearts}">♥</i><i style="color:${sk.suits.clubs}">♣</i><i style="color:${sk.suits.diamonds}">♦</i></span></span><span class="mskin-name">${sk.name}</span>`;
+        t.onclick = (e) => { e.stopPropagation(); pick("face", k); };
+        grid.appendChild(t);
+      });
+    } else if (MENU.skinTab === "back") {
+      Object.entries(BACK_SKINS).forEach(([k, sk]) => {
+        const t = document.createElement("button");
+        t.className = "mskin back-prev back-prev-" + k + (SETTINGS.back === k ? " on" : "");
+        t.innerHTML = `<span class="bp-card"><span class="bp-inner"></span></span><span class="mskin-name">${sk.name}</span>`;
+        t.onclick = (e) => { e.stopPropagation(); pick("back", k); };
+        grid.appendChild(t);
+      });
+    } else {
+      Object.entries(FELT_SKINS).forEach(([k, sk]) => {
+        const t = document.createElement("button");
+        t.className = "mskin felt-prev" + (SETTINGS.felt === k ? " on" : "");
+        t.innerHTML = `<span class="felt-swatch" style="background:radial-gradient(ellipse at 50% 0%, ${sk.c[3]} 0%, ${sk.c[1]} 60%, ${sk.c[2]} 100%)"></span><span class="mskin-name">${sk.name}</span>`;
+        t.onclick = (e) => { e.stopPropagation(); pick("felt", k); };
+        grid.appendChild(t);
+      });
+    }
+    box.appendChild(grid);
+  }
+  box.appendChild(MenuButton("Back", "grey", done));
+  return box;
+}
+
 /* ============================== ARTIFACT SLEEVES ==============================
    Shop artifacts (and Artifact Pack ones) sometimes come in a sleeve. Two
    are shared with playing cards, three are artifact-only. Chances are per
@@ -4703,7 +5078,7 @@ function startGame() {
   state.activeCharm = null;
   state.activeCharmStartedAt = null;
   state.activeCharmClosing = false;
-  state.sortMode = "rank";
+  state.sortMode = SETTINGS.sort === "suit" ? "suit" : "rank";
   state.handOrder = [];
   state.playsLeft = 4 + getExtraPlays(state.items);
   state.discardsLeft = 4 + getExtraDiscards(state.items);
@@ -5233,7 +5608,7 @@ function jiggleShelfPiece(uid) {
 // boxes and pops whatever fired, then the total lands.
 function animateScoring(result, onDone) {
   const evs = result.events;
-  const delay = Math.max(110, Math.min(360, 520 - evs.length * 14));
+  const delay = Math.max(110, Math.min(360, 520 - evs.length * 14)) / gameSpeed();
   let i = 0;
   const first = evs[0];
   state.popup = { name: result.name, chips: first.chips, mult: first.mult, phase: "counting", score: null };
@@ -5243,7 +5618,8 @@ function animateScoring(result, onDone) {
     if (i >= evs.length) {
       state.popup = { ...state.popup, chips: result.chips, mult: result.mult, score: result.score, phase: "total" };
       render();
-      setTimeout(onDone, 700);
+      buzz(result.score >= targetForAnte(state.ante, state.blindIdx) - state.roundScore ? [30, 40, 60] : 25);
+      setTimeout(onDone, 700 / gameSpeed());
       return;
     }
     const ev = evs[i++];
@@ -5264,7 +5640,7 @@ function animateScoring(result, onDone) {
     }
     setTimeout(step, ev.kind === "again" ? Math.round(delay * 1.2) : delay);
   };
-  setTimeout(step, 380);
+  setTimeout(step, 380 / gameSpeed());
 }
 
 function triggerCharmEffects(result, cards) {
@@ -5787,7 +6163,7 @@ function openPack(packId) {
   if (kind === "legendPack") choices = pickDefs(LEGENDARY_DEFS.filter((c) => !owned.has(c.id)), n);
   if (kind === "cardPack") choices = Array.from({ length: n }, () => makeCard(randomOf(RANKS), randomOf(SUIT_KEYS), Math.random() < 0.25 ? { stamp: randomOf(STAMP_KINDS) } : {}));
   if (kind === "ornatePack") choices = Array.from({ length: n }, () => makeCard(randomOf(RANKS), randomOf(SUIT_KEYS), { sleeve: Math.random() < 0.05 ? "negative" : randomOf(SLEEVE_KINDS), stamp: randomOf(STAMP_KINDS) }));
-  state.packOpen = { id: packId, name: pack.name, choices, picks: pack.picks || 1, openedAt: Date.now(), hand: kind === "spectralPack" || kind === "itemPack" ? packHandIds() : null, note: null };
+  state.packOpen = { id: packId, name: pack.name, choices, picks: pack.picks || 1, openedAt: SETTINGS.packAnim ? Date.now() : 0, hand: kind === "spectralPack" || kind === "itemPack" ? packHandIds() : null, note: null };
   state.packPick = null;
   state.packSel = [];
   state.shopDetail = null;
@@ -5910,6 +6286,7 @@ function PackOverlay() {
   deckCorner.appendChild(renderDeckWidget());
   right.appendChild(deckCorner);
   right.insertAdjacentHTML("beforeend", `<div class="shop-money serif">$${state.money}</div>`);
+  right.appendChild(OptionsButton("compact"));
   header.appendChild(right);
   wrap.appendChild(header);
   wrap.appendChild(GearShelf());
@@ -6114,6 +6491,7 @@ function buyItem(shopIndex) {
   }
   
   if (state.freeBuy) state.freeBuy = false;
+  buzz(20);
   state.shopStock = state.shopStock.map((it, i) => (i === shopIndex ? null : it));
   saveGame();
   render();
@@ -6133,6 +6511,7 @@ function buyVoucher(voucherIndex) {
   if (eff.type === "rerollDiscount") state.rerollCost = Math.max(1, state.rerollCost - eff.value);
   if (eff.anteDown) state.ante = Math.max(1, state.ante - eff.anteDown);
   state.redeemedAt = Date.now();
+  buzz([20, 30, 40]);
   saveGame();
   render();
 }
@@ -6189,6 +6568,7 @@ function tryConsumeItem(item, itemUid) {
       if (Math.random() < Math.min(1, c.effect.chance * chanceMult)) { preservedBy = c; break; }
     }
   }
+  buzz(20);
   if (preservedBy) {
     setTimeout(() => activateCharmSlide(preservedBy, () => {}), 950);
     state.items = state.items.map((i) => (i.uid === itemUid ? { ...i, cameraSaves: saveCount + 1 } : i));
@@ -7150,47 +7530,12 @@ function render() {
   const oldCardRects = captureCardRects();
   const app = document.getElementById("app");
   app.innerHTML = "";
+  if (MENU.screen === "main") { app.appendChild(MainMenu()); return; }
 
   const fanLayout = computeFanLayout();
   const cardScale = fanLayout.scale;
   const fanOverlapPx = fanLayout.overlap * fanLayout.scale;
   const target = targetForAnte(state.ante, state.blindIdx);
-
-  // ===== MENU (top right) =====
-  const menuWrap = document.createElement("div");
-  menuWrap.className = "menu-wrap";
-  const menuBtn = document.createElement("button");
-  menuBtn.className = "menu-btn";
-  menuBtn.textContent = "☰";
-  menuBtn.onclick = (e) => {
-    e.stopPropagation();
-    state.menuOpen = !state.menuOpen;
-    state.confirmingReset = false;
-    render();
-  };
-  menuWrap.appendChild(menuBtn);
-  if (state.menuOpen) {
-    const dropdown = document.createElement("div");
-    dropdown.className = "menu-dropdown";
-    const resetBtn = document.createElement("button");
-    resetBtn.className = "menu-dropdown-item";
-    resetBtn.textContent = state.confirmingReset ? "Click again to confirm" : "Reset Run";
-    resetBtn.style.color = state.confirmingReset ? "#E8A8A8" : "";
-    resetBtn.onclick = (e) => {
-      e.stopPropagation();
-      if (!state.confirmingReset) {
-        state.confirmingReset = true;
-        render();
-      } else {
-        state.confirmingReset = false;
-        state.menuOpen = false;
-        resetRun();
-      }
-    };
-    dropdown.appendChild(resetBtn);
-    menuWrap.appendChild(dropdown);
-  }
-  app.appendChild(menuWrap);
 
   // ===== HEADER =====
   const header = document.createElement("div");
@@ -7251,7 +7596,7 @@ function render() {
   // Same engine as a real play, minus luck rolls (Heartstone, Calculator).
   const preview = (() => {
     // Hidden while a played hand is being counted, so the total isn't given away.
-    const r = selectedCards.length && !state.popup ? previewScore(selectedCards) : null;
+    const r = selectedCards.length && !state.popup && SETTINGS.preview ? previewScore(selectedCards) : null;
     return r ? { name: r.name, totalChips: r.chips, totalMult: r.mult, score: r.score } : null;
   })();
   if (preview) {
@@ -7279,7 +7624,8 @@ function render() {
   } else {
     const placeholder = document.createElement("div");
     placeholder.className = "preview-placeholder";
-    placeholder.textContent = state.popup ? "" : "Select cards to preview your hand";
+    const handOnly = !SETTINGS.preview && selectedCards.length && !state.popup ? evaluateSelection(selectedCards) : null;
+    placeholder.textContent = state.popup ? "" : handOnly ? handOnly.name : SETTINGS.preview ? "Select cards to preview your hand" : "";
     previewBar.appendChild(placeholder);
   }
   app.appendChild(previewBar);
@@ -7359,6 +7705,7 @@ function render() {
   });
   sortWrap.appendChild(sortToggle);
   subRow.appendChild(sortWrap);
+  subRow.appendChild(OptionsButton());
 
   bottomBar.appendChild(subRow);
 
@@ -7443,6 +7790,7 @@ function render() {
       <div class="overlay-sub" style="margin:8px 0 24px">You beat the final boss at Ante ${FINAL_ANTE} with $${state.money.toLocaleString()}. Run complete.</div>
     `;
     overlay.appendChild(BigButton("Start New Run", startGame));
+    overlay.appendChild(BigButton("Main Menu", () => { MENU.screen = "main"; render(); }));
     app.appendChild(overlay);
   } else if (state.overlay === "over") {
     const overlay = document.createElement("div");
@@ -7452,6 +7800,7 @@ function render() {
       <div class="overlay-sub" style="margin:8px 0 24px">Fell short at Ante ${state.ante}, ${BLIND_TYPES[state.blindIdx].label} — ${state.roundScore.toLocaleString()} / ${target.toLocaleString()}</div>
     `;
     overlay.appendChild(BigButton("Try Again", startGame));
+    overlay.appendChild(BigButton("Main Menu", () => { MENU.screen = "main"; render(); }));
     app.appendChild(overlay);
   } else if (state.overlay === "shop") {
     app.appendChild(ShopOverlay());
@@ -7516,6 +7865,7 @@ function render() {
     app.appendChild(renderDeckModal());
   }
 
+  if (MENU.pause) app.appendChild(PauseMenu());
   applyCardFlip(oldCardRects, wasFullDeal);
 }
 
@@ -7971,6 +8321,7 @@ function ShopOverlay() {
   money.className = "shop-money serif";
   money.textContent = "$" + state.money;
   headerRight.appendChild(money);
+  headerRight.appendChild(OptionsButton("compact"));
   header.appendChild(headerRight);
 
   overlay.appendChild(header);
@@ -8149,20 +8500,11 @@ function ShopOverlay() {
 
 window.addEventListener("resize", render);
 window.addEventListener("orientationchange", render);
-document.addEventListener("click", (e) => {
-  if (!state.menuOpen) return;
-  if (e.target.closest(".menu-wrap")) return;
-  state.menuOpen = false;
-  render();
-});
 
-// Resume an in-progress run if one was saved; otherwise start a new one.
-if (loadGame() && state.overlay !== "start") {
-  // a run in progress picks up Pocket Money straight away
-  const ppCash = PPHub.take('cash');
-  if (ppCash) { state.money += ppCash; saveGame(); }
-}
-if (state.overlay === "start") startGame(); else render();
+// Open on the main menu. A saved run is loaded behind it, ready to continue.
+applySkins();
+loadGame();
+render();
 </script>
 </body>
 </html>
