@@ -63,6 +63,7 @@
       qwen05i4:  { id: 'leuconoe/litert-lm-unity-quantized', label: 'Qwen2.5 0.5B 4-bit (LiteRT-LM, app only, ~265 MB, community build, short memory)', mb: 265, lm: true, lid: 'lm_qwen05_i4', url: 'https://huggingface.co/leuconoe/litert-lm-unity-quantized/resolve/main/qwen2.5-0.5b-instruct/Qwen2.5-0.5B-Instruct_wi4b64_ekv1280.litertlm' },
       smol135: { id: 'HuggingFaceTB/SmolLM2-135M-Instruct', label: 'SmolLM2 135M (tiny, ~150 MB, the old one)', mb: 150, file: 'onnx/model_quantized.onnx', eos: ['<|im_end|>'], lid: 'llm_smollm2' }
     };
+    window.__ppvChatModels = CHAT_MODELS;   // read by Settings, Downloads
     // Users who already downloaded the old SmolLM2 keep it; everyone else gets Qwen2.5 0.5B.
     const chatKey = () => {
       try {

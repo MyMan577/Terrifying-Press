@@ -1,6 +1,6 @@
 (function(){
   var pane=document.getElementById('sidebar-pane-settings'); if(!pane)return;
-  var GROUPS=[['play','Playback'],['lib','Library & playlists'],['look','Appearance & layout'],['data','Backup & storage'],['fun','Rewards & games'],['credits','Credits']];
+  var GROUPS=[['play','Playback'],['lib','Library & playlists'],['look','Appearance & layout'],['data','Backup & storage'],['dl','Downloads'],['fun','Rewards & games'],['credits','Credits']];
   var root=null,cards={},wraps={},advD=null,advBody=null;
 
   function build(){
@@ -41,6 +41,8 @@
     if(id==='extras-settings-section'||id==='playlists-manager-section'||sec.querySelector('#detailed-mode-toggle')||/^Keep MP3 conversions/.test(ft))return 'lib';
     if(id==='auto-scan-section')return 'lib';
     if(id==='leave-section')return 'play';
+    if(id==='downloads-section')return 'dl';
+    if(id==='tab-headers-section')return 'look';
     if(id==='storage-section'||id==='progress-section'||id==='update-section'||id==='errlog-section')return 'data';
     if(id==='pw-customize-section'||/^Retro layout/.test(ft)||id==='pp-refined-section'||id==='ppxp-accent-section'||id==='pp-modes-section')return 'look';
     return 'fun';
