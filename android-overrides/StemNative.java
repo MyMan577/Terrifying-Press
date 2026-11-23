@@ -191,7 +191,14 @@ final class StemNative {
     // ---------- MDX-Net (UVR): vocal spectrogram model, instrumental = mix - vocals ----------
     static void mdx(OrtEnvironment env, Accel.Sess ss, SpleeterNative.Audio au, int NF, int DF, double comp,
                     File outV, File outI, SpleeterNative.Progress prog) throws Exception {
-        final int H = 1024, DT = 256, half = NF >> 1, chunk = H * (DT - 1), gen = chunk - NF;
+        mdx(env, ss, au, NF, DF, 256, comp, outV, outI, prog);
+    }
+
+    // DT: time frames per chunk (the model's last input dimension: 256 for most UVR models, 128 or 512 for the kuielab sets).
+    // outV gets what the model outputs (its primary stem), outI gets the mix minus that.
+    static void mdx(OrtEnvironment env, Accel.Sess ss, SpleeterNative.Audio au, int NF, int DF, int DT, double comp,
+                    File outV, File outI, SpleeterNative.Progress prog) throws Exception {
+        final int H = 1024, half = NF >> 1, chunk = H * (DT - 1), gen = chunk - NF;
         final int len = au.len, nChunks = Math.max(1, (int) Math.ceil(len / (double) gen));
         final float[][] pcm = au.ch;
         final MixedFft fft = new MixedFft(NF);

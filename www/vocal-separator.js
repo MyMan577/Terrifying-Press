@@ -10,6 +10,10 @@
   // Official UVR5 model release (settings from UVR's mdx_model_data/model_data.json). GitHub sends no CORS headers,
   // so these files can only be downloaded by the Android app (Java); models marked nativeOnly are hidden in the browser.
   const UVR = 'https://github.com/TRvlvr/model_repo/releases/download/all_public_uvr_models/';
+  // One MDX pass of a multi-stem set. key: where the file is stored (shared with the 2-stem model of the same file, so nothing downloads twice).
+  const KL = (set, stem, nfft, dimT) => ({ kind: 'mdx', key: 'mx_kl' + set + '_' + stem, file: UVR + 'kuielab_' + set + '_' + stem + '.onnx', stem: stem[0].toUpperCase() + stem.slice(1), nfft, dimF: 2048, dimT, comp: 1.035 });
+  const VFT = { kind: 'mdx', key: 'mdx_voc', file: 'UVR-MDX-NET-Voc_FT.onnx', stem: 'Vocals', nfft: 7680, dimF: 3072, comp: 1.021 };
+  const KIM2 = { kind: 'mdx', key: 'mdx_kim2', file: UVR + 'Kim_Vocal_2.onnx', stem: 'Vocals', nfft: 7680, dimF: 3072, comp: 1.009 };
   const MODELS = {
     spleeter2: { label: 'Fast · 2 stems (~80 MB)', kind: 'spleeter', files: { vocals: 'spleeter-vocals.onnx', accomp: 'spleeter-accompaniment.onnx' }, sources: [] },
     spleeter4: { label: 'Spleeter · 4 stems (~79 MB)', kind: 'sp4', files: { vocals: 'vocals.fp16.onnx', drums: 'drums.fp16.onnx', bass: 'bass.fp16.onnx', other: 'other.fp16.onnx' }, sources: ['vocals', 'drums', 'bass', 'other'] },
@@ -17,8 +21,24 @@
     mdx_lite:  { label: 'Balanced vocals · MDX-Net Lite (~30 MB)', kind: 'mdx', file: UVR + 'UVR_MDXNET_1_9703.onnx', nativeOnly: true, sources: [], nfft: 6144, dimF: 2048, comp: 1.03 },
     mdx_kara:  { label: 'Karaoke · lead vocal only, keeps backing vocals (~30 MB)', kind: 'mdx', file: UVR + 'UVR_MDXNET_KARA.onnx', nativeOnly: true, sources: [], nfft: 6144, dimF: 2048, comp: 1.035 },
     mdx_voc:   { label: 'Cleaner vocals · MDX-Net (~67 MB)', kind: 'mdx', file: 'UVR-MDX-NET-Voc_FT.onnx', sources: [], nfft: 7680, dimF: 3072, comp: 1.021 },
+    // More 2-stem UVR models. swap: the model outputs the instrumental, so the vocals are what is left.
+    mdx_kim2:  { label: 'Clearest vocals · Kim Vocal 2 (~64 MB, app only)', kind: 'mdx', file: UVR + 'Kim_Vocal_2.onnx', nativeOnly: true, sources: [], nfft: 7680, dimF: 3072, comp: 1.009 },
+    mdx_insthq:{ label: 'Cleanest instrumental · MDX Inst HQ 3 (~64 MB, app only)', kind: 'mdx', file: UVR + 'UVR-MDX-NET-Inst_HQ_3.onnx', nativeOnly: true, sources: [], nfft: 6144, dimF: 3072, comp: 1.022, swap: true },
     demucs4:   { label: 'Best · 4 stems (316 MB)', kind: 'demucs', file: 'htdemucs.onnx',    sources: ['drums', 'bass', 'other', 'vocals'] },
-    demucs6:   { label: '6 stems + guitar/piano (~316 MB)', kind: 'demucs', file: 'htdemucs_6s.onnx', sources: ['drums', 'bass', 'other', 'vocals', 'guitar', 'piano'] }
+    demucs6:   { label: '6 stems + guitar/piano (~316 MB)', kind: 'demucs', file: 'htdemucs_6s.onnx', sources: ['drums', 'bass', 'other', 'vocals', 'guitar', 'piano'] },
+    // ---- Multi-stem sets (Android app): several models run one after another, each gives its own stems. ----
+    // kuielab: the MDX-Net models that won the 2021 Music Demixing Challenge (one small model per stem; A has longer chunks).
+    // Hybrids: the vocals come from a dedicated vocal model, drums/bass/other(/guitar/piano) from a 4- or 6-stem model.
+    mdx4_b:    { label: 'Quick 4 stems · MDX-Net B (~110 MB, app only)', kind: 'multi', nativeOnly: true, sources: ['vocals', 'drums', 'bass', 'other'],
+                 passes: [KL('b', 'vocals', 6144, 256), KL('b', 'drums', 4096, 128), KL('b', 'bass', 16384, 256), KL('b', 'other', 8192, 256)] },
+    mdx4_a:    { label: '4 stems · MDX-Net A, longer context (~119 MB, app only)', kind: 'multi', nativeOnly: true, sources: ['vocals', 'drums', 'bass', 'other'],
+                 passes: [KL('a', 'vocals', 6144, 512), KL('a', 'drums', 4096, 512), KL('a', 'bass', 16384, 512), KL('a', 'other', 8192, 512)] },
+    hyb4_fast: { label: 'Clean vocals + quick 4 stems · Voc FT + MDX-Net B (~148 MB, app only)', kind: 'multi', nativeOnly: true, sources: ['vocals', 'drums', 'bass', 'other'],
+                 passes: [VFT, KL('b', 'drums', 4096, 128), KL('b', 'bass', 16384, 256), KL('b', 'other', 8192, 256)] },
+    hyb4:      { label: 'Best vocals + 4 stems · Kim Vocal 2 + Demucs (~380 MB, app only)', kind: 'multi', nativeOnly: true, sources: ['vocals', 'drums', 'bass', 'other'],
+                 passes: [KIM2, { kind: 'demucs', key: 'demucs4', file: 'htdemucs.onnx', sources: ['drums', 'bass', 'other', 'vocals'], stems: ['Drums', 'Bass', 'Other'] }] },
+    hyb6:      { label: 'Best vocals + 6 stems · Kim Vocal 2 + Demucs 6 (~380 MB, app only)', kind: 'multi', nativeOnly: true, sources: ['vocals', 'drums', 'bass', 'other', 'guitar', 'piano'],
+                 passes: [KIM2, { kind: 'demucs', key: 'demucs6', file: 'htdemucs_6s.onnx', sources: ['drums', 'bass', 'other', 'vocals', 'guitar', 'piano'], stems: ['Drums', 'Bass', 'Other', 'Guitar', 'Piano'] }] }
   };
   const ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
   const SR = 44100, N = 4096, HOP = 1024, T = 512, F = 1024, BINS = N / 2 + 1, PAD = N - HOP, DEMUCS_SEG = 343980, CTX = 64;
@@ -94,7 +114,9 @@
       catch (e) { last = e; }
     }
     curStatus = null;
-    throw new Error('Download failed for ' + file + ': ' + errText(last));
+    const why = errText(last);
+    if (/\b(401|403)\b/.test(why) && /huggingface\.co/.test(file)) throw new Error('Download refused for ' + file.split('/').pop() + ': Hugging Face wants a signed-in account for this model. Pick another one.');
+    throw new Error('Download failed for ' + file + ': ' + why);
   }
   // NNAPI (phone GPU/NPU) for everything except Demucs, whose transformer ops run better on CPU. The Java side falls back to CPU by itself.
   // The tiny classifier heads (a few hundred KB) lose time compiling for NNAPI and copying data over: CPU is faster for them.
@@ -143,7 +165,7 @@
   const idbPut = async (k, v) => { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction('models', 'readwrite'); tx.objectStore('models').put(v, k); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); };
   const idbDel = async k => { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction('models', 'readwrite'); tx.objectStore('models').delete(k); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); };
   // [storage key, file name] pairs a model needs
-  const parts = id => { const m = MODELS[id]; return m.kind === 'spleeter' ? Object.entries(m.files).map(([k, f]) => ['sp_' + k, f]) : m.kind === 'sp4' ? Object.entries(m.files).map(([k, f]) => ['sp4_' + k, f]) : [[id, m.file]]; };
+  const parts = id => { const m = MODELS[id]; return m.kind === 'spleeter' ? Object.entries(m.files).map(([k, f]) => ['sp_' + k, f]) : m.kind === 'sp4' ? Object.entries(m.files).map(([k, f]) => ['sp4_' + k, f]) : m.kind === 'multi' ? m.passes.map(p => [p.key, p.file]) : [[id, m.file]]; };
   const legacyKey = k => k.replace('sp_', '');                      // v1 stored spleeter files as 'vocals'/'accomp'
   const getPart = async k => { const v = (await idbGet(k)) || (k.startsWith('sp_') ? await idbGet(legacyKey(k)) : null); return v instanceof Blob ? v.arrayBuffer() : v; };
 
@@ -701,7 +723,7 @@
   }
 
   // ---------- MDX-Net (UVR) ----------
-  // The ONNX graph takes a spectrogram [1, 4, dimF, 256] = [L re, L im, R re, R im] and returns the vocal spectrogram.
+  // The ONNX graph takes a spectrogram [1, 4, dimF, dimT] (dimT 256 unless the model says otherwise) = [L re, L im, R re, R im] and returns the vocal spectrogram.
   // n_fft (7680 = 2^9*3*5) isn't a power of two, so this has its own mixed-radix FFT (radix 2/3/5, Stockham).
   function makeFFT(n) {
     const fac = []; let t = n; for (const r of [5, 3, 2]) while (t % r === 0) { fac.push(r); t /= r; }
@@ -736,7 +758,7 @@
   // Streams sink(vocals:[L,R], instrumental:[L,R], startSample); instrumental = mix - vocals.
   async function separateMdx(pcm, session, cfg, onProgress, sink, pause = 0, ye = 0) {
     ye = ye || 16;                                                    // always give the UI a turn: this DSP is heavy even on a fast phone
-    const NF = cfg.nfft, H = 1024, DF = cfg.dimF, DT = 256, half = NF >> 1, chunk = H * (DT - 1), gen = chunk - NF;
+    const NF = cfg.nfft, H = 1024, DF = cfg.dimF, DT = cfg.dimT || 256, half = NF >> 1, chunk = H * (DT - 1), gen = chunk - NF;
     const len = pcm[0].length, nChunks = Math.max(1, Math.ceil(len / gen)), fftN = makeFFT(NF);
     const w = new Float64Array(NF); for (let i = 0; i < NF; i++) w[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / NF);
     const env = new Float64Array(chunk);                              // sum of squared windows, for the inverse STFT
@@ -780,7 +802,7 @@
       const start = j * gen, n = Math.min(gen, len - start);
       const voc = acc.map(a => { const o = new Float32Array(n); for (let i = 0; i < n; i++) o[i] = a[half + i] / Math.max(env[half + i], 1e-8) * cfg.comp; return o; });
       const ins = voc.map((v, c) => { const o = new Float32Array(n); for (let i = 0; i < n; i++) o[i] = pcm[c][start + i] - v[i]; return o; });
-      sink(voc, ins, start);
+      if (cfg.swap) sink(ins, voc, start); else sink(voc, ins, start);   // swap: the model outputs the instrumental
       onProgress && onProgress((j + 1) / nChunks);
       await tick(); if (pause) await new Promise(r => setTimeout(r, pause));
     }
@@ -891,7 +913,10 @@
           out = await NP.separate(Object.assign({ kind: 'sp4', prefix: 'sp4f_' }, base));
         }
       } else if (m.kind === 'demucs') out = await NP.separate(Object.assign({ kind: 'demucs', model: id, sources: m.sources }, base));
-      else out = await NP.separate(Object.assign({ kind: 'mdx', model: id, nfft: m.nfft, dimF: m.dimF, comp: m.comp }, base));
+      else if (m.kind === 'multi') out = await NP.separate(Object.assign({ kind: 'multi', passes: m.passes.map(p => p.kind === 'demucs'
+          ? { kind: 'demucs', model: p.key, sources: p.sources, stems: p.stems }
+          : { kind: 'mdx', model: p.key, stem: p.stem, nfft: p.nfft, dimF: p.dimF, dimT: p.dimT || 256, comp: p.comp }) }, base));
+      else out = await NP.separate(Object.assign({ kind: 'mdx', model: id, nfft: m.nfft, dimF: m.dimF, dimT: m.dimT || 256, comp: m.comp, swap: !!m.swap }, base));
     } finally { h.remove(); }
     window.__ppLastSep = ' (' + Math.round(out.seconds) + ' s on ' + out.accel + ')';
     try { localStorage.setItem(accKey, /nnapi|npu|gpu/i.test(String(out.accel)) ? 'nnapi' : 'cpu'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
@@ -941,7 +966,7 @@
     const W = hid ? wanted.concat('Vocals') : wanted;
     const mkEnc = n => n === 'Vocals' && hid ? { push() {}, finish() { return null; } } : makeEncoder(mkGate(n));
     if (m.kind === 'spleeter' && NATIVE && !pcm) return nativeSpleeter(opts.track, wanted, opts, status, onProgress);
-    if ((m.kind === 'sp4' || m.kind === 'mdx' || m.kind === 'demucs') && NATIVE && !pcm) return nativeStems(m, id, opts.track, wanted, opts, status, onProgress);
+    if ((m.kind === 'sp4' || m.kind === 'mdx' || m.kind === 'demucs' || m.kind === 'multi') && NATIVE && !pcm) return nativeStems(m, id, opts.track, wanted, opts, status, onProgress);
     if (m.kind === 'spleeter') {
       status('Loading models…');
       const sess = { vocals: await makeSession('sp_vocals', false, opts.lv), accomp: await makeSession('sp_accomp', false, opts.lv) };
@@ -972,6 +997,7 @@
         return Object.fromEntries(outs.map((o, k) => [o.name, enc[k].finish()]).filter(q => q[1]));   // already {blob, ext}
       } finally { sess.forEach(x => x.release && x.release()); }
     }
+    if (m.kind === 'multi') throw new Error('This model set runs in the Android app only.');
     if (m.kind === 'mdx') {
       status('Loading model…');
       const sess = await makeSession(id, opts.gpu, opts.lv);
@@ -4727,6 +4753,9 @@
       // To add another, copy this line and use the exact file name from the model's "Files" page on Hugging Face.
       gemma4:  { id: 'litert-community/gemma-4-E2B-it-litert-lm', label: 'Gemma 4 E2B (LiteRT-LM, app only, ~2.4 GB, strong phone)', mb: 2400, lm: true, lid: 'lm_gemma4_e2b', url: 'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm' },
       gemma4e4b: { id: 'litert-community/gemma-4-E4B-it-litert-lm', label: 'Gemma 4 E4B (LiteRT-LM, app only, ~3.7 GB, flagship phones)', mb: 3650, lm: true, lid: 'lm_gemma4_e4b', url: 'https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm' },
+      // From Google's AI Edge Gallery list, pinned to the version it tested. Gemma 3 1B: quick and small. Phi-4-mini (3.8B): the smartest here at reasoning and instructions.
+      gemma3_1b: { id: 'litert-community/Gemma3-1B-IT', label: 'Gemma 3 1B (LiteRT-LM, app only, ~560 MB, fast)', mb: 560, lm: true, lid: 'lm_gemma3_1b', url: 'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/42d538a932e8d5b12e6b3b455f5572560bd60b2c/gemma3-1b-it-int4.litertlm' },
+      phi4mini:  { id: 'litert-community/Phi-4-mini-instruct', label: 'Phi-4-mini 3.8B (LiteRT-LM, app only, ~3.7 GB, smartest, flagship phones)', mb: 3730, lm: true, lid: 'lm_phi4mini', url: 'https://huggingface.co/litert-community/Phi-4-mini-instruct/resolve/054f4e2694a86f81a129a40596e08b8d74770a9d/Phi-4-mini-instruct_multi-prefill-seq_q8_ekv4096.litertlm' },
       qwen15lm:  { id: 'litert-community/Qwen2.5-1.5B-Instruct', label: 'Qwen2.5 1.5B (LiteRT-LM, app only, ~1.6 GB)', mb: 1600, lm: true, lid: 'lm_qwen15_q8', url: 'https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/main/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.litertlm' },
       qwen15i4:  { id: 'leuconoe/litert-lm-unity-quantized', label: 'Qwen2.5 1.5B 4-bit (LiteRT-LM, app only, ~790 MB, community build)', mb: 790, lm: true, lid: 'lm_qwen15_i4', url: 'https://huggingface.co/leuconoe/litert-lm-unity-quantized/resolve/main/qwen2.5-1.5b-instruct/Qwen2.5-1.5B-Instruct_wi4b64_ekv4096.litertlm' },
       qwen05i4:  { id: 'leuconoe/litert-lm-unity-quantized', label: 'Qwen2.5 0.5B 4-bit (LiteRT-LM, app only, ~265 MB, community build, short memory)', mb: 265, lm: true, lid: 'lm_qwen05_i4', url: 'https://huggingface.co/leuconoe/litert-lm-unity-quantized/resolve/main/qwen2.5-0.5b-instruct/Qwen2.5-0.5B-Instruct_wi4b64_ekv1280.litertlm' },
@@ -9362,7 +9391,7 @@
           catch (e) { console.warn('Whisper timing failed', e); maskNote = ' Whisper timing failed (' + errText(e) + '), so line lengths were estimated.'; }
         }
         status('Decoding audio…');
-        let pcm = NATIVE && ['spleeter', 'sp4', 'mdx', 'demucs'].includes((MODELS[id] || {}).kind) ? null : await decode(t.url);
+        let pcm = NATIVE && ['spleeter', 'sp4', 'mdx', 'demucs', 'multi'].includes((MODELS[id] || {}).kind) ? null : await decode(t.url);
         let mask = null, nmask = null;
         if (+msel.value) {
           const dur = pcm ? pcm[0].length / SR : await mediaDur(t.url);   // native engines decode in Java, so ask the media element for the length
