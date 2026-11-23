@@ -1053,6 +1053,23 @@ body.landscape .pack-hand-card .pack-card { zoom: .66 !important; }
 .pchoice-face.full-face svg { width: 100%; height: 100%; display: block; }
 .pchoice.picked .pchoice-face.full-face { box-shadow: none; filter: drop-shadow(0 0 3px #FFD45E) drop-shadow(0 0 12px #FFD45E); }
 .pchoice.legendary .pchoice-face.full-face { background: none; box-shadow: none; filter: drop-shadow(0 0 10px #E8743B) drop-shadow(0 8px 12px #000b); }
+/* ----- artifact sleeves ----- */
+.full-card.is-negative { filter: invert(1) hue-rotate(180deg); }
+.card.card-negative { filter: invert(.9) hue-rotate(180deg); }
+.shelf-piece.csl-sparkler svg { filter: drop-shadow(0 0 4px #FFB84D); }
+.shelf-piece.csl-tithe svg { filter: drop-shadow(0 0 3px #B8956A); }
+.shelf-piece.csl-gilded svg { filter: drop-shadow(0 0 5px #F2C94C); }
+.shelf-piece.csl-prismatic svg { animation: cslPrism 3s linear infinite; }
+@keyframes cslPrism { 0% { filter: drop-shadow(0 0 4px #ff6b6b); } 33% { filter: drop-shadow(0 0 4px #7FD08A); } 66% { filter: drop-shadow(0 0 4px #6bb8ff); } 100% { filter: drop-shadow(0 0 4px #ff6b6b); } }
+.shelf-piece.csl-negative svg { filter: invert(1) hue-rotate(180deg) drop-shadow(0 0 4px #b9a0ff); }
+.bcard-sleeve {
+  font-size: 8px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #0a0f0c;
+  background: var(--sc); border: 1.5px solid #0a0f0c; border-radius: 6px; padding: 0 6px; margin-top: -2px;
+}
+.sleeve-line { font-size: 12px; color: #C9BFA4; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--sc); background: color-mix(in srgb, var(--sc) 14%, transparent); }
+.sleeve-line b { color: var(--sc); }
+.bcard-face.is-playing-ware { display: flex; align-items: center; justify-content: center; }
+.bcard-face.is-playing-ware .bcard-art { display: flex; justify-content: center; filter: drop-shadow(0 6px 8px #000b); }
 /* ============================== CARD NOTE (double tap) ============================== */
 .card-note {
   position: fixed; z-index: 120; max-width: 260px; padding: 9px 11px; border-radius: 12px;
@@ -1276,6 +1293,7 @@ function computeDropIndex(draggedEl, clientX) {
 
 /* ============================== PLAYING CARD DOM ============================== */
 const SLEEVE_COLORS = {
+  negative: "#7a55b0",
   sparkler: "#FFB84D",
   tithe: "#B8956A",
   molt: "#7BC89A",
@@ -1479,6 +1497,7 @@ function renderCard(card, { selected, scoring, dimmed, scale, marginLeft, arcInd
 
   // Sleeves are drawn as a tinted plastic sleeve over the whole card, and
   // stamps as a wax seal pressed into the top-right corner (art.js).
+  if (card.sleeve === "negative") el.classList.add("card-negative");
   if (card.sleeve && window.AnteArt) {
     const sleeveEl = document.createElement("div");
     sleeveEl.className = "card-sleeve";
@@ -2679,6 +2698,7 @@ const SLEEVE_INFO = {
   larva: "Still in your hand at round end? It copies itself into your deck.",
   anchor: "Drawn in your opening hand each round (up to 3 Anchor cards a round).",
   mirror: "When you play it, a copy goes into your deck.",
+  negative: "+1 hand size while it's in your hand.",
 };
 const STAMP_INFO = {
   gold: "Pays $3 every time it scores.",
@@ -3451,6 +3471,19 @@ const VOUCHERS = [
   // --- star charts ---
   { id: "clairvoyance", name: "Clairvoyance", desc: "Celestial Packs always hold the Star Chart for your most played hand", color: "#7E57C2", effect: { type: "chartFavourite", value: 1 } },
   { id: "starMap", upgrades: "clairvoyance", name: "Star Map", desc: "Celestial Packs offer 2 more Star Charts to choose from", color: "#4a6fb3", effect: { type: "packExtraChoices", value: 2, pack: "celestialPack" } },
+  // --- what turns up in the shop ---
+  { id: "polish", name: "Polish", desc: "Sleeved artifacts turn up twice as often", color: "#c9a06a", effect: { type: "charmSleeveRate", value: 2 } },
+  { id: "lacquer", upgrades: "polish", name: "Lacquer", desc: "Sleeved artifacts turn up four times as often", color: "#C0392B", effect: { type: "charmSleeveRate", value: 4 } },
+  { id: "peddler", name: "Peddler", desc: "Items turn up twice as often in the shop", color: "#b07c44", effect: { type: "itemRate", value: 2 } },
+  { id: "bazaar", upgrades: "peddler", name: "Bazaar", desc: "Items turn up four times as often in the shop", color: "#7E57C2", effect: { type: "itemRate", value: 4 } },
+  { id: "starVendor", name: "Star Vendor", desc: "Star Charts turn up twice as often in the shop", color: "#4a6fb3", effect: { type: "chartRate", value: 2 } },
+  { id: "planetarium", upgrades: "starVendor", name: "Planetarium", desc: "Star Charts turn up four times as often in the shop", color: "#24325c", effect: { type: "chartRate", value: 4 } },
+  { id: "sleightOfHand", name: "Sleight of Hand", desc: "Playing cards can be bought in the shop", color: "#E8A65F", effect: { type: "shopPlayingCards", value: 1 } },
+  { id: "grandIllusion", upgrades: "sleightOfHand", name: "Grand Illusion", desc: "Shop playing cards often come sleeved or stamped", color: "#D2453B", effect: { type: "shopPlayingCards", value: 1 } },
+  { id: "packRat", name: "Pack Rat", desc: "+1 booster pack in every shop", color: "#8a96a3", effect: { type: "packSlots", value: 1 } },
+  { id: "hoarder", upgrades: "packRat", name: "Hoarder", desc: "+1 more booster pack in every shop", color: "#7a5836", effect: { type: "packSlots", value: 1 } },
+  { id: "teaLeaves", name: "Tea Leaves", desc: "Arcana Packs show 1 more card", color: "#4E9A6E", effect: { type: "arcanaExtra", value: 1 } },
+  { id: "omenGlobe", upgrades: "teaLeaves", name: "Omen Globe", desc: "Cards in Arcana Packs can be Spectral cards", color: "#5a6fd8", effect: { type: "arcanaSpectral", value: 0.2 } },
   // --- time ---
   { id: "timeWarp", name: "Time Warp", desc: "Go back 1 ante. −1 hand every round", color: "#5C6BC0", effect: { type: "extraPlays", value: -1, anteDown: 1 } },
   { id: "rewind", upgrades: "timeWarp", name: "Rewind", desc: "Go back 1 more ante. −1 discard every round", color: "#3949AB", effect: { type: "extraDiscards", value: -1, anteDown: 1 } },
@@ -3482,6 +3515,55 @@ function rollVoucher() {
   return pool.length ? { ...randomOf(pool) } : null;
 }
 
+/* ============================== ARTIFACT SLEEVES ==============================
+   Shop artifacts (and Artifact Pack ones) sometimes come in a sleeve. Two
+   are shared with playing cards, three are artifact-only. Chances are per
+   artifact; Polish / Lacquer multiply them. Negative is the rarest: an
+   artifact with it doesn't take up a slot. */
+const CHARM_SLEEVES = {
+  sparkler: { name: "Sparkler", desc: "+50 Chips", price: 2, chance: 0.02, color: "#FFB84D" },
+  tithe: { name: "Tithe", desc: "Earns $2 every time you clear a blind", price: 2, chance: 0.015, color: "#B8956A" },
+  gilded: { name: "Gilded", desc: "+10 Mult", price: 3, chance: 0.015, color: "#F2C94C" },
+  prismatic: { name: "Prismatic", desc: "X1.5 Mult", price: 5, chance: 0.007, color: "#c38bff" },
+  negative: { name: "Negative", desc: "Doesn't take up an artifact slot", price: 5, chance: 0.003, color: "#7a55b0" },
+};
+function rollCharmSleeve(def) {
+  const rate = voucherBest("charmSleeveRate", Math.max);
+  let r = Math.random();
+  for (const [k, sl] of Object.entries(CHARM_SLEEVES)) {
+    if (r < sl.chance * rate) return withCharmSleeve(def, k);
+    r -= sl.chance * rate;
+  }
+  return def;
+}
+function withCharmSleeve(def, sleeve) {
+  const base = def.price - (def.sleevePrice || 0);
+  const sp = CHARM_SLEEVES[sleeve] ? CHARM_SLEEVES[sleeve].price : 0;
+  return { ...def, sleeve, sleevePrice: sp, price: base + sp };
+}
+// Artifacts that take up a slot (Negative ones don't).
+function charmsUsed() {
+  return state.charms.filter((c) => c.sleeve !== "negative").length;
+}
+function hasCharmRoom() {
+  return charmsUsed() < state.charmSlots;
+}
+function charmSleeveLine(def) {
+  const sl = def && def.sleeve && CHARM_SLEEVES[def.sleeve];
+  return sl ? `<div class="sleeve-line" style="--sc:${sl.color}"><b>${sl.name} sleeve</b> ${sl.desc}</div>` : "";
+}
+
+/* Negative playing cards: +1 hand size while in your hand. Drawing one means
+   you draw another card on top. */
+function handSizeFor(hand) {
+  return getHandSize() - (state.hand || []).filter((c) => c.sleeve === "negative").length + hand.filter((c) => c.sleeve === "negative").length;
+}
+function drawInto(hand, deck) {
+  const drawn = [];
+  while (deck.length && hand.length + drawn.length < handSizeFor([...hand, ...drawn])) drawn.push(deck.shift());
+  return drawn;
+}
+
 /* ============================== NEWER ARTIFACTS ==============================
    Helpers for the artifacts modelled on the genre's best-known jokers. */
 function isFace(card) {
@@ -3506,7 +3588,7 @@ function effectiveCharms() {
   return list.map((c, i) => {
     if (c.effect.type !== "copyRight" && c.effect.type !== "copyLeftmost") return c;
     const src = resolve(i, 0);
-    return src ? { ...src, uid: c.uid, name: c.name, copyOf: src.uid } : c;
+    return src ? { ...src, uid: c.uid, name: c.name, copyOf: src.uid, sleeve: c.sleeve } : c;
   });
 }
 // What a copier is copying right now (for its popup).
@@ -3552,6 +3634,7 @@ function roundEndCharms(wasBoss) {
       return c;
     }
     if (e.type === "popcornMult") { const n = (c.multLeft ?? e.value) + e.drop; if (n <= 0) { gone.push(c); notes.push(`${c.name} is empty`); } return { ...c, multLeft: n }; }
+    if (c.sleeve === "tithe") state.money += 2;
     if (e.type === "nestEgg") return { ...c, sellBonus: (c.sellBonus || 0) + e.value };
     if (e.type === "bonfireX" && wasBoss && c.bonfireBonus) { notes.push(`${c.name} burned out`); return { ...c, bonfireBonus: 0 }; }
     return c;
@@ -3721,7 +3804,9 @@ const SPECTRAL_DEFS = [
   { id: "chorus", name: "Chorus", desc: "Destroys 1 random card in your hand, adds 4 stamped number cards to your deck", color: "#5fa8c9" },
   { id: "paupersPact", name: "Pauper's Pact", desc: "Gives you a random artifact (needs room), and your money drops to $0", color: "#8a96a3" },
   { id: "seance", name: "Séance", desc: "Every card in your hand becomes the same random rank. −1 hand size for good", color: "#7E57C2" },
-  { id: "phantomLimb", name: "Phantom Limb", desc: "+1 artifact slot. −1 hand size for good", color: "#6fb3a8" },
+  { id: "phantomLimb", name: "Phantom Limb", desc: "A random artifact gets a Negative sleeve (it stops taking a slot). −1 hand size for good", color: "#6fb3a8" },
+  { id: "halo", name: "Halo", desc: "A random unsleeved artifact gets a Sparkler, Gilded or Prismatic sleeve", color: "#FFE28A" },
+  { id: "prismHex", name: "Prism Hex", desc: "A random artifact gets a Prismatic sleeve. Every other artifact is destroyed", color: "#c38bff" },
   { id: "pyre", name: "Pyre", desc: "Destroys 5 random cards in your hand, gain $20", color: "#E8743B" },
   { id: "effigy", name: "Effigy", desc: "Copies a random artifact you own. Every other artifact is destroyed", color: "#b0805a" },
   { id: "shroud", name: "Shroud", desc: "3 random cards in your hand each get a random sleeve and stamp", color: "#9fb3c6" },
@@ -3795,7 +3880,7 @@ function useSpectral(def) {
   const hand = packHandCards();
   const ids = hand.map((c) => c.id);
   const pickIds = (n) => shuffleArray(ids).slice(0, n);
-  const charmRoom = state.charms.length < state.charmSlots;
+  const charmRoom = charmsUsed() < state.charmSlots;
   switch (def.id) {
     case "kinfolk":
       destroyRunCards(pickIds(1));
@@ -3821,10 +3906,28 @@ function useSpectral(def) {
       state.permHandSize = (state.permHandSize || 0) - 1;
       return `Every card became ${["A", "8"].includes(r) ? "an" : "a"} ${r}`;
     }
-    case "phantomLimb":
-      state.charmSlots += 1;
+    case "phantomLimb": {
+      const pool = state.charms.filter((c) => c.sleeve !== "negative");
+      if (!pool.length) return "No artifact to touch";
+      const t = randomOf(pool);
+      state.charms = state.charms.map((c) => (c.uid === t.uid ? withCharmSleeve(c, "negative") : c));
       state.permHandSize = (state.permHandSize || 0) - 1;
-      return "+1 artifact slot";
+      return `${t.name} turned Negative`;
+    }
+    case "halo": {
+      const pool = state.charms.filter((c) => !c.sleeve);
+      if (!pool.length) return "Every artifact is already sleeved";
+      const t = randomOf(pool);
+      const sl = randomOf(["sparkler", "gilded", "prismatic"]);
+      state.charms = state.charms.map((c) => (c.uid === t.uid ? withCharmSleeve(c, sl) : c));
+      return `${t.name} got a ${CHARM_SLEEVES[sl].name} sleeve`;
+    }
+    case "prismHex": {
+      if (!state.charms.length) return "You had no artifacts";
+      const t = randomOf(state.charms);
+      state.charms = [withCharmSleeve(t, "prismatic")];
+      return `${t.name} went Prismatic`;
+    }
     case "pyre":
       destroyRunCards(pickIds(5));
       state.money += 20;
@@ -3933,7 +4036,7 @@ function shopPriceFor(entry) {
 function generateShopStock(count) {
   // Check if Ringmaster is equipped (allows duplicates)
   const hasRingmaster = state.charms.some((c) => c.effect.type === "ringmasterDuplicates");
-  
+
   // Don't offer charms/items the player currently has equipped or holding -
   // they reappear in the shop pool once sold (charms) or used (items).
   // UNLESS Ringmaster is equipped, which allows duplicates.
@@ -3942,26 +4045,34 @@ function generateShopStock(count) {
   const availableCharms = artifactPool().filter((c) => !ownedCharmIds.has(c.id));
   const availableItems = ITEM_DEFS.filter((i) => !ownedItemIds.has(i.id) && !i.secret);
 
-  // 50/50 split: half charms, half items (rounded), capped by what's actually available
-  const charmCount = Math.min(availableCharms.length, Math.ceil(count / 2));
-  const itemCount = Math.min(availableItems.length, Math.floor(count / 2));
+  // Sleight of Hand: some slots hold playing cards instead.
+  const cardSlots = voucherSum("shopPlayingCards") ? Array.from({ length: count }, () => Math.random() < 0.25).filter(Boolean).length : 0;
+  const n = count - cardSlots;
+  // Split between artifacts and items (Peddler / Bazaar tip it toward items)
+  const w = voucherBest("itemRate", Math.max);
+  const itemCount = Math.min(availableItems.length, Math.round((n * w) / (1 + w)));
+  const charmCount = Math.min(availableCharms.length, n - itemCount);
 
-  const charmPool = [...availableCharms].sort(() => Math.random() - 0.5);
-  const itemPool = [...availableItems].sort(() => Math.random() - 0.5);
+  // weighted shuffle: Star Vendor / Planetarium make charts likelier
+  const chartW = voucherBest("chartRate", Math.max);
+  const weighted = (arr, wf) => arr.map((d) => [Math.pow(Math.random(), 1 / wf(d)), d]).sort((x, y) => y[0] - x[0]).map((x) => x[1]);
+  const charmPool = weighted(availableCharms, () => 1);
+  const itemPool = weighted(availableItems, (d) => (d.chart ? chartW : 1));
 
   let selected = [
-    ...charmPool.slice(0, charmCount),
+    ...charmPool.slice(0, charmCount).map(rollCharmSleeve),
     ...itemPool.slice(0, itemCount)
   ];
 
   // If one side came up short (e.g. most charms are already owned), backfill
   // the remaining slots from whichever pool still has stock left over.
-  const remaining = count - selected.length;
+  const remaining = n - selected.length;
   if (remaining > 0) {
     const leftover = [...charmPool.slice(charmCount), ...itemPool.slice(itemCount)]
       .sort(() => Math.random() - 0.5);
-    selected = [...selected, ...leftover.slice(0, remaining)];
+    selected = [...selected, ...leftover.slice(0, remaining).map((d) => (d.type === "charm" ? rollCharmSleeve(d) : d))];
   }
+  for (let i = 0; i < cardSlots; i++) selected.push(shopPlayingCard());
 
   // Shuffle the combined pool
   for (let i = selected.length - 1; i > 0; i--) {
@@ -3971,7 +4082,21 @@ function generateShopStock(count) {
   return selected;
 }
 
-// Applies each owned item's scoring effect on top of a base evaluateSelection() result.
+// A playing card for sale (Sleight of Hand). Grand Illusion: often sleeved
+// and/or stamped, and now and then Negative.
+function shopPlayingCard() {
+  const fancy = voucherSum("shopPlayingCards") >= 2;
+  const extra = {};
+  if (fancy && Math.random() < 0.5) extra.sleeve = Math.random() < 0.06 ? "negative" : randomOf(SLEEVE_KINDS);
+  if (fancy && Math.random() < 0.4) extra.stamp = randomOf(STAMP_KINDS);
+  const card = makeCard(randomOf(RANKS), randomOf(SUIT_KEYS), extra);
+  const suit = card.suit[0].toUpperCase() + card.suit.slice(1);
+  const lines = [];
+  if (card.sleeve) lines.push(`${AnteArt.sleeveLabel(card.sleeve)} sleeve: ${SLEEVE_INFO[card.sleeve]}`);
+  if (card.stamp) lines.push(`${STAMP_LABELS[card.stamp]} stamp: ${STAMP_INFO[card.stamp]}`);
+  return { type: "playing", id: card.id, card, name: `${card.rank} of ${suit}`, desc: `Goes into your deck.${lines.length ? "<br>" + lines.join("<br>") : ""}`, price: 3 + (card.sleeve ? 2 : 0) + (card.stamp ? 1 : 0), color: "#D9CFB5" };
+}
+
 function applyItemEffects(result, cards, items) {
   let { totalChips, totalMult } = result;
   const handName = result.name;
@@ -4424,7 +4549,7 @@ function loadGame() {
       if (!d) return d;
       for (const pool of pools) {
         const def = pool.find((x) => x.id === d.id);
-        if (def) return { ...d, name: def.name, desc: def.desc, price: def.price, color: def.color, effect: { ...def.effect, ...(d.effect && d.effect.blindCounter != null ? { blindCounter: d.effect.blindCounter } : {}) }, rarity: def.rarity };
+        if (def) return { ...d, name: def.name, desc: def.desc, price: def.price + (d.sleevePrice || 0), color: def.color, effect: { ...def.effect, ...(d.effect && d.effect.blindCounter != null ? { blindCounter: d.effect.blindCounter } : {}) }, rarity: def.rarity };
       }
       return d;
     };
@@ -4474,7 +4599,8 @@ function getHandSize() {
   const voucherExtra = state.vouchers.filter((v) => v.effect.type === "extraHandSize").reduce((s, v) => s + v.effect.value, 0);
   const chainsReduction = state.charms.filter((c) => c.effect.type === "chainsMoneyPerHand").reduce((s, c) => s + c.effect.handSizeReduction, 0);
   const bossDelta = (state.bossBlind && state.bossBlind.handSizeDelta) || 0;
-  return Math.max(1, BASE_HAND_SIZE + extra + voucherExtra - chainsReduction + bossDelta + (state.roundHandSizeBonus || 0) + (state.permHandSize || 0));
+  const negInHand = (state.hand || []).filter((c) => c.sleeve === "negative").length;
+  return Math.max(1, BASE_HAND_SIZE + extra + voucherExtra - chainsReduction + bossDelta + (state.roundHandSizeBonus || 0) + (state.permHandSize || 0)) + negInHand;
 }
 
 function computeFanLayout() {
@@ -4498,7 +4624,7 @@ function dealInitialHand(freshDeckArg) {
   // drawn like any other card.
   const anchors = shuffleArray(freshDeckArg.filter((c) => c.sleeve === "anchor")).slice(0, ANCHOR_CAP);
   const d = [...anchors, ...freshDeckArg.filter((c) => !anchors.includes(c))];
-  const h = d.splice(0, getHandSize());
+  const h = drawInto([], d);
   tagBossDebuffedCards(h);
   state.deck = d;
   state.hand = h;
@@ -4583,11 +4709,11 @@ function startGame() {
   state.discardsLeft = 4 + getExtraDiscards(state.items);
   state.money = 4 + PPHub.take('cash') + (PPHub.has('purse') ? 2 : 0) + PPHub.charm('cash');   // Pocket Money and the Starter Purse from the Press Play shop
   { const sp = PPHub.take('spare'); if (sp) { state.playsLeft += sp; state.discardsLeft += sp; } state.discardsLeft += PPHub.charm('discard'); }   // Spare Hand: first round only
-  if (PPHub.take('encore') && state.charms.length < state.charmSlots && !state.charms.some((c) => c.id === "ppp_encore")) {
+  if (PPHub.take('encore') && charmsUsed() < state.charmSlots && !state.charms.some((c) => c.id === "ppp_encore")) {
     state.charms.push({ id: "ppp_encore", name: "Encore", desc: "Press Play exclusive: +4 Mult, then x1.2 Mult on every hand", price: 10,
       color: "#8b5cff", type: "charm", effect: { type: "pppEncore", add: 4, x: 1.2 }, uid: Math.random().toString(36).slice(2, 9) });
   }
-  if (PPHub.take('bass') && state.charms.length < state.charmSlots && !state.charms.some((c) => c.id === "ppp_bass")) {
+  if (PPHub.take('bass') && charmsUsed() < state.charmSlots && !state.charms.some((c) => c.id === "ppp_bass")) {
     state.charms.push({ id: "ppp_bass", name: "Bass Boost", desc: "Press Play exclusive: x1.5 Mult on every hand", price: 10,
       color: "#6ee7d0", type: "charm", effect: { type: "pppEncore", add: 0, x: 1.5 }, uid: Math.random().toString(36).slice(2, 9) });
   }
@@ -4737,8 +4863,7 @@ function refillHand(currentDeck, currentHand, removeIds) {
     state.usedCards = state.usedCards.filter((c) => !playedOrDiscarded.some((p) => p.id === c.id));
   }
   
-  const drawn = d.slice(0, Math.max(0, need));
-  d = d.slice(drawn.length);
+  const drawn = drawInto(remaining, d);
   tagBossDebuffedCards(drawn);
 
   return { newDeck: d, newHand: [...remaining, ...drawn] };
@@ -5014,7 +5139,7 @@ function scoreHand(selectedCards, { live = false } = {}) {
       case "popcornMult": return addMH(c.multLeft ?? e.value);
       case "bullionChips": return addCH(Math.max(0, state.money) * e.value);
       case "dejaVuX": return xMH((state.handTypesPlayedThisRound || []).filter((h) => h === base.name).length >= 2 ? e.value : 1);
-      case "stencilX": return xMH(Math.max(1, state.charmSlots - state.charms.length + state.charms.filter((x) => x.effect.type === "stencilX").length));
+      case "stencilX": return xMH(Math.max(1, state.charmSlots - charmsUsed() + state.charms.filter((x) => x.effect.type === "stencilX").length));
       case "punchCardX": return xMH((state.handsPlayedRun || 0) % e.everyN === 0 ? e.value : 1);
       case "jackknifeX": return xMH(1 + (c.jackBonus || 0));
       case "deuceChips": return addCH(c.deuceBonus || 0);
@@ -5042,6 +5167,13 @@ function scoreHand(selectedCards, { live = false } = {}) {
         push({ target: "charm", uid: c.uid, kind: "mult", text: `${d >= 0 ? "+" : ""}${fmtNum(d)} Mult` });
       }
     }
+  });
+
+  // artifact sleeves, in shelf order
+  charms.forEach((c) => {
+    if (c.sleeve === "sparkler") { chips += 50; push({ target: "charm", uid: c.uid, kind: "chips", text: "+50 Chips" }); }
+    if (c.sleeve === "gilded") { mult += 10; push({ target: "charm", uid: c.uid, kind: "mult", text: "+10 Mult" }); }
+    if (c.sleeve === "prismatic") { mult *= 1.5; push({ target: "charm", uid: c.uid, kind: "xmult", text: "X1.5 Mult" }); }
   });
 
   // items held with a scoring effect (older item kinds)
@@ -5603,7 +5735,7 @@ function goToShop() {
     while (i < weights.length - 1 && r > weights[i]) r -= weights[i++];
     return commonBases[i].id;
   };
-  state.packStock = [0, 1].map(() => {
+  state.packStock = Array.from({ length: 2 + voucherSum("packSlots") }, () => {
     if (Math.random() < 0.12) return { ...PACK_DEFS.find((p) => p.rare) };
     const r = Math.random();
     const id = rollBase() + (r < 0.12 ? "_mega" : r < 0.4 ? "_major" : "");
@@ -5636,8 +5768,12 @@ function openPack(packId) {
   const pickDefs = (pool, n) => shuffleArray(pool).slice(0, n).map((d) => ({ ...d }));
   const n = pack.choices + state.vouchers.filter((v) => v.effect.type === "packExtraChoices" && v.effect.pack === kind).reduce((s, v) => s + v.effect.value, 0);
   let choices = [];
-  if (kind === "artifactPack") choices = pickDefs(artifactPool().filter((c) => ringmaster || !owned.has(c.id)), n);
-  if (kind === "itemPack") choices = pickDefs(arcanaPool(), n).map((d) => ({ ...d, arcana: true }));
+  if (kind === "artifactPack") choices = pickDefs(artifactPool().filter((c) => ringmaster || !owned.has(c.id)), n).map(rollCharmSleeve);
+  if (kind === "itemPack") {
+    // Tea Leaves: one more card. Omen Globe: any card can be a Spectral one.
+    const spectralChance = voucherSum("arcanaSpectral");
+    choices = pickDefs(arcanaPool(), n + voucherSum("arcanaExtra")).map((d) => (Math.random() < spectralChance ? pickSpectrals(1)[0] : { ...d, arcana: true }));
+  }
   if (kind === "celestialPack") {
     // secret hands' charts only once you've played that hand
     choices = pickDefs(ITEM_DEFS.filter((d) => d.chart && (!d.secret || (state.handTypeCounts || {})[d.effect.hand])), n);
@@ -5650,7 +5786,7 @@ function openPack(packId) {
   if (kind === "spectralPack") choices = pickSpectrals(n);
   if (kind === "legendPack") choices = pickDefs(LEGENDARY_DEFS.filter((c) => !owned.has(c.id)), n);
   if (kind === "cardPack") choices = Array.from({ length: n }, () => makeCard(randomOf(RANKS), randomOf(SUIT_KEYS), Math.random() < 0.25 ? { stamp: randomOf(STAMP_KINDS) } : {}));
-  if (kind === "ornatePack") choices = Array.from({ length: n }, () => makeCard(randomOf(RANKS), randomOf(SUIT_KEYS), { sleeve: randomOf(SLEEVE_KINDS), stamp: randomOf(STAMP_KINDS) }));
+  if (kind === "ornatePack") choices = Array.from({ length: n }, () => makeCard(randomOf(RANKS), randomOf(SUIT_KEYS), { sleeve: Math.random() < 0.05 ? "negative" : randomOf(SLEEVE_KINDS), stamp: randomOf(STAMP_KINDS) }));
   state.packOpen = { id: packId, name: pack.name, choices, picks: pack.picks || 1, openedAt: Date.now(), hand: kind === "spectralPack" || kind === "itemPack" ? packHandIds() : null, note: null };
   state.packPick = null;
   state.packSel = [];
@@ -5680,7 +5816,7 @@ function takePackChoice(index) {
   } else if (choice.spectral) {
     note = useSpectral(choice);
   } else if (choice.type === "charm") {
-    if (state.charms.length >= state.charmSlots) return;
+    if (choice.sleeve !== "negative" && charmsUsed() >= state.charmSlots) return;
     state.charms = [...state.charms, { ...choice, uid: newUid() }];
   } else if (choice.type === "item" && choice.chart) {
     state.handLevels = { ...(state.handLevels || {}), [choice.effect.hand]: handLevel(choice.effect.hand) + 1 };
@@ -5718,12 +5854,22 @@ function skipPack() {
 // Tap a card to look at it; Take adds it, Skip leaves the rest.
 function packChoiceFull(choice) {
   if (choice.arcana || choice.spectral) return false;
-  if (choice.type === "charm") return state.charms.length >= state.charmSlots;
+  if (choice.type === "charm" && choice.sleeve === "negative") return false;
+  if (choice.type === "charm") return charmsUsed() >= state.charmSlots;
   if (choice.type === "item" && !choice.chart) return state.items.length >= getEffectiveItemSlots();
   return false;
 }
 // The pack's hand in the order you see it: your own sort mid-round,
 // lowest to highest otherwise (so "leftmost" means the same everywhere).
+// A playing card drawn at a fixed zoom, for shop wares and popups.
+function playingCardEl(card, zoom) {
+  const el = renderCard(card, { selected: false, scoring: false, dimmed: false, scale: 1, marginLeft: 0, arcIndex: 0, arcCount: 1, onClick: () => {} });
+  el.classList.add("pack-card");
+  el.style.transform = "none";
+  el.dataset.finalTransform = "none";
+  el.style.zoom = String(zoom);
+  return el;
+}
 function packHandOrdered() {
   const cards = packHandCards();
   if (state.overlay === "playing") {
@@ -5887,7 +6033,7 @@ function PackOverlay() {
     } else {
       kind = c.rarity === "legendary" ? "Legendary artifact" : c.type === "charm" ? "Artifact" : "Item";
       name = c.name;
-      desc = c.desc;
+      desc = c.desc + (c.sleeve && CHARM_SLEEVES[c.sleeve] ? `<br><b>${CHARM_SLEEVES[c.sleeve].name} sleeve</b> ${CHARM_SLEEVES[c.sleeve].desc}` : "");
     }
     info.innerHTML = `
       <div class="pack-info-kind">${kind}</div>
@@ -5953,8 +6099,12 @@ function buyItem(shopIndex) {
   
   if (state.money < discountedPrice) return;
   
-  if (item.type === "charm") {
-    if (state.charms.length >= state.charmSlots) return;
+  if (item.type === "playing") {
+    state.money -= discountedPrice;
+    state.deck = shuffleArray([...state.deck, { ...item.card }]);
+    noteAdded(1);
+  } else if (item.type === "charm") {
+    if (item.sleeve !== "negative" && charmsUsed() >= state.charmSlots) return;
     state.money -= discountedPrice;
     state.charms = [...state.charms, { ...item, uid: Math.random().toString(36).slice(2, 9) }];
   } else {
@@ -6467,7 +6617,7 @@ function useItem(itemUid) {
   }
 
   if (eff.type === "judgementCreateCharm") {
-    if (state.charms.length >= state.charmSlots) return;
+    if (charmsUsed() >= state.charmSlots) return;
     const hasRingmaster = state.charms.some((c) => c.effect.type === "ringmasterDuplicates");
     const ownedCharmIds = hasRingmaster ? new Set() : new Set(state.charms.map((c) => c.id));
     const pool = CHARM_DEFS.filter((c) => !ownedCharmIds.has(c.id));
@@ -7557,7 +7707,7 @@ function GearShelf() {
   const shelf = document.createElement("div");
   shelf.className = "gear-shelf";
   shelf.style.gap = gap + "px";
-  shelf.appendChild(ShelfGroup("charm", state.charms, state.charmSlots, charmsW, "Artifacts"));
+  shelf.appendChild(ShelfGroup("charm", state.charms, state.charmSlots + state.charms.filter((c) => c.sleeve === "negative").length, charmsW, "Artifacts"));
   shelf.appendChild(ShelfGroup("item", state.items, getEffectiveItemSlots(), itemsW, "Items"));
   return shelf;
 }
@@ -7569,7 +7719,7 @@ function ShelfGroup(kind, list, slots, width, title) {
 
   const label = document.createElement("div");
   label.className = "shelf-label";
-  label.innerHTML = `<span>${title}</span><span class="shelf-count">${list.length}/${slots}</span>`;
+  label.innerHTML = `<span>${title}</span><span class="shelf-count">${kind === "charm" ? charmsUsed() : list.length}/${kind === "charm" ? state.charmSlots : slots}</span>`;
   if (kind === "item" && state.vouchers.length > 0) {
     const v = document.createElement("button");
     v.className = "shelf-vouchers";
@@ -7596,7 +7746,7 @@ function ShelfGroup(kind, list, slots, width, title) {
     const piece = document.createElement("div");
     const firing = state.activeCharm && state.activeCharm.uid === def.uid;
     const overflow = kind === "item" && i >= slots;
-    piece.className = "shelf-piece" + (firing ? " firing" : "") + (overflow ? " overflow" : "");
+    piece.className = "shelf-piece" + (firing ? " firing" : "") + (overflow ? " overflow" : "") + (def.sleeve && kind === "charm" ? " csl-" + def.sleeve : "");
     piece.dataset.uid = def.uid;
     piece.style.left = i * step + "px";
     piece.style.width = piece.style.height = SHELF_PIECE + "px";
@@ -7774,7 +7924,7 @@ function GearDetail() {
       <div class="shop-detail-type">${d.kind === "charm" ? "ARTIFACT" : "ITEM"}</div>
       <div class="shop-detail-name serif">${def.name}</div>
       <div class="shop-detail-desc">${def.desc}${extra}</div>
-      ${d.kind === "charm" ? progressBlock(def) : ""}
+      ${d.kind === "charm" ? charmSleeveLine(def) + progressBlock(def) : ""}
       <div class="detail-hint">Drag it ${d.kind === "item" ? "to <b>Use</b> or <b>Sell</b>" : "to <b>Sell</b>"}, or along the shelf to move it.</div>
     `;
   }
@@ -7862,15 +8012,16 @@ function ShopOverlay() {
       return;
     }
     const price = shopPriceFor(item);
-    const slotsFull = item.type === "charm" ? state.charms.length >= state.charmSlots : state.items.length >= getEffectiveItemSlots();
+    const slotsFull = item.type === "playing" ? false : item.type === "charm" ? item.sleeve !== "negative" && charmsUsed() >= state.charmSlots : state.items.length >= getEffectiveItemSlots();
     const legendary = item.rarity === "legendary";
     card.className = `bcard kind-${item.type}${legendary ? " legendary" : ""}${state.money < price ? " poor" : ""}`;
     card.style.setProperty("--glow", item.color || "#C9A227");
     card.innerHTML = `
       <span class="bprice">${price < item.price ? `<s>$${item.price}</s>` : ""}$${price}</span>
-      <div class="bcard-face full"><div class="bcard-art">${AnteArt.card({ ...item, arcana: item.type === "item" && !item.chart && !ARCANA_EXCLUDE.has(item.id) })}</div></div>
-      <div class="bcard-name">${item.name}</div>
+      <div class="bcard-face full${item.type === "playing" ? " is-playing-ware" : ""}"><div class="bcard-art">${item.type === "playing" ? "" : AnteArt.card({ ...item, arcana: item.type === "item" && !item.chart && !ARCANA_EXCLUDE.has(item.id) })}</div></div>
+      <div class="bcard-name">${item.name}</div>${item.sleeve && CHARM_SLEEVES[item.sleeve] ? `<span class="bcard-sleeve" style="--sc:${CHARM_SLEEVES[item.sleeve].color}">${CHARM_SLEEVES[item.sleeve].name}</span>` : ""}
       <button class="bbuy" ${state.money < price || slotsFull ? "disabled" : ""}>${slotsFull ? "Full" : "Buy"}</button>`;
+    if (item.type === "playing") card.querySelector(".bcard-art").appendChild(playingCardEl(item.card, 1.25));
     card.querySelector(".bbuy").onclick = (e) => { e.stopPropagation(); buyItem(i); };
     card.addEventListener("click", (e) => { if (!e.target.closest(".bbuy")) openShopDetail("stock", i); });
     wares.appendChild(card);
@@ -7954,13 +8105,13 @@ function ShopOverlay() {
       const discountedPrice = isVoucher ? entry.price : shopPriceFor(entry);
       const disabled = isVoucher
         ? state.money < entry.price
-        : kind === "pack" ? state.money < discountedPrice : (state.money < discountedPrice) || (entry.type === "charm"
-            ? state.charms.length >= state.charmSlots
+        : kind === "pack" ? state.money < discountedPrice : (state.money < discountedPrice) || (entry.type === "playing" ? false : entry.type === "charm"
+            ? entry.sleeve !== "negative" && charmsUsed() >= state.charmSlots
             : state.items.length >= getEffectiveItemSlots());
       const isPack = kind === "pack";
-      const typeLabel = isVoucher ? (entry.tier === 2 ? "VOUCHER · UPGRADE" : "VOUCHER") : isPack ? "BOOSTER PACK" : entry.rarity === "legendary" ? "LEGENDARY ARTIFACT" : (entry.type === "charm" ? "ARTIFACT" : "ITEM");
+      const typeLabel = entry.type === "playing" ? "PLAYING CARD" : isVoucher ? (entry.tier === 2 ? "VOUCHER · UPGRADE" : "VOUCHER") : isPack ? "BOOSTER PACK" : entry.rarity === "legendary" ? "LEGENDARY ARTIFACT" : (entry.type === "charm" ? "ARTIFACT" : "ITEM");
       const slotsFull = !isVoucher && !isPack && entry.type === "charm"
-        ? state.charms.length >= state.charmSlots
+        ? entry.sleeve !== "negative" && charmsUsed() >= state.charmSlots
         : (!isVoucher && !isPack && state.items.length >= getEffectiveItemSlots());
 
       // Set all static content in a single innerHTML assignment first — appending
@@ -7968,11 +8119,11 @@ function ShopOverlay() {
       // card being re-serialized and re-parsed, which would silently strip any
       // JS-assigned onclick handler already attached to a live child element.
       card.innerHTML = `
-        <div class="detail-art${isVoucher || entry.type === "charm" || entry.type === "item" ? " is-voucher" : ""}">${entry.type === "charm" || entry.type === "item" ? AnteArt.card(entry) : AnteArt.icon(entry)}</div>
+        <div class="detail-art${isVoucher || entry.type === "charm" || entry.type === "item" ? " is-voucher" : ""}">${entry.type === "charm" || entry.type === "item" ? AnteArt.card(entry) : entry.type === "playing" ? "" : AnteArt.icon(entry)}</div>
         <div class="shop-detail-type">${typeLabel}</div>
         <div class="shop-detail-name serif">${entry.name}</div>
         <div class="shop-detail-desc">${entry.desc}</div>
-        ${isVoucher ? voucherHint(entry) : ""}
+        ${isVoucher ? voucherHint(entry) : charmSleeveLine(entry)}
         <div class="shop-detail-price">${!isVoucher && shopDiscount < 1 ? `<s>$${entry.price}</s> $${discountedPrice}` : `$${discountedPrice}`}</div>
         <button class="shop-detail-buy-btn" ${disabled ? "disabled" : ""}>${slotsFull ? "Slots Full" : disabled ? "Can't Afford" : isVoucher ? "Redeem" : isPack ? "Open" : "Buy"}</button>
       `;
@@ -7981,6 +8132,7 @@ function ShopOverlay() {
         closeShopDetail();
       };
 
+      if (entry.type === "playing") card.querySelector(".detail-art").appendChild(playingCardEl(entry.card, 1.3));
       const closeBtn = document.createElement("button");
       closeBtn.className = "shop-detail-close";
       closeBtn.textContent = "✕";
