@@ -108,6 +108,7 @@ final class Accel {
             outName = s.getOutputNames().iterator().next();
         }
         String accel() { return nn ? accelName() : "CPU"; }
+        String guard, guardVal;   // openDemucs crash guard: pref key to settle after the first good accelerated run
     }
 
     private static Sess reg(Sess x) { REG.put(x.s, x); return x; }
@@ -289,19 +290,27 @@ final class Accel {
     /**
      * Demucs on the Qualcomm NPU (QNN HTP). Plain NNAPI rejects or crawls on Demucs, so other phones stay on the CPU.
      * The NPU takes the convolutions and attention, and the ops it can't run (the STFT inside the graph) stay on the CPU.
-     * The first time, one real-sized segment is timed on both roads and the faster one is remembered.
-     * Crash guard: "TRYING" is written (synchronously) before the NPU is touched. If the app dies during the
-     * compile or the race, the next split finds "TRYING" and uses the CPU for good.
-     * Needs a roomy phone: during the race both copies of the 316 MB model are loaded.
+     * tune (the "Speed test NPU vs CPU" checkbox): time one real segment on both roads and remember the faster one.
+     * Without it the NPU is used as asked, and only a crash or NaN output moves Demucs to the CPU (remembered), like other models.
+     * Crash guard: "TRYING" is written (synchronously) before the NPU is touched and cleared after the first good NPU run. If the
+     * app dies in between (compile, race or first run), the next split finds "TRYING" and uses the CPU for good.
+     * Needs a roomy phone: a race loads both copies of the 316 MB model.
      */
-    static Sess openDemucs(OrtEnvironment env, String key, File f, boolean wantNpu, int seg) throws Exception {
+    static Sess openDemucs(OrtEnvironment env, String key, File f, boolean wantNpu, int seg, boolean tune) throws Exception {
         if (!wantNpu || !qnn() || !roomy() || prefs == null) return open(env, key, f, false, null);
         String tk = tuneKey(key, f), v = prefs.getString(tk, null);
         if ("TRYING".equals(v)) { remember(tk, "CPU"); v = "CPU"; }
         if ("CPU".equals(v)) return open(env, key, f, false, null);
-        if ("NNAPI".equals(v)) return open(env, key, f, true, null, false);
+        boolean race = tune && v == null;                     // a verdict from an earlier race is honoured
         prefs.edit().putString(tk, "TRYING").commit();
-        return open(env, key, f, true, new long[] {1, 2, seg}, true);   // races and writes the verdict over "TRYING"
+        Sess s;
+        try { s = open(env, key, f, true, race ? new long[] {1, 2, seg} : null, race); }
+        catch (Throwable e) { remember(tk, "CPU"); throw e; }
+        if (!s.nn) return s;                                  // the race or the NPU build already wrote "CPU"
+        prefs.edit().putString(tk, "TRYING").commit();        // the race wrote "NNAPI": guard the first real run too
+        s.guard = tk;
+        s.guardVal = race || "NNAPI".equals(v) ? "NNAPI" : null;   // after the first good run: keep the verdict, or no note at all
+        return s;
     }
 
     /** True when the first output has no NaN/Inf (NNAPI fp16 can overflow). Anything unreadable counts as fine. */
@@ -347,7 +356,13 @@ final class Accel {
     static OrtSession.Result run(OrtEnvironment env, Sess x, FloatBuffer in, long[] dims) throws Exception {
         try {
             OrtSession.Result r = once(env, x, in, dims);
-            if (!x.nn || x.f == null || allFinite(r)) return r;
+            if (!x.nn || x.f == null || allFinite(r)) {
+                if (x.nn && x.guard != null && prefs != null) {   // first good NPU run: the crash guard is no longer needed
+                    if (x.guardVal == null) prefs.edit().remove(x.guard).apply(); else remember(x.guard, x.guardVal);
+                    x.guard = null;
+                }
+                return r;
+            }
             try { r.close(); } catch (Exception ignored) { }
         } catch (Exception e) {
             if (!x.nn || x.f == null) throw e;

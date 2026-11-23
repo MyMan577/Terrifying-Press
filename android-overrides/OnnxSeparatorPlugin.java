@@ -575,7 +575,7 @@ public class OnnxSeparatorPlugin extends Plugin {
                     File mf = modelFile(model);
                     if (!mf.exists()) throw new IOException("Model not downloaded: " + model);
                     Accel.Sess s;
-                    try { s = Accel.openDemucs(env(), model, mf, nnapi, StemNative.DEMUCS_SEG); }   // Snapdragon NPU if it wins a timing race, else CPU
+                    try { s = Accel.openDemucs(env(), model, mf, nnapi, StemNative.DEMUCS_SEG, tune); }   // Snapdragon NPU when asked (timed against the CPU only with the speed-test box), else CPU
                     catch (Throwable e) { throw new IOException("Could not load model " + model + ": " + (e.getMessage() != null ? e.getMessage() : e.toString())); }
                     open.add(s);
                     List<String> srcs = new ArrayList<>();
@@ -615,7 +615,7 @@ public class OnnxSeparatorPlugin extends Plugin {
                         if (!mf.exists()) throw new IOException("Model not downloaded: " + pm);
                         boolean dm = "demucs".equals(p.optString("kind"));
                         Accel.Sess s;
-                        try { s = dm ? Accel.openDemucs(env(), pm, mf, nnapi, StemNative.DEMUCS_SEG) : Accel.open(env(), pm, mf, nnapi, new long[] {1, 4, p.getInt("dimF"), p.optInt("dimT", 256)}, tune); }
+                        try { s = dm ? Accel.openDemucs(env(), pm, mf, nnapi, StemNative.DEMUCS_SEG, tune) : Accel.open(env(), pm, mf, nnapi, new long[] {1, 4, p.getInt("dimF"), p.optInt("dimT", 256)}, tune); }
                         catch (Throwable e) { throw new IOException("Could not load model " + pm + ": " + (e.getMessage() != null ? e.getMessage() : e.toString())); }
                         try {
                             if (dm) {
