@@ -14,6 +14,7 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import org.json.JSONArray;
+import org.json.JSONObject;
 
 import androidx.core.content.ContextCompat;
 import android.content.Intent;
@@ -494,7 +495,10 @@ public class OnnxSeparatorPlugin extends Plugin {
 
     /**
      * Whole separation in Java (decode, STFT, model, masks, WAV out) for Spleeter 4 stems and MDX-Net.
-     * kind "demucs": model, sources (model order). kind "sp4": prefix ("sp4_" or "sp4f_"), stems = wanted names. kind "mdx": model, nfft, dimF, comp.
+     * kind "demucs": model, sources (model order). kind "sp4": prefix ("sp4_" or "sp4f_"), stems = wanted names. kind "mdx": model, nfft, dimF, dimT, comp, swap.
+     * kind "multi": passes = [{kind:"mdx", model, nfft, dimF, dimT, comp, stem} | {kind:"demucs", model, sources, stems:[names it supplies]}].
+     * Each pass is one model run (one model in memory at a time) and writes only the wanted stems it supplies. The mdx pass whose
+     * stem is "Vocals" also writes Instrumental (mix minus its vocals).
      */
     @PluginMethod
     public void separate(PluginCall call) {
@@ -507,7 +511,8 @@ public class OnnxSeparatorPlugin extends Plugin {
         final JSONArray srcJ = call.getArray("sources");
         final boolean nnapi = call.getBoolean("nnapi", true);
         final boolean tune = call.getBoolean("tune", true);   // false = skip the NNAPI vs CPU timing race
-        final int nfft = call.getInt("nfft", 7680), dimF = call.getInt("dimF", 3072);
+        final int nfft = call.getInt("nfft", 7680), dimF = call.getInt("dimF", 3072), dimT = call.getInt("dimT", 256);
+        final JSONArray passesJ = call.getArray("passes");
         final double comp = call.getDouble("comp", 1.021);
         final int cThreads = call.getInt("threads", 0);        // custom level: 0 = automatic
         final boolean cSpin = call.getBoolean("spin", false), cLean = call.getBoolean("lean", false);
@@ -590,14 +595,61 @@ public class OnnxSeparatorPlugin extends Plugin {
                     }
                     StemNative.demucs(env(), s, au, rows, files, prog, fast);
                     accel = s.accel();
+                } else if ("multi".equals(kind)) {
+                    if (passesJ == null) throw new IOException("passes are required");
+                    List<JSONObject> todo = new ArrayList<>();      // only the passes that supply a wanted stem
+                    for (int i = 0; i < passesJ.length(); i++) {
+                        JSONObject p = passesJ.getJSONObject(i);
+                        boolean need = false;
+                        if ("demucs".equals(p.optString("kind"))) { JSONArray st = p.getJSONArray("stems"); for (int k = 0; k < st.length(); k++) if (outs.containsKey(st.getString(k))) need = true; }
+                        else { String st = p.getString("stem"); need = outs.containsKey(st) || ("Vocals".equals(st) && outs.containsKey("Instrumental")); }
+                        if (need) todo.add(p);
+                    }
+                    List<String> used = new ArrayList<>();
+                    for (int pi = 0; pi < todo.size(); pi++) {
+                        final JSONObject p = todo.get(pi);
+                        final double lo = pi / (double) todo.size(), span = 1.0 / todo.size();
+                        SpleeterNative.Progress pp = fr -> prog.onProgress(Math.min(0.999, lo + fr * span));
+                        String pm = p.getString("model");
+                        File mf = modelFile(pm);
+                        if (!mf.exists()) throw new IOException("Model not downloaded: " + pm);
+                        boolean dm = "demucs".equals(p.optString("kind"));
+                        Accel.Sess s;
+                        try { s = dm ? Accel.open(env(), pm, mf, false, null) : Accel.open(env(), pm, mf, nnapi, new long[] {1, 4, p.getInt("dimF"), p.optInt("dimT", 256)}, tune); }
+                        catch (Throwable e) { throw new IOException("Could not load model " + pm + ": " + (e.getMessage() != null ? e.getMessage() : e.toString())); }
+                        try {
+                            if (dm) {
+                                JSONArray sj = p.getJSONArray("sources"), st = p.getJSONArray("stems");
+                                List<String> srcs = new ArrayList<>(), mine = new ArrayList<>();
+                                for (int k = 0; k < sj.length(); k++) srcs.add(sj.getString(k));
+                                for (int k = 0; k < st.length(); k++) if (outs.containsKey(st.getString(k))) mine.add(st.getString(k));
+                                int[][] rows = new int[mine.size()][];
+                                File[] files = new File[mine.size()];
+                                for (int k = 0; k < rows.length; k++) { rows[k] = new int[] {srcs.indexOf(mine.get(k).toLowerCase())}; files[k] = outs.get(mine.get(k)); }
+                                StemNative.demucs(env(), s, au, rows, files, pp, fast);
+                            } else {
+                                String st = p.getString("stem");
+                                StemNative.mdx(env(), s, au, p.getInt("nfft"), p.getInt("dimF"), p.optInt("dimT", 256), p.optDouble("comp", 1.035),
+                                        outs.get(st), "Vocals".equals(st) ? outs.get("Instrumental") : null, pp);
+                            }
+                            String a = s.accel();
+                            if (!used.contains(a)) used.add(a);
+                        } finally { Accel.close(s); }   // one model in memory at a time
+                    }
+                    prog.onProgress(1.0);
+                    StringBuilder ab = new StringBuilder();
+                    for (String a : used) { if (ab.length() > 0) ab.append('+'); ab.append(a); }
+                    accel = ab.length() > 0 ? ab.toString() : "CPU";
                 } else {
                     File mf = modelFile(model);
                     if (!mf.exists()) throw new IOException("Model not downloaded: " + model);
                     Accel.Sess s;
-                    try { s = Accel.open(env(), model, mf, nnapi, new long[] {1, 4, dimF, 256}, tune); }
+                    try { s = Accel.open(env(), model, mf, nnapi, new long[] {1, 4, dimF, dimT}, tune); }
                     catch (Throwable e) { throw new IOException("Could not load model " + model + ": " + (e.getMessage() != null ? e.getMessage() : e.toString())); }
                     open.add(s);
-                    StemNative.mdx(env(), s, au, nfft, dimF, comp, outs.get("Vocals"), outs.get("Instrumental"), prog);
+                    // swap: the model outputs the instrumental (UVR "Inst" models), so its output goes to Instrumental and the rest to Vocals
+                    boolean swap = call.getBoolean("swap", false);
+                    StemNative.mdx(env(), s, au, nfft, dimF, dimT, comp, swap ? outs.get("Instrumental") : outs.get("Vocals"), swap ? outs.get("Vocals") : outs.get("Instrumental"), prog);
                     accel = s.accel();
                 }
                 JSObject files = new JSObject();

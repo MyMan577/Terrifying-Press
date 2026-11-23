@@ -103,7 +103,10 @@
           out = await NP.separate(Object.assign({ kind: 'sp4', prefix: 'sp4f_' }, base));
         }
       } else if (m.kind === 'demucs') out = await NP.separate(Object.assign({ kind: 'demucs', model: id, sources: m.sources }, base));
-      else out = await NP.separate(Object.assign({ kind: 'mdx', model: id, nfft: m.nfft, dimF: m.dimF, comp: m.comp }, base));
+      else if (m.kind === 'multi') out = await NP.separate(Object.assign({ kind: 'multi', passes: m.passes.map(p => p.kind === 'demucs'
+          ? { kind: 'demucs', model: p.key, sources: p.sources, stems: p.stems }
+          : { kind: 'mdx', model: p.key, stem: p.stem, nfft: p.nfft, dimF: p.dimF, dimT: p.dimT || 256, comp: p.comp }) }, base));
+      else out = await NP.separate(Object.assign({ kind: 'mdx', model: id, nfft: m.nfft, dimF: m.dimF, dimT: m.dimT || 256, comp: m.comp, swap: !!m.swap }, base));
     } finally { h.remove(); }
     window.__ppLastSep = ' (' + Math.round(out.seconds) + ' s on ' + out.accel + ')';
     try { localStorage.setItem(accKey, /nnapi|npu|gpu/i.test(String(out.accel)) ? 'nnapi' : 'cpu'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
@@ -153,7 +156,7 @@
     const W = hid ? wanted.concat('Vocals') : wanted;
     const mkEnc = n => n === 'Vocals' && hid ? { push() {}, finish() { return null; } } : makeEncoder(mkGate(n));
     if (m.kind === 'spleeter' && NATIVE && !pcm) return nativeSpleeter(opts.track, wanted, opts, status, onProgress);
-    if ((m.kind === 'sp4' || m.kind === 'mdx' || m.kind === 'demucs') && NATIVE && !pcm) return nativeStems(m, id, opts.track, wanted, opts, status, onProgress);
+    if ((m.kind === 'sp4' || m.kind === 'mdx' || m.kind === 'demucs' || m.kind === 'multi') && NATIVE && !pcm) return nativeStems(m, id, opts.track, wanted, opts, status, onProgress);
     if (m.kind === 'spleeter') {
       status('Loading models…');
       const sess = { vocals: await makeSession('sp_vocals', false, opts.lv), accomp: await makeSession('sp_accomp', false, opts.lv) };
@@ -184,6 +187,7 @@
         return Object.fromEntries(outs.map((o, k) => [o.name, enc[k].finish()]).filter(q => q[1]));   // already {blob, ext}
       } finally { sess.forEach(x => x.release && x.release()); }
     }
+    if (m.kind === 'multi') throw new Error('This model set runs in the Android app only.');
     if (m.kind === 'mdx') {
       status('Loading model…');
       const sess = await makeSession(id, opts.gpu, opts.lv);

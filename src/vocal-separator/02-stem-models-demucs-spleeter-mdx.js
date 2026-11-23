@@ -331,7 +331,7 @@
   }
 
   // ---------- MDX-Net (UVR) ----------
-  // The ONNX graph takes a spectrogram [1, 4, dimF, 256] = [L re, L im, R re, R im] and returns the vocal spectrogram.
+  // The ONNX graph takes a spectrogram [1, 4, dimF, dimT] (dimT 256 unless the model says otherwise) = [L re, L im, R re, R im] and returns the vocal spectrogram.
   // n_fft (7680 = 2^9*3*5) isn't a power of two, so this has its own mixed-radix FFT (radix 2/3/5, Stockham).
   function makeFFT(n) {
     const fac = []; let t = n; for (const r of [5, 3, 2]) while (t % r === 0) { fac.push(r); t /= r; }
@@ -366,7 +366,7 @@
   // Streams sink(vocals:[L,R], instrumental:[L,R], startSample); instrumental = mix - vocals.
   async function separateMdx(pcm, session, cfg, onProgress, sink, pause = 0, ye = 0) {
     ye = ye || 16;                                                    // always give the UI a turn: this DSP is heavy even on a fast phone
-    const NF = cfg.nfft, H = 1024, DF = cfg.dimF, DT = 256, half = NF >> 1, chunk = H * (DT - 1), gen = chunk - NF;
+    const NF = cfg.nfft, H = 1024, DF = cfg.dimF, DT = cfg.dimT || 256, half = NF >> 1, chunk = H * (DT - 1), gen = chunk - NF;
     const len = pcm[0].length, nChunks = Math.max(1, Math.ceil(len / gen)), fftN = makeFFT(NF);
     const w = new Float64Array(NF); for (let i = 0; i < NF; i++) w[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / NF);
     const env = new Float64Array(chunk);                              // sum of squared windows, for the inverse STFT
@@ -410,7 +410,7 @@
       const start = j * gen, n = Math.min(gen, len - start);
       const voc = acc.map(a => { const o = new Float32Array(n); for (let i = 0; i < n; i++) o[i] = a[half + i] / Math.max(env[half + i], 1e-8) * cfg.comp; return o; });
       const ins = voc.map((v, c) => { const o = new Float32Array(n); for (let i = 0; i < n; i++) o[i] = pcm[c][start + i] - v[i]; return o; });
-      sink(voc, ins, start);
+      if (cfg.swap) sink(ins, voc, start); else sink(voc, ins, start);   // swap: the model outputs the instrumental
       onProgress && onProgress((j + 1) / nChunks);
       await tick(); if (pause) await new Promise(r => setTimeout(r, pause));
     }

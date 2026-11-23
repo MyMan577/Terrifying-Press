@@ -622,7 +622,7 @@
           catch (e) { console.warn('Whisper timing failed', e); maskNote = ' Whisper timing failed (' + errText(e) + '), so line lengths were estimated.'; }
         }
         status('Decoding audio…');
-        let pcm = NATIVE && ['spleeter', 'sp4', 'mdx', 'demucs'].includes((MODELS[id] || {}).kind) ? null : await decode(t.url);
+        let pcm = NATIVE && ['spleeter', 'sp4', 'mdx', 'demucs', 'multi'].includes((MODELS[id] || {}).kind) ? null : await decode(t.url);
         let mask = null, nmask = null;
         if (+msel.value) {
           const dur = pcm ? pcm[0].length / SR : await mediaDur(t.url);   // native engines decode in Java, so ask the media element for the length
