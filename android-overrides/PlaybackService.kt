@@ -73,10 +73,11 @@ class PlaybackService : MediaLibraryService() {
         private set
     /** Audio quality and decoding choices this player was built with (Settings; read once, when the service starts). */
     var hiRes = false
+        private set
     /** Settings, Upconvert 16-bit audio: 16-bit sources also go through the float chain (see HiResFxSink). */
     var up16 = false
-    var hiSink: HiResFxSink? = null
         private set
+    var hiSink: HiResFxSink? = null
         private set
     /** Settings, Audio decoder, as this player was built with it: "auto", "soft" (software only) or "hard" (hardware only). */
     var audioDecoderMode = "auto"
