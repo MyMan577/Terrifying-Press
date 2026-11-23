@@ -1,0 +1,21 @@
+/* Settings, Headers and Games button (pp-tab-headers.js). The Library and Settings tabs share #sidebar-header; the
+   retro layout (no tab bar, no data-pl-view) follows the Library choice. Playlists and Pendulum only hide the title,
+   so the Select button and the next-alarm pill stay. */
+body.pp-th-library-head[data-pl-view="library"] #sidebar-header,
+body.pp-th-library-head:not([data-pl-view]) #sidebar-header,
+body.pp-th-settings-head[data-pl-view="settings"] #sidebar-header{ display:none !important; }
+body.pp-th-library-games[data-pl-view="library"] #sidebar-header .pp-games-btn,
+body.pp-th-library-games:not([data-pl-view]) #sidebar-header .pp-games-btn,
+body.pp-th-settings-games[data-pl-view="settings"] #sidebar-header .pp-games-btn{ display:none !important; }
+body.pp-th-playlists-head[data-pl-view="playlists"] .ph-pl-titlebar .ph-app-title{ visibility:hidden; }
+body.pp-th-pendulum-head .ppp-h > div:first-child{ display:none; }
+/* the switches */
+#tab-headers-section .th-row{ display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:4px 16px; padding:6px 0; }
+#tab-headers-section .th-row .settings-row-text{ min-width:0; }
+#tab-headers-section .th-opt{ display:flex; align-items:center; gap:6px; font-size:13px; white-space:nowrap; flex-shrink:0; }
+#tab-headers-section .th-none{ visibility:hidden; }
+#downloads-section .dl-row{ margin-top:8px; }
+#downloads-section .dl-btn{ flex-shrink:0; padding:8px 12px; }
+#downloads-section .dl-btn.danger{ color:#ff6b6b; }
+#downloads-section .dl-all{ display:flex; justify-content:flex-end; margin-top:10px; }
+#downloads-section .dl-msg{ margin-top:4px; }

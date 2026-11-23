@@ -778,6 +778,40 @@ public class OnnxSeparatorPlugin extends Plugin {
         call.resolve();
     }
 
+    /**
+     * Settings, Downloads: every file in the models folder with its size, so the page can show what is installed
+     * (models, half-finished downloads ending in .part, and NPU caches ending in .qnn.onnx) and how much space is left.
+     */
+    @PluginMethod
+    public void listModels(PluginCall call) {
+        File dir = new File(getContext().getFilesDir(), "models");
+        dir.mkdirs();
+        com.getcapacitor.JSArray a = new com.getcapacitor.JSArray();
+        File[] fs = dir.listFiles();
+        if (fs != null) for (File f : fs) {
+            if (!f.isFile()) continue;
+            JSObject o = new JSObject();
+            o.put("name", f.getName());
+            o.put("bytes", f.length());
+            a.put(o);
+        }
+        JSObject r = new JSObject();
+        r.put("files", a);
+        r.put("free", dir.getUsableSpace());
+        call.resolve(r);
+    }
+
+    /** Deletes one file from the models folder by its file name (a .part leftover or an NPU cache). Nothing outside it. */
+    @PluginMethod
+    public void removeRaw(PluginCall call) {
+        String name = call.getString("name");
+        if (name == null || name.isEmpty() || name.contains("/") || name.contains("\\") || name.startsWith(".")) {
+            call.reject("bad name"); return;
+        }
+        File f = new File(new File(getContext().getFilesDir(), "models"), name);
+        call.resolve(new JSObject().put("deleted", f.isFile() && f.delete()));
+    }
+
     @PluginMethod
     public void unload(PluginCall call) {
         String id = call.getString("id");

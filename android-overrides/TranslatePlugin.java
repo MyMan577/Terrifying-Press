@@ -9,6 +9,8 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 import com.google.android.gms.tasks.Tasks;
 import com.google.mlkit.common.model.DownloadConditions;
+import com.google.mlkit.common.model.RemoteModelManager;
+import com.google.mlkit.nl.translate.TranslateRemoteModel;
 import com.google.mlkit.nl.languageid.LanguageIdentification;
 import com.google.mlkit.nl.translate.TranslateLanguage;
 import com.google.mlkit.nl.translate.Translation;
@@ -84,5 +86,38 @@ public class TranslatePlugin extends Plugin {
     @Override
     protected void handleOnDestroy() {
         synchronized (lock) { if (translator != null) { translator.close(); translator = null; } }
+    }
+
+    // ---------- Settings, Downloads: the language packs on the phone ----------
+    /** Resolves {packs: ["en", "es", ...]}: the translation language packs downloaded on this phone. */
+    @PluginMethod
+    public void listPacks(final PluginCall call) {
+        new Thread(() -> {
+            try {
+                java.util.Set<TranslateRemoteModel> ms = Tasks.await(RemoteModelManager.getInstance().getDownloadedModels(TranslateRemoteModel.class));
+                JSArray a = new JSArray();
+                for (TranslateRemoteModel m : ms) a.put(m.getLanguage());
+                JSObject r = new JSObject(); r.put("packs", a); call.resolve(r);
+            } catch (Exception e) {
+                call.reject(e.getMessage() == null ? "could not list language packs" : e.getMessage());
+            }
+        }).start();
+    }
+
+    /** Deletes one language pack {lang}. It downloads again the next time that language is translated. */
+    @PluginMethod
+    public void deletePack(final PluginCall call) {
+        final String code = call.getString("lang", "");
+        new Thread(() -> {
+            try {
+                String l = lang(code);
+                if (l == null) throw new IllegalArgumentException("unknown language " + code);
+                synchronized (lock) { if (translator != null) { translator.close(); translator = null; pair = null; } }
+                Tasks.await(RemoteModelManager.getInstance().deleteDownloadedModel(new TranslateRemoteModel.Builder(l).build()));
+                call.resolve();
+            } catch (Exception e) {
+                call.reject(e.getMessage() == null ? "could not delete the language pack" : e.getMessage());
+            }
+        }).start();
     }
 }
