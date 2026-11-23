@@ -6,6 +6,7 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.WebView;
 
+import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -121,6 +122,42 @@ public class GameModePlugin extends Plugin {
                 call.resolve();
             } catch (Exception e) {
                 call.reject(e.getMessage() == null ? "game mode exit failed" : e.getMessage());
+            }
+        });
+    }
+
+    // ---------- Clipboard for the games ----------
+    // Games were written for browsers and copy/paste level codes with navigator.clipboard. Inside the app's game frame
+    // reading is not allowed at all (WebView has no clipboard-read permission) and writing can fail, so the frame's
+    // shim (pp-games.js) comes here. Reading is fine while the app is on screen, which it is whenever a game asks.
+    @PluginMethod
+    public void clipRead(final PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            try {
+                android.content.ClipboardManager cm = (android.content.ClipboardManager) getContext().getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                String text = "";
+                if (cm != null && cm.hasPrimaryClip() && cm.getPrimaryClip() != null && cm.getPrimaryClip().getItemCount() > 0) {
+                    CharSequence t = cm.getPrimaryClip().getItemAt(0).coerceToText(getContext());
+                    if (t != null) text = t.toString();
+                }
+                JSObject r = new JSObject(); r.put("text", text); call.resolve(r);
+            } catch (Exception e) {
+                call.reject(e.getMessage() == null ? "clipboard read failed" : e.getMessage());
+            }
+        });
+    }
+
+    @PluginMethod
+    public void clipWrite(final PluginCall call) {
+        final String text = call.getString("text", "");
+        getActivity().runOnUiThread(() -> {
+            try {
+                android.content.ClipboardManager cm = (android.content.ClipboardManager) getContext().getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+                if (cm == null) throw new IllegalStateException("no clipboard");
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("Press Play", text));
+                call.resolve();
+            } catch (Exception e) {
+                call.reject(e.getMessage() == null ? "clipboard write failed" : e.getMessage());
             }
         });
     }

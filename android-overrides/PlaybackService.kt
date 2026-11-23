@@ -73,6 +73,10 @@ class PlaybackService : MediaLibraryService() {
         private set
     /** Audio quality and decoding choices this player was built with (Settings; read once, when the service starts). */
     var hiRes = false
+    /** Settings, Upconvert 16-bit audio: 16-bit sources also go through the float chain (see HiResFxSink). */
+    var up16 = false
+    var hiSink: HiResFxSink? = null
+        private set
         private set
     /** Settings, Audio decoder, as this player was built with it: "auto", "soft" (software only) or "hard" (hardware only). */
     var audioDecoderMode = "auto"
@@ -125,10 +129,11 @@ class PlaybackService : MediaLibraryService() {
         // Settings > Audio quality and decoding. Applied when the service starts, so a change needs an app restart.
         val opts = getSharedPreferences("pp_audio", MODE_PRIVATE)
         hiRes = opts.getBoolean("hiRes", false)
+        up16 = opts.getBoolean("up16", false)
         val audioDec = opts.getString("adec", "auto") ?: "auto"
         audioDecoderMode = audioDec
         val videoDec = opts.getString("vdec", "auto") ?: "auto"
-        val floatOut = hiRes
+        val floatOut = hiRes || up16
 
         val renderers = object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
@@ -142,7 +147,7 @@ class PlaybackService : MediaLibraryService() {
                 .setEnableFloatOutput(floatOut)
                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams || floatOut)
                 .setAudioProcessors(arrayOf(fx))
-                .build(), fx), fx).also { vizClock = it }
+                .build(), fx, up16).also { hiSink = it }, fx).also { vizClock = it }
 
             /**
              * The phone's own audio decoders, then the FFmpeg ones (Media3's FFmpeg extension) for what the phone has
@@ -271,8 +276,40 @@ class PlaybackService : MediaLibraryService() {
     /** The player's volume: your volume, turned down while another app talks (duck), and faded in during a crossfade. */
     private fun applyVolume() {
         if (!::player.isInitialized) return
-        player.volume = userVolume * duckMul * xfIn
-        tail?.volume = userVolume * duckMul * xfOut
+        player.volume = userVolume * duckMul * xfIn * sleepMul
+        tail?.volume = userVolume * duckMul * xfOut * sleepMul
+    }
+
+    // ---------- sleep timer ----------
+    // The page keeps its own timer too, but with the screen off Android stops running the page's timers while this
+    // service carries on playing, so the music never stopped. The deadline and the fade-out live here instead; the page
+    // only sets, extends and clears them (NativePlayerPlugin.setSleep). elapsedRealtime keeps counting in deep sleep.
+    private var sleepAt = 0L          // SystemClock.elapsedRealtime() when playback stops; 0 = off
+    private var sleepFadeMs = 0L
+    private var sleepMul = 1f
+    private val sleepTick = object : Runnable {
+        override fun run() {
+            if (sleepAt == 0L || !::player.isInitialized) return
+            val left = sleepAt - android.os.SystemClock.elapsedRealtime()
+            if (left <= 0) {
+                sleepAt = 0L
+                cancelCrossfade()
+                player.pause()
+                sleepMul = 1f; applyVolume()   // back to full volume for the next time you press play
+                return
+            }
+            val m = if (sleepFadeMs > 0 && left < sleepFadeMs) left.toFloat() / sleepFadeMs else 1f
+            if (m != sleepMul) { sleepMul = m; applyVolume() }
+            main.postDelayed(this, if (sleepFadeMs > 0 && left <= sleepFadeMs + 1000) 200L else minOf(left, 1000L))
+        }
+    }
+    /** Stop playback [ms] from now, fading out over the last [fadeMs]. ms <= 0 turns the timer off. */
+    fun setSleep(ms: Long, fadeMs: Long) {
+        main.removeCallbacks(sleepTick)
+        sleepAt = if (ms > 0) android.os.SystemClock.elapsedRealtime() + ms else 0L
+        sleepFadeMs = fadeMs.coerceAtLeast(0L)
+        if (sleepAt == 0L) { if (sleepMul != 1f) { sleepMul = 1f; applyVolume() } }
+        else main.post(sleepTick)
     }
     private var duckReq: Any? = null   // an AudioFocusRequest (Android 8+)
     private fun ownDuckFocus(on: Boolean) {
@@ -463,6 +500,7 @@ class PlaybackService : MediaLibraryService() {
     override fun onDestroy() {
         instance = null
         cancelCrossfade()
+        main.removeCallbacks(sleepTick)
         main.removeCallbacks(focusTick)
         ownDuckFocus(false)
         if (Build.VERSION.SDK_INT >= 31) (modeListener as? AudioManager.OnModeChangedListener)?.let { try { audioManager.removeOnModeChangedListener(it) } catch (_: Exception) {} }

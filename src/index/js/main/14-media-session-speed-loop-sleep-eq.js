@@ -400,6 +400,16 @@
     if (typeof audioLeadActive !== 'undefined' && audioLeadActive) audioLeadApplyGain();
   }
   function sleepUnfade(){ if (sleepFaded){ sleepFaded = false; sleepSetGain(1); } }
+  // A timed stop is also handed to the native playback service: with the screen off Android stops running this page's
+  // timers while the music plays on, so the timer below never fired. The service stops (and fades) the native player;
+  // this page's timer still updates the label, and stops a web-played video, whenever it runs.
+  let sleepNative = false;
+  function sleepSyncNative(){
+    try {
+      if (window.PPNative && PPNative.sleep)
+        sleepNative = PPNative.sleep(sleepTimer.mode === 'duration' ? Math.max(1, sleepTimer.endAt - Date.now()) : 0, sleepFade * 1000) && sleepTimer.mode === 'duration';
+    } catch(e){ sleepNative = false; if (typeof ppCaught === "function") ppCaught(e); }
+  }
   function sleepStop(){
     cancelResumeOnReturn();   // stopped on purpose: must not restart when the app comes back to the foreground
     audioEl.pause();
@@ -413,6 +423,7 @@
   function clearSleepTimer(){
     if (sleepTimer.intervalId) clearInterval(sleepTimer.intervalId);
     sleepTimer = { mode: 'off', endAt: null, intervalId: null };
+    sleepSyncNative();
     sleepLabel.textContent = 'Sleep';
     sleepBtn.classList.remove('toggled');
     sleepUnfade();
@@ -439,8 +450,9 @@
       const mins = Math.floor(remaining/60000), secs = Math.floor((remaining%60000)/1000).toString().padStart(2,'0');
       sleepLabel.textContent = mins >= 60 ? Math.floor(mins / 60) + 'h ' + String(mins % 60).padStart(2, '0') : `${mins}:${secs}`;
     }
-    // fade out over the last part
-    if (sleepFade > 0 && isPlaying && remaining <= sleepFade * 1000){ sleepFaded = true; sleepSetGain(Math.max(0, remaining / (sleepFade * 1000))); }
+    // fade out over the last part (the native service fades its own player; doing it here too would fade twice)
+    const fadeHere = !(sleepNative && window.PPNative && PPNative.active());
+    if (fadeHere && sleepFade > 0 && isPlaying && remaining <= sleepFade * 1000){ sleepFaded = true; sleepSetGain(Math.max(0, remaining / (sleepFade * 1000))); }
     else if (sleepFaded && remaining > sleepFade * 1000) sleepUnfade();
     if (sleepTimer.mode === 'duration' && remaining <= 0) sleepStop();
     paintSleepPanel();
@@ -452,6 +464,7 @@
     if (mode === 'duration') sleepTimer.endAt = extra;
     if (mode === 'tracks'){ sleepTimer.left = extra; sleepTimer.lastId = currentIndex !== -1 && tracks[currentIndex] ? tracks[currentIndex].dbId : null; }
     sleepBtn.classList.add('toggled');
+    sleepSyncNative();
     tickSleepLabel();
     sleepTimer.intervalId = setInterval(tickSleepLabel, 250);
     syncAudioLoop();   // "end of track" needs the song to really end, so it may not loop
@@ -488,7 +501,7 @@
       if (val !== 'off') sleepDropdown.classList.remove('open');
       return;
     }
-    if (b.dataset.ext && sleepTimer.mode === 'duration'){ sleepTimer.endAt += +b.dataset.ext * 60000; sleepUnfade(); tickSleepLabel(); return; }
+    if (b.dataset.ext && sleepTimer.mode === 'duration'){ sleepTimer.endAt += +b.dataset.ext * 60000; sleepUnfade(); sleepSyncNative(); tickSleepLabel(); return; }
   });
   document.getElementById('sleep-custom-go').addEventListener('click', () => {
     const n = parseInt(document.getElementById('sleep-custom').value, 10);
@@ -506,6 +519,7 @@
     sleepFade = isFinite(v) && v > 0 ? Math.min(900, Math.round(v)) : 0;
     try { localStorage.setItem(SLEEP_FADE_KEY, String(sleepFade)); } catch(x){ if (typeof ppCaught === "function") ppCaught(x); }
     if (!sleepFade) sleepUnfade();
+    if (sleepTimer.mode === 'duration') sleepSyncNative();
     e.target.blur(); paintSleepPanel();
   });
   document.getElementById('sleep-tracks-go').addEventListener('click', () => {
