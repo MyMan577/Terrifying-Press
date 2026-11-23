@@ -532,6 +532,13 @@ class NativePlayerPlugin : Plugin() {
     }
     @PluginMethod fun cancelCrossfade(call: PluginCall) = withSvc(call) { it.cancelCrossfade(); call.resolve() }
 
+    /** Sleep timer: stop playback { ms } from now, fading out over the last { fadeMs }. ms 0 = off. See PlaybackService. */
+    @PluginMethod fun setSleep(call: PluginCall) {
+        val ms = call.data.optLong("ms", 0L).coerceIn(0L, 24L * 3600_000L)
+        val fade = call.data.optLong("fadeMs", 0L).coerceIn(0L, 900_000L)
+        withSvc(call) { it.setSleep(ms, fade); call.resolve() }
+    }
+
     /** Queue the item JS will play next so ExoPlayer advances by itself (gapless, works with the screen off). */
     @PluginMethod
     fun setNext(call: PluginCall) {
