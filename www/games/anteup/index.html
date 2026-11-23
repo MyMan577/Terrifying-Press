@@ -931,16 +931,87 @@ body.landscape .pack-spacer { display: none; }
 .shop-detail-backdrop { z-index: 95; }
 
 body.landscape .pack-overlay {
-  display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto auto auto; column-gap: 16px; align-items: center;
+  display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto auto; column-gap: 16px; align-items: center; align-content: start; grid-template-rows: max-content max-content max-content;
   padding: 10px 16px max(8px, env(safe-area-inset-bottom));
 }
 body.landscape .pack-header { grid-column: 1; grid-row: 1; max-width: none; padding-right: 0; }
 body.landscape .pack-overlay .gear-shelf { grid-column: 2; grid-row: 1; margin: 0 56px 0 0; width: auto; max-width: none; }
 body.landscape .pack-stage { grid-column: 1 / -1; grid-row: 2; max-width: 760px; justify-self: center; margin-top: 18px; padding: 20px 8px 12px; }
 body.landscape .pack-fan { min-height: 0; }
-body.landscape .pack-info { grid-column: 1 / -1; grid-row: 3; justify-self: center; margin-top: 8px; min-height: 0; padding: 6px 12px; }
-body.landscape .pack-actions { grid-column: 1 / -1; grid-row: 4; justify-self: center; margin-top: 8px; }
+body.landscape .pack-info { grid-column: 1; grid-row: 3; justify-self: end; width: 100%; margin-top: 8px; min-height: 56px; padding: 5px 12px; }
+body.landscape .pack-actions { grid-column: 2; grid-row: 3; margin-top: 8px; width: 300px; margin-right: 56px; }
+body.landscape .pack-info-desc { font-size: 11px; line-height: 1.3; }
+body.landscape .pack-info-name { font-size: 15px; }
 body.landscape .pack-actions .bbtn { min-height: 40px; padding: 4px; }
+
+/* ----- opening: shake, tear, flash, deal ----- */
+.pack-opening { position: absolute; inset: 0; z-index: 4; pointer-events: none; display: flex; align-items: center; justify-content: center; }
+.po-pack { position: relative; width: 132px; height: 132px; animation: poShake .62s ease-in-out var(--t) both; }
+.po-top, .po-bottom { position: absolute; inset: 0; }
+.po-top svg, .po-bottom svg { width: 100%; height: 100%; display: block; }
+.po-top { clip-path: inset(0 0 74% 0); animation: poTop 1.5s cubic-bezier(.3,.6,.4,1) var(--t) both; }
+.po-bottom { clip-path: inset(26% 0 0 0); animation: poBottom 1.5s cubic-bezier(.5,0,.7,.4) var(--t) both; }
+@keyframes poShake {
+  0% { transform: scale(.3) rotate(-8deg); opacity: 0; }
+  22% { transform: scale(1.08) rotate(3deg); opacity: 1; }
+  34% { transform: scale(1) rotate(-4deg); }
+  46% { transform: scale(1.02) rotate(5deg); }
+  58% { transform: scale(1) rotate(-6deg); }
+  70% { transform: scale(1.04) rotate(7deg); }
+  82% { transform: scale(1) rotate(-3deg); }
+  100% { transform: scale(1.06) rotate(0); }
+}
+@keyframes poTop {
+  0%, 40% { transform: none; opacity: 1; }
+  62% { transform: translate(30px, -70px) rotate(28deg); opacity: 1; }
+  80%, 100% { transform: translate(70px, -150px) rotate(70deg); opacity: 0; }
+}
+@keyframes poBottom {
+  0%, 44% { transform: none; opacity: 1; }
+  70% { transform: translateY(26px) scale(.92); opacity: .9; }
+  100% { transform: translateY(160px) scale(.7) rotate(-10deg); opacity: 0; }
+}
+.po-flash {
+  position: absolute; width: 260px; height: 260px; border-radius: 50%;
+  background: radial-gradient(circle, #fff 0%, color-mix(in srgb, var(--pc, #C9A227) 70%, #fff) 25%, transparent 65%);
+  opacity: 0; animation: poFlash 1.5s ease-out var(--t) both;
+}
+@keyframes poFlash { 0%, 38% { opacity: 0; transform: scale(.3); } 46% { opacity: .95; transform: scale(1); } 100% { opacity: 0; transform: scale(1.6); } }
+.po-spark {
+  position: absolute; width: 8px; height: 8px; border-radius: 2px; transform: rotate(45deg);
+  background: #FFE28A; box-shadow: 0 0 8px #FFD45E; opacity: 0;
+  animation: poSpark 1.5s ease-out var(--t) both;
+}
+@keyframes poSpark {
+  0%, 40% { opacity: 0; transform: rotate(var(--a)) translateX(0) rotate(45deg) scale(.4); }
+  48% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(var(--a)) translateX(var(--d)) rotate(45deg) scale(1); }
+}
+.pack-stage.is-opening .pack-torn { animation-delay: calc(var(--t) + 900ms); }
+.pack-stage.is-opening .pack-hand { animation: poHand 1.5s ease var(--t) both; }
+@keyframes poHand { 0%, 70% { opacity: 0; transform: translateY(14px); } 100% { opacity: 1; transform: none; } }
+.pack-stage.is-opening .pack-rays { animation: packSpin 40s linear infinite, poRays 1.5s ease-out var(--t) both; }
+@keyframes poRays { 0%, 40% { opacity: .2; } 50% { opacity: 1; } 100% { opacity: .5; } }
+
+/* ----- spectral cards and the hand they work on ----- */
+.spectral-face { display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 8px 12px #000b); }
+.spectral-face svg { width: 100%; height: 100%; display: block; }
+.kind-spectral.picked .pchoice-face { box-shadow: none; filter: drop-shadow(0 0 10px #9fb8ff) drop-shadow(0 0 3px #FFD45E); }
+.pack-hand { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; margin-top: 16px; width: 100%; }
+.pack-hand-cards { display: flex; justify-content: center; padding: 4px 18px 0 0; }
+.pack-hand-card { width: var(--hw, 40px); flex: 0 0 var(--hw, 40px); height: 72px; overflow: visible; }
+.pack-hand-card .pack-card { box-shadow: -3px 3px 8px #0008; }
+.pack-info-note { font-size: 14px; color: #FFD45E; }
+.pack-toast {
+  position: fixed; left: 50%; top: 42%; z-index: 120; transform: translate(-50%, -50%); pointer-events: none;
+  font-family: 'Fraunces', Georgia, serif; font-size: 17px; font-weight: 600; color: #FFE9A8; text-align: center; max-width: 86vw;
+  padding: 10px 18px; border-radius: 12px; background: #1a1630f0; border: 2px solid #0a0f0c; box-shadow: 0 0 0 2px #8f9bff88, 0 0 30px #5a6fd888;
+  animation: packToast 2.4s ease both;
+}
+@keyframes packToast { 0% { opacity: 0; transform: translate(-50%, -30%) scale(.9); } 12%, 80% { opacity: 1; transform: translate(-50%, -50%); } 100% { opacity: 0; transform: translate(-50%, -70%); } }
+body.landscape .pack-hand { margin-top: 8px; }
+body.landscape .pack-hand-card { height: 58px; }
+body.landscape .pack-hand-card .pack-card { zoom: .66 !important; }
 
 /* ============================== CARD NOTE (double tap) ============================== */
 .card-note {
@@ -2503,14 +2574,31 @@ const LEGENDARY_DEFS = [
 ];
 
 // Booster packs: bought in the shop, opened on the spot, pick one.
-const PACK_DEFS = [
-  { id: "artifactPack", name: "Artifact Pack", desc: "Choose 1 of 3 artifacts", price: 6, color: "#C9A227", type: "pack", choices: 3 },
-  { id: "itemPack", name: "Item Pack", desc: "Choose 1 of 3 items", price: 4, color: "#7FBA9A", type: "pack", choices: 3 },
-  { id: "cardPack", name: "Card Pack", desc: "Choose 1 of 4 playing cards to add to your deck", price: 4, color: "#D9CFB5", type: "pack", choices: 4 },
-  { id: "ornatePack", name: "Ornate Pack", desc: "Choose 1 of 3 playing cards, each with a sleeve and a stamp", price: 6, color: "#B05FA0", type: "pack", choices: 3 },
-  { id: "celestialPack", name: "Celestial Pack", desc: "Choose 1 of 3 Star Charts", price: 4, color: "#4a6fb3", type: "pack", choices: 3 },
-  { id: "legendPack", name: "Legend Pack", desc: "Choose 1 of 2 legendary artifacts", price: 12, color: "#E8743B", type: "pack", choices: 2, rare: true },
+/* Pack sizes: every pack but the Legend Pack also comes as a Major
+   (choose 1 of 5) and a Mega (choose 2 of 5). */
+const PACK_SIZES = {
+  major: { label: "Major", extra: 2, picks: 1, price: 2 },
+  mega: { label: "Mega", extra: 2, picks: 2, price: 4 },
+};
+const PACK_BASES = [
+  { id: "artifactPack", name: "Artifact Pack", what: "artifacts", price: 6, color: "#C9A227", choices: 3 },
+  { id: "itemPack", name: "Item Pack", what: "items", price: 4, color: "#7FBA9A", choices: 3 },
+  { id: "cardPack", name: "Card Pack", what: "playing cards for your deck", price: 4, color: "#D9CFB5", choices: 4 },
+  { id: "ornatePack", name: "Ornate Pack", what: "playing cards, each with a sleeve and a stamp", price: 6, color: "#B05FA0", choices: 3 },
+  { id: "celestialPack", name: "Celestial Pack", what: "Star Charts", price: 4, color: "#4a6fb3", choices: 3 },
+  { id: "spectralPack", name: "Spectral Pack", what: "Spectral cards, used on your hand right away", price: 4, color: "#5a6fd8", choices: 2, scarce: true },
+  { id: "legendPack", name: "Legend Pack", what: "legendary artifacts", price: 12, color: "#E8743B", choices: 2, rare: true },
 ];
+const PACK_DEFS = PACK_BASES.flatMap((b) => {
+  const base = { ...b, type: "pack", picks: 1, base: b.id };
+  base.desc = `Choose 1 of ${b.choices} ${b.what}`;
+  if (b.rare) return [base];
+  return [base, ...Object.entries(PACK_SIZES).map(([size, z]) => {
+    const v = { ...base, id: `${b.id}_${size}`, size, name: `${z.label} ${b.name}`, choices: b.choices + z.extra, picks: z.picks, price: b.price + z.price };
+    v.desc = `Choose ${v.picks} of ${v.choices} ${b.what}`;
+    return v;
+  })];
+});
 
 const SLEEVE_INFO = {
   sparkler: "+20 Chips every time it scores.",
@@ -3322,6 +3410,174 @@ function rollVoucher() {
   return pool.length ? { ...randomOf(pool) } : null;
 }
 
+/* ============================== SPECTRAL CARDS ==============================
+   Found only in Spectral Packs and used the moment you pick them. A Spectral
+   Pack shows a hand of your cards (your real hand mid-round, otherwise 8
+   drawn from the deck) and the spectral works on that hand. Each one has a
+   big upside paid for with something permanent. */
+const SPECTRAL_DEFS = [
+  { id: "kinfolk", name: "Kinfolk", desc: "Destroys 1 random card in your hand, adds 3 stamped face cards to your deck", color: "#8e7cc3" },
+  { id: "bonePact", name: "Bone Pact", desc: "Destroys 1 random card in your hand, adds 2 sleeved Aces to your deck", color: "#cfc6b0" },
+  { id: "chorus", name: "Chorus", desc: "Destroys 1 random card in your hand, adds 4 stamped number cards to your deck", color: "#5fa8c9" },
+  { id: "paupersPact", name: "Pauper's Pact", desc: "Gives you a random artifact (needs room), and your money drops to $0", color: "#8a96a3" },
+  { id: "seance", name: "Séance", desc: "Every card in your hand becomes the same random rank. −1 hand size for good", color: "#7E57C2" },
+  { id: "phantomLimb", name: "Phantom Limb", desc: "+1 artifact slot. −1 hand size for good", color: "#6fb3a8" },
+  { id: "pyre", name: "Pyre", desc: "Destroys 5 random cards in your hand, gain $20", color: "#E8743B" },
+  { id: "effigy", name: "Effigy", desc: "Copies a random artifact you own. Every other artifact is destroyed", color: "#b0805a" },
+  { id: "shroud", name: "Shroud", desc: "3 random cards in your hand each get a random sleeve and stamp", color: "#9fb3c6" },
+  { id: "exorcism", name: "Exorcism", desc: "Strips every sleeve and stamp in your hand, gain $4 for each one", color: "#e6eef2" },
+  { id: "revenant", name: "Revenant", desc: "The last artifact you sold comes back (needs room)", color: "#5fbf86" },
+  { id: "hollowCrown", name: "Hollow Crown", desc: "+1 item slot for good. Every item you hold is destroyed", color: "#C9A227" },
+  { id: "wispLantern", name: "Wisp Lantern", desc: "Levels up your most played hand twice. −1 discard for good", color: "#7fd0e0" },
+  { id: "soulShard", name: "Soul Shard", desc: "Gives you a random legendary artifact (needs room)", color: "#F2A65A", rare: true },
+  { id: "eventHorizon", name: "Event Horizon", desc: "Levels up every hand", color: "#24325c", rare: true },
+].map((d) => ({ type: "item", spectral: true, price: 4, ...d }));
+
+// Spectral choices: the two rare ones turn up much less often.
+function pickSpectrals(n) {
+  const out = [];
+  const pool = [...SPECTRAL_DEFS];
+  while (out.length < n && pool.length) {
+    const weights = pool.map((d) => (d.rare ? 0.12 : 1));
+    let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+    let i = 0;
+    while (i < pool.length - 1 && r > weights[i]) r -= weights[i++];
+    out.push({ ...pool[i] });
+    pool.splice(i, 1);
+  }
+  return out;
+}
+
+// ----- cards a spectral works on -----
+function allRunCards() {
+  return [...state.deck, ...(state.usedCards || []), ...state.hand];
+}
+// The hand shown in a Spectral Pack, as card objects.
+function packHandCards() {
+  const po = state.packOpen;
+  if (!po || !po.hand) return [];
+  const all = allRunCards();
+  return po.hand.map((id) => all.find((c) => c.id === id)).filter(Boolean);
+}
+function packHandIds() {
+  if (state.overlay === "playing") return state.hand.map((c) => c.id);
+  return shuffleArray(allRunCards()).slice(0, BASE_HAND_SIZE).map((c) => c.id);
+}
+// Swap cards (by id) for new versions everywhere they live.
+function mapRunCards(ids, fn) {
+  const set = new Set(ids);
+  const m = (arr) => arr.map((c) => (set.has(c.id) ? fn(c) : c));
+  state.deck = m(state.deck);
+  state.usedCards = m(state.usedCards || []);
+  state.hand = m(state.hand);
+}
+function destroyRunCards(ids) {
+  const set = new Set(ids);
+  noteDestroyed(allRunCards().filter((c) => set.has(c.id)));
+  state.deck = state.deck.filter((c) => !set.has(c.id));
+  state.usedCards = (state.usedCards || []).filter((c) => !set.has(c.id));
+  state.hand = state.hand.filter((c) => !set.has(c.id));
+  state.selected = (state.selected || []).filter((id) => !set.has(id));
+  if (state.packOpen && state.packOpen.hand) state.packOpen.hand = state.packOpen.hand.filter((id) => !set.has(id));
+}
+function addRunCards(cards) {
+  state.deck = shuffleArray([...state.deck, ...cards]);
+  noteAdded(cards.length);
+}
+function randomCharmDef(pool) {
+  const owned = new Set(state.charms.map((c) => c.id));
+  const free = pool.filter((d) => !owned.has(d.id));
+  return free.length ? randomOf(free) : null;
+}
+
+// Runs a spectral card. Returns a short line saying what happened.
+function useSpectral(def) {
+  const hand = packHandCards();
+  const ids = hand.map((c) => c.id);
+  const pickIds = (n) => shuffleArray(ids).slice(0, n);
+  const charmRoom = state.charms.length < state.charmSlots;
+  switch (def.id) {
+    case "kinfolk":
+      destroyRunCards(pickIds(1));
+      addRunCards(Array.from({ length: 3 }, () => makeCard(randomOf(FACE_RANKS), randomOf(SUIT_KEYS), { stamp: randomOf(STAMP_KINDS) })));
+      return "3 face cards joined your deck";
+    case "bonePact":
+      destroyRunCards(pickIds(1));
+      addRunCards(Array.from({ length: 2 }, () => makeCard("A", randomOf(SUIT_KEYS), { sleeve: randomOf(SLEEVE_KINDS) })));
+      return "2 Aces joined your deck";
+    case "chorus":
+      destroyRunCards(pickIds(1));
+      addRunCards(Array.from({ length: 4 }, () => makeCard(randomOf(RANKS.slice(1, 10)), randomOf(SUIT_KEYS), { stamp: randomOf(STAMP_KINDS) })));
+      return "4 number cards joined your deck";
+    case "paupersPact": {
+      const d = charmRoom && randomCharmDef(CHARM_DEFS);
+      if (d) state.charms = [...state.charms, { ...d, uid: newUid() }];
+      state.money = 0;
+      return d ? `${d.name} is yours. Your purse is empty` : "No room for an artifact. Your purse is empty";
+    }
+    case "seance": {
+      const r = randomOf(RANKS);
+      mapRunCards(ids, (c) => ({ ...c, rank: r }));
+      state.permHandSize = (state.permHandSize || 0) - 1;
+      return `Every card became ${["A", "8"].includes(r) ? "an" : "a"} ${r}`;
+    }
+    case "phantomLimb":
+      state.charmSlots += 1;
+      state.permHandSize = (state.permHandSize || 0) - 1;
+      return "+1 artifact slot";
+    case "pyre":
+      destroyRunCards(pickIds(5));
+      state.money += 20;
+      return "Burned 5 cards for $20";
+    case "effigy": {
+      if (!state.charms.length) return "You had no artifacts to copy";
+      const keep = randomOf(state.charms);
+      state.charms = [keep, { ...keep, uid: newUid() }];
+      return `Two of ${keep.name} remain`;
+    }
+    case "shroud":
+      mapRunCards(pickIds(3), (c) => ({ ...c, sleeve: randomOf(SLEEVE_KINDS), stamp: randomOf(STAMP_KINDS) }));
+      return "3 cards were shrouded";
+    case "exorcism": {
+      let n = 0;
+      mapRunCards(ids, (c) => { n += (c.sleeve ? 1 : 0) + (c.stamp ? 1 : 0); return { ...c, sleeve: undefined, stamp: undefined }; });
+      state.money += n * 4;
+      return `Cast out ${n} for $${n * 4}`;
+    }
+    case "revenant": {
+      const c = state.lastSoldCharm;
+      if (!c || !charmRoom) return c ? "No room for it" : "You haven't sold an artifact yet";
+      state.charms = [...state.charms, { ...c, uid: newUid() }];
+      state.lastSoldCharm = null;
+      return `${c.name} came back`;
+    }
+    case "hollowCrown":
+      state.items = [];
+      state.itemSlots += 1;
+      return "+1 item slot";
+    case "wispLantern": {
+      const counts = state.handTypeCounts || {};
+      const fav = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || "High Card";
+      state.handLevels = { ...(state.handLevels || {}), [fav]: handLevel(fav) + 2 };
+      state.permDiscards = (state.permDiscards || 0) - 1;
+      return `${fav} went up 2 levels`;
+    }
+    case "soulShard": {
+      const d = charmRoom && randomCharmDef(LEGENDARY_DEFS);
+      if (d) state.charms = [...state.charms, { ...d, uid: newUid() }];
+      return d ? `${d.name} is yours` : "No room for a legend";
+    }
+    case "eventHorizon": {
+      const lv = { ...(state.handLevels || {}) };
+      Object.keys(HAND_TABLE).forEach((h) => { lv[h] = handLevel(h) + 1; });
+      state.handLevels = lv;
+      return "Every hand went up a level";
+    }
+  }
+  return "";
+}
+
+
 // Chance-based effects: Horseshoe doubles the odds, Lucky Break makes them certain.
 function chanceMultiplier() {
   if (state.luckyRound) return 1000;
@@ -3726,7 +3982,7 @@ function getExtraPlays(items) {
 function getExtraDiscards(items) {
   const extra = [...items, ...state.charms].filter((i) => i.effect.type === "extraDiscards").reduce((s, i) => s + i.effect.value, 0);
   const voucherExtra = state.vouchers.filter((v) => v.effect.type === "extraDiscards").reduce((s, v) => s + v.effect.value, 0);
-  return Math.max(-4, extra + voucherExtra);
+  return Math.max(-4, extra + voucherExtra + (state.permDiscards || 0));
 }
 function getExtraHandSize(items) {
   return [...items, ...state.charms].filter((i) => i.effect.type === "extraHandSize").reduce((s, i) => s + i.effect.value, 0);
@@ -3918,7 +4174,7 @@ function getHandSize() {
   const voucherExtra = state.vouchers.filter((v) => v.effect.type === "extraHandSize").reduce((s, v) => s + v.effect.value, 0);
   const chainsReduction = state.charms.filter((c) => c.effect.type === "chainsMoneyPerHand").reduce((s, c) => s + c.effect.handSizeReduction, 0);
   const bossDelta = (state.bossBlind && state.bossBlind.handSizeDelta) || 0;
-  return Math.max(1, BASE_HAND_SIZE + extra + voucherExtra - chainsReduction + bossDelta + (state.roundHandSizeBonus || 0));
+  return Math.max(1, BASE_HAND_SIZE + extra + voucherExtra - chainsReduction + bossDelta + (state.roundHandSizeBonus || 0) + (state.permHandSize || 0));
 }
 
 function computeFanLayout() {
@@ -3979,6 +4235,10 @@ function startGame() {
   state.vouchers = [];
   state.voucherStock = [];
   state.voucherReady = false;
+  state.permHandSize = 0;
+  state.permDiscards = 0;
+  state.lastSoldCharm = null;
+  state.packOpen = null;
   state.shopStock = [];
   state.runMultiplier = 1;
   state.lastDestroyedItem = null;
@@ -4959,8 +5219,22 @@ function goToShop() {
 
   // Booster packs: two per visit (rerolling doesn't change them); a Legend
   // Pack turns up in a slot 12% of the time.
-  const commonPacks = PACK_DEFS.filter((p) => !p.rare);
-  state.packStock = [0, 1].map(() => ({ ...(Math.random() < 0.12 ? PACK_DEFS.find((p) => p.rare) : randomOf(commonPacks)) }));
+  // Spectral Packs are scarcer. Each pack is a Major 28% of the time and a
+  // Mega 12% of the time.
+  const commonBases = PACK_BASES.filter((p) => !p.rare);
+  const weights = commonBases.map((p) => (p.scarce ? 0.45 : 1));
+  const rollBase = () => {
+    let r = Math.random() * weights.reduce((a, b) => a + b, 0);
+    let i = 0;
+    while (i < weights.length - 1 && r > weights[i]) r -= weights[i++];
+    return commonBases[i].id;
+  };
+  state.packStock = [0, 1].map(() => {
+    if (Math.random() < 0.12) return { ...PACK_DEFS.find((p) => p.rare) };
+    const r = Math.random();
+    const id = rollBase() + (r < 0.12 ? "_mega" : r < 0.4 ? "_major" : "");
+    return { ...PACK_DEFS.find((p) => p.id === id) };
+  });
 
   state.overlay = "shop";
   saveGame();
@@ -4982,26 +5256,28 @@ function buyPack(index) {
 function openPack(packId) {
   const pack = PACK_DEFS.find((p) => p.id === packId);
   if (!pack) return;
+  const kind = pack.base || pack.id;
   const ringmaster = hasCharm("ringmasterDuplicates");
   const owned = new Set(state.charms.map((c) => c.id));
   const pickDefs = (pool, n) => shuffleArray(pool).slice(0, n).map((d) => ({ ...d }));
+  const n = pack.choices + state.vouchers.filter((v) => v.effect.type === "packExtraChoices" && v.effect.pack === kind).reduce((s, v) => s + v.effect.value, 0);
   let choices = [];
-  if (packId === "artifactPack") choices = pickDefs(CHARM_DEFS.filter((c) => ringmaster || !owned.has(c.id)), pack.choices);
-  if (packId === "itemPack") choices = pickDefs(ITEM_DEFS.filter((d) => !d.secret), pack.choices);
-  // secret hands' charts only once you've played that hand
-  const nChoices = pack.choices + state.vouchers.filter((v) => v.effect.type === "packExtraChoices" && v.effect.pack === packId).reduce((s, v) => s + v.effect.value, 0);
-  if (packId === "celestialPack") {
-    choices = pickDefs(ITEM_DEFS.filter((d) => d.chart && (!d.secret || (state.handTypeCounts || {})[d.effect.hand])), nChoices);
+  if (kind === "artifactPack") choices = pickDefs(CHARM_DEFS.filter((c) => ringmaster || !owned.has(c.id)), n);
+  if (kind === "itemPack") choices = pickDefs(ITEM_DEFS.filter((d) => !d.secret), n);
+  if (kind === "celestialPack") {
+    // secret hands' charts only once you've played that hand
+    choices = pickDefs(ITEM_DEFS.filter((d) => d.chart && (!d.secret || (state.handTypeCounts || {})[d.effect.hand])), n);
     // Clairvoyance: the chart for your most played hand is always in the pack.
     const counts = state.handTypeCounts || {};
     const fav = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
     const favChart = fav && voucherSum("chartFavourite") && ITEM_DEFS.find((d) => d.chart && d.effect.hand === fav);
     if (favChart && !choices.some((c) => c.id === favChart.id)) choices[0] = { ...favChart };
   }
-  if (packId === "legendPack") choices = pickDefs(LEGENDARY_DEFS.filter((c) => !owned.has(c.id)), pack.choices);
-  if (packId === "cardPack") choices = Array.from({ length: pack.choices }, () => makeCard(randomOf(RANKS), randomOf(SUIT_KEYS), Math.random() < 0.25 ? { stamp: randomOf(STAMP_KINDS) } : {}));
-  if (packId === "ornatePack") choices = Array.from({ length: pack.choices }, () => makeCard(randomOf(RANKS), randomOf(SUIT_KEYS), { sleeve: randomOf(SLEEVE_KINDS), stamp: randomOf(STAMP_KINDS) }));
-  state.packOpen = { id: packId, name: pack.name, choices };
+  if (kind === "spectralPack") choices = pickSpectrals(n);
+  if (kind === "legendPack") choices = pickDefs(LEGENDARY_DEFS.filter((c) => !owned.has(c.id)), n);
+  if (kind === "cardPack") choices = Array.from({ length: n }, () => makeCard(randomOf(RANKS), randomOf(SUIT_KEYS), Math.random() < 0.25 ? { stamp: randomOf(STAMP_KINDS) } : {}));
+  if (kind === "ornatePack") choices = Array.from({ length: n }, () => makeCard(randomOf(RANKS), randomOf(SUIT_KEYS), { sleeve: randomOf(SLEEVE_KINDS), stamp: randomOf(STAMP_KINDS) }));
+  state.packOpen = { id: packId, name: pack.name, choices, picks: pack.picks || 1, openedAt: Date.now(), hand: kind === "spectralPack" ? packHandIds() : null, note: null };
   state.packPick = null;
   state.shopDetail = null;
   saveGame();
@@ -5013,7 +5289,10 @@ function takePackChoice(index) {
   if (!po) return;
   const choice = po.choices[index];
   if (!choice) return;
-  if (choice.type === "charm") {
+  let note = null;
+  if (choice.spectral) {
+    note = useSpectral(choice);
+  } else if (choice.type === "charm") {
     if (state.charms.length >= state.charmSlots) return;
     state.charms = [...state.charms, { ...choice, uid: newUid() }];
   } else if (choice.type === "item" && choice.chart) {
@@ -5026,7 +5305,16 @@ function takePackChoice(index) {
     state.deck = shuffleArray([...state.deck, { ...choice }]);
     noteAdded(1);
   }
-  state.packOpen = null;
+  state.packPick = null;
+  if ((po.picks || 1) > 1) {
+    // Mega pack: take another
+    po.choices = po.choices.filter((_, i) => i !== index);
+    po.picks -= 1;
+    po.note = note;
+  } else {
+    state.packOpen = null;
+    if (note) state.packToast = { text: note, at: Date.now() };
+  }
   saveGame();
   render();
 }
@@ -5062,7 +5350,7 @@ function PackOverlay() {
   header.innerHTML = `
     <div class="shop-header-left">
       <div class="shop-title serif">${po.name}</div>
-      <div class="shop-sub">Choose 1 of ${po.choices.length} · drag yours to sell</div>
+      <div class="shop-sub">${(po.picks || 1) > 1 ? `${po.picks} picks left` : "Choose 1"} · drag yours to sell</div>
     </div>`;
   const right = document.createElement("div");
   right.className = "shop-header-right";
@@ -5080,12 +5368,23 @@ function PackOverlay() {
   // ===== THE STAGE: torn pack, cards fanned out =====
   const stage = document.createElement("div");
   stage.className = "pack-stage";
-  stage.innerHTML = `<div class="pack-rays"></div><div class="bshop-sign pack-sign serif"><span>Pick One</span></div><div class="pack-torn">${AnteArt.icon(def)}</div>`;
+  // Opening: the pack shakes, tears open with a flash, and the cards are
+  // dealt out of it. Timed from when it was opened, so a re-render mid-way
+  // carries on where it was instead of starting again.
+  const elapsed = Date.now() - (po.openedAt || 0);
+  const opening = elapsed < 1500;
+  const dealAt = opening ? 950 - elapsed : 0;
+  stage.style.setProperty("--t", -Math.min(elapsed, 1500) + "ms");
+  stage.innerHTML = `<div class="pack-rays"></div><div class="bshop-sign pack-sign serif"><span>${(po.picks || 1) > 1 ? `Pick ${po.picks}` : "Pick One"}</span></div><div class="pack-torn">${AnteArt.icon(def)}</div>` +
+    (opening ? `<div class="pack-opening"><div class="po-flash"></div>` +
+      Array.from({ length: 12 }, (_, i) => `<i class="po-spark" style="--a:${i * 30 + (i % 3) * 7}deg;--d:${70 + (i % 4) * 22}px"></i>`).join("") +
+      `<div class="po-pack"><div class="po-top">${AnteArt.icon(def)}</div><div class="po-bottom">${AnteArt.icon(def)}</div></div></div>` : "");
+  stage.classList.toggle("is-opening", opening);
   const fan = document.createElement("div");
   fan.className = "pack-fan";
   // Card width: as big as fits the row, up to 96px (78px sideways).
   const room = Math.min(isLandscape() ? 760 : 640, window.innerWidth - 28) - 24;
-  const cw = Math.floor(Math.min(isLandscape() ? 78 : 112, (room - (po.choices.length - 1) * 8) / po.choices.length));
+  const cw = Math.floor(Math.min(isLandscape() ? (po.hand ? 60 : 78) : 112, (room - (po.choices.length - 1) * 8) / po.choices.length));
   fan.style.setProperty("--cw", cw + "px");
   const pick = state.packPick != null && po.choices[state.packPick] ? state.packPick : null;
   const mid = (po.choices.length - 1) / 2;
@@ -5096,7 +5395,7 @@ function PackOverlay() {
     el.className = "pchoice" + (i === pick ? " picked" : "") + (packChoiceFull(choice) ? " full" : "") + (legendary ? " legendary" : "");
     el.style.setProperty("--rot", ((i - mid) * 5).toFixed(1) + "deg");
     el.style.setProperty("--drop", (Math.abs(i - mid) * 5).toFixed(1) + "px");
-    el.style.setProperty("--delay", i * 70 + "ms");
+    el.style.setProperty("--delay", dealAt + i * 80 + "ms");
     if (isCard) {
       const cardEl = renderCard(choice, { selected: false, scoring: false, dimmed: false, scale: 1, marginLeft: 0, arcIndex: 0, arcCount: 1, onClick: () => {} });
       cardEl.classList.add("pack-card");
@@ -5107,6 +5406,9 @@ function PackOverlay() {
       face.className = "pchoice-face is-playing";
       face.appendChild(cardEl);
       el.appendChild(face);
+    } else if (choice.spectral) {
+      el.innerHTML = `<div class="pchoice-face spectral-face">${AnteArt.icon(choice)}</div>`;
+      el.classList.add("kind-spectral");
     } else {
       const kind = choice.type === "charm" ? "kind-charm" : "kind-item";
       el.innerHTML = `<div class="pchoice-face bcard-face ${kind}"><div class="bcard-art">${AnteArt.icon(choice)}</div></div>`;
@@ -5116,13 +5418,37 @@ function PackOverlay() {
     fan.appendChild(el);
   });
   stage.appendChild(fan);
+  if (po.hand) {
+    const handCards = packHandCards();
+    const row = document.createElement("div");
+    row.className = "pack-hand";
+    row.innerHTML = `<div class="bwell-label">Your hand</div>`;
+    const cards = document.createElement("div");
+    cards.className = "pack-hand-cards";
+    const hw = Math.min(44, Math.floor((Math.min(isLandscape() ? 760 : 640, window.innerWidth - 28) - 40) / Math.max(1, handCards.length)) + 10);
+    cards.style.setProperty("--hw", hw + "px");
+    handCards.forEach((c) => {
+      const cardEl = renderCard(c, { selected: false, scoring: false, dimmed: false, scale: 1, marginLeft: 0, arcIndex: 0, arcCount: 1, onClick: () => {} });
+      cardEl.classList.add("pack-card");
+      cardEl.style.transform = "none";
+      cardEl.dataset.finalTransform = "none";
+      cardEl.style.zoom = "0.82";
+      const slot = document.createElement("div");
+      slot.className = "pack-hand-card";
+      slot.appendChild(cardEl);
+      cards.appendChild(slot);
+    });
+    if (!handCards.length) cards.innerHTML = `<div class="pack-info-hint">No cards</div>`;
+    row.appendChild(cards);
+    stage.appendChild(row);
+  }
   wrap.appendChild(stage);
 
   // ===== WHAT YOU'RE LOOKING AT, and the buttons =====
   const info = document.createElement("div");
   info.className = "pack-info";
   if (pick == null) {
-    info.innerHTML = `<div class="pack-info-hint">Tap a card to look at it</div>`;
+    info.innerHTML = (po.note ? `<div class="pack-info-note serif">${po.note}</div>` : "") + `<div class="pack-info-hint">Tap a card to look at it</div>`;
   } else {
     const c = po.choices[pick];
     const full = packChoiceFull(c);
@@ -5134,6 +5460,10 @@ function PackOverlay() {
       if (c.sleeve) lines.push(`<b>${AnteArt.sleeveLabel(c.sleeve)} sleeve</b> ${SLEEVE_INFO[c.sleeve]}`);
       if (c.stamp) lines.push(`<b>${STAMP_LABELS[c.stamp]} stamp</b> ${STAMP_INFO[c.stamp]}`);
       desc = (lines.join("<br>") || "A plain card") + "<br>Goes into your deck.";
+    } else if (c.spectral) {
+      kind = "Spectral";
+      name = c.name;
+      desc = c.desc + (po.hand ? "<br>Works on the hand shown below the cards." : "");
     } else if (c.chart) {
       kind = "Star Chart";
       name = c.name;
@@ -5163,7 +5493,7 @@ function PackOverlay() {
   take.className = "bbtn bbtn-orange";
   const pc = pick != null ? po.choices[pick] : null;
   take.disabled = pc == null || packChoiceFull(pc);
-  take.innerHTML = `<span class="bbtn-big">${pc && !pc.type ? "Add to deck" : pc && pc.chart ? "Level up" : "Take"}</span>`;
+  take.innerHTML = `<span class="bbtn-big">${pc && !pc.type ? "Add to deck" : pc && pc.chart ? "Level up" : pc && pc.spectral ? "Use" : "Take"}</span>`;
   take.onclick = () => { if (pick != null) takePackChoice(pick); };
   actions.appendChild(take);
   wrap.appendChild(actions);
@@ -5247,6 +5577,7 @@ function sellCharm(uid) {
   if (idx === -1) return;
   const charm = state.charms[idx];
   
+  state.lastSoldCharm = { ...charm };
   // Check if this charm is Specter and if it has played 3+ blinds
   if (charm.effect.type === "specterDuplicate" && (charm.effect.blindCounter || 0) >= 3) {
     // Duplicate a random charm from current inventory (excluding the one being sold)
@@ -6590,6 +6921,13 @@ function render() {
 
   // ===== BOOSTER PACK (pick one) =====
   if (state.packOpen) app.appendChild(PackOverlay());
+  if (state.packToast && Date.now() - state.packToast.at < 2400) {
+    const t = document.createElement("div");
+    t.className = "pack-toast";
+    t.style.animationDelay = -(Date.now() - state.packToast.at) + "ms";
+    t.textContent = state.packToast.text;
+    app.appendChild(t);
+  }
 
   // ===== CARD NOTE (double-tap a card with a sleeve/stamp) =====
   if (state.cardNote) {
