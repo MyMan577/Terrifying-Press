@@ -411,7 +411,7 @@
     const rare = !!def.rare;
     const col = def.color || "#8f9bff";
     const art = SPECTRALS[def.id] || ghost(32, 34, 16);
-    const runes = Array.from({ length: 12 }, (_, i) => { const a = (i / 12) * Math.PI * 2; return `<path d="M${(32 + Math.cos(a) * 23).toFixed(1)} ${(34 + Math.sin(a) * 23).toFixed(1)} l2 -3 l2 3" fill="none" stroke="#b9c6ff" stroke-width=".9" opacity=".55"/>`; }).join("");
+    const runes = Array.from({ length: 12 }, (_, i) => { const a = (i / 12) * Math.PI * 2; return `<path d="M${(32 + Math.cos(a) * 22).toFixed(1)} ${(37 + Math.sin(a) * 22).toFixed(1)} l2 -3 l2 3" fill="none" stroke="#b9c6ff" stroke-width=".9" opacity=".55"/>`; }).join("");
     return `<svg class="aart spectral-art ${cls}" viewBox="0 0 64 86" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">` +
       `<defs><linearGradient id="${id}b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a2f66"/><stop offset="1" stop-color="#0f1130"/></linearGradient>` +
       `<radialGradient id="${id}g" cx=".5" cy=".42" r=".5"><stop offset="0" stop-color="${col}" stop-opacity=".9"/><stop offset=".6" stop-color="${col}" stop-opacity=".18"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient>` +
@@ -420,11 +420,12 @@
       `<g clip-path="url(#${id}c)"><circle cx="32" cy="34" r="34" fill="url(#${id}g)"/>` +
       `<path d="M-4 70 Q14 58 30 66 T66 60 V90 H-4Z" fill="#b9c6ff" opacity=".12"/><path d="M-4 78 Q20 66 36 74 T66 70 V90 H-4Z" fill="#b9c6ff" opacity=".1"/></g>` +
       `<rect x="4.5" y="4.5" width="55" height="77" rx="4" fill="none" stroke="${rare ? "#F2C94C" : "#8f9bff"}" stroke-width=".8" opacity=".7"/>` +
-      `<circle cx="32" cy="34" r="25" fill="none" stroke="#b9c6ff" stroke-width=".7" opacity=".5"/>` + runes +
-      `<g transform="translate(32 34) scale(.66) translate(-32 -32)" style="filter:drop-shadow(0 0 3px ${col})">${art}</g>` +
-      `<path d="M8 66 H56 L52 74 H12Z" fill="#0a0c22" stroke="${rare ? "#F2C94C" : "#8f9bff"}" stroke-width=".9"/>` +
-      `<text x="32" y="72.3" text-anchor="middle" font-family="Georgia,serif" font-weight="700" font-size="5.6" letter-spacing="1.6" fill="${rare ? "#F2C94C" : "#cfd8ff"}">SPECTRAL</text>` +
-      [[32, 4.5], [32, 81.5]].map(([x, y]) => `<path d="M${x} ${y - 2.4} L${x + 2.4} ${y} L${x} ${y + 2.4} L${x - 2.4} ${y}Z" fill="${rare ? "#F2C94C" : "#b9c6ff"}" stroke="${INK}" stroke-width=".7"/>`).join("") +
+      `<circle cx="32" cy="37" r="24" fill="none" stroke="#b9c6ff" stroke-width=".7" opacity=".5"/>` + runes +
+      `<g transform="translate(32 37) scale(.64) translate(-32 -32)" style="filter:drop-shadow(0 0 3px ${col})">${art}</g>` +
+      `<path d="M5 70 H59 L57 81 H7Z" fill="#0a0c22" stroke="${rare ? "#F2C94C" : "#8f9bff"}" stroke-width=".9"/>` +
+      nameText(def.name || "", 77.6, rare ? "#F6E3A8" : "#e3e9ff") +
+      `<path d="M11 3.5 H53 L50 10.5 H14Z" fill="#0a0c22" stroke="${rare ? "#F2C94C" : "#8f9bff"}" stroke-width=".8"/>` +
+      `<text x="32" y="8.9" text-anchor="middle" font-family="Georgia,serif" font-weight="700" font-size="4.3" letter-spacing=".8" textLength="34" lengthAdjust="spacingAndGlyphs" fill="${rare ? "#F2C94C" : "#cfd8ff"}">SPECTRAL</text>` +
       `</svg>`;
   }
 
@@ -436,6 +437,91 @@
     return `<path d="M6 44 H58 L54 50 L58 56 H6 L10 50Z" fill="${fill}" stroke="${INK}" stroke-width="1.8" stroke-linejoin="round"/>` +
       `<text x="32" y="53.2" text-anchor="middle" font-family="Georgia,serif" font-weight="700" font-size="7.4" letter-spacing="1.4" fill="${INK}">${mega ? "MEGA" : "MAJOR"}</text>` +
       (mega ? sparkle(54, 40, 4.5, "#FFE28A") + sparkle(10, 40, 3.5, "#FFE28A") : "");
+  }
+
+  /* ---------- full cards: artifacts, items (arcana) and star charts ----------
+     The same 64x86 card as vouchers and spectrals: a type plate at the top,
+     the picture in a framed window, and the name on a band at the bottom.
+     Each kind has its own look:
+       artifact  — green baize, double gold border, filigree corners
+       legendary — ember black with a burning orange border and sparks
+       arcana    — tarot: cream card, sunburst window in the item's colour,
+                   a Roman numeral
+       star chart— night sky with scattered stars and a gold ring */
+  const hashStr = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619); return h >>> 0; };
+  const rng = (seed) => () => ((seed = Math.imul(seed ^ (seed >>> 15), 2246822519) ^ Math.imul(seed ^ (seed >>> 13), 3266489917)) >>> 0) / 4294967296;
+  const ROMAN = ["0", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX", "XXI", "XXII"];
+  const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  let cardSeq = 0;
+  // Name band text, squeezed to fit when it's long.
+  const nameText = (name, y, fill, maxW = 50) => {
+    const n = esc(name);
+    const fit = name.length > 12 ? ` textLength="${maxW}" lengthAdjust="spacingAndGlyphs"` : "";
+    return `<text x="32" y="${y}" text-anchor="middle" font-family="Georgia,serif" font-weight="700" font-size="${name.length > 16 ? 5.6 : 6.4}" fill="${fill}"${fit}>${n}</text>`;
+  };
+  const cornerFiligree = (stroke) => [[8, 15, 1, 1], [56, 15, -1, 1], [8, 63, 1, -1], [56, 63, -1, -1]].map(([x, y, sx, sy]) =>
+    `<path d="M${x} ${y + sy * 7} Q${x} ${y} ${x + sx * 7} ${y} M${x + sx * 2.5} ${y + sy * 2.5} m-1.4 0 a1.4 1.4 0 1 0 2.8 0 a1.4 1.4 0 1 0 -2.8 0" fill="none" stroke="${stroke}" stroke-width=".9"/>`).join("");
+
+  function card(def, cls = "") {
+    const id = "crd" + ++cardSeq;
+    const isChart = def.type === "item" && /^chart\d+$/.test(def.id);
+    const legendary = def.type === "charm" && def.rarity === "legendary";
+    const kind = def.type === "charm" ? (legendary ? "legend" : "artifact") : isChart ? "chart" : "arcana";
+    const col = def.color || "#9b5fc0";
+    const inner = def.type === "charm" ? (legendary ? LEGENDS[def.id] : CHARMS[def.id]) || gem(32, 34, 18, col) : ITEMS[def.id] || gem(32, 34, 18, col);
+    const S = {
+      artifact: { bg: ["#2f4a37", "#14211a"], edge: "#D9BC6A", plate: "#0e1711", plateText: "#E9C568", band: "#0e1711", bandText: "#F3ECD9", label: "ARTIFACT", win: null },
+      legend: { bg: ["#4a2616", "#140805"], edge: "#F2A65A", plate: "#1b0c06", plateText: "#F6C445", band: "#1b0c06", bandText: "#FFE3B8", label: "LEGENDARY", win: null },
+      arcana: { bg: ["#FAF1D8", "#E3CC98"], edge: INK, plate: "#5a4526", plateText: "#FFF3D2", band: "#FFF7E2", bandText: "#3a2a14", label: def.arcana ? "ARCANA" : "ITEM", win: col },
+      chart: { bg: ["#22305a", "#0b1024"], edge: "#E8C04A", plate: "#0b1024", plateText: "#cfe0ff", band: "#0b1024", bandText: "#F6E3A8", label: "STAR CHART", win: null },
+    }[kind];
+    let back = "";
+    if (kind === "artifact") {
+      back = `<pattern id="${id}h" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 4 H8" stroke="#ffffff" stroke-width=".5" opacity=".07"/></pattern>` +
+        `<rect x="2" y="2" width="60" height="82" rx="5" fill="url(#${id}h)"/>`;
+    } else if (kind === "legend") {
+      const r = rng(hashStr(def.id));
+      back = Array.from({ length: 14 }, () => `<circle cx="${(4 + r() * 56).toFixed(1)}" cy="${(14 + r() * 56).toFixed(1)}" r="${(0.5 + r() * 1.1).toFixed(1)}" fill="#F6C445" opacity="${(0.3 + r() * 0.6).toFixed(2)}"/>`).join("") +
+        `<path d="M2 84 Q10 70 16 78 Q22 64 30 76 Q36 62 44 76 Q50 66 56 78 Q60 72 62 84Z" fill="#E8743B" opacity=".35"/>`;
+    } else if (kind === "chart") {
+      const r = rng(hashStr(def.id));
+      back = Array.from({ length: 26 }, () => `<circle cx="${(3 + r() * 58).toFixed(1)}" cy="${(3 + r() * 80).toFixed(1)}" r="${(0.3 + r() * 0.8).toFixed(1)}" fill="#fff" opacity="${(0.25 + r() * 0.7).toFixed(2)}"/>`).join("") +
+        `<path d="M-4 30 Q30 18 68 40" fill="none" stroke="#9fb8ff" stroke-width="7" opacity=".08"/>`;
+    }
+    // the picture window
+    let win, winDefs = "";
+    if (kind === "arcana") {
+      const rays = Array.from({ length: 14 }, (_, i) => { const a = (i / 14) * Math.PI * 2, b = a + Math.PI / 14; return `<path d="M32 38 L${(32 + Math.cos(a) * 50).toFixed(1)} ${(38 + Math.sin(a) * 50).toFixed(1)} L${(32 + Math.cos(b) * 50).toFixed(1)} ${(38 + Math.sin(b) * 50).toFixed(1)}Z" fill="#fff" opacity=".16"/>`; }).join("");
+      winDefs = `<radialGradient id="${id}w" cx=".5" cy=".45" r=".7"><stop offset="0" stop-color="${col}"/><stop offset="1" stop-color="${enamel(col, 0.6)}"/></radialGradient>` +
+        `<clipPath id="${id}c"><path d="M8 20 Q8 13 15 13 H49 Q56 13 56 20 V64 H8Z"/></clipPath>`;
+      win = `<g clip-path="url(#${id}c)"><rect x="8" y="13" width="48" height="51" fill="url(#${id}w)"/>${rays}<circle cx="32" cy="38" r="16" fill="#fff" opacity=".2"/></g>` +
+        `<path d="M8 20 Q8 13 15 13 H49 Q56 13 56 20 V64 H8Z" fill="none" stroke="${INK}" stroke-width="1.5"/>`;
+    } else if (kind === "chart") {
+      win = `<circle cx="32" cy="38" r="24" fill="none" stroke="#E8C04A" stroke-width="1.1" opacity=".8"/><circle cx="32" cy="38" r="26.5" fill="none" stroke="#E8C04A" stroke-width=".5" stroke-dasharray="1.5 2.5" opacity=".7"/>`;
+    } else {
+      win = `<rect x="7.5" y="13" width="49" height="51" rx="4" fill="#000" opacity=".28"/><rect x="7.5" y="13" width="49" height="51" rx="4" fill="none" stroke="${S.edge}" stroke-width=".9" opacity=".8"/>`;
+    }
+    const numeral = kind === "arcana" ? (hashStr(def.id) % 22) + 1 : 0;
+    return `<svg class="aart full-card card-${kind} ${cls}" viewBox="0 0 64 86" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">` +
+      `<defs><linearGradient id="${id}b" x1="0" y1="0" x2=".3" y2="1"><stop offset="0" stop-color="${S.bg[0]}"/><stop offset="1" stop-color="${S.bg[1]}"/></linearGradient>` +
+      `<clipPath id="${id}k"><rect x="1.2" y="1.2" width="61.6" height="83.6" rx="6"/></clipPath></defs>` +
+      `<rect x="1.2" y="1.2" width="61.6" height="83.6" rx="6" fill="url(#${id}b)"/>` +
+      `<g clip-path="url(#${id}k)">${back}</g>` +
+      `<rect x="1.2" y="1.2" width="61.6" height="83.6" rx="6" fill="none" stroke="${legendary ? "#E8743B" : INK}" stroke-width="${legendary ? 2.6 : 2.2}"/>` +
+      `<rect x="4" y="4" width="56" height="78" rx="4" fill="none" stroke="${S.edge}" stroke-width="${kind === "arcana" ? 0.7 : 1}" opacity="${kind === "arcana" ? 0.5 : 0.9}"/>` +
+      (kind === "artifact" || kind === "legend" ? `<rect x="5.6" y="5.6" width="52.8" height="74.8" rx="3" fill="none" stroke="${S.edge}" stroke-width=".5" opacity=".6"/>` + cornerFiligree(S.edge) : "") +
+      (winDefs ? `<defs>${winDefs}</defs>` : "") + win +
+      `<g transform="translate(32 38.5) scale(${kind === "chart" ? 0.84 : 0.72}) translate(-32 -32)">${inner}</g>` +
+      // type plate
+      `<path d="M11 3.5 H53 L50 10.5 H14Z" fill="${S.plate}" stroke="${kind === "arcana" ? INK : S.edge}" stroke-width=".8"/>` +
+      `<text x="32" y="8.9" text-anchor="middle" font-family="Georgia,serif" font-weight="700" font-size="4.3" letter-spacing=".8" textLength="34" lengthAdjust="spacingAndGlyphs" fill="${S.plateText}">${S.label}</text>` +
+      (numeral ? `<circle cx="32" cy="64" r="5" fill="#FFF7E2" stroke="${INK}" stroke-width="1"/><text x="32" y="66" text-anchor="middle" font-family="Georgia,serif" font-weight="700" font-size="${ROMAN[numeral].length > 3 ? 3.6 : 4.6}" fill="#5a4526">${ROMAN[numeral]}</text>` : "") +
+      // name band
+      `<path d="M5 70 H59 L57 81 H7Z" fill="${S.band}" stroke="${kind === "arcana" ? INK : S.edge}" stroke-width=".9"/>` +
+      nameText(def.name || "", 77.6, S.bandText) +
+      (legendary ? sparkle(54, 18, 3.4, "#F6C445") + sparkle(10, 60, 2.6, "#F6C445") : "") +
+      `<path d="M9 16 Q11 40 9 62" fill="none" stroke="#fff" stroke-width="1.2" stroke-linecap="round" opacity="${kind === "arcana" ? 0.35 : 0.12}"/>` +
+      `</svg>`;
   }
 
   function wrap(inner, cls = "") {
@@ -512,5 +598,5 @@
     return `<svg class="card-stamp-art" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${seal(32, 32, 26, st.fill, st.glyph)}${shine(24, 22, 3, 7, -40)}</svg>`;
   }
 
-  window.AnteArt = { icon, voucher, spectral, sleeve, stamp, sleeveLabel: (t) => (SLEEVE_STYLE[t] ? SLEEVE_STYLE[t].label : "") };
+  window.AnteArt = { icon, card, voucher, spectral, sleeve, stamp, sleeveLabel: (t) => (SLEEVE_STYLE[t] ? SLEEVE_STYLE[t].label : "") };
 })();
