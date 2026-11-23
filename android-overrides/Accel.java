@@ -286,6 +286,24 @@ final class Accel {
         return reg(new Sess(cp, f, key, false));
     }
 
+    /**
+     * Demucs on the Qualcomm NPU (QNN HTP). Plain NNAPI rejects or crawls on Demucs, so other phones stay on the CPU.
+     * The NPU takes the convolutions and attention, and the ops it can't run (the STFT inside the graph) stay on the CPU.
+     * The first time, one real-sized segment is timed on both roads and the faster one is remembered.
+     * Crash guard: "TRYING" is written (synchronously) before the NPU is touched. If the app dies during the
+     * compile or the race, the next split finds "TRYING" and uses the CPU for good.
+     * Needs a roomy phone: during the race both copies of the 316 MB model are loaded.
+     */
+    static Sess openDemucs(OrtEnvironment env, String key, File f, boolean wantNpu, int seg) throws Exception {
+        if (!wantNpu || !qnn() || !roomy() || prefs == null) return open(env, key, f, false, null);
+        String tk = tuneKey(key, f), v = prefs.getString(tk, null);
+        if ("TRYING".equals(v)) { remember(tk, "CPU"); v = "CPU"; }
+        if ("CPU".equals(v)) return open(env, key, f, false, null);
+        if ("NNAPI".equals(v)) return open(env, key, f, true, null, false);
+        prefs.edit().putString(tk, "TRYING").commit();
+        return open(env, key, f, true, new long[] {1, 2, seg}, true);   // races and writes the verdict over "TRYING"
+    }
+
     /** True when the first output has no NaN/Inf (NNAPI fp16 can overflow). Anything unreadable counts as fine. */
     private static boolean allFinite(OrtSession.Result r) {
         try {
