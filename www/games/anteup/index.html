@@ -855,36 +855,92 @@ body.landscape .bcard-name { font-size: 10.5px; }
 
 /* ============================== BOOSTER PACK SCREEN ============================== */
 .pack-overlay {
-  position: fixed; inset: 0; z-index: 90; overflow-y: auto;
-  background: radial-gradient(ellipse at 50% 0%, #2a2618 0%, #0d120e 70%);
-  display: flex; flex-direction: column; align-items: center; gap: 14px;
-  padding: 22px 16px max(16px, env(safe-area-inset-bottom));
+  position: fixed; inset: 0; z-index: 90; overflow-y: auto; overscroll-behavior: contain;
+  background: radial-gradient(ellipse at 50% 45%, color-mix(in srgb, var(--pc, #C9A227) 22%, #16241A) 0%, #16241A 45%, #0A100C 100%);
+  display: flex; flex-direction: column; align-items: center; gap: 0;
+  padding: 16px 14px max(12px, env(safe-area-inset-bottom));
   animation: zonesIn .2s ease-out;
 }
-.pack-head { display: flex; align-items: center; gap: 12px; }
-.pack-art { width: 64px; height: 64px; }
-.pack-title { font-size: 24px; color: #F3ECD9; }
-.pack-sub { font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: #9A917A; font-weight: 700; }
-.pack-choices { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; max-width: 720px; }
-.pack-choice {
-  width: 150px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 10px;
-  font: inherit; color: #F3ECD9; cursor: pointer; text-align: center;
-  background: #16241A; border: 1px solid #C9A22744; border-radius: 14px;
-  box-shadow: 0 10px 24px -10px #000c; transition: transform .12s ease, border-color .12s ease;
+.pack-overlay .gear-shelf { margin: 6px 0 4px; }
+.pack-spacer { flex: 1 1 0; min-height: 0; }
+body.landscape .pack-spacer { display: none; }
+.pack-stage {
+  position: relative; width: 100%; max-width: 640px; margin-top: 24px; padding: 30px 8px 22px; border-radius: 18px; flex-shrink: 0;
+  background: linear-gradient(180deg, #2c3f36 0%, #23332c 60%, #1b2822 100%);
+  border: 2px solid #0a0f0c; box-shadow: 0 0 0 2px color-mix(in srgb, var(--pc, #C9A227) 60%, #C9A227), 0 22px 50px -14px #000000c0, inset 0 2px 0 #ffffff14;
+  display: flex; flex-direction: column; align-items: center; overflow: visible;
 }
-.pack-choice:hover:not(:disabled) { transform: translateY(-3px); border-color: #E9C568; }
-.pack-choice:disabled { opacity: .5; cursor: not-allowed; }
-.pack-choice-art { width: 72px; height: 72px; }
-.pack-choice-art.legendary { filter: drop-shadow(0 0 12px #E8743B99); }
-.pack-choice-name { font-size: 15px; }
-.pack-choice-desc { font-size: 11px; color: #C9BFA4; line-height: 1.35; }
-.pack-choice-desc b { color: #E9C568; }
-.pack-choice-full { font-size: 10px; color: #E8A8A8; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
-.pack-card { width: 62px !important; height: 87px !important; margin: 0 !important; pointer-events: none; }
-.pack-skip {
-  font: inherit; font-weight: 700; font-size: 12px; letter-spacing: .6px; text-transform: uppercase;
-  color: #9A917A; background: none; border: 1px solid #3A4A38; border-radius: 20px; padding: 8px 26px; cursor: pointer;
+.pack-rays {
+  position: absolute; inset: 0; border-radius: 16px; overflow: hidden; pointer-events: none; opacity: .5;
+  background: repeating-conic-gradient(from 0deg at 50% 62%, color-mix(in srgb, var(--pc, #C9A227) 30%, transparent) 0deg 8deg, transparent 8deg 20deg);
+  -webkit-mask-image: radial-gradient(circle at 50% 62%, #000 0%, transparent 70%); mask-image: radial-gradient(circle at 50% 62%, #000 0%, transparent 70%);
+  animation: packSpin 40s linear infinite;
 }
+@keyframes packSpin { to { transform: rotate(360deg); } }
+.pack-sign { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); margin: 0; }
+.pack-sign span { font-size: 17px; padding: 2px 20px 3px; }
+.pack-torn {
+  position: absolute; left: 10px; top: 10px; width: 46px; opacity: .9; transform: rotate(-12deg);
+  filter: drop-shadow(0 4px 6px #000a); animation: packTear .5s cubic-bezier(.2,1.4,.4,1) both;
+}
+.pack-torn svg { width: 100%; height: auto; display: block; }
+@keyframes packTear { from { transform: translate(60px, 40px) rotate(0) scale(1.8); opacity: 0; } }
+.pack-fan {
+  position: relative; display: flex; justify-content: center; align-items: flex-start; width: 100%;
+  gap: 8px; padding: 8px 0 6px; min-height: 140px;
+}
+.pchoice {
+  position: relative; flex: 0 0 var(--cw, 96px); width: var(--cw, 96px); padding: 0; border: none; background: none; cursor: pointer; font: inherit;
+  transform: translateY(var(--drop)) rotate(var(--rot));
+  transition: transform .2s cubic-bezier(.2,1.4,.4,1), filter .15s ease;
+  animation: packDeal .45s cubic-bezier(.2,1.2,.4,1) var(--delay) both;
+}
+@keyframes packDeal { from { transform: translateY(-60px) scale(.4) rotate(0); opacity: 0; } }
+.pchoice-face { width: 100%; max-width: none; aspect-ratio: 62 / 87; animation: bfloat 3.2s ease-in-out infinite; }
+.pchoice:nth-child(2n) .pchoice-face { animation-delay: -1.4s; }
+.pchoice-face.is-playing { display: flex; align-items: center; justify-content: center; }
+.pchoice .bcard-art { width: 84%; }
+.pchoice.picked { transform: translateY(-14px) rotate(0) scale(1.08); z-index: 2; }
+.pchoice.picked .pchoice-face { box-shadow: 0 0 0 2.5px #FFD45E, 0 0 24px -2px #FFD45E, 0 12px 18px -4px #000c; border-radius: 9px; }
+.pchoice.full .pchoice-face { filter: saturate(.4) brightness(.7); }
+.pchoice.legendary .pchoice-face { box-shadow: 0 0 0 1.5px #F2A65A, 0 0 18px -2px #E8743B, 0 8px 14px -4px #000c; background: radial-gradient(circle at 50% 35%, #4a2c1c 0%, #1b0e08 80%); }
+.pchoice.legendary.picked .pchoice-face { box-shadow: 0 0 0 2.5px #FFD45E, 0 0 28px 0 #E8743B, 0 12px 18px -4px #000c; }
+.pack-info {
+  width: 100%; max-width: 520px; margin-top: 14px; min-height: 96px; padding: 10px 14px; border-radius: 12px; flex-shrink: 0;
+  background: #131d18; border: 1px solid #00000080; box-shadow: inset 0 3px 10px #000000a0, 0 1px 0 #ffffff10;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; text-align: center;
+}
+.pack-info-hint { font-size: 12px; color: #9A917A; letter-spacing: .3px; }
+.pack-info-kind {
+  font-size: 8.5px; font-weight: 800; letter-spacing: 1.3px; text-transform: uppercase; color: #fff;
+  background: color-mix(in srgb, var(--pc, #C9A227) 70%, #222); border: 1.5px solid #0a0f0c; border-radius: 7px; padding: 1px 8px;
+}
+.pack-info-name { font-size: 18px; color: #F3ECD9; font-weight: 600; }
+.pack-info-desc { font-size: 12px; color: #C9BFA4; line-height: 1.45; }
+.pack-info-desc b { color: #E9C568; }
+.pack-choice-full { font-size: 10px; color: #E8A8A8; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; margin-top: 2px; }
+.pack-card { margin: 0 !important; pointer-events: none; }
+.pack-actions { display: flex; gap: 10px; margin-top: 12px; width: 100%; max-width: 420px; flex-shrink: 0; }
+.pack-actions .bbtn { flex: 1; min-height: 52px; }
+.bbtn-grey { flex: 0 0 34% !important; background: linear-gradient(180deg, #6b7a72 0%, #4a5751 100%); box-shadow: 0 5px 0 #2a332e, 0 9px 16px #0007; }
+.bbtn-grey:active:not(:disabled) { box-shadow: 0 1px 0 #2a332e; }
+.bbtn-orange { background: linear-gradient(180deg, #F29A2E 0%, #D9761B 100%); box-shadow: 0 5px 0 #8a4a10, 0 9px 16px #0007; }
+.bbtn-orange:active:not(:disabled) { box-shadow: 0 1px 0 #8a4a10; }
+.pack-actions .bbtn-big { font-size: 17px; }
+/* a piece's detail opened from the shelf here must sit above the pack screen */
+.shop-detail-backdrop { z-index: 95; }
+
+body.landscape .pack-overlay {
+  display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto auto auto; column-gap: 16px; align-items: center;
+  padding: 10px 16px max(8px, env(safe-area-inset-bottom));
+}
+body.landscape .pack-header { grid-column: 1; grid-row: 1; max-width: none; padding-right: 0; }
+body.landscape .pack-overlay .gear-shelf { grid-column: 2; grid-row: 1; margin: 0 56px 0 0; width: auto; max-width: none; }
+body.landscape .pack-stage { grid-column: 1 / -1; grid-row: 2; max-width: 760px; justify-self: center; margin-top: 18px; padding: 20px 8px 12px; }
+body.landscape .pack-fan { min-height: 0; }
+body.landscape .pack-info { grid-column: 1 / -1; grid-row: 3; justify-self: center; margin-top: 8px; min-height: 0; padding: 6px 12px; }
+body.landscape .pack-actions { grid-column: 1 / -1; grid-row: 4; justify-self: center; margin-top: 8px; }
+body.landscape .pack-actions .bbtn { min-height: 40px; padding: 4px; }
 
 /* ============================== CARD NOTE (double tap) ============================== */
 .card-note {
@@ -4946,6 +5002,7 @@ function openPack(packId) {
   if (packId === "cardPack") choices = Array.from({ length: pack.choices }, () => makeCard(randomOf(RANKS), randomOf(SUIT_KEYS), Math.random() < 0.25 ? { stamp: randomOf(STAMP_KINDS) } : {}));
   if (packId === "ornatePack") choices = Array.from({ length: pack.choices }, () => makeCard(randomOf(RANKS), randomOf(SUIT_KEYS), { sleeve: randomOf(SLEEVE_KINDS), stamp: randomOf(STAMP_KINDS) }));
   state.packOpen = { id: packId, name: pack.name, choices };
+  state.packPick = null;
   state.shopDetail = null;
   saveGame();
   render();
@@ -4980,55 +5037,137 @@ function skipPack() {
   render();
 }
 
+// Opened pack: the same top bar as the shop (money, deck and your shelf, so
+// you can sell to make room), then the choices dealt in a fan on a panel.
+// Tap a card to look at it; Take adds it, Skip leaves the rest.
+function packChoiceFull(choice) {
+  if (choice.type === "charm") return state.charms.length >= state.charmSlots;
+  if (choice.type === "item" && !choice.chart) return state.items.length >= getEffectiveItemSlots();
+  return false;
+}
+function pickPackChoice(i) {
+  state.packPick = state.packPick === i ? null : i;
+  render();
+}
 function PackOverlay() {
   const po = state.packOpen;
+  const def = PACK_DEFS.find((p) => p.id === po.id) || {};
   const wrap = document.createElement("div");
   wrap.className = "pack-overlay";
-  const def = PACK_DEFS.find((p) => p.id === po.id) || {};
-  wrap.innerHTML = `
-    <div class="pack-head">
-      <div class="pack-art">${AnteArt.icon(def)}</div>
-      <div>
-        <div class="pack-title serif">${po.name}</div>
-        <div class="pack-sub">Choose one</div>
-      </div>
+  wrap.style.setProperty("--pc", def.color || "#C9A227");
+
+  // ===== TOP BAR: as in the shop =====
+  const header = document.createElement("div");
+  header.className = "shop-header-row pack-header";
+  header.innerHTML = `
+    <div class="shop-header-left">
+      <div class="shop-title serif">${po.name}</div>
+      <div class="shop-sub">Choose 1 of ${po.choices.length} · drag yours to sell</div>
     </div>`;
-  const grid = document.createElement("div");
-  grid.className = "pack-choices";
+  const right = document.createElement("div");
+  right.className = "shop-header-right";
+  const deckCorner = document.createElement("div");
+  deckCorner.className = "shop-deck-corner";
+  deckCorner.appendChild(renderDeckWidget());
+  right.appendChild(deckCorner);
+  right.insertAdjacentHTML("beforeend", `<div class="shop-money serif">$${state.money}</div>`);
+  header.appendChild(right);
+  wrap.appendChild(header);
+  wrap.appendChild(GearShelf());
+  const spacer = () => { const d = document.createElement("div"); d.className = "pack-spacer"; return d; };
+  wrap.appendChild(spacer());
+
+  // ===== THE STAGE: torn pack, cards fanned out =====
+  const stage = document.createElement("div");
+  stage.className = "pack-stage";
+  stage.innerHTML = `<div class="pack-rays"></div><div class="bshop-sign pack-sign serif"><span>Pick One</span></div><div class="pack-torn">${AnteArt.icon(def)}</div>`;
+  const fan = document.createElement("div");
+  fan.className = "pack-fan";
+  // Card width: as big as fits the row, up to 96px (78px sideways).
+  const room = Math.min(isLandscape() ? 760 : 640, window.innerWidth - 28) - 24;
+  const cw = Math.floor(Math.min(isLandscape() ? 78 : 112, (room - (po.choices.length - 1) * 8) / po.choices.length));
+  fan.style.setProperty("--cw", cw + "px");
+  const pick = state.packPick != null && po.choices[state.packPick] ? state.packPick : null;
+  const mid = (po.choices.length - 1) / 2;
   po.choices.forEach((choice, i) => {
-    const tile = document.createElement("button");
-    tile.className = "pack-choice";
+    const el = document.createElement("button");
     const isCard = !choice.type;
-    let full = false;
-    if (choice.type === "charm") full = state.charms.length >= state.charmSlots;
-    if (choice.type === "item" && !choice.chart) full = state.items.length >= getEffectiveItemSlots();
+    const legendary = choice.rarity === "legendary";
+    el.className = "pchoice" + (i === pick ? " picked" : "") + (packChoiceFull(choice) ? " full" : "") + (legendary ? " legendary" : "");
+    el.style.setProperty("--rot", ((i - mid) * 5).toFixed(1) + "deg");
+    el.style.setProperty("--drop", (Math.abs(i - mid) * 5).toFixed(1) + "px");
+    el.style.setProperty("--delay", i * 70 + "ms");
     if (isCard) {
-      const cardEl = renderCard(choice, { selected: false, scoring: false, dimmed: false, scale: 1, marginLeft: 0, arcIndex: 0, arcCount: 1, onClick: () => takePackChoice(i) });
+      const cardEl = renderCard(choice, { selected: false, scoring: false, dimmed: false, scale: 1, marginLeft: 0, arcIndex: 0, arcCount: 1, onClick: () => {} });
       cardEl.classList.add("pack-card");
       cardEl.style.transform = "none";
       cardEl.dataset.finalTransform = "none";
-      tile.appendChild(cardEl);
-      const lines = [];
-      if (choice.sleeve) lines.push(`<b>${AnteArt.sleeveLabel(choice.sleeve)}</b> ${SLEEVE_INFO[choice.sleeve]}`);
-      if (choice.stamp) lines.push(`<b>${STAMP_LABELS[choice.stamp]} stamp</b> ${STAMP_INFO[choice.stamp]}`);
-      tile.insertAdjacentHTML("beforeend", `<div class="pack-choice-desc">${lines.join("<br>") || "Plain card"}</div>`);
+      cardEl.style.zoom = (cw / 62).toFixed(3);
+      const face = document.createElement("div");
+      face.className = "pchoice-face is-playing";
+      face.appendChild(cardEl);
+      el.appendChild(face);
     } else {
-      tile.innerHTML = `
-        <div class="pack-choice-art${choice.rarity === "legendary" ? " legendary" : ""}">${AnteArt.icon(choice)}</div>
-        <div class="pack-choice-name serif">${choice.name}</div>
-        <div class="pack-choice-desc">${choice.desc}</div>
-        ${full ? `<div class="pack-choice-full">Slots full</div>` : ""}`;
+      const kind = choice.type === "charm" ? "kind-charm" : "kind-item";
+      el.innerHTML = `<div class="pchoice-face bcard-face ${kind}"><div class="bcard-art">${AnteArt.icon(choice)}</div></div>`;
+      el.classList.add(kind);
     }
-    tile.disabled = full;
-    tile.onclick = () => takePackChoice(i);
-    grid.appendChild(tile);
+    el.onclick = () => pickPackChoice(i);
+    fan.appendChild(el);
   });
-  wrap.appendChild(grid);
+  stage.appendChild(fan);
+  wrap.appendChild(stage);
+
+  // ===== WHAT YOU'RE LOOKING AT, and the buttons =====
+  const info = document.createElement("div");
+  info.className = "pack-info";
+  if (pick == null) {
+    info.innerHTML = `<div class="pack-info-hint">Tap a card to look at it</div>`;
+  } else {
+    const c = po.choices[pick];
+    const full = packChoiceFull(c);
+    let kind, name, desc;
+    if (!c.type) {
+      kind = "Playing card";
+      name = `${c.rank} of ${c.suit[0].toUpperCase() + c.suit.slice(1)}`;
+      const lines = [];
+      if (c.sleeve) lines.push(`<b>${AnteArt.sleeveLabel(c.sleeve)} sleeve</b> ${SLEEVE_INFO[c.sleeve]}`);
+      if (c.stamp) lines.push(`<b>${STAMP_LABELS[c.stamp]} stamp</b> ${STAMP_INFO[c.stamp]}`);
+      desc = (lines.join("<br>") || "A plain card") + "<br>Goes into your deck.";
+    } else if (c.chart) {
+      kind = "Star Chart";
+      name = c.name;
+      const lv = handLevel(c.effect.hand);
+      desc = `${c.desc}<br><b>${c.effect.hand}</b>: Lv ${lv} → <b>Lv ${lv + 1}</b>`;
+    } else {
+      kind = c.rarity === "legendary" ? "Legendary artifact" : c.type === "charm" ? "Artifact" : "Item";
+      name = c.name;
+      desc = c.desc;
+    }
+    info.innerHTML = `
+      <div class="pack-info-kind">${kind}</div>
+      <div class="pack-info-name serif">${name}</div>
+      <div class="pack-info-desc">${desc}</div>
+      ${full ? `<div class="pack-choice-full">${c.type === "charm" ? "Artifact" : "Item"} slots full — sell one to make room</div>` : ""}`;
+  }
+  wrap.appendChild(info);
+
+  const actions = document.createElement("div");
+  actions.className = "pack-actions";
   const skip = document.createElement("button");
-  skip.className = "pack-skip";
-  skip.textContent = "Skip";
+  skip.className = "bbtn bbtn-grey";
+  skip.innerHTML = `<span class="bbtn-big">Skip</span>`;
   skip.onclick = skipPack;
-  wrap.appendChild(skip);
+  actions.appendChild(skip);
+  const take = document.createElement("button");
+  take.className = "bbtn bbtn-orange";
+  const pc = pick != null ? po.choices[pick] : null;
+  take.disabled = pc == null || packChoiceFull(pc);
+  take.innerHTML = `<span class="bbtn-big">${pc && !pc.type ? "Add to deck" : pc && pc.chart ? "Level up" : "Take"}</span>`;
+  take.onclick = () => { if (pick != null) takePackChoice(pick); };
+  actions.appendChild(take);
+  wrap.appendChild(actions);
+  wrap.appendChild(spacer());
   return wrap;
 }
 
