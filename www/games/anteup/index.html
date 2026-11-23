@@ -1109,13 +1109,18 @@ function evaluateSelection(cards) {
     scoringCards = groups[0];
   } else {
     name = "High Card";
-    const best = [...cards].sort((a, b) => rankChipValue(b.rank) - rankChipValue(a.rank))[0];
-    scoringCards = [best];
+    // A Tithe card can't score, so the high card is the best card without one.
+    const canScore = cards.filter((c) => c.sleeve !== "tithe");
+    const best = [...canScore].sort((a, b) => rankChipValue(b.rank) - rankChipValue(a.rank))[0];
+    scoringCards = best ? [best] : [];
   }
 
+  // Tithe-sleeved cards never score. They are dropped from scoringCards itself
+  // (not just from this chip sum) so the per-card pings, retriggers and charm
+  // effects that all read scoringCards skip them too.
+  scoringCards = scoringCards.filter((c) => c.sleeve !== "tithe");
   const base = HAND_TABLE[name];
-  // Filter out Tithe sleeved cards from scoring
-  const scoreableCards = scoringCards.filter(c => c.sleeve !== "tithe");
+  const scoreableCards = scoringCards;
   const chipSum = scoreableCards.reduce((s, c) => {
     if (isCardDebuffed(c)) return s; // Boss Blind debuff: card scores 0 chips
     const perPing = rankChipValue(c.rank) + (c.sleeve === "sparkler" ? 20 : 0);
@@ -3145,7 +3150,8 @@ function computeFanLayout() {
 }
 
 function dealInitialHand(freshDeckArg) {
-  const d = [...freshDeckArg];
+  // Anchor sleeve: anchored cards are always drawn first each round.
+  const d = [...freshDeckArg.filter((c) => c.sleeve === "anchor"), ...freshDeckArg.filter((c) => c.sleeve !== "anchor")];
   const h = d.splice(0, getHandSize());
   tagBossDebuffedCards(h);
   state.deck = d;
@@ -3241,53 +3247,46 @@ function shuffleArray(arr) {
 }
 
 function startNextBlind(nextAnte, nextBlindIdx) {
-  // ===== LARVA SLEEVE: Check if any held Larva cards duplicate =====
-  Object.keys(state.larvaTracking).forEach(cardId => {
-    const foundInHand = state.hand.some(c => c.id === cardId);
-    if (foundInHand) {
-      // Card was held, so duplicate it into the deck
-      const card = state.hand.find(c => c.id === cardId);
-      if (card) {
-        const clone = { ...card, id: card.id + "_larva_" + Date.now() + "_" + Math.random().toString(36).slice(2), sleeve: undefined };
-        state.deck.push(clone);
-      }
-    }
+  // The round that just ended: state.hand is what was held at the end of it.
+  // (Larva/Azure used to rely on a list taken at round start, before the new
+  // hand was dealt, so a card sleeved or stamped mid-round never copied.)
+
+  // ===== LARVA SLEEVE: every Larva card still held copies itself into the deck =====
+  state.hand.filter((c) => c.sleeve === "larva").forEach((card) => {
+    const clone = { ...card, id: card.id + "_larva_" + Date.now() + "_" + Math.random().toString(36).slice(2), sleeve: undefined };
+    state.deck.push(clone);
   });
   state.larvaTracking = {};
 
-  // ===== AZURE STAMP: Check if any held Azure-stamped cards duplicate =====
-  Object.keys(state.azureTracking).forEach(cardId => {
-    const foundInHand = state.hand.some(c => c.id === cardId);
-    if (foundInHand) {
-      // Card was held, so duplicate it into the deck. Only the stamp is
-      // stripped from the clone; any sleeve on the card carries over.
-      const card = state.hand.find(c => c.id === cardId);
-      if (card) {
-        const clone = { ...card, id: card.id + "_azure_" + Date.now() + "_" + Math.random().toString(36).slice(2), stamp: undefined };
-        state.deck.push(clone);
-      }
-    }
+  // ===== AZURE STAMP: every Azure-stamped card still held copies itself into the deck =====
+  // Only the stamp is stripped from the clone; any sleeve on the card carries over.
+  state.hand.filter((c) => c.stamp === "azure").forEach((card) => {
+    const clone = { ...card, id: card.id + "_azure_" + Date.now() + "_" + Math.random().toString(36).slice(2), stamp: undefined };
+    state.deck.push(clone);
   });
   state.azureTracking = {};
-  
-  // ===== MOLT SLEEVE: Jump to random card and leave +1 mult mark =====
-  Object.keys(state.moltTargets).forEach(moltCardId => {
-    const allCards = [...state.hand, ...state.deck];
-    const moltCard = allCards.find(c => c.id === moltCardId);
-    if (moltCard) {
-      // Molt card jumps off - mark it with +1 mult buff permanently
+
+  // ===== MOLT SLEEVE: hop to another card and leave a +1 Mult mark behind =====
+  // Looks in hand, deck AND the cards played/discarded this round (a played
+  // Molt card sits in usedCards, which is why it used to vanish), and finds
+  // Molt cards by their sleeve, so copies made by The Death etc. hop too.
+  {
+    const allCards = [...state.hand, ...state.deck, ...state.usedCards];
+    const moltCards = allCards.filter((c) => c.sleeve === "molt");
+    const nextTargets = {};
+    moltCards.forEach((moltCard) => {
       moltCard.moltBuff = (moltCard.moltBuff || 0) + 1;
-      moltCard.sleeve = undefined; // Remove Molt from current card
-      
-      // Pick a random card to receive Molt
-      if (allCards.length > 0) {
-        const randomTarget = allCards[Math.floor(Math.random() * allCards.length)];
-        randomTarget.sleeve = "molt";
-        state.moltTargets[randomTarget.id] = true;
-        delete state.moltTargets[moltCardId];
-      }
-    }
-  });
+      moltCard.sleeve = undefined;
+      // Prefer a card with no sleeve so Molt doesn't overwrite another sleeve.
+      const others = allCards.filter((c) => !moltCards.includes(c) && c.sleeve !== "molt");
+      const bare = others.filter((c) => !c.sleeve);
+      const candidates = bare.length ? bare : others;
+      const target = candidates.length ? candidates[Math.floor(Math.random() * candidates.length)] : moltCard;
+      target.sleeve = "molt";
+      nextTargets[target.id] = true;
+    });
+    state.moltTargets = nextTargets;
+  }
   
   state.ante = nextAnte;
   state.blindIdx = nextBlindIdx;
@@ -3312,22 +3311,6 @@ function startNextBlind(nextAnte, nextBlindIdx) {
   state.charms.forEach((charm) => {
     if (charm.effect.type === "specterDuplicate") {
       charm.effect.blindCounter = (charm.effect.blindCounter || 0) + 1;
-    }
-  });
-  
-  // Track Larva sleeved cards at the start of this round
-  state.larvaTracking = {};
-  state.hand.forEach(card => {
-    if (card.sleeve === "larva") {
-      state.larvaTracking[card.id] = true;
-    }
-  });
-
-  // Track Azure stamped cards at the start of this round
-  state.azureTracking = {};
-  state.hand.forEach(card => {
-    if (card.stamp === "azure") {
-      state.azureTracking[card.id] = true;
     }
   });
   
@@ -3372,19 +3355,11 @@ function refillHand(currentDeck, currentHand, removeIds) {
     state.usedCards = state.usedCards.filter((c) => !playedOrDiscarded.some((p) => p.id === c.id));
   }
   
-  // Anchor sleeve logic: pull Anchor sleeved cards to the front of drawn cards
-  const anchorCards = [];
-  const otherCards = [];
-  for (let i = 0; i < d.length && anchorCards.length + otherCards.length < need; i++) {
-    if (d[i].sleeve === "anchor") {
-      anchorCards.push(d[i]);
-    } else {
-      otherCards.push(d[i]);
-    }
-  }
-  // Remove drawn cards from deck
-  d = d.filter(card => ![...anchorCards, ...otherCards].includes(card));
-  const drawn = [...anchorCards, ...otherCards].slice(0, need);
+  // Anchor sleeve logic: Anchor-sleeved cards anywhere in the deck are drawn
+  // before any other card, then the rest of the draw comes off the top.
+  d = [...d.filter((c) => c.sleeve === "anchor"), ...d.filter((c) => c.sleeve !== "anchor")];
+  const drawn = d.slice(0, Math.max(0, need));
+  d = d.slice(drawn.length);
   tagBossDebuffedCards(drawn);
 
   return { newDeck: d, newHand: [...remaining, ...drawn] };
