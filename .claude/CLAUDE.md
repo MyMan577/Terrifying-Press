@@ -11,9 +11,27 @@ Only merge Claude's own pull requests, and only after running the checks below o
 
 ## Target
 
-Press Play is an Android app only. Don't spend effort on plain-browser support or browser-only checks.
+Press Play is an Android app first. The browser copy (see below) gets non-AI changes, but don't build browser-only features here.
 Test web-side changes against the Android app's behaviour (a faked Capacitor bridge in Playwright is fine for that).
 The owner tests on a Galaxy S24 Ultra (120 Hz, strong GPU).
+
+## Browser copy: Press-Play-Media
+
+`MyMan577/Press-Play-Media` is the browser version of this app (a PWA on GitHub Pages). Its app files are a copy of this repo's built `www/`.
+Every change that is not about the AI features also goes there. AI features means stems, tagging, Whisper, lyrics transcription, translation, smart playlists, Bloopy and the models behind them (mostly `src/vocal-separator/`).
+A change that is only about AI does not need porting.
+
+After the change is merged here:
+1. `python3 tools/assemble.py`, and copy `android-overrides/native-bridge.js` over `www/native-bridge.js`.
+2. In a clone of Press-Play-Media, copy everything in `www/` over its root. Keep its own `manifest.json`, icons, `sw.js`, `update-option.js` and `README.md`.
+3. Put the web-only lines back into the copied `index.html`:
+   - after `<meta name="theme-color" ...>`: the `manifest.json`, `icon-32.png` and `apple-touch-icon` (`icon-180.png`) links;
+   - just before `</body>`: `<script src="./update-option.js" defer></script>` and the script that registers `./sw.js`.
+   Copy these from the current `index.html` in Press-Play-Media before overwriting it.
+4. Bump `CACHE_NAME` in `sw.js`, and add any new script or font the app loads at start to `CORE_ASSETS`.
+5. Load it in Playwright from a local static server with no Capacitor: it must open with no console errors and play a file. Then open a PR there and merge it, as for this repo.
+
+Android-only features (ExoPlayer, VLC, the NPU, notifications, alarms) switch themselves off in a browser, so a change to them alone does not need porting either.
 
 ## Project layout
 
