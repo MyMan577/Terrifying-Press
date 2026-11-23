@@ -309,6 +309,7 @@
       // Keep the vocals as a split track, exactly like a normal split, so the next transcription (or a split) reuses them.
       if (eb && !t.stem) {
         try {
+          if (eext === 'wav') { try { const mp = await wavToMp3(eb, f => status('Saving the vocals… ' + Math.round(f * 100) + '%')); if (mp) { eb = mp; eext = 'mp3'; } } catch (e) { console.warn('WAV to MP3 failed, keeping the WAV', e); } }
           const mk = ls0('ppvMkPl') === '1';
           addSplit([new File([eb], t.title + ' (Vocals).' + eext, { type: eb.type || 'audio/wav' })], { srcId: t.dbId, srcTitle: t.title, makePlaylist: mk, showInTab: mk && ls0('ppvPlTab') === '1' });
           window.__ppvSaved = true; status('Saved the vocals to Split tracks.');

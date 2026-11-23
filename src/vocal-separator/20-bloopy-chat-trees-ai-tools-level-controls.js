@@ -636,7 +636,11 @@
         const files = []; let vidFail = 0;
         for (const n of want) {                                          // encode one at a time, free each stem after
           status('Encoding ' + n + '…'); await tick();
-          const e = res[n].blob ? res[n] : encode(res[n]); delete res[n];
+          let e = res[n].blob ? res[n] : encode(res[n]); delete res[n];
+          if (e.ext === 'wav') {                                          // the Android engines' WAV: about 7x smaller as MP3
+            try { const mp = await wavToMp3(e.blob, f => status('Encoding ' + n + '… ' + Math.round(f * 100) + '%')); if (mp) e = { blob: mp, ext: 'mp3' }; }
+            catch (err) { console.warn('WAV to MP3 failed, keeping the WAV:', err); }
+          }
           let blob = e.blob, ext = e.ext;
           if (vid.checked && t.kind === 'video') {
             try { blob = await muxVideo(t.url, e.blob, f => status('Adding video to ' + n + '… ' + Math.round(f * 100) + '%')); ext = blob.type.includes('mp4') ? 'mp4' : 'webm'; }
@@ -657,7 +661,7 @@
     try { smartUI(p, { mas, status, LV, sel, sl, prog: f => { document.querySelectorAll('.ppv-bar-tag i').forEach(e => { e.style.width = (f * 100) + '%'; }); } }); } catch (e) { console.error(e); }
     refresh();
   }
-  window.PPVocals = { muxVideo, subtitleSpans, makeMask, alignLines, separate, separateDemucs, fft, _N: N, tagTrack, transcribe, similarTo, loadTags, vibes };
+  window.PPVocals = { muxVideo, wavToMp3, subtitleSpans, makeMask, alignLines, separate, separateDemucs, fft, _N: N, tagTrack, transcribe, similarTo, loadTags, vibes };
   const boot = () => { try { ui(); } catch (e) { console.error(e); } };
   if (typeof document !== 'undefined' && document.body) boot();
   else if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', boot);
