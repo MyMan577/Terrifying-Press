@@ -85,7 +85,10 @@
     const nm = opts.nmask || null, hid = !!nm && !wanted.includes('Vocals') && (wanted.includes('Instrumental') || wanted.includes('Other'));
     const W = hid ? wanted.concat('Vocals') : wanted;                 // vocals are needed to put the removed sound back
     const accKey = 'ppvAccel2_' + id, remembered = ls0(accKey);
-    const useNn = opts.nnapi !== false && !/^demucs/.test(id) && !cpuOnly.has(id) && remembered !== 'cpu';   // Demucs is always CPU; a model that already lost or gave NaN stays on CPU
+    // A model that already lost or gave NaN stays on CPU. Demucs and the multi-model sets keep their verdict on the Java side
+    // (per model file), so the page's old 'cpu' note does not block them: Demucs now tries the Snapdragon NPU once.
+    const ownVerdict = /^demucs/.test(id) || m.kind === 'multi';
+    const useNn = opts.nnapi !== false && !cpuOnly.has(id) && (ownVerdict || remembered !== 'cpu');
     // tune (optional checkbox): race the NPU/NNAPI against the CPU once per model per phone (verdict remembered natively). Off: the NPU is
     // used straight away, and only a crash or NaN output moves that model to the CPU (also remembered).
     // fast: no optimization level picked, so run flat out (spinning pool, big-model memory arena, less Demucs overlap, rest only at critical heat).
