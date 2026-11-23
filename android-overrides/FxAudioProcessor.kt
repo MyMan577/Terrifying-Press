@@ -271,7 +271,7 @@ class FxAudioProcessor : BaseAudioProcessor() {
     val hiResReady: Boolean get() = hiCh in 1..8
 
     /**
-     * Runs the chain over [frames] frames of [enc] PCM (C.ENCODING_PCM_24BIT, _32BIT or _FLOAT, little-endian) from
+     * Runs the chain over [frames] frames of [enc] PCM (C.ENCODING_PCM_16BIT, _24BIT, _32BIT or _FLOAT, little-endian) from
      * [input] (absolute reads from its position; the buffer itself is not moved) into [out] as 32-bit float.
      * Nothing is rounded to 16 bits: the full depth goes to the output. Above 0 dBFS it is shaped exactly like the
      * 16-bit path (limiter, then the soft knee), so it sounds the same, just with more resolution.
@@ -283,6 +283,7 @@ class FxAudioProcessor : BaseAudioProcessor() {
                 val v = (input.get(i).toInt() and 0xff) or ((input.get(i + 1).toInt() and 0xff) shl 8) or (input.get(i + 2).toInt() shl 16)
                 i += 3; v / 8388608.0 } }
             C.ENCODING_PCM_32BIT -> { { val v = input.getInt(i); i += 4; v / 2147483648.0 } }
+            C.ENCODING_PCM_16BIT -> { { val v = input.getShort(i); i += 2; v / 32768.0 } }   // upconverted 16-bit
             else -> { { val v = input.getFloat(i); i += 4; v.toDouble() } }
         }
         run(frames,
@@ -531,10 +532,11 @@ class VizClockSink(sink: AudioSink, private val fx: FxAudioProcessor) : Forwardi
  * stopped for exactly the files Hi-res is for. This sits in front of the real output and runs the effect chain
  * itself, in float, at full depth ([FxAudioProcessor.processHiRes]), then hands the output float PCM. Speed and pitch
  * on that path come from the AudioTrack (see PlaybackService). 16-bit audio passes straight through to the normal
- * processor pipeline, so it is untouched by this.
+ * processor pipeline, unless [up16] is on (Settings, Upconvert 16-bit audio): then it is widened to float here and gets
+ * the same float chain, so the EQ, boost and effects have headroom and resolution instead of being rounded to 16 bits.
  */
 @UnstableApi
-class HiResFxSink(sink: AudioSink, private val fx: FxAudioProcessor) : ForwardingAudioSink(sink) {
+class HiResFxSink(sink: AudioSink, private val fx: FxAudioProcessor, private val up16: Boolean = false) : ForwardingAudioSink(sink) {
     private var active = false
     private var enc = C.ENCODING_INVALID
     private var frameIn = 0
@@ -542,7 +544,12 @@ class HiResFxSink(sink: AudioSink, private val fx: FxAudioProcessor) : Forwardin
     private var scratch: ByteBuffer? = null
 
     private fun handles(f: Format) = f.sampleMimeType == androidx.media3.common.MimeTypes.AUDIO_RAW && f.channelCount in 1..8 &&
-        (f.pcmEncoding == C.ENCODING_PCM_24BIT || f.pcmEncoding == C.ENCODING_PCM_32BIT || f.pcmEncoding == C.ENCODING_PCM_FLOAT)
+        (f.pcmEncoding == C.ENCODING_PCM_24BIT || f.pcmEncoding == C.ENCODING_PCM_32BIT || f.pcmEncoding == C.ENCODING_PCM_FLOAT ||
+         (up16 && f.pcmEncoding == C.ENCODING_PCM_16BIT))
+    private fun bytesPer(e: Int) = when (e) { C.ENCODING_PCM_16BIT -> 2; C.ENCODING_PCM_24BIT -> 3; else -> 4 }
+    /** True while this sink runs the stream at 32-bit float; [upconverting] when that stream was 16-bit. */
+    val floatActive: Boolean get() = active
+    val upconverting: Boolean get() = active && enc == C.ENCODING_PCM_16BIT
 
     /** Only takes over when the output would use float for this format (Hi-res output on). */
     private fun floatOut(f: Format) =
@@ -557,7 +564,7 @@ class HiResFxSink(sink: AudioSink, private val fx: FxAudioProcessor) : Forwardin
         }
         if (!active) { super.configure(inputFormat, specifiedBufferSize, outputChannels); return }
         enc = inputFormat.pcmEncoding
-        frameIn = (if (enc == C.ENCODING_PCM_24BIT) 3 else 4) * inputFormat.channelCount
+        frameIn = bytesPer(enc) * inputFormat.channelCount
         val asFloat = inputFormat.buildUpon().setPcmEncoding(C.ENCODING_PCM_FLOAT).build()
         val size = if (specifiedBufferSize > 0) specifiedBufferSize / frameIn * 4 * inputFormat.channelCount else specifiedBufferSize
         super.configure(asFloat, size, null)
@@ -575,7 +582,7 @@ class HiResFxSink(sink: AudioSink, private val fx: FxAudioProcessor) : Forwardin
 
     private fun processed(buffer: ByteBuffer): ByteBuffer {
         val frames = buffer.remaining() / frameIn
-        val need = frames * (frameIn / (if (enc == C.ENCODING_PCM_24BIT) 3 else 4)) * 4
+        val need = frames * (frameIn / bytesPer(enc)) * 4
         val old = scratch
         val s: ByteBuffer = if (old != null && old.capacity() >= need) old
                             else ByteBuffer.allocateDirect(need).order(java.nio.ByteOrder.nativeOrder()).also { scratch = it }

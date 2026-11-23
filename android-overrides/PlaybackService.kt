@@ -73,6 +73,10 @@ class PlaybackService : MediaLibraryService() {
         private set
     /** Audio quality and decoding choices this player was built with (Settings; read once, when the service starts). */
     var hiRes = false
+    /** Settings, Upconvert 16-bit audio: 16-bit sources also go through the float chain (see HiResFxSink). */
+    var up16 = false
+    var hiSink: HiResFxSink? = null
+        private set
         private set
     /** Settings, Audio decoder, as this player was built with it: "auto", "soft" (software only) or "hard" (hardware only). */
     var audioDecoderMode = "auto"
@@ -125,10 +129,11 @@ class PlaybackService : MediaLibraryService() {
         // Settings > Audio quality and decoding. Applied when the service starts, so a change needs an app restart.
         val opts = getSharedPreferences("pp_audio", MODE_PRIVATE)
         hiRes = opts.getBoolean("hiRes", false)
+        up16 = opts.getBoolean("up16", false)
         val audioDec = opts.getString("adec", "auto") ?: "auto"
         audioDecoderMode = audioDec
         val videoDec = opts.getString("vdec", "auto") ?: "auto"
-        val floatOut = hiRes
+        val floatOut = hiRes || up16
 
         val renderers = object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
@@ -142,7 +147,7 @@ class PlaybackService : MediaLibraryService() {
                 .setEnableFloatOutput(floatOut)
                 .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams || floatOut)
                 .setAudioProcessors(arrayOf(fx))
-                .build(), fx), fx).also { vizClock = it }
+                .build(), fx, up16).also { hiSink = it }, fx).also { vizClock = it }
 
             /**
              * The phone's own audio decoders, then the FFmpeg ones (Media3's FFmpeg extension) for what the phone has

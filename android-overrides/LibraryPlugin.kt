@@ -491,8 +491,13 @@ class LibraryPlugin : Plugin() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return call.reject("unsupported")
         val path = call.getString("path") ?: return call.reject("path required")
         val name = call.getString("name") ?: "export"
-        val mime = call.getString("mime") ?: "application/octet-stream"
         val kind = call.getString("kind") ?: "other"
+        // MediaStore adds the MIME type's own extension when the name's doesn't match it: lyrics saved as text/plain came
+        // out as "Song.lrc.txt". Downloads use the type of the name's extension, or a generic type Android leaves alone.
+        val given = call.getString("mime") ?: "application/octet-stream"
+        val ext = name.substringAfterLast('.', "").lowercase()
+        val byExt = if (ext.isEmpty()) null else android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
+        val mime = if (kind != "other") given else byExt ?: "application/octet-stream"
         pool.execute {
             try {
                 val src = File(Uri.parse(path).path ?: path)
