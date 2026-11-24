@@ -891,7 +891,7 @@
     const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.onerror = () => rej(fr.error); fr.readAsDataURL(blob); });
     const saved = await SS.writeInput({ name: 'track-' + Date.now() + '.audio', data: b64 });
     window.__ppLastSep = '';
-    const h = await NP.addListener('progress', e => { onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
+    const h = await NP.addListener('progress', e => { if (e && e.note) { status(e.note); return; } onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
     const nm = opts.nmask || null, hid = !!nm && !wanted.includes('Vocals') && (wanted.includes('Instrumental') || wanted.includes('Other'));
     const W = hid ? wanted.concat('Vocals') : wanted;                 // vocals are needed to put the removed sound back
     const accKey = 'ppvAccel2_' + id, remembered = ls0(accKey);
@@ -5566,10 +5566,25 @@
     }
     // Take the language model out of RAM (it stays on disk and reloads later without asking).
     async function unloadModel() { clearTimeout(idleT); if (gen) { const g = gen; gen = null; try { await g.dispose(); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } } }
-    // How long the model may sit idle in RAM. Reloading a big model takes seconds, so phones with plenty of RAM keep it
-    // around for 5 minutes; heavy jobs (split, lyrics, tagging) still free it first.
+    // How long the model may sit idle in RAM. Reloading a big model takes many seconds, so phones with plenty of RAM keep it
+    // around for 15 minutes; heavy jobs (split, lyrics, tagging) still free it first.
     const bigRam = () => { try { return (navigator.deviceMemory || 0) >= 8; } catch (e) { return false; } };
-    const keepMs = () => bigRam() ? 300000 : 60000;
+    const keepMs = () => bigRam() ? 900000 : 60000;
+    // Warm start: tapping the chat box starts loading an already-downloaded model in the background, so it is
+    // (nearly) ready by the time the message is sent. Never downloads, never runs during a heavy job.
+    let warmT = 0;
+    cin.addEventListener('focus', () => {
+      clearTimeout(warmT);
+      warmT = setTimeout(() => {
+        if (gen || genP || !chatOn || !brainOn() || heavyBusy() || lsGet('ppvChatDl') !== '1') return;
+        (async () => {
+          try {
+            if (NATIVE && CHAT_MODELS[chatKey()].lm && !(await NP.exists({ id: CHAT_MODELS[chatKey()].lid })).ready) return;
+            await ensureModel(() => {}); if (!chatBusy) idleUnload();
+          } catch (e) { console.warn('chat warm-up failed', e); }
+        })();
+      }, 400);
+    });
     const idleUnload = () => { clearTimeout(idleT); idleT = setTimeout(() => { if (gen && !chatBusy && !holdModel) unloadModel(); }, keepMs()); };
     const heavyBusy = () => ['ppv-go', 'ppv-wgo', 'ppv-tag'].some(id => { const b = document.getElementById(id); return b && b.disabled; });
     // The chat brain (tiny language model) is optional. Everything Bloopy DOES (moods, playlists, tagging, player control) runs without it.
@@ -5578,9 +5593,10 @@
     const looksOk = r => { const L = (r.match(/\p{L}/gu) || []).length, W = (r.match(/\p{L}{2,}/gu) || []).length; return r.length <= 8 || (L / r.length >= 0.6 && W >= 2); };
     const FALLBACK = { split: 'Your split tracks are ready.', lyrics: 'The lyrics are ready.', tag: 'Tagging is finished.' };
     // Write the "all done" line NOW, while the model is loaded, so the model can leave RAM before the heavy job starts.
-    // Never downloads the model just for this; falls back to a fixed line if it is missing, slow or garbled.
+    // Only when the model is ALREADY in RAM: loading a multi-GB model just for one sentence held the real job up for up to 25 s.
+    // Otherwise (or if it is slow or garbled) the fixed line is used.
     async function signoff(job) {
-      if (!brainOn() || (!gen && lsGet('ppvChatDl') !== '1')) return null;
+      if (!brainOn() || !gen) return null;
       let aborted = false;
       const p = (async () => {
         const g = await ensureModel(() => {}); if (aborted) return null;
