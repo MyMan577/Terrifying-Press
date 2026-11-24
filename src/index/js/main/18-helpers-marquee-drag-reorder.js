@@ -250,9 +250,11 @@
   function ppBuildRows(list, build){
     const gen = ppRowsGen = (ppRowsGen || 0) + 1, STEP = 150;   // || 0: may run before the var line above has
     ppRowsRest = null;
-    // While the page is still loading the loading screen covers everything, so nothing is on screen yet either.
-    const shown = document.readyState !== 'loading' && (!playlistEl.checkVisibility || playlistEl.checkVisibility({ visibilityProperty: true }));
-    if (shown || list.length <= STEP){ list.forEach(build); return; }
+    // While the loading screen is up (window.__ppLoading, from loader-finish.js; not yet set while the page itself is
+    // still loading) it covers everything: build them all at once, so it is done before the app can be touched.
+    const loading = document.readyState === 'loading' || window.__ppLoading !== false;
+    const shown = !loading && (!playlistEl.checkVisibility || playlistEl.checkVisibility({ visibilityProperty: true }));
+    if (loading || shown || list.length <= STEP){ list.forEach(build); return; }
     let at = 0;
     const step = (all) => {
       if (gen !== ppRowsGen) return;

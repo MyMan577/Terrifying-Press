@@ -57,7 +57,7 @@
       if(t)t.insertAdjacentHTML('beforeend','<span class="pp-ld-ed" data-ed="'+ed+'">'+{lite:'Lite',plus:'Plus',premium:'Premium',playground:'Playground',focus:'Focus'}[ed]+'</span>');
     }
   }catch(e){}
-  setTimeout(function(){var x=document.getElementById('pp-loader');if(x)x.remove()},15000);
+  setTimeout(function(){var x=document.getElementById('pp-loader');if(x)x.remove();window.__ppLoading=false},30000);   // last resort; loader-finish.js gives up at 25 s
 })();
 </script>
 @@include index/html/01-menu-and-effects.html@@
