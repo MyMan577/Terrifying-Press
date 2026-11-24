@@ -2114,7 +2114,7 @@ function renderCard(card, { selected, scoring, dimmed, scale, marginLeft, arcInd
     debuffBadge.className = "card-debuffed-badge";
     debuffBadge.style.fontSize = px(11) + "px";
     debuffBadge.textContent = "✕";
-    debuffBadge.title = "Debuffed by the Boss Blind";
+    debuffBadge.title = state.deckSuitOff && card.suit === state.deckSuitOff && deckIs("royal") ? "This suit is disabled this blind" : "Debuffed by the Boss Blind";
     el.appendChild(debuffBadge);
   }
 
@@ -2315,7 +2315,8 @@ const DECKS = [
   { id: "spectral", name: "Spectral Deck", desc: "Spectral cards can turn up in the shop. Start with a Prism Hex", color: "#4b5a9e", glyph: "☾\uFE0E", effects: [] },
   { id: "zodiac", name: "Zodiac Deck", desc: "Start with the Overstock, Peddler and Star Vendor vouchers", color: "#6a3f8f", glyph: "♈\uFE0E", effects: [] },
   // Our own
-  { id: "royal", name: "Royal Deck", desc: "Only Aces and face cards: 32 cards, two of each. −1 hand every round", color: "#9a2f4a", glyph: "♛\uFE0E", effects: [{ type: "extraPlays", value: -1 }] },
+  { id: "royal", name: "Royal Deck", desc: "Nothing but face cards: 24 of them, two of each per suit. Every blind disables a random suit from your deck, and blinds need twice the score", color: "#9a2f4a", glyph: "♛\uFE0E", effects: [] },
+  { id: "negative", name: "Negative Deck", desc: "Negative artifacts and cards turn up far more often, and every Legend Pack holds Negative Nancy. Start holding a Pauper's Pact. −1 hand, −1 discard and −1 hand size", color: "#3a2a55", glyph: "◐\uFE0E", effects: [{ type: "extraPlays", value: -1 }, { type: "extraDiscards", value: -1 }, { type: "extraHandSize", value: -1 }] },
   { id: "tycoon", name: "Tycoon Deck", desc: "Interest caps at $10 instead of $5 and you start with $5 more, but −1 discard every round", color: "#2f7a5a", glyph: "¤", effects: [{ type: "interestCap", value: 5 }, { type: "extraDiscards", value: -1 }] },
   { id: "ornate", name: "Ornate Deck", desc: "8 random cards start with a sleeve and 8 others with a stamp", color: "#b5833a", glyph: "❖\uFE0E", effects: [] },
 ];
@@ -2334,7 +2335,7 @@ function freshDeck(deckId = state.deckId) {
     for (let i = 0; i < 52; i++) { const rank = randomOf(RANKS), suit = randomOf(SUIT_KEYS); deck.push({ rank, suit, id: `${rank}-${suit}-${id()}` }); }
   } else {
     const suits = deckId === "checkered" ? ["spades", "spades", "hearts", "hearts"] : SUIT_KEYS;
-    const ranks = deckId === "hollow" ? RANKS.filter((r) => !["J", "Q", "K"].includes(r)) : deckId === "royal" ? ["A", "J", "Q", "K", "A", "J", "Q", "K"] : RANKS;
+    const ranks = deckId === "hollow" ? RANKS.filter((r) => !["J", "Q", "K"].includes(r)) : deckId === "royal" ? ["J", "Q", "K", "J", "Q", "K"] : RANKS;
     for (const suit of suits) for (const rank of ranks) deck.push({ rank, suit, id: `${rank}-${suit}-${id()}` });
   }
   for (let i = deck.length - 1; i > 0; i--) {
@@ -2511,7 +2512,7 @@ function targetForAnte(ante, blindIdx) {
       mult *= state.bossBlind.scoreMult;
     }
   }
-  return Math.round(100 * anteBaseMultiplier(ante) * mult * (deckIs("balance") ? 2 : 1));
+  return Math.round(100 * anteBaseMultiplier(ante) * mult * (deckIs("balance") || deckIs("royal") ? 2 : 1));
 }
 
 // Balatro doesn't scale its blind requirement linearly with ante — each ante
@@ -2673,6 +2674,7 @@ function pickFinalBoss() {
 
 // Returns true if a card should contribute 0 chips due to the active Boss Blind.
 function isCardDebuffed(card) {
+  if (state.deckSuitOff && card.suit === state.deckSuitOff && deckIs("royal")) return true;   // Royal Deck: this blind's disabled suit
   const boss = state.bossBlind;
   if (!boss) return false;
   if (card.bossDebuffed) return true;
@@ -4886,8 +4888,9 @@ function rollCharmSleeve(def) {
   const rate = voucherBest("charmSleeveRate", Math.max);
   let r = Math.random();
   for (const [k, sl] of Object.entries(CHARM_SLEEVES)) {
-    if (r < sl.chance * rate) return withCharmSleeve(def, k);
-    r -= sl.chance * rate;
+    const c = sl.chance * rate * (k === "negative" && deckIs("negative") ? 10 : 1);   // Negative Deck
+    if (r < c) return withCharmSleeve(def, k);
+    r -= c;
   }
   return def;
 }
@@ -5493,7 +5496,7 @@ function generateShopStock(count) {
 function shopPlayingCard() {
   const fancy = voucherSum("shopPlayingCards") >= 2;
   const extra = {};
-  if (fancy && Math.random() < 0.5) extra.sleeve = Math.random() < 0.06 ? "negative" : randomOf(SLEEVE_KINDS);
+  if (fancy && Math.random() < 0.5) extra.sleeve = Math.random() < (deckIs("negative") ? 0.3 : 0.06) ? "negative" : randomOf(SLEEVE_KINDS);
   if (fancy && Math.random() < 0.4) extra.stamp = randomOf(STAMP_KINDS);
   const card = makeCard(randomOf(RANKS), randomOf(SUIT_KEYS), extra);
   const suit = card.suit[0].toUpperCase() + card.suit.slice(1);
@@ -6131,6 +6134,7 @@ function startGame(deckId) {
   }
   if (deckIs("gilt")) state.money += 10;
   if (deckIs("tycoon")) state.money += 5;
+  if (deckIs("negative")) { const pact = SPECTRAL_DEFS.find((x) => x.id === "paupersPact"); if (pact) state.items = [{ ...heldSpectral(pact), uid: newUid() }]; }
   if (deckIs("spectral")) { const hex = SPECTRAL_DEFS.find((x) => x.id === "prismHex"); if (hex) state.items = [{ ...heldSpectral(hex), uid: newUid() }]; }
   if (deckIs("mystic")) state.items = shuffleArray(ITEM_DEFS.filter((x) => !x.chart && !x.secret)).slice(0, 2).map((x) => ({ ...x, uid: newUid() }));
   state.usedCards = [];
@@ -6258,6 +6262,9 @@ function beginBlind(nextAnte, nextBlindIdx) {
   state.handTypesPlayedThisRound = [];
   state.firstHandTypeThisRound = null;
   state.bossBlindMessage = null;
+  // Royal Deck: one suit that's in your deck right now sits out this blind.
+  state.deckSuitOff = deckIs("royal") ? randomOf([...new Set(allRunCards().map((c) => c.suit))]) || null : null;
+  if (state.deckSuitOff) setTimeout(() => flashMessage(`${state.deckSuitOff[0].toUpperCase() + state.deckSuitOff.slice(1)} are disabled this blind`, 2400) || render(), 300);
   state.playsLeft = 4 + getExtraPlays(state.items);
   state.discardsLeft = 4 + getExtraDiscards(state.items);
   while (useTag("encore")) state.playsLeft += 1;
@@ -7319,9 +7326,14 @@ function openPack(packId) {
     if (favChart && !choices.some((c) => c.id === favChart.id)) choices[0] = { ...favChart };
   }
   if (kind === "spectralPack") choices = pickSpectrals(n);
-  if (kind === "legendPack") choices = pickDefs(LEGENDARY_DEFS.filter((c) => !owned.has(c.id)), n);
-  if (kind === "cardPack") choices = Array.from({ length: n }, () => makeCard(randomOf(RANKS), randomOf(SUIT_KEYS), Math.random() < 0.25 ? { stamp: randomOf(STAMP_KINDS) } : {}));
-  if (kind === "ornatePack") choices = Array.from({ length: n }, () => makeCard(randomOf(RANKS), randomOf(SUIT_KEYS), { sleeve: Math.random() < 0.05 ? "negative" : randomOf(SLEEVE_KINDS), stamp: randomOf(STAMP_KINDS) }));
+  if (kind === "legendPack") {
+    choices = pickDefs(LEGENDARY_DEFS.filter((c) => !owned.has(c.id)), n);
+    // Negative Deck: Negative Nancy is always one of the choices (unless you already have her).
+    const nancy = LEGENDARY_DEFS.find((c) => c.id === "negativeNancy");
+    if (deckIs("negative") && nancy && !owned.has(nancy.id) && !choices.some((c) => c.id === nancy.id)) choices[0] = { ...nancy };
+  }
+  if (kind === "cardPack") choices = Array.from({ length: n }, () => makeCard(randomOf(RANKS), randomOf(SUIT_KEYS), { ...(Math.random() < 0.25 ? { stamp: randomOf(STAMP_KINDS) } : {}), ...(deckIs("negative") && Math.random() < 0.1 ? { sleeve: "negative" } : {}) }));
+  if (kind === "ornatePack") choices = Array.from({ length: n }, () => makeCard(randomOf(RANKS), randomOf(SUIT_KEYS), { sleeve: Math.random() < (deckIs("negative") ? 0.25 : 0.05) ? "negative" : randomOf(SLEEVE_KINDS), stamp: randomOf(STAMP_KINDS) }));
   state.packOpen = { id: packId, name: pack.name, choices, picks: pack.picks || 1, openedAt: SETTINGS.packAnim ? Date.now() : 0, hand: kind === "spectralPack" || kind === "itemPack" ? packHandIds() : null, note: null };
   state.packPick = null;
   state.packSel = [];
