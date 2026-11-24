@@ -526,6 +526,79 @@
     const cut = clips.filter(c => !heard(c)), left = clips.filter(heard);
     return { cut, left, note: '' };
   }
+  // ---------- After the split: judge the Vocals stem itself, 2 s at a time ----------
+  // Only clips that make noise are judged; quiet ones are left alone. Three taggers each say voice ('v'), instrument ('i') or unsure:
+  //  A) AudioSet (mn10): singing/speech/rap classes vs instrument classes, and names the instrument;
+  //  B) Essentia voice-or-instrumental head;  C) Essentia instrument head (its "voice" class vs the strongest instrument).
+  // Kept: 2+ say voice and none say instrument. Cut: none say voice and 2+ say instrument. Anything else is unsure.
+  // x32: Vocals stem, mono 32 kHz. Returns { keep: [[a,b]], cut: [{a,b,what}], unsure: [{a,b,v}], x16 }.
+  const AS_VOICE = [0, 1, 2, 3, 5, 8, 27, 28, 29, 30, 32, 33, 34, 35, 36, 37];
+  async function judgeStem(x32, status, lv) {
+    await loadOrt();
+    for (const k of ['tg_mn10', 'tg_effnet', 'tg_hvoice', 'tg_hinst', 'tg_mel']) await ensureTagFile(k, status, true);
+    const C = 2, n = Math.max(1, Math.ceil(x32.length / 32000 / C)), rms = new Float32Array(n);
+    for (let k = 0; k < n; k++) { const a = k * C * 32000, b = Math.min(x32.length, a + C * 32000); let s = 0; for (let j = a; j < b; j++) s += x32[j] * x32[j]; rms[k] = Math.sqrt(s / Math.max(1, b - a)); }
+    const ref = Array.from(rms).sort((p, q) => p - q)[Math.floor(n * 0.9)] || 0, loud = Array.from(rms, v => v >= Math.max(2e-3, ref * 0.1));
+    const vote = Array.from({ length: n }, () => ({ v: 0, i: 0, what: '' }));
+    const own = [];
+    try {
+      // A) AudioSet: each clip centred in the model's fixed 5 s window
+      const mn = await makeSession('tg_mn10', false, lv); own.push(mn);
+      for (let k = 0; k < n; k++) {
+        if (!loud[k]) continue;
+        if (k % 8 === 0) { status('Checking the Vocals stem (sound tagger)… ' + Math.round(k / n * 100) + '%'); await tick(); }
+        const w = new Float32Array(160000), a = k * C * 32000, seg = x32.subarray(a, Math.min(x32.length, a + C * 32000)); w.set(seg, (160000 - C * 32000) >> 1);
+        const res = await mn.run({ [mn.inputNames[0]]: new ort.Tensor('float32', w, [1, 160000]) });
+        let o = null; for (const nm of mn.outputNames) if (res[nm] && res[nm].data && res[nm].data.length === 527) { o = res[nm].data; break; }
+        if (!o) continue;
+        let lo = Infinity, hi = -Infinity; for (const q of o) { lo = Math.min(lo, q); hi = Math.max(hi, q); }
+        const pr = c => lo < 0 || hi > 1 ? 1 / (1 + Math.exp(-o[c])) : o[c];
+        let vo = 0, io = 0, ic = -1; for (const c of AS_VOICE) vo = Math.max(vo, pr(c));
+        for (let c = 140; c <= 213; c++) if (asInst(c) && pr(c) > io) { io = pr(c); ic = c; }
+        if (vo >= 0.3 && vo >= io) vote[k].v++; else if (vo < 0.15 && io >= 0.2) { vote[k].i++; vote[k].what = AUDIOSET[ic] || ''; }
+      }
+      // B + C) Essentia: one 128-frame patch (~2 s) per clip
+      status('Checking the Vocals stem (voice and instrument taggers)…'); await tick();
+      const x16 = down2(x32, 0, x32.length >> 1), mel = await effnetMel(x16, parseNpy(await getPart('tg_mel'))), nF = mel.length / 96;
+      const eff = await makeSession('tg_effnet', false, lv), hV = await makeSession('tg_hvoice', false, lv), hI = await makeSession('tg_hinst', false, lv); own.push(eff, hV, hI);
+      const idx = []; for (let k = 0; k < n; k++) if (loud[k]) idx.push(k);
+      const rowsOf = async (sess, emb, cnt, per) => {                 // [cnt, per] scores, whether the head takes a batch or one row
+        const run1 = async (d, b) => (await sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', d, [b, 1280]) }))[sess.outputNames[0]].data;
+        const o = await run1(emb, 64); if (o.length >= cnt * per) return o;
+        const out = new Float32Array(cnt * per);
+        for (let i = 0; i < cnt; i++) { const r = await run1(emb.slice(i * 1280, (i + 1) * 1280), 1); out.set(r.subarray(0, per), i * per); }
+        return out;
+      };
+      const sig = a => { let lo = Infinity, hi = -Infinity; for (const q of a) { lo = Math.min(lo, q); hi = Math.max(hi, q); } return lo < 0 || hi > 1 ? Float32Array.from(a, q => 1 / (1 + Math.exp(-q))) : a; };
+      for (let b0 = 0; b0 < idx.length; b0 += 64) {
+        const cnt = Math.min(64, idx.length - b0), X = new Float32Array(64 * 128 * 96);
+        for (let i = 0; i < cnt; i++) { const f0 = Math.min(Math.max(0, nF - 128), Math.round(idx[b0 + i] * C * 16000 / 256)) * 96; X.set(mel.subarray(f0, Math.min(mel.length, f0 + 128 * 96)), i * 128 * 96); }
+        const r = await eff.run({ [eff.inputNames[0]]: new ort.Tensor('float32', X, [64, 128, 96]) });
+        let emb = null; for (const nm of eff.outputNames) if (r[nm].dims[r[nm].dims.length - 1] === 1280) emb = r[nm].data;
+        if (!emb) break;
+        const pv = await rowsOf(hV, emb, cnt, 2), pi = sig(await rowsOf(hI, emb, cnt, 40));
+        for (let i = 0; i < cnt; i++) {
+          const k = idx[b0 + i], v = pv[i * 2 + 1];
+          if (v >= 0.6) vote[k].v++; else if (v <= 0.3) vote[k].i++;
+          let best = 0, bi = -1; for (let c = 0; c < 39; c++) if (pi[i * 40 + c] > best) { best = pi[i * 40 + c]; bi = c; }
+          const vc = pi[i * 40 + 39];
+          if (vc >= 0.5 && vc >= best) vote[k].v++; else if (best >= 0.5 && vc < 0.3) { vote[k].i++; if (!vote[k].what) vote[k].what = INST40[bi]; }
+        }
+        await tick();
+      }
+      // verdicts, joined into runs
+      const keep = [], cut = [], unsure = [], cls = k => !loud[k] ? 'k' : vote[k].v >= 2 && !vote[k].i ? 'k' : !vote[k].v && vote[k].i >= 2 ? 'c' : 'u';
+      for (let k = 0; k < n;) {
+        const c0 = cls(k); let j = k; while (j < n && cls(j) === c0) j++;
+        const a = k * C, b = j * C;
+        if (c0 === 'k') keep.push([a, b]);
+        else if (c0 === 'c') { const w = {}; for (let q = k; q < j; q++) if (vote[q].what) w[vote[q].what] = (w[vote[q].what] || 0) + 1; cut.push({ a, b, what: Object.keys(w).sort((p, q) => w[q] - w[p])[0] || 'an instrument' }); }
+        else { let s = 0; for (let q = k; q < j; q++) s += vote[q].v; unsure.push({ a, b, v: Math.round(s / (j - k) * 10) / 10 }); }
+        k = j;
+      }
+      return { keep, cut, unsure, x16 };
+    } finally { for (const s of own) { try { s.release && s.release(); } catch (e) {} } }
+  }
   const mergeSpans = sp => { const o = []; for (const q of sp.slice().sort((a, b) => a[0] - b[0])) { const l = o[o.length - 1]; if (l && q[0] <= l[1] + 0.3) l[1] = Math.max(l[1], q[1]); else o.push([q[0], q[1]]); } return o; };
 
   async function alignedCues(t, o, status) {
@@ -954,7 +1027,7 @@
     let loadLbl = 'Loading models…', running = false; const lt0 = Date.now();
     const ltick = setInterval(() => { if (!running) status(loadLbl + ' ' + Math.round((Date.now() - lt0) / 1000) + ' s'); }, 1000);
     const h = await NP.addListener('progress', e => { if (e && e.note) { loadLbl = e.note; running = false; status(e.note); return; } running = true; onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
-    const nm = opts.nmask || null, hid = !!nm && !wanted.includes('Vocals') && (wanted.includes('Instrumental') || wanted.includes('Other'));
+    const nm = opts.nmask || (opts.judge ? {} : null), hid = !!nm && !wanted.includes('Vocals') && (wanted.includes('Instrumental') || wanted.includes('Other'));
     const W = hid ? wanted.concat('Vocals') : wanted;                 // vocals are needed to put the removed sound back
     const accKey = 'ppvAccel2_' + id, remembered = ls0(accKey);
     // A model that already lost or gave NaN stays on CPU. Demucs and the multi-model sets keep their verdict on the Java side
@@ -985,8 +1058,12 @@
     } finally { h.remove(); clearInterval(ltick); }
     window.__ppLastSep = ' (' + Math.round(out.seconds) + ' s on ' + out.accel + (out.npuNote ? '. Not on the NPU: ' + out.npuNote : '') + ')';
     try { localStorage.setItem(accKey, /nnapi|npu|gpu/i.test(String(out.accel)) ? 'nnapi' : 'cpu'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+    if (opts.judge && out.files.Vocals) {                              // after the split: the taggers judge the finished Vocals stem
+      try { const sp = await opts.judge(window.Capacitor.convertFileSrc(out.files.Vocals)); if (sp) { nm.spans = sp; nm.floor = 0; nm.fade = MASKS[3].fade; } }
+      catch (e) { console.warn('vocal check failed', e); window.__ppLastSep += ' Vocal check failed (' + errText(e) + '), so the stems were left as they came out.'; }
+    }
     if (nm) {
-      window.__ppLastSep += await nativeMask(nm, out.files.Vocals, ['Instrumental', 'Other'].map(n => out.files[n]), status);
+      if (nm.spans) window.__ppLastSep += await nativeMask(nm, out.files.Vocals, ['Instrumental', 'Other'].map(n => out.files[n]), status);
       if (hid) { NP.deleteFiles({ paths: [out.files.Vocals] }).catch(() => {}); delete out.files.Vocals; }
     }
     const res = {};
@@ -9299,7 +9376,7 @@
       '<label id="ppv-c-spinl" class="ppv-c" style="display:none;margin-top:6px"><input type="checkbox" id="ppv-c-spin"> Keep threads busy between steps (faster, hotter, uses more battery)</label></div>' +
       '<div id="ppv-stems"></div>' +
       '<div style="margin-top:8px">Mute vocal gaps</div><select id="ppv-gate"><option value="0">Off</option><option value="1">Gentle</option><option value="2">Normal</option><option value="3">Strong</option></select><div style="opacity:.6;font-size:11px;margin-top:4px">Silences leftover noise between sung lines. Vocals stem only.</div>' +
-      '<label class="ppv-c" style="margin-top:8px"><input type="checkbox" id="ppv-agree"> Keep only real vocals (AIs vote)</label><div style="opacity:.6;font-size:11px;margin-top:4px">Spleeter, the model you picked and two transcribers (Whisper Base, plus Parakeet if downloaded or Whisper Tiny) check every moment for singing. Solos and synths they agree are not vocals move from Vocals to Instrumental / Other. Parts they are not all sure about go to a referee (Whisper Distil-Small): if it hears no words they are cut and you are told; the rest are listed for you to hear and keep or cut. Slower: listens to the song first.</div>' +
+      '<label class="ppv-c" style="margin-top:8px"><input type="checkbox" id="ppv-agree"> Keep only real vocals (AIs check the Vocals stem)</label><div style="opacity:.6;font-size:11px;margin-top:4px">After the split, three taggers listen to the Vocals stem 2 seconds at a time and say voice or instrument. Parts with no voice (solos, synths) move to Instrumental / Other, and you are told what was moved. Unsure parts go to a referee (Whisper Distil-Small): if it hears no words they are cut, otherwise you hear them and choose.</div>' +
       '<div id="ppv-spl" style="margin-top:8px">Strength: <span id="ppv-sv">1</span><input id="ppv-sl" type="range" min="1" max="4" step="0.5" value="1" style="width:100%"><div style="opacity:.6;font-size:11px">Higher = less bleed, more watery artifacts</div><div style="margin-top:8px">Quality</div><select id="ppv-q"><option value="0">Standard</option><option value="1">Better (smooth seams, ~1.3x time)</option><option value="2">Best (+ averaged 2nd pass, ~2.7x time)</option></select></div>' +
       '<label id="ppv-gpu" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-gpuc"> Use GPU (faster, experimental)</label>' +
       '<label id="ppv-nn" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-nnc"> Phone GPU/NPU (experimental). Demucs: Snapdragon NPU only, CPU on other phones</label>' +
@@ -9466,26 +9543,39 @@
         if (!t) throw new Error('Play or select a track first.');
         if (!want.length) throw new Error('Tick at least one stem.');
         await downloadModel(id, status, !!(LV() && LV().blob));
-        let maskNote = '', spans = null;
-        if (agree.checked) {
-          const vv = await vocalVotes(t, { strength: +sl.value, lv: LV() }, status);
-          const cl = voteClips(vv.votes, vv.nJ, vv.F); let kept = [], ref = { cut: [], left: cl.unsure, note: '' };
-          if (cl.unsure.length) ref = await refereeClips(t, { strength: +sl.value, lv: LV() }, vv.x, cl.unsure, status);
-          const fmt = s0 => Math.floor(s0 / 60) + ':' + String(Math.floor(s0 % 60)).padStart(2, '0');
-          const cutMsg = ref.cut.length ? 'Whisper Distil-Small heard no words in ' + ref.cut.length + ' unsure part' + (ref.cut.length > 1 ? 's' : '') + ', so ' + (ref.cut.length > 1 ? 'they were' : 'it was') + ' cut automatically: ' + ref.cut.map(c => fmt(c.a) + '\u2013' + fmt(c.b)).join(', ') + '.' : '';
-          if (ref.left.length) { status((cutMsg ? cutMsg + ' ' : '') + ref.left.length + ' part' + (ref.left.length > 1 ? 's' : '') + ' still unclear: listen and choose below.'); kept = await reviewClips(ref.left, vv.x, vv.nJ, cutMsg); }
+        let maskNote = '', judgedNative = false;
+        const fmt = s0 => Math.floor(s0 / 60) + ':' + String(Math.floor(s0 % 60)).padStart(2, '0');
+        // After the split: taggers judge the Vocals stem; unsure parts go to the referee, then to you. Returns padded keep spans.
+        const judge = async url => {
+          status('Checking the Vocals stem…');
+          const j = await judgeStem(await decodeMono(url, 32000), status, LV());
+          let ref = { cut: [], left: j.unsure, note: '' }, kept = [];
+          if (j.unsure.length) ref = await refereeClips(t, { strength: +sl.value, lv: LV() }, j.x16, j.unsure, status);
+          const msgs = [];
+          if (j.cut.length) msgs.push('The taggers heard no voice in ' + j.cut.length + ' part' + (j.cut.length > 1 ? 's' : '') + ' of the Vocals stem, so ' + (j.cut.length > 1 ? 'they were' : 'it was') + ' moved out: ' + j.cut.map(c => fmt(c.a) + '–' + fmt(c.b) + ' (' + c.what + ')').join(', ') + '.');
+          if (ref.cut.length) msgs.push('Whisper Distil-Small heard no words in ' + ref.cut.length + ' unsure part' + (ref.cut.length > 1 ? 's' : '') + ', so ' + (ref.cut.length > 1 ? 'they were' : 'it was') + ' cut automatically: ' + ref.cut.map(c => fmt(c.a) + '–' + fmt(c.b)).join(', ') + '.');
+          const cutMsg = msgs.join(' ');
+          if (ref.left.length) { status((cutMsg ? cutMsg + ' ' : '') + ref.left.length + ' part' + (ref.left.length > 1 ? 's' : '') + ' still unclear: listen and choose below.'); kept = await reviewClips(ref.left, j.x16, 3, cutMsg); }
           else if (cutMsg) status(cutMsg);
-          spans = mergeSpans(cl.keep.concat(kept));
-          maskNote = ' Vocal vote (' + vv.nJ + ' AIs): kept ' + Math.round(spans.reduce((n, q) => n + q[1] - q[0], 0)) + ' s of vocals' + (ref.left.length ? ', you judged ' + ref.left.length + ' unclear part' + (ref.left.length > 1 ? 's' : '') : '') + '.' + (cutMsg ? ' ' + cutMsg : '') + ref.note + vv.note;
-          if (!spans.length) spans = [[-10, -9]];                     // nobody heard singing: the whole Vocals stem goes to Instrumental
-          vv.x = null;
-        }
+          const sp = mergeSpans(j.keep.concat(kept));
+          maskNote = ' Vocal check: ' + (j.cut.length + ref.cut.length ? cutMsg : 'every noisy part of the Vocals stem sounded like a voice.') + (ref.left.length ? ' You judged ' + ref.left.length + ' unclear part' + (ref.left.length > 1 ? 's' : '') + '.' : '') + ref.note;
+          const pd = sp.map(q => [Math.max(0, q[0] - 0.1), q[1] + 0.2]);
+          return pd.length ? pd : [[-10, -9]];
+        };
         status('Decoding audio…');
         let pcm = NATIVE && ['spleeter', 'sp4', 'mdx', 'demucs', 'multi'].includes((MODELS[id] || {}).kind) ? null : await decode(t.url);
-        let mask = null, nmask = null;
-        if (spans) { const pd = spans.map(q => [Math.max(0, q[0] - 0.1), q[1] + 0.2]); if (pcm) mask = makeMask(pd, 3); else nmask = { spans: pd, floor: 0, fade: MASKS[3].fade }; }
-        const res = await run(id, pcm, want, { strength: +sl.value, gpu: gpu.checked && !LV(), lv: LV(), quality: +qsel.value, gate: +gsel.value, mask, nmask, track: t, nnapi: NATIVE ? nnc.checked : false, tune: NATIVE && nnc.checked && tnc.checked }, status, f => { bar.style.width = (f * 100) + '%'; status('Separating… ' + Math.round(f * 100) + '%'); });
+        const mask = null, nmask = null, wantJ = agree.checked && !want.includes('Vocals') ? want.concat('Vocals') : want;
+        const res = await run(id, pcm, pcm ? wantJ : want, { judge: agree.checked && !pcm ? (u => { judgedNative = true; return judge(u); }) : null, strength: +sl.value, gpu: gpu.checked && !LV(), lv: LV(), quality: +qsel.value, gate: +gsel.value, mask, nmask, track: t, nnapi: NATIVE ? nnc.checked : false, tune: NATIVE && nnc.checked && tnc.checked }, status, f => { bar.style.width = (f * 100) + '%'; status('Separating… ' + Math.round(f * 100) + '%'); });
         pcm = null;
+        if (agree.checked && !judgedNative && res.Vocals) {               // in-page engines: judge the finished Vocals, then move the cut parts
+          const toUrl = e => URL.createObjectURL(e.blob || encode(e).blob);
+          const vu = toUrl(res.Vocals), spans = await judge(vu), m = makeMask(spans, 3);
+          const V = await decode(vu); URL.revokeObjectURL(vu);
+          const ex = []; for (const n of ['Instrumental', 'Other']) if (res[n]) { const u = toUrl(res[n]); ex.push([n, await decode(u)]); URL.revokeObjectURL(u); }
+          if (m) { status('Moving the cut parts out of Vocals…'); m.process(V[0], V[1], ex.map(q => q[1])); }
+          res.Vocals = encode(V); for (const [n, c] of ex) res[n] = encode(c);
+          if (!want.includes('Vocals')) delete res.Vocals;
+        }
         const files = []; let vidFail = 0;
         for (const n of want) {                                          // encode one at a time, free each stem after
           status('Encoding ' + n + '…'); await tick();
