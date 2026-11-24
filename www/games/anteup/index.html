@@ -745,8 +745,7 @@ body.landscape .bshop-sign span { font-size: 17px; padding: 2px 22px 3px; }
 body.landscape .bshop-top, body.landscape .bshop-bottom { display: contents; }
 body.landscape .bshop-actions { grid-column: 1; }
 body.landscape .bshop-wares {
-  grid-column: 2; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(74px, 1fr);
-  overflow-x: auto; overflow-y: hidden; align-content: center; min-height: 0;
+  grid-column: 2; grid-template-columns: repeat(var(--wcols, 3), minmax(0, 1fr)); align-content: center; min-height: 0;
 }
 body.landscape .bshop-voucher { grid-column: 3; justify-content: center; }
 body.landscape .bshop-packs { grid-column: 4; justify-content: center; }
@@ -855,6 +854,7 @@ body.landscape .pack-spacer { display: none; }
   animation: packSpin 40s linear infinite;
 }
 @keyframes packSpin { to { transform: rotate(360deg); } }
+.pack-rays-clip { position: absolute; inset: 0; border-radius: 16px; overflow: hidden; pointer-events: none; }
 .pack-sign { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); margin: 0; }
 .pack-sign span { font-size: 17px; padding: 2px 20px 3px; }
 .pack-torn {
@@ -1304,6 +1304,61 @@ body.landscape .bottom-bar .sub-controls-row {
   flex-direction: column; align-items: center; gap: 10px; margin: 0;
 }
 body.landscape .score-popup { top: 46%; }
+
+/* Sideways on a phone the screen is only ~380px tall: everything smaller. */
+body.landscape #app { padding: 6px 14px 6px; }
+body.landscape .blind-label { font-size: 9.5px; letter-spacing: 1.5px; }
+body.landscape .boss-blind-name { font-size: 13px; }
+body.landscape .header .score-line { font-size: 21px; }
+body.landscape .progress-track { height: 5px; margin-top: 4px; }
+body.landscape .stats-row { gap: 10px; }
+body.landscape .stat-value { font-size: 14px; }
+body.landscape .stat-label { font-size: 8px; letter-spacing: .6px; }
+body.landscape .header-right { gap: 10px; }
+body.landscape .opt-btn.compact { padding: 5px 6px; border-radius: 8px; }
+body.landscape .opt-lines i { width: 11px; height: 2px; }
+body.landscape .shelf-label { font-size: 8.5px; }
+body.landscape .preview-bar { min-height: 30px; margin: 16px 0 0; gap: 8px; }
+body.landscape .preview-name { font-size: 15px; }
+body.landscape .chip-pill { padding: 2px 9px; font-size: 12px; }
+body.landscape .chip-pill-label { font-size: 8px; }
+body.landscape .lv-tag { font-size: 8px; }
+body.landscape .deck-widget { transform: scale(.82); transform-origin: center bottom; }
+body.landscape .bottom-bar .sub-controls-row { gap: 6px; }
+body.landscape .bottom-bar .actions-row { gap: 7px; }
+
+/* shop, sideways */
+body.landscape .shop-overlay { padding: 6px 14px max(6px, env(safe-area-inset-bottom)); }
+body.landscape .shop-title { font-size: 18px; }
+body.landscape .shop-sub { font-size: 9px; }
+body.landscape .shop-money { font-size: 13px; padding: 3px 10px; }
+body.landscape .shop-deck-corner { transform: scale(.7); }
+body.landscape .bshop { margin-top: 16px; padding: 14px 8px 8px; gap: 6px; grid-template-columns: 82px minmax(0, 1fr) 96px auto; }
+body.landscape .bshop-actions .bbtn-big { font-size: 15px; }
+body.landscape .bshop.tight .bpack-row { grid-template-columns: repeat(2, calc(var(--face, 74px) + 4px)); }
+body.landscape .bshop.tight .bvoucher-art { width: calc(var(--face, 74px) * .75); }
+body.landscape .bcard-name { font-size: 9.5px; min-height: 2.2em; }
+body.landscape .bbuy { padding: 3px 9px; font-size: 9px; }
+body.landscape .bshop-wares { gap: 12px 4px; padding: 12px 4px 4px; }
+
+/* pack screen, sideways: fits without scrolling */
+body.landscape .pack-overlay { padding: 6px 14px max(6px, env(safe-area-inset-bottom)); }
+body.landscape .pack-header .shop-title { font-size: 18px; white-space: nowrap; }
+body.landscape .pack-stage { margin-top: 14px; padding: 16px 8px 6px; }
+body.landscape .pack-sign span { font-size: 14px; padding: 1px 16px 2px; }
+body.landscape .pack-sign { top: -14px; }
+body.landscape .pack-torn { width: 32px; }
+body.landscape .pack-fan { padding: 4px 0 2px; }
+body.landscape .pack-hand { margin-top: 2px; }
+body.landscape .pack-hand .bwell-label { margin-bottom: 2px; font-size: 8px; }
+body.landscape .pack-hand-card { height: 48px; }
+body.landscape .pack-hand-card .pack-card { zoom: .55 !important; }
+body.landscape .pack-info { min-height: 44px; margin-top: 6px; padding: 4px 10px; }
+body.landscape .pack-info-name { font-size: 14px; }
+body.landscape .pack-info-desc { font-size: 10.5px; }
+body.landscape .pack-actions { margin-top: 6px; }
+body.landscape .pack-actions .bbtn { min-height: 36px; }
+body.landscape .pack-actions .bbtn-big { font-size: 15px; }
 body.landscape .gear-drop-zones { top: 28vh; height: 34vh; }
 
 </style>
@@ -5102,14 +5157,16 @@ function getHandSize() {
 function computeFanLayout() {
   const viewportW = window.innerWidth;
   // In landscape the deck/sort column and the button column flank the hand.
-  const sidePadding = isLandscape() ? 16 + 2 * 170 : 16;
+  const sidePadding = isLandscape() ? 16 + 2 * 150 : 16;
   const available = viewportW - sidePadding;
   const handSize = getHandSize();
   const target = Math.min(available, MAX_FAN_WIDTH);
   const rawOverlap = CARD_W - (target - CARD_W) / (handSize - 1);
   const overlap = Math.max(MIN_OVERLAP, Math.min(MAX_OVERLAP, rawOverlap));
   const widthAtOverlap = CARD_W + (handSize - 1) * (CARD_W - overlap);
-  const scale = Math.max(0.62, Math.min(1, available / widthAtOverlap));
+  let scale = Math.max(0.62, Math.min(1, available / widthAtOverlap));
+  // Sideways the screen is short: size everything from its height too.
+  if (isLandscape()) scale = Math.min(scale, Math.max(0.6, window.innerHeight / 470));
   return { overlap, scale };
 }
 
@@ -6536,7 +6593,7 @@ function packHandSlot(c, cls) {
 }
 // Width of each card's step in the pack's hand, so the row fits the panel.
 function packHandStep(n) {
-  const cardW = isLandscape() ? 41 : 51;
+  const cardW = isLandscape() ? 34 : 51;
   const inner = Math.min(isLandscape() ? 760 : 640, window.innerWidth - 28) - 28;
   return { cardW, step: Math.max(14, Math.min(44, Math.floor((inner - cardW) / Math.max(1, n - 1)))) };
 }
@@ -6599,7 +6656,7 @@ function PackOverlay() {
   const opening = elapsed < 1500;
   const dealAt = opening ? 950 - elapsed : 0;
   stage.style.setProperty("--t", -Math.min(elapsed, 1500) + "ms");
-  stage.innerHTML = `<div class="pack-rays"></div><div class="bshop-sign pack-sign serif"><span>${(po.picks || 1) > 1 ? `Pick ${po.picks}` : "Pick One"}</span></div><div class="pack-torn">${AnteArt.icon(def)}</div>` +
+  stage.innerHTML = `<div class="pack-rays-clip"><div class="pack-rays"></div></div><div class="bshop-sign pack-sign serif"><span>${(po.picks || 1) > 1 ? `Pick ${po.picks}` : "Pick One"}</span></div><div class="pack-torn">${AnteArt.icon(def)}</div>` +
     (opening ? `<div class="pack-opening"><div class="po-flash"></div>` +
       Array.from({ length: 12 }, (_, i) => `<i class="po-spark" style="--a:${i * 30 + (i % 3) * 7}deg;--d:${70 + (i % 4) * 22}px"></i>`).join("") +
       `<div class="po-pack"><div class="po-top">${AnteArt.icon(def)}</div><div class="po-bottom">${AnteArt.icon(def)}</div></div></div>` : "");
@@ -6608,7 +6665,7 @@ function PackOverlay() {
   fan.className = "pack-fan";
   // Card width: as big as fits the row, up to 96px (78px sideways).
   const room = Math.min(isLandscape() ? 760 : 640, window.innerWidth - 28) - 24;
-  const cw = Math.floor(Math.min(isLandscape() ? (po.hand ? 60 : 78) : 112, (room - (po.choices.length - 1) * 8) / po.choices.length));
+  const cw = Math.floor(Math.min(isLandscape() ? (po.hand ? 50 : 64) : 112, (room - (po.choices.length - 1) * 8) / po.choices.length));
   fan.style.setProperty("--cw", cw + "px");
   const pick = state.packPick != null && po.choices[state.packPick] ? state.packPick : null;
   const mid = (po.choices.length - 1) / 2;
@@ -7815,6 +7872,7 @@ function isLandscape() {
 function render() {
   if (ITEM_INSTANT || PACK_BUSY) return;
   document.body.classList.toggle("landscape", isLandscape());
+  SHELF_PIECE = isLandscape() ? 38 : 46;
   if (state.deckOverlayOpen && state.overlay !== "playing" && state.overlay !== "shop") state.deckOverlayOpen = false;
   const oldCardRects = captureCardRects();
   const app = document.getElementById("app");
@@ -8196,7 +8254,22 @@ function syncLoopingAnimations() {
 // needs scrolling. (It still scrolls as a last resort on tiny screens.)
 function fitShop() {
   const shop = document.querySelector(".shop-overlay .bshop");
-  if (!shop || isLandscape()) return;
+  if (!shop) return;
+  if (isLandscape()) {
+    // Same layout as portrait (wares in rows of 3, 4 if there are more than
+    // 6), shrunk until it fits the short screen.
+    const wares = shop.querySelector(".bshop-wares");
+    if (wares) wares.style.setProperty("--wcols", wares.children.length > 6 ? 4 : 3);
+    const over = () => Math.max(0, shop.scrollHeight - shop.clientHeight) + (wares ? Math.max(0, wares.scrollHeight - wares.clientHeight) : 0);
+    if (over() <= 1) return;
+    let w = 74;
+    shop.classList.add("tight");
+    for (let i = 0; i < 16 && over() > 1 && w > 34; i++) {
+      w -= 3;
+      shop.style.setProperty("--face", w + "px");
+    }
+    return;
+  }
   const over = () => shop.scrollHeight - shop.clientHeight;
   if (over() <= 1) return;
   const face = shop.querySelector(".bshop-wares .bcard-face");
@@ -8360,7 +8433,7 @@ function ItemSidebar() {
    drawn as what they are. Tap one to read it. Drag one and drop zones light
    up: Sell (and Use, for items); dropping it back on its own shelf moves it
    to that spot. When a shelf holds more than fits, the pieces overlap. */
-const SHELF_PIECE = 46;
+let SHELF_PIECE = 46; // 38 sideways (set in render)
 
 function sellValue(def) {
   return Math.max(1, Math.floor((def.price / 2) * voucherBest("sellMultiplier", Math.max))) + (def.sellBonus || 0);
