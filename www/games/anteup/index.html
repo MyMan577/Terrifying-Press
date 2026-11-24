@@ -1258,7 +1258,7 @@ body.back-sunset .deck-card-back, .back-prev-sunset .bp-card { background: radia
 /* ----- no flashes: no tap highlight, and a screen that is already open
    doesn't replay its entry animations when it re-renders ----- */
 * { -webkit-tap-highlight-color: transparent; }
-.pack-overlay.stay, .pause-back.stay { animation: none; }
+.pack-overlay.stay, .pause-back.stay, .blind-select.stay, .gear-drop-zones.stay { animation: none; }
 .pack-overlay.stay .pack-stage:not(.is-opening) .pchoice, .pack-overlay.stay .pack-stage:not(.is-opening) .pack-torn { animation: none; }
 
 /* ----- shop: shrinks its wares to fit a short screen ----- */
@@ -8874,8 +8874,47 @@ function isLandscape() {
   return window.innerWidth > window.innerHeight && window.innerHeight < 600;
 }
 
+/* ----- redraws without flashes -----
+   render() rebuilds the screen from scratch, which would restart every
+   animation on it. So anything that was already showing carries on: looping
+   animations (floating cards, spinning rays, glows) keep their place, and a
+   screen that's already open doesn't play its fade-in again. Elements are
+   matched by where they sit on the page. */
+const KEEP_RUNNING = new Set(["bfloat", "bvfloat", "packSpin", "mmCard", "mmUp", "progReady", "cslPrism", "cardScoringGlow", "packCharge"]);
+const OPENS_ONCE = ".blind-select, .gear-drop-zones, .pack-overlay, .pause-back";
+function domKey(el, root) {
+  const segs = [];
+  for (let n = el; n && n !== root; n = n.parentElement) {
+    const fc = n.classList[0] || n.tagName;
+    let i = 0;
+    for (let sib = n.previousElementSibling; sib; sib = sib.previousElementSibling) if ((sib.classList[0] || sib.tagName) === fc) i++;
+    segs.push(fc + ":" + i);
+  }
+  return segs.join("<");
+}
 function render() {
   if (ITEM_INSTANT || PACK_BUSY) return;
+  const app = document.getElementById("app");
+  const running = new Map();
+  if (app.getAnimations) {
+    for (const a of app.getAnimations({ subtree: true })) {
+      const t = a.effect && a.effect.target;
+      if (a.animationName && KEEP_RUNNING.has(a.animationName) && t && a.currentTime != null) running.set(domKey(t, app) + "|" + a.animationName, a.currentTime);
+    }
+  }
+  const opened = new Set([...app.querySelectorAll(OPENS_ONCE)].map((el) => domKey(el, app)));
+  renderScreen();
+  app.querySelectorAll(OPENS_ONCE).forEach((el) => { if (opened.has(domKey(el, app))) el.classList.add("stay"); });
+  if (running.size && app.getAnimations) {
+    for (const a of app.getAnimations({ subtree: true })) {
+      const t = a.effect && a.effect.target;
+      if (!a.animationName || !KEEP_RUNNING.has(a.animationName) || !t) continue;
+      const at = running.get(domKey(t, app) + "|" + a.animationName);
+      if (at != null) a.currentTime = at;
+    }
+  }
+}
+function renderScreen() {
   document.body.classList.toggle("landscape", isLandscape());
   SHELF_PIECE = isLandscape() ? 38 : 46;
   if (state.deckOverlayOpen && state.overlay !== "playing" && state.overlay !== "shop") state.deckOverlayOpen = false;
