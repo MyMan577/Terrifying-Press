@@ -77,6 +77,50 @@
   // Whisper first: lyrics that were not made by Whisper (online LRC, loaded files) have unreliable timing, so Whisper listens to the song
   // (vocals only) and each lyric line takes the start/end of the Whisper line it matches. Nothing is saved over the user's lyrics.
   // Returns { cues, matched, total } in media time, or null when there is nothing to re-time (no lyrics, or Whisper already made them).
+  // ---------- Vocal vote: several AIs judge every half second "is someone singing here?" ----------
+  // Judge 1: Spleeter's vocal stem is loud there. Judges 2 and 3: two cheap transcribers (Whisper Base, and Parakeet in the app if it is
+  // downloaded, else Whisper Tiny) hear words there; what the words are does not matter. The split model itself is the 4th judge for
+  // free: where it hears no vocals its Vocals stem is already silent. A judge that fails sits the vote out.
+  // Returns { votes: Uint8Array per frame, nJ, F (frame seconds), x (Spleeter vocals, 16 kHz mono), note }.
+  async function vocalVotes(t, o, status) {
+    const x = await whAudio(t, Object.assign({ clean: true }, o), status);
+    const F = 0.5, n = Math.max(1, Math.ceil(x.length / 16000 / F)), rms = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const a = Math.floor(i * F * 16000), b = Math.min(x.length, a + F * 16000); let s = 0; for (let j = a; j < b; j++) s += x[j] * x[j]; rms[i] = Math.sqrt(s / Math.max(1, b - a)); }
+    const ref = Array.from(rms).sort((p, q) => p - q)[Math.floor(n * 0.95)] || 0, thr = Math.max(1e-3, ref * 0.12);
+    const votes = new Uint8Array(n); let nJ = 1, note = '';
+    for (let i = 0; i < n; i++) if (rms[i] >= thr) votes[i]++;
+    let pk = false; try { pk = NATIVE && (await NP.exists({ id: PK_FILES[0][0] })).ready && (await NP.exists({ id: PK_FILES[1][0] })).ready; } catch (e) {}
+    for (const [size, label] of [['base_en', 'Whisper Base'], pk ? ['parakeet', 'Parakeet'] : ['tiny_en', 'Whisper Tiny']]) {
+      let cues = null;
+      try { status('Listening for words (' + label + ')…'); cues = await transcribeRun(t, { size, lang: '', task: 'transcribe', clean: true, acc: 0, strength: o.strength, lv: o.lv, x }, status); }
+      catch (e) { console.warn(label + ' vote failed', e); note += ' ' + label + ' could not vote (' + errText(e) + ').'; }
+      finally { if (asr) { try { await asr.dispose(); } catch (e) {} asr = null; asrId = ''; } }
+      if (!cues) continue;
+      nJ++; const hit = new Uint8Array(n);
+      for (const c of cues) {
+        if (!/\p{L}/u.test(c.text || '')) continue;
+        const e = c.end > c.start ? c.end : c.start + sungSecs(c.text);
+        for (let i = Math.max(0, Math.floor((c.start - 0.25) / F)); i < Math.min(n, Math.ceil((e + 0.25) / F)); i++) hit[i] = 1;
+      }
+      for (let i = 0; i < n; i++) votes[i] += hit[i];
+    }
+    return { votes, nJ, F, x, note };
+  }
+  // Frames everyone agrees on are kept (all say singing) or cut (none do). The rest are "unsure" parts for the person to judge.
+  function voteClips(v, nJ, F) {
+    const keep = [], unsure = [];
+    for (let i = 0; i < v.length;) {
+      const k = v[i] === nJ ? 'k' : v[i] === 0 ? 'c' : 'u'; let j = i; while (j < v.length && (v[j] === nJ ? 'k' : v[j] === 0 ? 'c' : 'u') === k) j++;
+      if (k === 'k') keep.push([i * F, j * F]);
+      if (k === 'u') { let m = 0; for (let q = i; q < j; q++) m += v[q]; const l = unsure[unsure.length - 1];   // v: average vote, 1 decimal
+        if (l && i * F - l.b <= F) { l.sum += m; l.n += j - i; l.b = j * F; } else unsure.push({ a: i * F, b: j * F, sum: m, n: j - i });
+        const u = unsure[unsure.length - 1]; u.v = Math.round(u.sum / u.n * 10) / 10; }
+      i = j;
+    }
+    return { keep, unsure };
+  }
+  const mergeSpans = sp => { const o = []; for (const q of sp.slice().sort((a, b) => a[0] - b[0])) { const l = o[o.length - 1]; if (l && q[0] <= l[1] + 0.3) l[1] = Math.max(l[1], q[1]); else o.push([q[0], q[1]]); } return o; };
+
   async function alignedCues(t, o, status) {
     let e; try { e = (JSON.parse(localStorage.getItem('playerSubtitles')) || {})[t.dbId]; } catch (x) {}
     if (!e || (!Array.isArray(e) && /^whisper/i.test(e.n || ''))) return null;

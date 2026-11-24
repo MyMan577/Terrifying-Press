@@ -469,6 +469,50 @@
   // Whisper first: lyrics that were not made by Whisper (online LRC, loaded files) have unreliable timing, so Whisper listens to the song
   // (vocals only) and each lyric line takes the start/end of the Whisper line it matches. Nothing is saved over the user's lyrics.
   // Returns { cues, matched, total } in media time, or null when there is nothing to re-time (no lyrics, or Whisper already made them).
+  // ---------- Vocal vote: several AIs judge every half second "is someone singing here?" ----------
+  // Judge 1: Spleeter's vocal stem is loud there. Judges 2 and 3: two cheap transcribers (Whisper Base, and Parakeet in the app if it is
+  // downloaded, else Whisper Tiny) hear words there; what the words are does not matter. The split model itself is the 4th judge for
+  // free: where it hears no vocals its Vocals stem is already silent. A judge that fails sits the vote out.
+  // Returns { votes: Uint8Array per frame, nJ, F (frame seconds), x (Spleeter vocals, 16 kHz mono), note }.
+  async function vocalVotes(t, o, status) {
+    const x = await whAudio(t, Object.assign({ clean: true }, o), status);
+    const F = 0.5, n = Math.max(1, Math.ceil(x.length / 16000 / F)), rms = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const a = Math.floor(i * F * 16000), b = Math.min(x.length, a + F * 16000); let s = 0; for (let j = a; j < b; j++) s += x[j] * x[j]; rms[i] = Math.sqrt(s / Math.max(1, b - a)); }
+    const ref = Array.from(rms).sort((p, q) => p - q)[Math.floor(n * 0.95)] || 0, thr = Math.max(1e-3, ref * 0.12);
+    const votes = new Uint8Array(n); let nJ = 1, note = '';
+    for (let i = 0; i < n; i++) if (rms[i] >= thr) votes[i]++;
+    let pk = false; try { pk = NATIVE && (await NP.exists({ id: PK_FILES[0][0] })).ready && (await NP.exists({ id: PK_FILES[1][0] })).ready; } catch (e) {}
+    for (const [size, label] of [['base_en', 'Whisper Base'], pk ? ['parakeet', 'Parakeet'] : ['tiny_en', 'Whisper Tiny']]) {
+      let cues = null;
+      try { status('Listening for words (' + label + ')…'); cues = await transcribeRun(t, { size, lang: '', task: 'transcribe', clean: true, acc: 0, strength: o.strength, lv: o.lv, x }, status); }
+      catch (e) { console.warn(label + ' vote failed', e); note += ' ' + label + ' could not vote (' + errText(e) + ').'; }
+      finally { if (asr) { try { await asr.dispose(); } catch (e) {} asr = null; asrId = ''; } }
+      if (!cues) continue;
+      nJ++; const hit = new Uint8Array(n);
+      for (const c of cues) {
+        if (!/\p{L}/u.test(c.text || '')) continue;
+        const e = c.end > c.start ? c.end : c.start + sungSecs(c.text);
+        for (let i = Math.max(0, Math.floor((c.start - 0.25) / F)); i < Math.min(n, Math.ceil((e + 0.25) / F)); i++) hit[i] = 1;
+      }
+      for (let i = 0; i < n; i++) votes[i] += hit[i];
+    }
+    return { votes, nJ, F, x, note };
+  }
+  // Frames everyone agrees on are kept (all say singing) or cut (none do). The rest are "unsure" parts for the person to judge.
+  function voteClips(v, nJ, F) {
+    const keep = [], unsure = [];
+    for (let i = 0; i < v.length;) {
+      const k = v[i] === nJ ? 'k' : v[i] === 0 ? 'c' : 'u'; let j = i; while (j < v.length && (v[j] === nJ ? 'k' : v[j] === 0 ? 'c' : 'u') === k) j++;
+      if (k === 'k') keep.push([i * F, j * F]);
+      if (k === 'u') { let m = 0; for (let q = i; q < j; q++) m += v[q]; const l = unsure[unsure.length - 1];   // v: average vote, 1 decimal
+        if (l && i * F - l.b <= F) { l.sum += m; l.n += j - i; l.b = j * F; } else unsure.push({ a: i * F, b: j * F, sum: m, n: j - i });
+        const u = unsure[unsure.length - 1]; u.v = Math.round(u.sum / u.n * 10) / 10; }
+      i = j;
+    }
+    return { keep, unsure };
+  }
+  const mergeSpans = sp => { const o = []; for (const q of sp.slice().sort((a, b) => a[0] - b[0])) { const l = o[o.length - 1]; if (l && q[0] <= l[1] + 0.3) l[1] = Math.max(l[1], q[1]); else o.push([q[0], q[1]]); } return o; };
+
   async function alignedCues(t, o, status) {
     let e; try { e = (JSON.parse(localStorage.getItem('playerSubtitles')) || {})[t.dbId]; } catch (x) {}
     if (!e || (!Array.isArray(e) && /^whisper/i.test(e.n || ''))) return null;
@@ -2513,7 +2557,7 @@
   async function transcribeRun(t, o, status) {
     let pipe = null;
     if (o.task === 'translate' && whEn(o.size)) { o = Object.assign({}, o, { size: 'base' }); status('Translating needs the multilingual Base model…'); }
-    const x = await whAudio(t, o, status);
+    const x = o.x || await whAudio(t, o, status);   // o.x: vocals already pulled out (the vocal vote reuses one Spleeter pass)
     const dur = x.length / 16000, acc = Math.max(0, Math.min(2, Math.round(+o.acc || 0)));
     // Only the parts with speech or singing go to Whisper. Each part is cut into 90 s pieces that overlap by 4 s, and a line belongs to the
     // piece it starts in, so nothing is cut at a seam. Between pieces it can rest if the phone is hot.
@@ -9240,7 +9284,7 @@
       '<label id="ppv-c-spinl" class="ppv-c" style="display:none;margin-top:6px"><input type="checkbox" id="ppv-c-spin"> Keep threads busy between steps (faster, hotter, uses more battery)</label></div>' +
       '<div id="ppv-stems"></div>' +
       '<div style="margin-top:8px">Mute vocal gaps</div><select id="ppv-gate"><option value="0">Off</option><option value="1">Gentle</option><option value="2">Normal</option><option value="3">Strong</option></select><div style="opacity:.6;font-size:11px;margin-top:4px">Silences leftover noise between sung lines. Vocals stem only.</div>' +
-      '<div style="margin-top:8px">Mute non-vocal parts (uses lyrics/subtitles)</div><select id="ppv-mask"><option value="0">Off</option><option value="1">Gentle</option><option value="2">Normal</option><option value="3">Strong</option></select><div style="opacity:.6;font-size:11px;margin-top:4px">Removes solos and instrumental breaks from the Vocals stem and puts that sound back into Instrumental / Other. Needs synced lyrics or subtitles. If they did not come from Whisper, Whisper listens first to fix the line timing (slower; reused next time). Skipped if they look incomplete.</div>' +
+      '<label class="ppv-c" style="margin-top:8px"><input type="checkbox" id="ppv-agree"> Keep only real vocals (AIs vote)</label><div style="opacity:.6;font-size:11px;margin-top:4px">Spleeter, the model you picked and two transcribers (Whisper Base, plus Parakeet if downloaded or Whisper Tiny) check every moment for singing. Solos and synths they agree are not vocals move from Vocals to Instrumental / Other. Parts they disagree on are listed for you to hear and keep or cut. Slower: listens to the song first.</div>' +
       '<div id="ppv-spl" style="margin-top:8px">Strength: <span id="ppv-sv">1</span><input id="ppv-sl" type="range" min="1" max="4" step="0.5" value="1" style="width:100%"><div style="opacity:.6;font-size:11px">Higher = less bleed, more watery artifacts</div><div style="margin-top:8px">Quality</div><select id="ppv-q"><option value="0">Standard</option><option value="1">Better (smooth seams, ~1.3x time)</option><option value="2">Best (+ averaged 2nd pass, ~2.7x time)</option></select></div>' +
       '<label id="ppv-gpu" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-gpuc"> Use GPU (faster, experimental)</label>' +
       '<label id="ppv-nn" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-nnc"> Phone GPU/NPU (experimental). Demucs: Snapdragon NPU only, CPU on other phones</label>' +
@@ -9347,7 +9391,7 @@
     };
     if (!place()) { let n = 0; const iv = setInterval(() => { if (place() || ++n > 40) clearInterval(iv); }, 250); }
     setInterval(() => { if (!document.hidden) place(); }, 2000);
-    const $ = s => p.querySelector(s), st = $('#ppv-st'), bar = $('#ppv-bar i'), go = $('#ppv-go'), sel = $('#ppv-model'), sl = $('#ppv-sl'), sv = $('#ppv-sv'), gpu = $('#ppv-gpuc'), lsel = $('#ppv-lvl'), lvi = $('#ppv-lvi'), qsel = $('#ppv-q'), gsel = $('#ppv-gate'), msel = $('#ppv-mask');
+    const $ = s => p.querySelector(s), st = $('#ppv-st'), bar = $('#ppv-bar i'), go = $('#ppv-go'), sel = $('#ppv-model'), sl = $('#ppv-sl'), sv = $('#ppv-sv'), gpu = $('#ppv-gpuc'), lsel = $('#ppv-lvl'), lvi = $('#ppv-lvi'), qsel = $('#ppv-q'), gsel = $('#ppv-gate'), agree = $('#ppv-agree');
     const LV = () => +lsel.value === 4 ? customLevel() : LEVELS[+lsel.value] || null, showLv = () => { const l = LV(); lvi.textContent = !l ? 'No limits. Fastest, but can crash weak phones.' : l.custom ? 'Custom: ' + (l.threads ? l.threads + ' thread' + (l.threads > 1 ? 's' : '') : 'auto threads') + ', ' + Math.round(l.duty * 100) + '% rest.' : l.info; };
     let holdUntil = 0;                                                // keep "Done"/"Error" visible instead of being wiped by "Ready" a split second later
     const status = t => { st.textContent = t; document.querySelectorAll('.ppv-stx').forEach(e => { e.textContent = t; }); if (/^(Done|Error)/.test(t)) holdUntil = Date.now() + 5000; mas.react(t); }, ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); } };
@@ -9369,7 +9413,7 @@
     sect.onchange = () => { ls('ppvSect', sect.checked ? '1' : '0'); const A = window.__ppApi; A && A.setStemSections && A.setStemSections(sect.checked); };
     { const A = window.__ppApi; A && A.setStemSections && A.setStemSections(sect.checked); }
     gsel.value = ls('ppvGate') || '0'; gsel.onchange = () => ls('ppvGate', gsel.value);
-    msel.value = ls('ppvMask') || '0'; msel.onchange = () => ls('ppvMask', msel.value);
+    agree.checked = ls('ppvAgree') === '1'; agree.onchange = () => ls('ppvAgree', agree.checked ? '1' : '0');
     qsel.value = ls('ppvQuality') || '1'; qsel.onchange = () => ls('ppvQuality', qsel.value);
     lsel.onchange = () => { ls('ppvLevel', lsel.value); syncCust(); showLv(); refresh(); };
     // ---- Custom level controls (stored as JSON under ppvCustom) ----
@@ -9407,21 +9451,20 @@
         if (!t) throw new Error('Play or select a track first.');
         if (!want.length) throw new Error('Tick at least one stem.');
         await downloadModel(id, status, !!(LV() && LV().blob));
-        let ov = null, maskNote = '';
-        if (+msel.value) {
-          try { const al = await alignedCues(t, { strength: +sl.value, lv: LV() }, status); if (al) { ov = al.cues; maskNote = ' Whisper re-timed ' + al.matched + ' of ' + al.total + ' lyric lines' + (al.cached ? ' (saved from before).' : '.'); } }
-          catch (e) { console.warn('Whisper timing failed', e); maskNote = ' Whisper timing failed (' + errText(e) + '), so line lengths were estimated.'; }
+        let maskNote = '', spans = null;
+        if (agree.checked) {
+          const vv = await vocalVotes(t, { strength: +sl.value, lv: LV() }, status);
+          const cl = voteClips(vv.votes, vv.nJ, vv.F); let kept = [];
+          if (cl.unsure.length) { status(cl.unsure.length + ' part' + (cl.unsure.length > 1 ? 's' : '') + ' unclear: listen and choose below.'); kept = await reviewClips(cl.unsure, vv.x, vv.nJ); }
+          spans = mergeSpans(cl.keep.concat(kept));
+          maskNote = ' Vocal vote (' + vv.nJ + ' AIs): kept ' + Math.round(spans.reduce((n, q) => n + q[1] - q[0], 0)) + ' s of vocals' + (cl.unsure.length ? ', you judged ' + cl.unsure.length + ' unclear part' + (cl.unsure.length > 1 ? 's' : '') : '') + '.' + vv.note;
+          if (!spans.length) spans = [[-10, -9]];                     // nobody heard singing: the whole Vocals stem goes to Instrumental
+          vv.x = null;
         }
         status('Decoding audio…');
         let pcm = NATIVE && ['spleeter', 'sp4', 'mdx', 'demucs', 'multi'].includes((MODELS[id] || {}).kind) ? null : await decode(t.url);
         let mask = null, nmask = null;
-        if (+msel.value) {
-          const dur = pcm ? pcm[0].length / SR : await mediaDur(t.url);   // native engines decode in Java, so ask the media element for the length
-          const r = subtitleSpans(t.dbId, +msel.value, dur, loadTags()[t.dbId], ov), lvl = MASKS[+msel.value];
-          if (!r.spans) maskNote += r.skip;
-          else if (pcm) mask = makeMask(r.spans, +msel.value);
-          else nmask = { spans: r.spans, floor: lvl.floor, fade: lvl.fade };   // applied in Java to the finished stems
-        }
+        if (spans) { const pd = spans.map(q => [Math.max(0, q[0] - 0.1), q[1] + 0.2]); if (pcm) mask = makeMask(pd, 3); else nmask = { spans: pd, floor: 0, fade: MASKS[3].fade }; }
         const res = await run(id, pcm, want, { strength: +sl.value, gpu: gpu.checked && !LV(), lv: LV(), quality: +qsel.value, gate: +gsel.value, mask, nmask, track: t, nnapi: NATIVE ? nnc.checked : false, tune: NATIVE && nnc.checked && tnc.checked }, status, f => { bar.style.width = (f * 100) + '%'; status('Separating… ' + Math.round(f * 100) + '%'); });
         pcm = null;
         const files = []; let vidFail = 0;
@@ -9446,6 +9489,38 @@
       if (NATIVE) NP.keepAlive({ on: false }).catch(() => {});
       wl && wl.release().catch(() => {});
       splitting = false; heavyJob = false; go.disabled = false; refresh();
+    }
+    // The person judges the parts the AIs disagree on. Each row plays Spleeter's vocals for that part. Resolves with the kept [a, b] spans.
+    function reviewClips(clips, x, nJ) {
+      return new Promise(done => {
+        const fmt = s0 => Math.floor(s0 / 60) + ':' + String(Math.floor(s0 % 60)).padStart(2, '0');
+        const keep = clips.map(c => c.v * 2 > nJ);                   // default: what most judges said
+        const box = document.createElement('div'); box.style.cssText = 'margin-top:8px;padding:8px;border:1px solid #484952;border-radius:10px;max-height:260px;overflow:auto';
+        let ctx = null, src = null, playing = -1;
+        const stop = () => { try { src && src.stop(); } catch (e) {} src = null; playing = -1; draw(); };
+        const play = i => {
+          if (playing === i) return stop(); stop();
+          ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+          const c = clips[i], a = Math.max(0, Math.floor((c.a - 0.3) * 16000)), b = Math.min(x.length, Math.ceil((c.b + 0.3) * 16000));
+          if (b <= a) return; const buf = ctx.createBuffer(1, b - a, 16000); buf.getChannelData(0).set(x.subarray(a, b));
+          src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination); src.onended = () => { if (playing === i) { src = null; playing = -1; draw(); } };
+          ctx.resume && ctx.resume(); src.start(); playing = i; draw();
+        };
+        const finish = () => { stop(); try { ctx && ctx.close(); } catch (e) {} box.remove(); done(clips.filter((c, i) => keep[i]).map(c => [c.a, c.b])); };
+        function draw() {
+          box.innerHTML = '<div style="font-size:12px;margin-bottom:6px">' + clips.length + ' part' + (clips.length > 1 ? 's' : '') + ' where the AIs are not all sure. Play any of them (vocals only) and keep what is singing. Nothing is cut until you press Done.</div>' +
+            clips.map((c, i) => '<div style="display:flex;gap:6px;align-items:center;margin:4px 0;font-size:12px"><button type="button" data-p="' + i + '">' + (playing === i ? '■' : '▶') + '</button>' +
+              '<span style="flex:1">' + fmt(c.a) + '–' + fmt(c.b) + ' · ' + c.v + ' of ' + nJ + ' heard singing</span>' +
+              '<button type="button" data-k="' + i + '" style="' + (keep[i] ? 'background:var(--accent,#7c5cff);color:#fff' : '') + '">Keep</button><button type="button" data-c="' + i + '" style="' + (!keep[i] ? 'background:#a33;color:#fff' : '') + '">Cut</button></div>').join('') +
+            '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button type="button" data-all="0">Set all to Cut</button><button type="button" data-all="1">Set all to Keep</button><button type="button" data-done="1" style="margin-left:auto">Done</button></div>';
+        }
+        box.addEventListener('click', e => {
+          const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
+          if (d.p != null) play(+d.p); else if (d.k != null) { keep[+d.k] = true; draw(); } else if (d.c != null) { keep[+d.c] = false; draw(); }
+          else if (d.all != null) { keep.fill(d.all === '1'); draw(); }   // sets every row; you can still play and change any of them else if (d.done) finish();
+        });
+        draw(); st.insertAdjacentElement('afterend', box); box.scrollIntoView({ block: 'nearest' });
+      });
     }
     go.onclick = () => { const A = window.__ppApi; return splitTrack(A && A.tracks()[A.currentIndex()]); };
     window.__ppSplitTrack = t => splitTrack(t);
