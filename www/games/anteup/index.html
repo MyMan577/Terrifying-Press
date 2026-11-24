@@ -2299,7 +2299,6 @@ function applyShopTags() {
    Their effects use the same types as vouchers, so they add into the same
    sums (see boonList); the few that don't fit are checked with deckIs(). */
 const DECKS = [
-  { id: "standard", name: "Standard Deck", desc: "The usual 52 cards. No twists.", color: "#2f6b4a", glyph: "♠", effects: [] },
   { id: "ember", name: "Ember Deck", desc: "+1 discard every round", color: "#b8402f", glyph: "✹", effects: [{ type: "extraDiscards", value: 1 }] },
   { id: "tide", name: "Tide Deck", desc: "+1 hand every round", color: "#2f6fb8", glyph: "≈", effects: [{ type: "extraPlays", value: 1 }] },
   { id: "gilt", name: "Gilt Deck", desc: "Start with $10 more", color: "#c99a22", glyph: "$", effects: [] },
@@ -2313,8 +2312,16 @@ const DECKS = [
   { id: "balance", name: "Balance Deck", desc: "Chips and Mult are averaged on every hand. Blinds need twice the score", color: "#5a6fd8", glyph: "⚖", effects: [] },
   { id: "chaos", name: "Chaos Deck", desc: "Every card's rank and suit is random", color: "#8e3fa8", glyph: "✺", effects: [] },
   { id: "twin", name: "Twin Deck", desc: "After you beat each Boss Blind, gain a Double Tag", color: "#b03a6a", glyph: "◑", effects: [] },
+  { id: "spectral", name: "Spectral Deck", desc: "Spectral cards can turn up in the shop. Start with a Prism Hex", color: "#4b5a9e", glyph: "☾\uFE0E", effects: [] },
+  { id: "zodiac", name: "Zodiac Deck", desc: "Start with the Overstock, Peddler and Star Vendor vouchers", color: "#6a3f8f", glyph: "♈\uFE0E", effects: [] },
+  // Our own
+  { id: "royal", name: "Royal Deck", desc: "Only Aces and face cards: 32 cards, two of each. −1 hand every round", color: "#9a2f4a", glyph: "♛\uFE0E", effects: [{ type: "extraPlays", value: -1 }] },
+  { id: "tycoon", name: "Tycoon Deck", desc: "Interest caps at $10 instead of $5 and you start with $5 more, but −1 discard every round", color: "#2f7a5a", glyph: "¤", effects: [{ type: "interestCap", value: 5 }, { type: "extraDiscards", value: -1 }] },
+  { id: "ornate", name: "Ornate Deck", desc: "8 random cards start with a sleeve and 8 others with a stamp", color: "#b5833a", glyph: "❖\uFE0E", effects: [] },
 ];
-function currentDeck() { return DECKS.find((d) => d.id === state.deckId) || DECKS[0]; }
+// The Standard Deck was retired; runs saved with it carry on as plain 52 cards.
+const RETIRED_DECK = { id: "standard", name: "Standard Deck", desc: "The usual 52 cards", color: "#2f6b4a", glyph: "♠", effects: [] };
+function currentDeck() { return DECKS.find((d) => d.id === state.deckId) || RETIRED_DECK; }
 function deckIs(id) { return (state.deckId || "standard") === id; }
 // Vouchers plus the deck's own effects, for everything that sums them.
 function boonList() { return [...state.vouchers, ...currentDeck().effects.map((effect) => ({ effect }))]; }
@@ -2327,7 +2334,7 @@ function freshDeck(deckId = state.deckId) {
     for (let i = 0; i < 52; i++) { const rank = randomOf(RANKS), suit = randomOf(SUIT_KEYS); deck.push({ rank, suit, id: `${rank}-${suit}-${id()}` }); }
   } else {
     const suits = deckId === "checkered" ? ["spades", "spades", "hearts", "hearts"] : SUIT_KEYS;
-    const ranks = deckId === "hollow" ? RANKS.filter((r) => !["J", "Q", "K"].includes(r)) : RANKS;
+    const ranks = deckId === "hollow" ? RANKS.filter((r) => !["J", "Q", "K"].includes(r)) : deckId === "royal" ? ["A", "J", "Q", "K", "A", "J", "Q", "K"] : RANKS;
     for (const suit of suits) for (const rank of ranks) deck.push({ rank, suit, id: `${rank}-${suit}-${id()}` });
   }
   for (let i = deck.length - 1; i > 0; i--) {
@@ -5202,6 +5209,9 @@ const SPECTRAL_DEFS = [
   { id: "eventHorizon", name: "Event Horizon", desc: "Levels up every hand", color: "#24325c", rare: true },
 ].map((d) => ({ type: "item", spectral: true, price: 4, ...d }));
 
+// A Spectral card held in an item slot (Spectral Deck): bought in the shop, used later.
+function heldSpectral(def) { return { ...def, effect: { type: "spectral" } }; }
+
 // Spectral choices: the two rare ones turn up much less often.
 function pickSpectrals(n) {
   const out = [];
@@ -5260,7 +5270,9 @@ function randomCharmDef(pool) {
 
 // Runs a spectral card. Returns a short line saying what happened.
 function useSpectral(def) {
-  const hand = packHandCards();
+  // From a pack: the pack's hand. Held in an item slot: your hand mid-round,
+  // otherwise 8 cards drawn from the deck.
+  const hand = state.packOpen && state.packOpen.hand ? packHandCards() : (() => { const ids = new Set(packHandIds()); return allRunCards().filter((c) => ids.has(c.id)); })();
   const ids = hand.map((c) => c.id);
   const pickIds = (n) => shuffleArray(ids).slice(0, n);
   const charmRoom = charmsUsed() < state.charmSlots;
@@ -5436,6 +5448,8 @@ function generateShopStock(count) {
   const ownedItemIds = hasRingmaster ? new Set() : new Set(state.items.map((i) => i.id));
   const availableCharms = artifactPool().filter((c) => !ownedCharmIds.has(c.id));
   const availableItems = ITEM_DEFS.filter((i) => !ownedItemIds.has(i.id) && !i.secret);
+  // Spectral Deck: Spectral cards share the item shelves (not the two rare ones).
+  if (deckIs("spectral")) availableItems.push(...SPECTRAL_DEFS.filter((d) => !d.rare && !ownedItemIds.has(d.id)).map(heldSpectral));
 
   // Sleight of Hand: some slots hold playing cards instead.
   const cardSlots = voucherSum("shopPlayingCards") ? Array.from({ length: count }, () => Math.random() < 0.25).filter(Boolean).length : 0;
@@ -5449,7 +5463,7 @@ function generateShopStock(count) {
   const chartW = voucherBest("chartRate", Math.max);
   const weighted = (arr, wf) => arr.map((d) => [Math.pow(Math.random(), 1 / wf(d)), d]).sort((x, y) => y[0] - x[0]).map((x) => x[1]);
   const charmPool = rarityShuffle(availableCharms);
-  const itemPool = weighted(availableItems, (d) => (d.chart ? chartW : 1));
+  const itemPool = weighted(availableItems, (d) => (d.chart ? chartW : d.spectral ? 0.5 : 1));
 
   let selected = [
     ...charmPool.slice(0, charmCount).map(rollCharmSleeve),
@@ -6028,7 +6042,7 @@ function dealInitialHand(freshDeckArg) {
 }
 
 function startGame(deckId) {
-  state.deckId = DECKS.some((x) => x.id === deckId) ? deckId : state.deckId || "standard";
+  state.deckId = DECKS.some((x) => x.id === deckId) ? deckId : DECKS[0].id;
   const d = freshDeck(state.deckId);
   state.handsThisRound = 0;
   state.luckyRound = false;
@@ -6060,6 +6074,7 @@ function startGame(deckId) {
   state.itemSlots = 2;
   state.vouchers = [];
   if (deckIs("star")) { const v = VOUCHERS.find((x) => x.id === "clairvoyance"); if (v) state.vouchers = [{ ...v }]; }
+  if (deckIs("zodiac")) state.vouchers = ["overstock", "peddler", "starVendor"].map((x) => VOUCHER_BY_ID[x]).filter(Boolean).map((v) => ({ ...v }));
   state.voucherStock = [];
   state.voucherReady = false;
   state.permHandSize = 0;
@@ -6115,6 +6130,8 @@ function startGame(deckId) {
       color: "#6ee7d0", type: "charm", effect: { type: "pppEncore", add: 0, x: 1.5 }, uid: Math.random().toString(36).slice(2, 9) });
   }
   if (deckIs("gilt")) state.money += 10;
+  if (deckIs("tycoon")) state.money += 5;
+  if (deckIs("spectral")) { const hex = SPECTRAL_DEFS.find((x) => x.id === "prismHex"); if (hex) state.items = [{ ...heldSpectral(hex), uid: newUid() }]; }
   if (deckIs("mystic")) state.items = shuffleArray(ITEM_DEFS.filter((x) => !x.chart && !x.secret)).slice(0, 2).map((x) => ({ ...x, uid: newUid() }));
   state.usedCards = [];
   state.tags = [];
@@ -6123,6 +6140,11 @@ function startGame(deckId) {
   state.anteRoll = null;
   state.pendingPacks = [];
   state.freeReroll = false;
+  if (deckIs("ornate")) {
+    const picks = shuffleArray(d.map((_, i) => i)).slice(0, 16);
+    picks.slice(0, 8).forEach((i) => { d[i] = { ...d[i], sleeve: randomOf(SLEEVE_KINDS) }; });
+    picks.slice(8).forEach((i) => { d[i] = { ...d[i], stamp: randomOf(STAMP_KINDS) }; });
+  }
   state.deck = d;
   state.hand = [];
   state.selected = [];
@@ -7950,6 +7972,18 @@ function useItem(itemUid) {
   const item = state.items[idx];
   const eff = item.effect;
 
+  if (item.spectral) {
+    activateCharmSlide(item, () => {
+      const note = useSpectral(item);
+      tryConsumeItem(item, itemUid);
+      state.bossBlindMessage = `${item.name}: ${note}`;
+      setTimeout(() => { state.bossBlindMessage = null; render(); }, 2200);
+      saveGame();
+      render();
+    });
+    return;
+  }
+
   if (eff.type === "eraserRemoveCard") {
     if (state.overlay !== "playing" || state.selected.length === 0) return;
     const idsToRemove = state.selected.slice(0, eff.maxCards);
@@ -9745,7 +9779,7 @@ function ShopOverlay() {
     card.style.setProperty("--glow", item.color || "#C9A227");
     card.innerHTML = `
       <span class="bprice">${price < item.price ? `<s>$${item.price}</s>` : ""}$${price}</span>
-      <div class="bcard-face full${item.type === "playing" ? " is-playing-ware" : ""}"><div class="bcard-art">${item.type === "playing" ? "" : AnteArt.card({ ...item, arcana: item.type === "item" && !item.chart && !ARCANA_EXCLUDE.has(item.id) })}</div></div>
+      <div class="bcard-face full${item.type === "playing" ? " is-playing-ware" : ""}"><div class="bcard-art">${item.type === "playing" ? "" : item.spectral ? AnteArt.icon(item) : AnteArt.card({ ...item, arcana: item.type === "item" && !item.chart && !ARCANA_EXCLUDE.has(item.id) })}</div></div>
       <div class="bcard-name">${item.name}</div>
       <button class="bbuy" ${state.money < price || slotsFull ? "disabled" : ""}>${slotsFull ? "Full" : "Buy"}</button>`;
     if (item.type === "playing") card.querySelector(".bcard-art").appendChild(playingCardEl(item.card, 1.25));
@@ -9836,7 +9870,7 @@ function ShopOverlay() {
             ? entry.sleeve !== "negative" && charmsUsed() >= state.charmSlots
             : state.items.length >= getEffectiveItemSlots());
       const isPack = kind === "pack";
-      const typeLabel = entry.type === "playing" ? "PLAYING CARD" : isVoucher ? (entry.tier === 2 ? "VOUCHER · UPGRADE" : "VOUCHER") : isPack ? "BOOSTER PACK" : entry.type === "charm" ? `<span class="rarity-tag" style="--rc:${rarityOf(entry).color}">${rarityOf(entry).name}</span> ARTIFACT` : "ITEM";
+      const typeLabel = entry.type === "playing" ? "PLAYING CARD" : isVoucher ? (entry.tier === 2 ? "VOUCHER · UPGRADE" : "VOUCHER") : isPack ? "BOOSTER PACK" : entry.type === "charm" ? `<span class="rarity-tag" style="--rc:${rarityOf(entry).color}">${rarityOf(entry).name}</span> ARTIFACT` : entry.spectral ? "SPECTRAL" : "ITEM";
       const slotsFull = !isVoucher && !isPack && entry.type === "charm"
         ? entry.sleeve !== "negative" && charmsUsed() >= state.charmSlots
         : (!isVoucher && !isPack && state.items.length >= getEffectiveItemSlots());
@@ -9846,7 +9880,7 @@ function ShopOverlay() {
       // card being re-serialized and re-parsed, which would silently strip any
       // JS-assigned onclick handler already attached to a live child element.
       card.innerHTML = `
-        <div class="detail-art${isVoucher || entry.type === "charm" || entry.type === "item" ? " is-voucher" : ""}">${entry.type === "charm" || entry.type === "item" ? AnteArt.card(entry) : entry.type === "playing" ? "" : AnteArt.icon(entry)}</div>
+        <div class="detail-art${isVoucher || entry.type === "charm" || entry.type === "item" ? " is-voucher" : ""}">${entry.spectral ? AnteArt.icon(entry) : entry.type === "charm" || entry.type === "item" ? AnteArt.card(entry) : entry.type === "playing" ? "" : AnteArt.icon(entry)}</div>
         <div class="shop-detail-type">${typeLabel}</div>
         <div class="shop-detail-name serif">${entry.name}</div>
         <div class="shop-detail-desc">${entry.desc}</div>
