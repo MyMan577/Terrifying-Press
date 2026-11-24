@@ -493,6 +493,15 @@ public class OnnxSeparatorPlugin extends Plugin {
         }
     }
 
+    /** Tells the page when Demucs is about to compile for the NPU (first time only, up to a few minutes). */
+    private void demucsNote(String key, File mf, boolean nnapi) {
+        if (!Accel.demucsCompiles(key, mf, nnapi)) return;
+        JSObject e = new JSObject();
+        e.put("fraction", 0.0);
+        e.put("note", "Preparing Demucs for the NPU (first time only, up to " + (Accel.NPU_LIMIT_S / 60 + 1) + " minutes; it uses the CPU if that takes too long)…");
+        notifyListeners("progress", e);
+    }
+
     /**
      * Whole separation in Java (decode, STFT, model, masks, WAV out) for Spleeter 4 stems and MDX-Net.
      * kind "demucs": model, sources (model order). kind "sp4": prefix ("sp4_" or "sp4f_"), stems = wanted names. kind "mdx": model, nfft, dimF, dimT, comp, swap.
@@ -575,6 +584,7 @@ public class OnnxSeparatorPlugin extends Plugin {
                     File mf = modelFile(model);
                     if (!mf.exists()) throw new IOException("Model not downloaded: " + model);
                     Accel.Sess s;
+                    demucsNote(model, mf, nnapi);
                     try { s = Accel.openDemucs(env(), model, mf, nnapi, StemNative.DEMUCS_SEG, tune); }   // Snapdragon NPU when asked (timed against the CPU only with the speed-test box), else CPU
                     catch (Throwable e) { throw new IOException("Could not load model " + model + ": " + (e.getMessage() != null ? e.getMessage() : e.toString())); }
                     open.add(s);
@@ -614,6 +624,7 @@ public class OnnxSeparatorPlugin extends Plugin {
                         File mf = modelFile(pm);
                         if (!mf.exists()) throw new IOException("Model not downloaded: " + pm);
                         boolean dm = "demucs".equals(p.optString("kind"));
+                        if (dm) demucsNote(pm, mf, nnapi);
                         Accel.Sess s;
                         try { s = dm ? Accel.openDemucs(env(), pm, mf, nnapi, StemNative.DEMUCS_SEG, tune) : Accel.open(env(), pm, mf, nnapi, new long[] {1, 4, p.getInt("dimF"), p.optInt("dimT", 256)}, tune); }
                         catch (Throwable e) { throw new IOException("Could not load model " + pm + ": " + (e.getMessage() != null ? e.getMessage() : e.toString())); }

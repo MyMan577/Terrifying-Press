@@ -81,7 +81,7 @@
     const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.onerror = () => rej(fr.error); fr.readAsDataURL(blob); });
     const saved = await SS.writeInput({ name: 'track-' + Date.now() + '.audio', data: b64 });
     window.__ppLastSep = '';
-    const h = await NP.addListener('progress', e => { onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
+    const h = await NP.addListener('progress', e => { if (e && e.note) { status(e.note); return; } onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
     const nm = opts.nmask || null, hid = !!nm && !wanted.includes('Vocals') && (wanted.includes('Instrumental') || wanted.includes('Other'));
     const W = hid ? wanted.concat('Vocals') : wanted;                 // vocals are needed to put the removed sound back
     const accKey = 'ppvAccel2_' + id, remembered = ls0(accKey);

@@ -296,16 +296,49 @@ final class Accel {
      * app dies in between (compile, race or first run), the next split finds "TRYING" and uses the CPU for good.
      * Needs a roomy phone: a race loads both copies of the 316 MB model.
      */
+    static final int NPU_LIMIT_S = 150;
+
+    /** True when this Demucs load will compile the NPU graph first (slow, once): the page shows a note. */
+    static boolean demucsCompiles(String key, File f, boolean wantNpu) {
+        if (!wantNpu || !qnn() || !roomy() || prefs == null) return false;
+        String v = prefs.getString(tuneKey(key, f), null);
+        return !"CPU".equals(v) && !"TRYING".equals(v) && !qnnCache(f).exists();
+    }
+
     static Sess openDemucs(OrtEnvironment env, String key, File f, boolean wantNpu, int seg, boolean tune) throws Exception {
         if (!wantNpu || !qnn() || !roomy() || prefs == null) return open(env, key, f, false, null);
         String tk = tuneKey(key, f), v = prefs.getString(tk, null);
         if ("TRYING".equals(v)) { remember(tk, "CPU"); v = "CPU"; }
         if ("CPU".equals(v)) return open(env, key, f, false, null);
-        boolean race = tune && v == null;                     // a verdict from an earlier race is honoured
+        final boolean race = tune && v == null;               // a verdict from an earlier race is honoured
         prefs.edit().putString(tk, "TRYING").commit();
+        // Time limit: the first NPU load compiles the whole 316 MB graph. If that (plus the race) is not done in
+        // NPU_LIMIT_S, this split goes to the CPU and Demucs stays on the CPU (unless that late load was a speed test it won),
+        // and the late NPU session is closed. The compiled graph it saves makes any later NPU load quick.
+        final Sess[] got = new Sess[1];
+        final Throwable[] err = new Throwable[1];
+        final boolean[] late = new boolean[1];
+        Thread t = new Thread(() -> {
+            Sess r = null; Throwable e0 = null;
+            try { r = open(env, key, f, true, race ? new long[] {1, 2, seg} : null, race); } catch (Throwable e) { e0 = e; }
+            synchronized (got) {
+                if (late[0]) { if (r != null) close(r); return; }
+                got[0] = r; err[0] = e0; got.notifyAll();
+            }
+        }, "demucs-npu-load");
+        t.start();
         Sess s;
-        try { s = open(env, key, f, true, race ? new long[] {1, 2, seg} : null, race); }
-        catch (Throwable e) { remember(tk, "CPU"); throw e; }
+        synchronized (got) {
+            long end = System.currentTimeMillis() + NPU_LIMIT_S * 1000L;
+            while (got[0] == null && err[0] == null) {
+                long left = end - System.currentTimeMillis();
+                if (left <= 0) break;
+                got.wait(left);
+            }
+            if (got[0] == null && err[0] == null) late[0] = true;
+            s = got[0];
+        }
+        if (s == null) { remember(tk, "CPU"); return open(env, key, f, false, null); }   // too slow, or failed: CPU
         if (!s.nn) return s;                                  // the race or the NPU build already wrote "CPU"
         prefs.edit().putString(tk, "TRYING").commit();        // the race wrote "NNAPI": guard the first real run too
         s.guard = tk;
