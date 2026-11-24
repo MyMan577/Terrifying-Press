@@ -397,7 +397,7 @@
   async function transcribeRun(t, o, status) {
     let pipe = null;
     if (o.task === 'translate' && whEn(o.size)) { o = Object.assign({}, o, { size: 'base' }); status('Translating needs the multilingual Base model…'); }
-    const x = await whAudio(t, o, status);
+    const x = o.x || await whAudio(t, o, status);   // o.x: vocals already pulled out (the vocal vote reuses one Spleeter pass)
     const dur = x.length / 16000, acc = Math.max(0, Math.min(2, Math.round(+o.acc || 0)));
     // Only the parts with speech or singing go to Whisper. Each part is cut into 90 s pieces that overlap by 4 s, and a line belongs to the
     // piece it starts in, so nothing is cut at a seam. Between pieces it can rest if the phone is hot.
