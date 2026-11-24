@@ -4710,6 +4710,7 @@ function MenuButton(label, color, onClick, sub) {
 function MainMenu() {
   const wrap = document.createElement("div");
   wrap.className = "main-menu";
+  wrap.dataset.face = SETTINGS.face;
   // drifting cards behind the title
   const fan = document.createElement("div");
   fan.className = "mm-cards";
@@ -8881,8 +8882,39 @@ function render() {
   const oldCardRects = captureCardRects();
   const app = document.getElementById("app");
   const hadPack = !!app.querySelector(".pack-overlay"), hadPause = !!app.querySelector(".pause-back");
+  // An open Settings / Skins panel keeps its scroll position through a redraw.
+  const oldScroll = app.querySelector(".pause-back .mpanel-scroll");
+  const panelScroll = oldScroll && oldScroll.dataset.panel === String(MENU.panel) ? oldScroll.scrollTop : 0;
+  const keepPanelScroll = () => {
+    const el = app.querySelector(".pause-back .mpanel-scroll");
+    if (!el) return;
+    el.dataset.panel = String(MENU.panel);
+    if (panelScroll) el.scrollTop = panelScroll;
+  };
+  if (MENU.screen === "main") {
+    // Title screen: keep the title, its drifting cards and the swirl as they
+    // are, and swap only the buttons and the open panel, so a tap doesn't
+    // flash the whole screen or restart its animations.
+    const next = MainMenu();
+    if (hadPause) next.querySelectorAll(":scope > .pause-back").forEach((el) => el.classList.add("stay"));
+    const old = app.querySelector(":scope > .main-menu");
+    if (old && app.children.length === 1) {
+      // A new card-face skin recolours the suits, so the title cards are redrawn.
+      if (old.dataset.face !== next.dataset.face) {
+        const oc = old.querySelector(".mm-cards"), nc = next.querySelector(".mm-cards");
+        if (oc && nc) oc.replaceWith(nc);
+        old.dataset.face = next.dataset.face;
+      }
+      old.querySelectorAll(":scope > .mm-bar, :scope > .pause-back").forEach((el) => el.remove());
+      next.querySelectorAll(":scope > .mm-bar, :scope > .pause-back").forEach((el) => old.appendChild(el));
+    } else {
+      app.innerHTML = "";
+      app.appendChild(next);
+    }
+    keepPanelScroll();
+    return;
+  }
   app.innerHTML = "";
-  if (MENU.screen === "main") { app.appendChild(MainMenu()); return; }
 
   const fanLayout = computeFanLayout();
   const cardScale = fanLayout.scale;
@@ -9218,6 +9250,7 @@ function render() {
   // A screen that was already up stays still instead of fading/dealing in again.
   if (hadPack) { const po = app.querySelector(".pack-overlay"); if (po) po.classList.add("stay"); }
   if (hadPause) app.querySelectorAll(".pause-back").forEach((el) => el.classList.add("stay"));
+  keepPanelScroll();
   syncLoopingAnimations();
   placeBlindSelect();
   fitShop();
