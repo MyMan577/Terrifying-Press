@@ -493,6 +493,15 @@ public class OnnxSeparatorPlugin extends Plugin {
         }
     }
 
+    /** Tells the page when a model is about to be compiled for the NPU (first time only). */
+    private void npuNote(String key, File mf, boolean nnapi) {
+        if (!Accel.npuCompiles(key, mf, nnapi)) return;
+        JSObject e = new JSObject();
+        e.put("fraction", 0.0);
+        e.put("note", "Preparing the NPU for this model (first time only, up to " + (Accel.qnnLimitMs(mf) / 60000 + 1) + " min; it uses the CPU if that takes too long)…");
+        notifyListeners("progress", e);
+    }
+
     /** Tells the page when Demucs is about to compile for the NPU (first time only, up to a few minutes). */
     private void demucsNote(String key, File mf, boolean nnapi) {
         if (!Accel.demucsCompiles(key, mf, nnapi)) return;
@@ -536,6 +545,7 @@ public class OnnxSeparatorPlugin extends Plugin {
             final Throttle th = new Throttle(getContext(), duty, fast);
             final List<Accel.Sess> open = new ArrayList<>();
             final Map<String, File> outs = new LinkedHashMap<>();
+            Accel.lastNpuNote = null;
             long t0 = System.currentTimeMillis();
             try {
                 final String[] want = new String[stemsJ.length()];
@@ -560,6 +570,7 @@ public class OnnxSeparatorPlugin extends Plugin {
                     for (int i = 0; i < 4; i++) {
                         File mf = modelFile(prefix + names[i]);
                         if (!mf.exists()) throw new IOException("Model not downloaded: " + prefix + names[i]);
+                        npuNote(prefix + names[i], mf, nnapi);
                         try { ss[i] = Accel.open(env(), prefix + names[i], mf, nnapi, new long[] {2, 1, SpleeterNative.T, SpleeterNative.F}, tune); }
                         catch (Throwable e) { throw new IOException("Could not load model " + prefix + names[i] + ": " + (e.getMessage() != null ? e.getMessage() : e.toString())); }
                         open.add(ss[i]);
@@ -624,7 +635,7 @@ public class OnnxSeparatorPlugin extends Plugin {
                         File mf = modelFile(pm);
                         if (!mf.exists()) throw new IOException("Model not downloaded: " + pm);
                         boolean dm = "demucs".equals(p.optString("kind"));
-                        if (dm) demucsNote(pm, mf, nnapi);
+                        if (dm) demucsNote(pm, mf, nnapi); else npuNote(pm, mf, nnapi);
                         Accel.Sess s;
                         try { s = dm ? Accel.openDemucs(env(), pm, mf, nnapi, StemNative.DEMUCS_SEG, tune) : Accel.open(env(), pm, mf, nnapi, new long[] {1, 4, p.getInt("dimF"), p.optInt("dimT", 256)}, tune); }
                         catch (Throwable e) { throw new IOException("Could not load model " + pm + ": " + (e.getMessage() != null ? e.getMessage() : e.toString())); }
@@ -655,6 +666,7 @@ public class OnnxSeparatorPlugin extends Plugin {
                     File mf = modelFile(model);
                     if (!mf.exists()) throw new IOException("Model not downloaded: " + model);
                     Accel.Sess s;
+                    npuNote(model, mf, nnapi);
                     try { s = Accel.open(env(), model, mf, nnapi, new long[] {1, 4, dimF, dimT}, tune); }
                     catch (Throwable e) { throw new IOException("Could not load model " + model + ": " + (e.getMessage() != null ? e.getMessage() : e.toString())); }
                     open.add(s);
@@ -669,6 +681,7 @@ public class OnnxSeparatorPlugin extends Plugin {
                 r.put("files", files);
                 r.put("seconds", (System.currentTimeMillis() - t0) / 1000.0);
                 r.put("accel", accel);
+                if (Accel.lastNpuNote != null) r.put("npuNote", Accel.lastNpuNote);   // why the NPU was not used
                 call.resolve(r);
             } catch (Throwable e) {
                 for (File f : outs.values()) f.delete();
