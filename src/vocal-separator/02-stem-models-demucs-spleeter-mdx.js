@@ -134,6 +134,79 @@
     const cut = clips.filter(c => !heard(c)), left = clips.filter(heard);
     return { cut, left, note: '' };
   }
+  // ---------- After the split: judge the Vocals stem itself, 2 s at a time ----------
+  // Only clips that make noise are judged; quiet ones are left alone. Three taggers each say voice ('v'), instrument ('i') or unsure:
+  //  A) AudioSet (mn10): singing/speech/rap classes vs instrument classes, and names the instrument;
+  //  B) Essentia voice-or-instrumental head;  C) Essentia instrument head (its "voice" class vs the strongest instrument).
+  // Kept: 2+ say voice and none say instrument. Cut: none say voice and 2+ say instrument. Anything else is unsure.
+  // x32: Vocals stem, mono 32 kHz. Returns { keep: [[a,b]], cut: [{a,b,what}], unsure: [{a,b,v}], x16 }.
+  const AS_VOICE = [0, 1, 2, 3, 5, 8, 27, 28, 29, 30, 32, 33, 34, 35, 36, 37];
+  async function judgeStem(x32, status, lv) {
+    await loadOrt();
+    for (const k of ['tg_mn10', 'tg_effnet', 'tg_hvoice', 'tg_hinst', 'tg_mel']) await ensureTagFile(k, status, true);
+    const C = 2, n = Math.max(1, Math.ceil(x32.length / 32000 / C)), rms = new Float32Array(n);
+    for (let k = 0; k < n; k++) { const a = k * C * 32000, b = Math.min(x32.length, a + C * 32000); let s = 0; for (let j = a; j < b; j++) s += x32[j] * x32[j]; rms[k] = Math.sqrt(s / Math.max(1, b - a)); }
+    const ref = Array.from(rms).sort((p, q) => p - q)[Math.floor(n * 0.9)] || 0, loud = Array.from(rms, v => v >= Math.max(2e-3, ref * 0.1));
+    const vote = Array.from({ length: n }, () => ({ v: 0, i: 0, what: '' }));
+    const own = [];
+    try {
+      // A) AudioSet: each clip centred in the model's fixed 5 s window
+      const mn = await makeSession('tg_mn10', false, lv); own.push(mn);
+      for (let k = 0; k < n; k++) {
+        if (!loud[k]) continue;
+        if (k % 8 === 0) { status('Checking the Vocals stem (sound tagger)… ' + Math.round(k / n * 100) + '%'); await tick(); }
+        const w = new Float32Array(160000), a = k * C * 32000, seg = x32.subarray(a, Math.min(x32.length, a + C * 32000)); w.set(seg, (160000 - C * 32000) >> 1);
+        const res = await mn.run({ [mn.inputNames[0]]: new ort.Tensor('float32', w, [1, 160000]) });
+        let o = null; for (const nm of mn.outputNames) if (res[nm] && res[nm].data && res[nm].data.length === 527) { o = res[nm].data; break; }
+        if (!o) continue;
+        let lo = Infinity, hi = -Infinity; for (const q of o) { lo = Math.min(lo, q); hi = Math.max(hi, q); }
+        const pr = c => lo < 0 || hi > 1 ? 1 / (1 + Math.exp(-o[c])) : o[c];
+        let vo = 0, io = 0, ic = -1; for (const c of AS_VOICE) vo = Math.max(vo, pr(c));
+        for (let c = 140; c <= 213; c++) if (asInst(c) && pr(c) > io) { io = pr(c); ic = c; }
+        if (vo >= 0.3 && vo >= io) vote[k].v++; else if (vo < 0.15 && io >= 0.2) { vote[k].i++; vote[k].what = AUDIOSET[ic] || ''; }
+      }
+      // B + C) Essentia: one 128-frame patch (~2 s) per clip
+      status('Checking the Vocals stem (voice and instrument taggers)…'); await tick();
+      const x16 = down2(x32, 0, x32.length >> 1), mel = await effnetMel(x16, parseNpy(await getPart('tg_mel'))), nF = mel.length / 96;
+      const eff = await makeSession('tg_effnet', false, lv), hV = await makeSession('tg_hvoice', false, lv), hI = await makeSession('tg_hinst', false, lv); own.push(eff, hV, hI);
+      const idx = []; for (let k = 0; k < n; k++) if (loud[k]) idx.push(k);
+      const rowsOf = async (sess, emb, cnt, per) => {                 // [cnt, per] scores, whether the head takes a batch or one row
+        const run1 = async (d, b) => (await sess.run({ [sess.inputNames[0]]: new ort.Tensor('float32', d, [b, 1280]) }))[sess.outputNames[0]].data;
+        const o = await run1(emb, 64); if (o.length >= cnt * per) return o;
+        const out = new Float32Array(cnt * per);
+        for (let i = 0; i < cnt; i++) { const r = await run1(emb.slice(i * 1280, (i + 1) * 1280), 1); out.set(r.subarray(0, per), i * per); }
+        return out;
+      };
+      const sig = a => { let lo = Infinity, hi = -Infinity; for (const q of a) { lo = Math.min(lo, q); hi = Math.max(hi, q); } return lo < 0 || hi > 1 ? Float32Array.from(a, q => 1 / (1 + Math.exp(-q))) : a; };
+      for (let b0 = 0; b0 < idx.length; b0 += 64) {
+        const cnt = Math.min(64, idx.length - b0), X = new Float32Array(64 * 128 * 96);
+        for (let i = 0; i < cnt; i++) { const f0 = Math.min(Math.max(0, nF - 128), Math.round(idx[b0 + i] * C * 16000 / 256)) * 96; X.set(mel.subarray(f0, Math.min(mel.length, f0 + 128 * 96)), i * 128 * 96); }
+        const r = await eff.run({ [eff.inputNames[0]]: new ort.Tensor('float32', X, [64, 128, 96]) });
+        let emb = null; for (const nm of eff.outputNames) if (r[nm].dims[r[nm].dims.length - 1] === 1280) emb = r[nm].data;
+        if (!emb) break;
+        const pv = await rowsOf(hV, emb, cnt, 2), pi = sig(await rowsOf(hI, emb, cnt, 40));
+        for (let i = 0; i < cnt; i++) {
+          const k = idx[b0 + i], v = pv[i * 2 + 1];
+          if (v >= 0.6) vote[k].v++; else if (v <= 0.3) vote[k].i++;
+          let best = 0, bi = -1; for (let c = 0; c < 39; c++) if (pi[i * 40 + c] > best) { best = pi[i * 40 + c]; bi = c; }
+          const vc = pi[i * 40 + 39];
+          if (vc >= 0.5 && vc >= best) vote[k].v++; else if (best >= 0.5 && vc < 0.3) { vote[k].i++; if (!vote[k].what) vote[k].what = INST40[bi]; }
+        }
+        await tick();
+      }
+      // verdicts, joined into runs
+      const keep = [], cut = [], unsure = [], cls = k => !loud[k] ? 'k' : vote[k].v >= 2 && !vote[k].i ? 'k' : !vote[k].v && vote[k].i >= 2 ? 'c' : 'u';
+      for (let k = 0; k < n;) {
+        const c0 = cls(k); let j = k; while (j < n && cls(j) === c0) j++;
+        const a = k * C, b = j * C;
+        if (c0 === 'k') keep.push([a, b]);
+        else if (c0 === 'c') { const w = {}; for (let q = k; q < j; q++) if (vote[q].what) w[vote[q].what] = (w[vote[q].what] || 0) + 1; cut.push({ a, b, what: Object.keys(w).sort((p, q) => w[q] - w[p])[0] || 'an instrument' }); }
+        else { let s = 0; for (let q = k; q < j; q++) s += vote[q].v; unsure.push({ a, b, v: Math.round(s / (j - k) * 10) / 10 }); }
+        k = j;
+      }
+      return { keep, cut, unsure, x16 };
+    } finally { for (const s of own) { try { s.release && s.release(); } catch (e) {} } }
+  }
   const mergeSpans = sp => { const o = []; for (const q of sp.slice().sort((a, b) => a[0] - b[0])) { const l = o[o.length - 1]; if (l && q[0] <= l[1] + 0.3) l[1] = Math.max(l[1], q[1]); else o.push([q[0], q[1]]); } return o; };
 
   async function alignedCues(t, o, status) {

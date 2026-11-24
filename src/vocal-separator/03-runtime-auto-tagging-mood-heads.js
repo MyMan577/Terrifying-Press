@@ -85,7 +85,7 @@
     let loadLbl = 'Loading models…', running = false; const lt0 = Date.now();
     const ltick = setInterval(() => { if (!running) status(loadLbl + ' ' + Math.round((Date.now() - lt0) / 1000) + ' s'); }, 1000);
     const h = await NP.addListener('progress', e => { if (e && e.note) { loadLbl = e.note; running = false; status(e.note); return; } running = true; onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
-    const nm = opts.nmask || null, hid = !!nm && !wanted.includes('Vocals') && (wanted.includes('Instrumental') || wanted.includes('Other'));
+    const nm = opts.nmask || (opts.judge ? {} : null), hid = !!nm && !wanted.includes('Vocals') && (wanted.includes('Instrumental') || wanted.includes('Other'));
     const W = hid ? wanted.concat('Vocals') : wanted;                 // vocals are needed to put the removed sound back
     const accKey = 'ppvAccel2_' + id, remembered = ls0(accKey);
     // A model that already lost or gave NaN stays on CPU. Demucs and the multi-model sets keep their verdict on the Java side
@@ -116,8 +116,12 @@
     } finally { h.remove(); clearInterval(ltick); }
     window.__ppLastSep = ' (' + Math.round(out.seconds) + ' s on ' + out.accel + (out.npuNote ? '. Not on the NPU: ' + out.npuNote : '') + ')';
     try { localStorage.setItem(accKey, /nnapi|npu|gpu/i.test(String(out.accel)) ? 'nnapi' : 'cpu'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
+    if (opts.judge && out.files.Vocals) {                              // after the split: the taggers judge the finished Vocals stem
+      try { const sp = await opts.judge(window.Capacitor.convertFileSrc(out.files.Vocals)); if (sp) { nm.spans = sp; nm.floor = 0; nm.fade = MASKS[3].fade; } }
+      catch (e) { console.warn('vocal check failed', e); window.__ppLastSep += ' Vocal check failed (' + errText(e) + '), so the stems were left as they came out.'; }
+    }
     if (nm) {
-      window.__ppLastSep += await nativeMask(nm, out.files.Vocals, ['Instrumental', 'Other'].map(n => out.files[n]), status);
+      if (nm.spans) window.__ppLastSep += await nativeMask(nm, out.files.Vocals, ['Instrumental', 'Other'].map(n => out.files[n]), status);
       if (hid) { NP.deleteFiles({ paths: [out.files.Vocals] }).catch(() => {}); delete out.files.Vocals; }
     }
     const res = {};
