@@ -449,7 +449,7 @@
       '<label id="ppv-c-spinl" class="ppv-c" style="display:none;margin-top:6px"><input type="checkbox" id="ppv-c-spin"> Keep threads busy between steps (faster, hotter, uses more battery)</label></div>' +
       '<div id="ppv-stems"></div>' +
       '<div style="margin-top:8px">Mute vocal gaps</div><select id="ppv-gate"><option value="0">Off</option><option value="1">Gentle</option><option value="2">Normal</option><option value="3">Strong</option></select><div style="opacity:.6;font-size:11px;margin-top:4px">Silences leftover noise between sung lines. Vocals stem only.</div>' +
-      '<label class="ppv-c" style="margin-top:8px"><input type="checkbox" id="ppv-agree"> Keep only real vocals (AIs check the Vocals stem)</label><div style="opacity:.6;font-size:11px;margin-top:4px">After the split, three taggers listen to the Vocals stem 2 seconds at a time and say voice or instrument. Parts with no voice (solos, synths) move to Instrumental / Other, and you are told what was moved. Unsure parts go to a referee (Whisper Distil-Small): if it hears no words they are cut, otherwise you hear them and choose.</div>' +
+      '<label class="ppv-c" style="margin-top:8px"><input type="checkbox" id="ppv-agree"> Keep only real vocals (AIs check the Vocals stem)</label><div style="opacity:.6;font-size:11px;margin-top:4px">After the split, three taggers listen to the Vocals stem 2 seconds at a time and say voice or instrument. Parts with no voice (solos, synths) move to Instrumental / Other, and you are told what was moved. Parts they are unsure about are listed for you to hear and keep or cut.</div>' +
       '<div id="ppv-spl" style="margin-top:8px">Strength: <span id="ppv-sv">1</span><input id="ppv-sl" type="range" min="1" max="4" step="0.5" value="1" style="width:100%"><div style="opacity:.6;font-size:11px">Higher = less bleed, more watery artifacts</div><div style="margin-top:8px">Quality</div><select id="ppv-q"><option value="0">Standard</option><option value="1">Better (smooth seams, ~1.3x time)</option><option value="2">Best (+ averaged 2nd pass, ~2.7x time)</option></select></div>' +
       '<label id="ppv-gpu" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-gpuc"> Use GPU (faster, experimental)</label>' +
       '<label id="ppv-nn" class="ppv-c" style="display:none;margin-top:8px"><input type="checkbox" id="ppv-nnc"> Phone GPU/NPU (experimental). Demucs: Snapdragon NPU only, CPU on other phones</label>' +
@@ -618,15 +618,13 @@
         await downloadModel(id, status, !!(LV() && LV().blob));
         let maskNote = '', judgedNative = false;
         const fmt = s0 => Math.floor(s0 / 60) + ':' + String(Math.floor(s0 % 60)).padStart(2, '0');
-        // After the split: taggers judge the Vocals stem; unsure parts go to the referee, then to you. Returns padded keep spans.
+        // After the split: taggers judge the Vocals stem; unsure parts go to you. Returns padded keep spans.
         const judge = async url => {
           status('Checking the Vocals stem…');
           const j = await judgeStem(await decodeMono(url, 32000), status, LV());
-          let ref = { cut: [], left: j.unsure, note: '' }, kept = [];
-          if (j.unsure.length) ref = await refereeClips(t, { strength: +sl.value, lv: LV() }, j.x16, j.unsure, status);
+          const ref = { cut: [], left: j.unsure, note: '' }; let kept = [];   // unsure parts go straight to you (transcriber referees were too slow)
           const msgs = [];
           if (j.cut.length) msgs.push('The taggers heard no voice in ' + j.cut.length + ' part' + (j.cut.length > 1 ? 's' : '') + ' of the Vocals stem, so ' + (j.cut.length > 1 ? 'they were' : 'it was') + ' moved out: ' + j.cut.map(c => fmt(c.a) + '–' + fmt(c.b) + ' (' + c.what + ')').join(', ') + '.');
-          if (ref.cut.length) msgs.push('Whisper Distil-Small heard no words in ' + ref.cut.length + ' unsure part' + (ref.cut.length > 1 ? 's' : '') + ', so ' + (ref.cut.length > 1 ? 'they were' : 'it was') + ' cut automatically: ' + ref.cut.map(c => fmt(c.a) + '–' + fmt(c.b)).join(', ') + '.');
           const cutMsg = msgs.join(' ');
           if (ref.left.length) { status((cutMsg ? cutMsg + ' ' : '') + ref.left.length + ' part' + (ref.left.length > 1 ? 's' : '') + ' still unclear: listen and choose below.'); kept = await reviewClips(ref.left, j.x16, 3, cutMsg); }
           else if (cutMsg) status(cutMsg);
@@ -692,14 +690,15 @@
         function draw() {
           box.innerHTML = (cutMsg ? '<div style="font-size:12px;margin-bottom:6px;opacity:.75">' + cutMsg + '</div>' : '') + '<div style="font-size:12px;margin-bottom:6px">' + clips.length + ' part' + (clips.length > 1 ? 's' : '') + ' where the AIs are not all sure. Play any of them (vocals only) and keep what is singing. Nothing is cut until you press Done.</div>' +
             clips.map((c, i) => '<div style="display:flex;gap:6px;align-items:center;margin:4px 0;font-size:12px"><button type="button" data-p="' + i + '">' + (playing === i ? '■' : '▶') + '</button>' +
-              '<span style="flex:1">' + fmt(c.a) + '–' + fmt(c.b) + ' · ' + c.v + ' of ' + nJ + ' heard singing, the referee heard words</span>' +
+              '<span style="flex:1">' + fmt(c.a) + '–' + fmt(c.b) + ' · ' + c.v + ' of ' + nJ + ' taggers said voice</span>' +
               '<button type="button" data-k="' + i + '" style="' + (keep[i] ? 'background:var(--accent,#7c5cff);color:#fff' : '') + '">Keep</button><button type="button" data-c="' + i + '" style="' + (!keep[i] ? 'background:#a33;color:#fff' : '') + '">Cut</button></div>').join('') +
             '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button type="button" data-all="0">Set all to Cut</button><button type="button" data-all="1">Set all to Keep</button><button type="button" data-done="1" style="margin-left:auto">Done</button></div>';
         }
         box.addEventListener('click', e => {
           const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
           if (d.p != null) play(+d.p); else if (d.k != null) { keep[+d.k] = true; draw(); } else if (d.c != null) { keep[+d.c] = false; draw(); }
-          else if (d.all != null) { keep.fill(d.all === '1'); draw(); }   // sets every row; you can still play and change any of them else if (d.done) finish();
+          else if (d.all != null) { keep.fill(d.all === '1'); draw(); }   // sets every row; you can still play and change any of them
+          else if (d.done) finish();
         });
         draw(); st.insertAdjacentElement('afterend', box); box.scrollIntoView({ block: 'nearest' });
       });
