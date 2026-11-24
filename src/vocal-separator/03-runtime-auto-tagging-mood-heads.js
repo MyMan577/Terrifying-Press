@@ -81,7 +81,10 @@
     const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.onerror = () => rej(fr.error); fr.readAsDataURL(blob); });
     const saved = await SS.writeInput({ name: 'track-' + Date.now() + '.audio', data: b64 });
     window.__ppLastSep = '';
-    const h = await NP.addListener('progress', e => { if (e && e.note) { status(e.note); return; } onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
+    // Until the first chunk is done, a seconds counter shows the load is alive (it used to sit silent on "Loading models…").
+    let loadLbl = 'Loading models…', running = false; const lt0 = Date.now();
+    const ltick = setInterval(() => { if (!running) status(loadLbl + ' ' + Math.round((Date.now() - lt0) / 1000) + ' s'); }, 1000);
+    const h = await NP.addListener('progress', e => { if (e && e.note) { loadLbl = e.note; running = false; status(e.note); return; } running = true; onProgress(e.fraction); status('Separating… ' + Math.round(e.fraction * 100) + '%'); });
     const nm = opts.nmask || null, hid = !!nm && !wanted.includes('Vocals') && (wanted.includes('Instrumental') || wanted.includes('Other'));
     const W = hid ? wanted.concat('Vocals') : wanted;                 // vocals are needed to put the removed sound back
     const accKey = 'ppvAccel2_' + id, remembered = ls0(accKey);
@@ -110,8 +113,8 @@
           ? { kind: 'demucs', model: p.key, sources: p.sources, stems: p.stems }
           : { kind: 'mdx', model: p.key, stem: p.stem, nfft: p.nfft, dimF: p.dimF, dimT: p.dimT || 256, comp: p.comp }) }, base));
       else out = await NP.separate(Object.assign({ kind: 'mdx', model: id, nfft: m.nfft, dimF: m.dimF, dimT: m.dimT || 256, comp: m.comp, swap: !!m.swap }, base));
-    } finally { h.remove(); }
-    window.__ppLastSep = ' (' + Math.round(out.seconds) + ' s on ' + out.accel + ')';
+    } finally { h.remove(); clearInterval(ltick); }
+    window.__ppLastSep = ' (' + Math.round(out.seconds) + ' s on ' + out.accel + (out.npuNote ? '. Not on the NPU: ' + out.npuNote : '') + ')';
     try { localStorage.setItem(accKey, /nnapi|npu|gpu/i.test(String(out.accel)) ? 'nnapi' : 'cpu'); } catch(e){ if (typeof ppCaught === "function") ppCaught(e); }
     if (nm) {
       window.__ppLastSep += await nativeMask(nm, out.files.Vocals, ['Instrumental', 'Other'].map(n => out.files[n]), status);

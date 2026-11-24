@@ -152,8 +152,60 @@ final class Accel {
 
     /** lowMem = no extra memory pools or copies of the weights (right for one huge model, wrong for loops that run a session thousands of times). */
     static OrtSession build(OrtEnvironment env, File f, boolean nnapi, boolean lowMem) throws Exception {
-        if (nnapi && qnn()) return buildQnn(env, f);
+        if (nnapi && qnn()) return limited(() -> buildQnn(env, f), qnnLimitMs(f));
         return buildPlain(env, f, nnapi, lowMem);
+    }
+
+    /**
+     * Time limit for an NPU load. The first one compiles the model for the HTP and can take minutes (or never finish if the
+     * phone's NPU driver stalls), which left every split stuck on "Loading models". Past the limit the caller gets an
+     * exception, so open() remembers CPU for that model and loads it on the CPU; the late NPU session is closed when it lands.
+     * One minute plus a second per 3 MB of model (Demucs, 316 MB: about 2.7 minutes).
+     */
+    /** Why the last NPU attempt fell back to the CPU (shown on the page with the result), or null. */
+    static volatile String lastNpuNote = null;
+    private static void npuFailed(Throwable e) {
+        String m = e == null ? "" : (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        if (m.length() > 120) m = m.substring(0, 120) + "…";
+        lastNpuNote = e instanceof java.util.concurrent.TimeoutException ? m : "NPU failed: " + m;
+    }
+
+    /** True when opening this model on the NPU compiles it first (slow, once per model): the page shows a note. */
+    static boolean npuCompiles(String key, File f, boolean wantNpu) {
+        if (!wantNpu || !qnn() || prefs == null) return false;
+        String v = prefs.getString(tuneKey(key, f), null);
+        return !"CPU".equals(v) && !qnnCache(f).exists();
+    }
+
+    static long qnnLimitMs(File f) { return 60_000L + f.length() / 3_000L; }
+
+    private static OrtSession limited(java.util.concurrent.Callable<OrtSession> job, long ms) throws Exception {
+        final Object lock = new Object();
+        final OrtSession[] got = new OrtSession[1];
+        final Throwable[] err = new Throwable[1];
+        final boolean[] done = new boolean[1], late = new boolean[1];
+        Thread t = new Thread(() -> {
+            OrtSession r = null; Throwable e0 = null;
+            try { r = job.call(); } catch (Throwable e) { e0 = e; }
+            synchronized (lock) {
+                if (late[0]) { if (r != null) { try { r.close(); } catch (Exception ignored) { } } return; }
+                got[0] = r; err[0] = e0; done[0] = true; lock.notifyAll();
+            }
+        }, "npu-load");
+        t.setDaemon(true);
+        t.start();
+        synchronized (lock) {
+            long end = System.currentTimeMillis() + ms;
+            while (!done[0]) {
+                long left = end - System.currentTimeMillis();
+                if (left <= 0) break;
+                lock.wait(left);
+            }
+            if (!done[0]) { late[0] = true; throw new java.util.concurrent.TimeoutException("NPU load took over " + ms / 1000 + " s"); }
+        }
+        if (err[0] instanceof Exception) throw (Exception) err[0];
+        if (err[0] != null) throw new RuntimeException(err[0]);
+        return got[0];
     }
 
     /** Compiled NPU graph saved next to the model, so only the first load pays the (long) compile. */
@@ -265,11 +317,11 @@ final class Accel {
         if ("CPU".equals(v)) return reg(new Sess(build(env, f, false), f, key, false));
         if ("NNAPI".equals(v)) {
             try { return reg(new Sess(build(env, f, true), f, key, true)); }
-            catch (Throwable e) { remember(tk, "CPU"); return reg(new Sess(build(env, f, false), f, key, false)); }
+            catch (Throwable e) { npuFailed(e); remember(tk, "CPU"); return reg(new Sess(build(env, f, false), f, key, false)); }
         }
         OrtSession nn;
         try { nn = build(env, f, true); }
-        catch (Throwable e) { remember(tk, "CPU"); return reg(new Sess(build(env, f, false), f, key, false)); }
+        catch (Throwable e) { npuFailed(e); remember(tk, "CPU"); return reg(new Sess(build(env, f, false), f, key, false)); }
         if (shape == null) return reg(new Sess(nn, f, key, true));
         OrtSession cp = build(env, f, false);
         long tn;
@@ -296,7 +348,7 @@ final class Accel {
      * app dies in between (compile, race or first run), the next split finds "TRYING" and uses the CPU for good.
      * Needs a roomy phone: a race loads both copies of the 316 MB model.
      */
-    static final int NPU_LIMIT_S = 150;
+    static final int NPU_LIMIT_S = 240;   // outer limit (load + speed test); the compile itself has qnnLimitMs
 
     /** True when this Demucs load will compile the NPU graph first (slow, once): the page shows a note. */
     static boolean demucsCompiles(String key, File f, boolean wantNpu) {
@@ -338,7 +390,10 @@ final class Accel {
             if (got[0] == null && err[0] == null) late[0] = true;
             s = got[0];
         }
-        if (s == null) { remember(tk, "CPU"); return open(env, key, f, false, null); }   // too slow, or failed: CPU
+        if (s == null) {                                      // too slow, or failed: CPU
+            if (lastNpuNote == null) lastNpuNote = err[0] != null ? "NPU failed" : "NPU load took over " + NPU_LIMIT_S + " s";
+            remember(tk, "CPU"); return open(env, key, f, false, null);
+        }
         if (!s.nn) return s;                                  // the race or the NPU build already wrote "CPU"
         prefs.edit().putString(tk, "TRYING").commit();        // the race wrote "NNAPI": guard the first real run too
         s.guard = tk;
