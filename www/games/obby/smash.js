@@ -601,8 +601,8 @@
     if (st._parryT > 0 || (chr === 'cb_protagonist' && st._protagRetaliateTimer > 0)) {
       var far = Math.hypot(ax - vx, ay - vy) > 2.6, d = sgn(ax - vx) || 1;
       st._parryT = 0; st._protagRetaliateTimer = 0; st._parried = 0.45; st._parryFar = far; st._parryDir = d;
-      side.invuln = Math.max(side.invuln || 0, 0.45); side.hitstun = 0;
-      if (st._dodgeT > 0) { st._dodgeT = 0; addFx('ring', vx, vy, '#8fd8ff'); showBanner('FLINCH!', 0.45); return true; }   // a pure dodge (L-Brother): no counter, no reflect
+      side.invuln = Math.max(side.invuln || 0, st._dodgeT > 0 ? 0.25 : 0.45); side.hitstun = 0;
+      if (st._dodgeT > 0) { st._dodgeT = 0; addFx('ring', vx, vy, '#8fd8ff'); return true; }   // (his own EEP! shows it: no banner across the screen)   // a pure dodge (L-Brother): no counter, no reflect
       window._ppHitstop = Math.max(window._ppHitstop || 0, 0.1); g.shake(7);
       addFx('ring', vx, vy, '#ffffff'); addFx('burst', vx, vy, far ? '#7cdbff' : '#ffd166', 18);
       showBanner(far ? 'REFLECT!' : 'PARRY!', 0.55);
