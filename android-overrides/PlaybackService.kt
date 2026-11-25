@@ -398,7 +398,8 @@ class PlaybackService : MediaLibraryService() {
     private var tail: ExoPlayer? = null
     private var xfIn = 1f
     private var xfOut = 0f
-    /** Set while the main player is moved on by a crossfade, so the plugin reports it like an automatic advance. */
+    /** Set while the main player is moved on by a crossfade (or a background Next, see NativePlayerPlugin.skipToQueued),
+     *  so the plugin reports it like an automatic advance. */
     @Volatile var xfAdvancing = false
     private var xfStartAt = 0L          // position in the old song where the fade starts
     private var xfLenMs = 0L

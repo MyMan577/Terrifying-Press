@@ -66,6 +66,7 @@ class NativePlayerPlugin : Plugin() {
     // frame, the screen itself), so the visualizer is shown the sound from this far ahead of the speaker.
     private var vizLeadUs = 45_000L
     private var inBackground = false
+    private var skipping = false        // skipToQueued is moving the player on: "advanced" says it was a skip
     private val freq = ByteArray(512)
     private val wave = ByteArray(512)
 
@@ -93,7 +94,25 @@ class NativePlayerPlugin : Plugin() {
         svc = null
         if (instance === this) instance = null
     }
-    private val onCmd: (String) -> Unit = { c -> notifyListeners("cmd", JSObject().put("name", c)) }
+    private val onCmd: (String) -> Unit = { c -> if (!(c == "next" && skipToQueued())) notifyListeners("cmd", JSObject().put("name", c)) }
+
+    /**
+     * Notification / headset / car "next" while the app is off-screen. Android can hold the page's scripts until it
+     * is shown again, so the press waited there and every held press ran at once when the app was opened.
+     * The page has already queued the song it would pick (shuffle, repeat and queues included), so move to it here,
+     * exactly as when a song ends by itself: the page hears "advanced" and follows whenever it runs again.
+     * Main thread. False when nothing is queued (repeat one, end of the list, sleep after this song): the page decides.
+     */
+    private fun skipToQueued(): Boolean {
+        if (!inBackground || AlarmRing.owns || nextUri == null) return false
+        val s = svc ?: return false
+        val p = s.player
+        if (p.mediaItemCount < 2 || p.currentMediaItemIndex != 0) return false
+        s.xfAdvancing = true; skipping = true    // reported to the page as an automatic advance, not a seek
+        try { p.seekToNextMediaItem() } finally { s.xfAdvancing = false; skipping = false }
+        p.playWhenReady = true               // the app's Next button always plays the song it moves to
+        return true
+    }
     /** Run off the main thread; never throws, even while the plugin is being torn down. */
     private fun runBg(task: () -> Unit) {
         try { bg.execute(task) } catch (_: java.util.concurrent.RejectedExecutionException) { Thread(task, "pp-player-bg").start() }
@@ -260,7 +279,7 @@ class NativePlayerPlugin : Plugin() {
                     kind = k; applyVideoTrack(p)
                     main.post { MainActivity.instance?.showVideoLayer(kind == "video") }
                 }
-                notifyListeners("advanced", snapshot("advanced"))
+                notifyListeners("advanced", snapshot(if (skipping) "skip" else "advanced"))
             }
         }
         override fun onPlaybackParametersChanged(pp: PlaybackParameters) { if (AlarmRing.owns) return; notifyListeners("state", snapshot("rate")) }
