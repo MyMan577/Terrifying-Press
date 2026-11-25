@@ -92,6 +92,47 @@
 
   const SEQ = {
     // ---- CHARGED SPECIALS (hold S to full) ----
+    // in the air
+    cyclone(p, dt, S, q) {   // SPANNER CYCLONE: arm and wrench straight out, he spins like a top and drifts down slowly
+      S.target = PO.spin; S.rate = 50; S.rot = q.t * 26 * q.f; S.mega = 0.35;
+      p.vy = Math.min(p.vy, 2.5); const k = FK.keys(); p.vx = ((k.right ? 1 : 0) - (k.left ? 1 : 0)) * 4;
+      if (Math.floor(q.t / 0.1) !== q.n) { q.n = Math.floor(q.t / 0.1); q.hits.clear(); FK.whoosh(false, false); }
+      for (const e of FK.within(pcx(p), pcy(p), 2.3)) if (!q.hits.has(e)) { q.hits.add(e); hit(S, e, 1, { kx: (Math.sign(ex(e) - pcx(p)) || 1) * 3, ky: -3, stun: 0.25 }); }
+      if (q.t > 0.85) { for (const e of FK.within(pcx(p), pcy(p), 2.4)) hit(S, e, 3, { kx: (Math.sign(ex(e) - pcx(p)) || 1) * 12, ky: -8, stun: 0.5, big: true }); clang(true); S.rot = 0; S.mega = 0; S.seq = null; }
+    },
+    nailgun(p, dt, S, q) {   // NAIL GUN: a burst of nails straight ahead; the kick of it holds him in the air
+      S.target = PO.swing; S.rate = 50; p.vy = Math.min(p.vy, 0.3);
+      while (q.t >= 0.05 + q.n * 0.06 && q.n < 8) {
+        q.n++; const w = wrenchTip(p, PO.swing, q.f);
+        S.shots.push({ x: w[0], y: w[1] + (Math.random() - 0.5) * 0.3, vx: q.f * 24, vy: 0, t: 0, life: 0.6, bounces: 0, kind: 'nail', nograv: 1 });
+        FK.tone(1500, { dur: 0.03, vol: 0.08, type: 'square' }); FK.noise({ dur: 0.03, cut: 5000, q: 3, vol: 0.1 });
+        if (!FK.blocked(p.x - q.f * 0.1, p.y + 0.02, p.w, p.h - 0.04)) p.vx = -q.f * 2.5;
+      }
+      if (q.t > 0.6) S.seq = null;
+    },
+    springhammer(p, dt, S, q) {   // SPRING HAMMER: slams the wrench down under himself; a spring shoots him up and a shockwave goes down
+      S.target = q.t < 0.1 ? PO.raise : PO.jump; S.rate = 40;
+      if (q.t < 0.1) { p.vy = Math.min(p.vy, 0); return; }
+      if (!q.done) {
+        q.done = 1; p.vy = -22; p.onGround = false; S.airUp = true; boing(true);
+        S.fx.push({ k: 'ring', x: pcx(p), y: p.y + p.h, R: 1.6, c: '#4fe0c2', t: 0, life: 0.35 });
+        for (const e of box(p, 1, -1.2, 2.4, 3.5, -2.2)) hit(S, e, 4, { kx: 0, ky: 16, stun: 0.55, big: true, stop: 0.08 });
+        S.fx.push({ k: 'beamdown', x: pcx(p), y: p.y + p.h, t: 0, life: 0.3 });
+      }
+      if (q.t > 0.4) S.seq = null;
+    },
+    anvil(p, dt, S, q) {   // ANVIL DROP: an anvil appears in his hands; he plummets with it, spikes, and the floor jumps
+      S.target = PO.stomp; S.rate = 40; S.anvil = 1;
+      if (q.t < 0.2) { p.vy = 0; p.vx = 0; return; }
+      p.vy = 30; p.vx = 0;
+      for (const e of box(p, 1, -0.8, 1.6, 1.6, -0.6)) if (!q.hits.has(e)) { q.hits.add(e); hit(S, e, 6, { kx: 0, ky: 22, stun: 0.6, big: true, stop: 0.12 }); clang(true); }
+      if (p.onGround || q.t > 1.5) {
+        FK.thud(true); FK.shake(12); clang(true);
+        S.fx.push({ k: 'shock', x: pcx(p), y: p.y + p.h, R: 3.2, c: '#9aa6b8', t: 0, life: 0.55 }); S.fx.push({ k: 'crack', x: pcx(p), y: p.y + p.h, f: 1, t: 0, life: 1.2 });
+        for (const e of FK.within(pcx(p), p.y + p.h - 0.4, 3.2)) if (!q.hits.has(e)) hit(S, e, 3, { kx: (Math.sign(ex(e) - pcx(p)) || 1) * 4, ky: -15, stun: 0.6, big: true });
+        S.anvil = 0; S.seq = null;
+      }
+    },
     mega(p, dt, S, q) {   // MEGA WRENCH: the wrench swells to giant size and comes down in front; the floor cracks
       S.mega = Math.min(1, q.t / 0.35); p.vx = 0;
       S.target = q.t < 0.35 ? PO.raise : PO.pound; S.rate = q.t < 0.35 ? 20 : 70;
@@ -291,7 +332,7 @@
     }
     // rivets: arc, bounce twice, sizzle
     for (let i = S.shots.length - 1; i >= 0; i--) {
-      const b = S.shots[i]; b.t += dt; b.vy += 24 * dt;
+      const b = S.shots[i]; b.t += dt; if (!b.nograv) b.vy += 24 * dt;
       const nx = b.x + b.vx * dt, ny = b.y + b.vy * dt;
       if (FK.blocked(nx - 0.12, b.y - 0.12, 0.24, 0.24)) { b.vx *= -0.6; } else b.x = nx;
       if (FK.blocked(b.x - 0.12, ny - 0.12, 0.24, 0.24)) { if (b.vy > 0) { b.bounces++; b.vy = -Math.abs(b.vy) * 0.62; FK.tone(900, { dur: 0.05, vol: 0.06, type: 'square' }); } else b.vy = 0; } else b.y = ny;
@@ -332,10 +373,10 @@
     fresh: () => ({ seq: null, pose: PO.idle, target: PO.idle, rate: 18, run: 0, rot: 0, rotor: 0, drill: 0, dive: 0, mega: 0, jack: null, boxes: [], shots: [], stompCool: new Map(), airUp: false, pu: PU.init() }),
     busy: S => !!S.seq,
     charged: {
-      neutral: (p, f, S) => { startSeq(S, 'mega', { f }); return 'MEGA WRENCH'; },
-      side: (p, f, S) => { startSeq(S, 'roll', { f }); return 'WRECKING ROLL'; },
-      up: (p, f, S, air) => { if (air) { startSeq(S, 'jackup', { f, pw: 1 }); return null; } startSeq(S, 'jack', { f }); return 'HYDRAULIC JACK'; },
-      down: (p, f, S) => { startSeq(S, 'toolbox', { f }); return 'TOOLBOX DROP'; },
+      neutral: (p, f, S, air) => { if (air) { startSeq(S, 'cyclone', { f }); return 'SPANNER CYCLONE'; } startSeq(S, 'mega', { f }); return 'MEGA WRENCH'; },
+      side: (p, f, S, air) => { if (air) { startSeq(S, 'nailgun', { f }); return 'NAIL GUN'; } startSeq(S, 'roll', { f }); return 'WRECKING ROLL'; },
+      up: (p, f, S, air) => { if (air) { startSeq(S, 'springhammer', { f }); return 'SPRING HAMMER'; } startSeq(S, 'jack', { f }); return 'HYDRAULIC JACK'; },
+      down: (p, f, S, air) => { if (air) { startSeq(S, 'anvil', { f }); return 'ANVIL DROP'; } startSeq(S, 'toolbox', { f }); return 'TOOLBOX DROP'; },
     },
     can(key, S) { if (key === 'air_up' && S.airUp) return 'Tool Twirl comes back when you land'; return null; },
     act: {
@@ -353,7 +394,7 @@
       if (p.hitstun > 0 && S.seq) { S.seq = null; S.rot = 0; S.rotor = 0; S.drill = 0; S.dive = 0; }
       S.rate = 18;
       if (S.seq) { S.seq.t += dt; const fn = SEQ[S.seq.kind]; if (fn) fn(p, dt, S, S.seq); else S.seq = null; }
-      if (!S.seq) { S.rot = 0; S.rotor = 0; S.drill = 0; S.dive = 0; S.mega = 0; S.jack = null; }
+      if (!S.seq) { S.rot = 0; S.rotor = 0; S.drill = 0; S.dive = 0; S.mega = 0; S.jack = null; S.anvil = 0; }
       stepWorld(p, dt, S);
       PU.tick(p, dt, S);
       if (!S.seq) S.target = FK.locomotion(S, p, dt, PO, { aF: [0.4, 1.2] });
@@ -465,6 +506,11 @@
     },
     drawWorld(ctx, V, S) {
       const p = V.p, T = V.T;
+      if (S.anvil) {   // ANVIL DROP: the anvil under him
+        const x = V.SX(pcx(p)), y = V.SY(p.y + p.h) + T * 0.1, w = T * 1.3;
+        FK.solid(ctx, '#3a3f4b', 1); ctx.beginPath(); ctx.moveTo(x - w / 2, y - T * 0.35); ctx.lineTo(x + w / 2, y - T * 0.35); ctx.lineTo(x + w * 0.62, y - T * 0.5); ctx.lineTo(x + w * 0.62, y - T * 0.22); ctx.lineTo(x + w * 0.2, y - T * 0.05); ctx.lineTo(x + w * 0.25, y + T * 0.2); ctx.lineTo(x - w * 0.25, y + T * 0.2); ctx.lineTo(x - w * 0.2, y - T * 0.05); ctx.lineTo(x - w / 2, y - T * 0.2); ctx.closePath(); ctx.fill();
+        FK.solid(ctx, '#6b7280', 1); ctx.fillRect(x - w / 2, y - T * 0.35, w, 3);
+      }
       for (const b of S.boxes) {   // the falling toolbox
         const x = V.SX(b.x), y = V.SY(b.y), w = T * 1.6, h = T * 1.0;
         FK.solid(ctx, '#e8392b', 1); ctx.beginPath(); ctx.roundRect(x - w / 2, y - h / 2, w, h, 4); ctx.fill();
@@ -481,6 +527,7 @@
       }
       for (const b of S.shots) {   // hot rivets (and loose bolts from the toolbox)
         const x = V.SX(b.x), y = V.SY(b.y);
+        if (b.kind === 'nail') { FK.solid(ctx, '#e8edf5', 1); ctx.fillRect(x - T * 0.22, y - 1.5, T * 0.44, 3); FK.solid(ctx, '#9aa6b8', 1); ctx.fillRect(x - T * 0.24 * Math.sign(b.vx), y - 3, 3, 6); continue; }
         if (b.kind === 'bolt') { FK.solid(ctx, '#c9d3e0', 1); ctx.save(); ctx.translate(x, y); ctx.rotate(b.t * 14); ctx.fillRect(-T * 0.18, -T * 0.05, T * 0.36, T * 0.1); ctx.fillRect(-T * 0.18, -T * 0.12, T * 0.1, T * 0.24); ctx.restore(); continue; }
         ctx.beginPath(); ctx.arc(x, y, T * 0.24, 0, Math.PI * 2); FK.glow(ctx, '#ff7a2a', 0.35); ctx.fill();
         FK.solid(ctx, '#ffd28a', 1); ctx.beginPath(); ctx.arc(x, y, T * 0.12, 0, Math.PI * 2); ctx.fill();
@@ -489,6 +536,7 @@
       PU.draw(ctx, V, S);
     },
     drawFx(ctx, V, f, u, a) {
+      if (f.k === 'beamdown') { const x = V.SX(f.x), y = V.SY(f.y); FK.glow(ctx, '#4fe0c2', a * 0.5); ctx.fillRect(x - V.T * 0.6 * a, y, V.T * 1.2 * a, V.T * 3.5); return true; }
       if (f.k === 'crack') { const x = V.SX(f.x), y = V.SY(f.y); FK.solid(ctx, '#1b1b24', a); ctx.lineWidth = 3; ctx.beginPath(); for (let i = 0; i < 5; i++) { const d = (i - 2) * 0.5; ctx.moveTo(x, y); ctx.lineTo(x + d * V.T * 1.4 + Math.sin(i * 7) * 6, y - 2 - Math.abs(d) * 4); } ctx.stroke(); return true; }
       if (f.k === 'spark2') { const x = V.SX(f.x + f.vx * f.t), y = V.SY(f.y + f.vy * f.t + 9 * f.t * f.t); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - f.vx * 3, y - f.vy * 3); FK.glow(ctx, u < 0.4 ? '#ffffff' : '#ffd23b', a); ctx.lineWidth = 2; ctx.stroke(); return true; }
       if (f.k === 'ember') { const x = V.SX(f.x) + (f.vx || 0) * f.t * V.T, y = V.SY(f.y) - u * V.T * 0.6; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(x + (i - 1) * 5, y - i * 3, V.T * (0.1 - u * 0.06), 0, Math.PI * 2); FK.glow(ctx, i ? '#ffb347' : '#ff5a2a', a); ctx.fill(); } return true; }
