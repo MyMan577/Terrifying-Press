@@ -15,6 +15,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.WebChromeClient
+import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -46,6 +47,12 @@ class MainActivity : BridgeActivity() {
         private const val PREFS = "pp_video"
         private const val PAGE_BG = 0xFF0C0D10.toInt()   // until the page reports its own colour
     }
+
+    /** Main thread. See [PageAwake]. */
+    private fun applyPagePriority(lowerWhenHidden: Boolean) {
+        if (Build.VERSION.SDK_INT < 26) return
+        try { bridge?.webView?.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, lowerWhenHidden) } catch (_: Exception) {}
+    }
     private var backdrop = PAGE_BG
     private var seeThrough = false
 
@@ -71,6 +78,7 @@ class MainActivity : BridgeActivity() {
         registerPlugin(VlcPlugin::class.java)        // VLC engine: formats nothing else plays, network shares
         super.onCreate(savedInstanceState)
         instance = this
+        PageAwake.attach { lower -> applyPagePriority(lower) }   // also applies the current reasons to this new window
         nativeVideo = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean("native", false)
         installVideoLayer()
         installKeyboardFit()
@@ -405,7 +413,36 @@ class MainActivity : BridgeActivity() {
         ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
     override fun onDestroy() {
-        if (instance === this) { instance = null; playerView?.release(); playerView = null }
+        if (instance === this) { instance = null; playerView?.release(); playerView = null; PageAwake.attach(null) }
         super.onDestroy()
+    }
+}
+
+/**
+ * Keeps the page running while the app is off-screen, for as long as any reason holds ("media": something is loaded
+ * in the player, "game": a game is open).
+ *
+ * By default Android lowers the page's process as soon as the app is hidden, and the system (Samsung especially)
+ * then freezes it. Notification Next and Previous are answered by the page, because it owns shuffle, repeat and
+ * queues, so they waited and all ran at once when the app was opened. Once no reason is left, the default comes back.
+ *
+ * Kept outside MainActivity (which is marked as using Media3's unstable API) so Java plugins can call it.
+ */
+object PageAwake {
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    private val reasons = mutableSetOf<String>()   // main thread only
+
+    /** Main thread only. MainActivity's: called with true when the page may be lowered in the background again. */
+    private var apply: ((Boolean) -> Unit)? = null
+
+    /** Main thread. A new window (or null when it goes): the current reasons are applied to it at once. */
+    fun attach(f: ((Boolean) -> Unit)?) { apply = f; f?.invoke(reasons.isEmpty()) }
+
+    /** Any thread. */
+    @JvmStatic fun set(why: String, on: Boolean) {
+        main.post {
+            val changed = if (on) reasons.add(why) else reasons.remove(why)
+            if (changed) apply?.invoke(reasons.isEmpty())
+        }
     }
 }

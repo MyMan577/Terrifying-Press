@@ -4,7 +4,6 @@ import android.os.Build;
 import android.view.Display;
 import android.view.Window;
 import android.view.WindowManager;
-import android.webkit.WebView;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -44,8 +43,7 @@ public class GameModePlugin extends Plugin {
                 }
                 w.setAttributes(lp);
                 w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-                WebView wv = getBridge().getWebView();
-                if (wv != null && Build.VERSION.SDK_INT >= 26) wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
+                PageAwake.set("game", true);
                 on = true;
                 call.resolve();
             } catch (Exception e) {
@@ -114,9 +112,8 @@ public class GameModePlugin extends Plugin {
                     lp.preferredRefreshRate = savedRate;
                     w.setAttributes(lp);
                     w.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-                    WebView wv = getBridge().getWebView();
-                    // Android's default: important while visible, lowered when the app is in the background.
-                    if (wv != null && Build.VERSION.SDK_INT >= 26) wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true);
+                    // Back to Android's default (lowered in the background), unless the player still needs the page.
+                    PageAwake.set("game", false);
                     on = false;
                 }
                 call.resolve();
