@@ -91,6 +91,7 @@ class NativePlayerPlugin : Plugin() {
             try { s.player.removeListener(listener) } catch (_: Exception) {}
             if (s.onCommand === onCmd) s.onCommand = null
         }
+        if (awake) { awake = false; PageAwake.set("media", false) }
         svc = null
         if (instance === this) instance = null
     }
@@ -126,10 +127,23 @@ class NativePlayerPlugin : Plugin() {
         }
     }
 
+    /**
+     * While something is loaded (playing or paused, so its notification can be pressed), the page keeps running when
+     * the app is hidden: it answers the notification's Next and Previous (see PageAwake).
+     */
+    private var awake = false
+    private fun syncAwake(p: Player) {
+        val on = p.mediaItemCount > 0 && p.playbackState != Player.STATE_IDLE
+        if (on == awake) return
+        awake = on
+        PageAwake.set("media", on)
+    }
+
     private fun attach(s: PlaybackService) {
         if (svc === s) return
         svc = s
         s.player.addListener(listener)
+        syncAwake(s.player)
         s.onCommand = onCmd
         MainActivity.playerView?.player = s.player
     }
@@ -237,6 +251,7 @@ class NativePlayerPlugin : Plugin() {
     // nothing, so it does not follow the alarm's songs (which loaded them again from where you last stopped) and the
     // alarm's list is left whole. When the alarm stops, the player is back on the app's own song.
     private val listener = object : Player.Listener {
+        override fun onEvents(player: Player, events: Player.Events) { syncAwake(player) }
         override fun onPlaybackStateChanged(state: Int) { if (AlarmRing.owns) return; notifyListeners("state", snapshot("state")); updateTicker() }
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (AlarmRing.owns) return
