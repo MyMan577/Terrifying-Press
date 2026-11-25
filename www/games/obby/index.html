@@ -39265,6 +39265,19 @@ window._claimLBro = function() {
   let lastPX = null, lastPY = null, prevJump = false, ff = null, aim = null;
   let dash = null, stomp = null, cast = null, rope = null, fling = null, held = null, spinT = 0, reel = null;
   const HOLD_MAX = 4, THROW_SPEED = 17;
+  // Smash: the ribbon is a recovery, not a place to live. Two latches (blocks or ledge reels) per trip
+  // through the air, a shared budget of hanging time that burns faster under the stage, and a short hold.
+  const SM_LATCHES = 2, SM_HANG = 2.5, SM_UNDER_BURN = 3, SM_HOLD_MAX = 1.5;
+  let latches = 0, hangT = 0;
+  // Smash: the fighter this turn is for (you, or the CPU while it plays the Mixtape) and the stage
+  function smInfo() {
+    const SM = window.__smash; if (!SM || !SM.active || !SM.__state) return null;
+    const s = SM.__state(), F = window._fighterPass;
+    const m = F ? (s.foe && s.foe.F === F ? s.foe : null) : s.me;
+    return m ? { m, stage: s.stage } : null;
+  }
+  // launched, grabbed, on a ledge or waiting to respawn: the ribbon can't hold you up
+  function smBusy(si) { const m = si && si.m; return !!m && (m.hitstun > 0 || m.heldT > 0 || m.liftHold > 0 || !!m.ledge || m.respawnHold > 0); }
   const yanks = [], fx = [];
   if (window.UNIVERSAL_PUNCH_EXCLUDED_CHARS) window.UNIVERSAL_PUNCH_EXCLUDED_CHARS.add(ID);
 
@@ -39389,7 +39402,7 @@ window._claimLBro = function() {
   function resetKit() {
     freeFoes(); fx.length = 0;
     dash = stomp = cast = rope = fling = ff = aim = reel = null;
-    atkCD = 0; formCD = 0; airUpUsed = false; spinT = 0;
+    atkCD = 0; formCD = 0; airUpUsed = false; spinT = 0; latches = 0; hangT = 0;
     lastPX = lastPY = null;
   }
   function dropRope(silent) {
@@ -39482,7 +39495,7 @@ window._claimLBro = function() {
     const e = held.e;
     if (!e || e.dead) { held = null; return; }
     held.t += dt;
-    if (held.t > HOLD_MAX) {
+    if (held.t > (smInfo() ? SM_HOLD_MAX : HOLD_MAX)) {
       e._held = false; e.stunTimer = Math.max(e.stunTimer || 0, 0.6);
       held = null; msg('🎀 It wriggled free'); return;
     }
@@ -39495,6 +39508,12 @@ window._claimLBro = function() {
     }
     e.vx = 0; e.vy = 0; e._held = true;
   }
+  // Smash, in the air: count the latch, or refuse it once this trip's are used up
+  function latchOK(p) {
+    if (!smInfo() || p.onGround) return true;
+    if (latches >= SM_LATCHES || hangT >= SM_HANG) { msg('🎀 The ribbon needs you to land (or grab a ledge) first'); return false; }
+    latches++; return true;
+  }
   function stepCast(p, dt) {
     if (!cast) return;
     if (cast.back > 0) { cast.back -= dt; if (cast.back <= 0) cast = null; return; }
@@ -39504,6 +39523,7 @@ window._claimLBro = function() {
       const x = cast.ox + cast.dx * cast.dist, y = cast.oy + cast.dy * cast.dist;
       cast.x = x; cast.y = y;
       if (cast.ledge && (cast.dist >= cast.max - 0.25 || tileAt(x, y))) {   // the clip bites the ledge: reel in
+        if (!latchOK(p)) { cast.back = 0.12; return; }
         reel = { L: cast.ledge, t: 0 }; cast = null; if (rope) dropRope(true);
         fx.push({ k: 'clip', x: reel.L.x, y: reel.L.top, t: 0, life: 0.35 });
         fx.push({ k: 'label', x: pcx(p), y: p.y - 0.3, t: 0, life: 0.7, text: 'LEDGE REEL!' });
@@ -39521,6 +39541,7 @@ window._claimLBro = function() {
       }
       const tl = tileAt(x, y);
       if (tl && cast.purpose !== 'zip' && ANCHOR.has(tl.type)) {
+        if (!latchOK(p)) { cast.back = 0.12; tone(300, { type: 'square', dur: 0.05, vol: 0.08 }); return; }
         // latch on the near edge of the block, not inside it
         attach(p, x - cast.dx * 0.12, y - cast.dy * 0.12, Math.floor(x) + ',' + Math.floor(y));
         cast = null; return;
@@ -39596,7 +39617,7 @@ window._claimLBro = function() {
   window.performSlash = function () {
     if (window.selectedCharacter !== ID) { if (_prevSlash) return _prevSlash.apply(this, arguments); return; }
     const p = window._gamePlayer;
-    if (!p || atkCD > 0) return;
+    if (!p || atkCD > 0 || smBusy(smInfo())) return;
     const fm = curForm(), cdM = ff ? 0.5 : 1;
     if (fm.id === 'r') {
       if (held) { const a = throwAim(p); throwHeld(p, a.dx, a.dy); atkCD = 0.3 * cdM; return; }
@@ -39788,6 +39809,13 @@ window._claimLBro = function() {
     // the block it was clipped to is gone (crumbled, broken): the ribbon lets go
     const wd = window._gameWorld, clip = wd && wd.tiles && wd.tiles.get(rope.key);
     if (!clip || !ANCHOR.has(clip.type)) { dropRope(); msg('🎀 The ribbon lost its grip'); return; }
+    // Smash: hanging in the air uses up the budget, three times as fast below the stage
+    const si = smInfo();
+    if (si && !p.onGround) {
+      const st = si.stage, under = st && pcy(p) > st.bottom + 0.5;
+      hangT += dt * (under ? SM_UNDER_BURN : 1);
+      if (hangT >= SM_HANG) { dropRope(); msg('🎀 The ribbon slipped! Land or grab a ledge to use it again'); return; }
+    }
     // jump lets go with a fling; a dash breaks free too
     const jumpEdge = k.jump && !prevJump;
     if ((jumpEdge && rope.t > 0.1) || p.isDashing) {
@@ -39894,6 +39922,12 @@ window._claimLBro = function() {
     if (atkCD > 0) atkCD = Math.max(0, atkCD - dt);
     if (formCD > 0) formCD = Math.max(0, formCD - dt);
     if (p.onGround) airUpUsed = false;
+    // Smash: a hit's launch (or a grab, a ledge, a respawn) beats the ribbon: let go so the launch carries you
+    const si = smInfo();
+    if (si) {
+      if (p.onGround || (si.m && si.m.ledge)) { latches = 0; hangT = 0; }
+      if (smBusy(si)) { if (rope) dropRope(); cast = null; reel = null; fling = null; if (held || yanks.length) freeFoes(); }
+    }
     if (spinT > 0) spinT -= dt;
     if (!ff) addTape(0.12 * dt);   // a trickle while you play
     if (ff) { ff.t -= dt; if (ff.t <= 0) { ff = null; applyForm(); msg('⏩ Back to normal speed'); click(0.2); } }
@@ -40101,7 +40135,7 @@ window._claimLBro = function() {
       // ribbon wrapped round it, and a ring that shrinks as it gets ready to wriggle free
       ctx.globalCompositeOperation = 'lighter';
       for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.ellipse(x2, y2 - T * 0.15 + i * T * 0.15, T * 0.5, T * 0.12, 0.25, 0, Math.PI * 2); neon(ctx, PALETTE[i % 3], 1.3, 0.75); }
-      const left = 1 - held.t / HOLD_MAX;
+      const left = 1 - held.t / (smInfo() ? SM_HOLD_MAX : HOLD_MAX);
       ctx.beginPath(); ctx.arc(x2, y2, T * 0.75, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left); neon(ctx, left < 0.3 ? '#ff4d6d' : '#ffffff', 1.2, 0.6);
     }
     // a ribbon in flight
@@ -40200,12 +40234,12 @@ window._claimLBro = function() {
   // whoever it's holding and its yanks. Your buttons stay yours.
   (window._fighterPlugins = window._fighterPlugins || []).push({ name: 'mixtape', char: ID,
     swap(s) {
-      const out = { formIdx, PALETTE, active, atkCD, formCD, tape, tapeFullSaid, airUpUsed, lastPX, lastPY, prevJump, ff, aim, dash, stomp, cast, rope, fling, held, spinT, reel,
+      const out = { formIdx, PALETTE, active, atkCD, formCD, tape, tapeFullSaid, airUpUsed, lastPX, lastPY, prevJump, ff, aim, dash, stomp, cast, rope, fling, held, spinT, reel, latches, hangT,
         yanks: yanks.splice(0), fx: fx.splice(0) };
       if (!s) { const fi = Math.floor(Math.random() * FORMS.length); s = { formIdx: fi, PALETTE: FORMS[fi].pal.slice(), active: true }; }
       formIdx = s.formIdx || 0; PALETTE = s.PALETTE || FORMS[formIdx].pal.slice(); active = !!s.active; atkCD = s.atkCD || 0; formCD = s.formCD || 0;
       tape = s.tape || 0; tapeFullSaid = !!s.tapeFullSaid; airUpUsed = !!s.airUpUsed; lastPX = s.lastPX != null ? s.lastPX : null; lastPY = s.lastPY != null ? s.lastPY : null;
-      prevJump = !!s.prevJump; ff = s.ff || null; aim = s.aim || null; dash = s.dash || null; stomp = s.stomp || null; cast = s.cast || null; rope = s.rope || null; fling = s.fling || null; held = s.held || null; spinT = s.spinT || 0; reel = s.reel || null;
+      prevJump = !!s.prevJump; ff = s.ff || null; aim = s.aim || null; dash = s.dash || null; stomp = s.stomp || null; cast = s.cast || null; rope = s.rope || null; fling = s.fling || null; held = s.held || null; spinT = s.spinT || 0; reel = s.reel || null; latches = s.latches || 0; hangT = s.hangT || 0;
       if (s.yanks) yanks.push(...s.yanks); if (s.fx) fx.push(...s.fx);
       if (window._gtCharStatCache && window._gtCharStatCache[ID]) window._gtCharStatCache[ID] = formStats();   // speed / jump follow whoever's turn it is
       return out;
