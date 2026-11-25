@@ -127,6 +127,7 @@ select{font:inherit;font-size:15px;padding:8px 10px;border-radius:12px;backgroun
 .card[data-pl]::after{content:"\25BC";position:absolute;left:5%;top:3%;width:calc(var(--cw)*.26);height:calc(var(--cw)*.26);display:grid;place-items:center;font-size:calc(var(--cw)*.14);color:#333;background:linear-gradient(135deg,#fff 0 50%,#d3d3d3 50%);border-radius:calc(var(--cw)*.12) 0 40% 0;box-shadow:1px 1px 2px #0005;z-index:3}
 .card .dpc{position:absolute;right:5%;bottom:3%;width:calc(var(--cw)*.26);height:calc(var(--cw)*.26);display:grid;place-items:center;font-style:normal;font-size:calc(var(--cw)*.14);line-height:1;color:#333;background:linear-gradient(315deg,#fff 0 50%,#d3d3d3 50%);border-radius:40% 0 calc(var(--cw)*.12) 0;box-shadow:-1px -1px 2px #0005;z-index:3;font-family:system-ui,sans-serif}.pdx .card .dpc{background:linear-gradient(315deg,#ffe6f3 0 50%,#d65aa0 50%);color:#4a0d30}.pdx .card[data-pl="1"]::after{background:linear-gradient(135deg,#f7dcc0 0 50%,#b8733f 50%);color:#4a2a10}.card[data-pl="2"]::after{background:linear-gradient(135deg,#fff 0 50%,#9aa7b3 50%);color:#33404c}.card[data-pl="3"]::after{background:linear-gradient(135deg,#fff3b0 0 50%,#d4a017 50%);color:#5a3d00;animation:pgold 1.6s ease-in-out infinite}.card[data-pl="3"] .face{box-shadow:inset 0 0 0 calc(var(--cw)*.035) #f9d56e}@keyframes pgold{0%,100%{box-shadow:1px 1px 2px #0005,0 0 0 #f9d56e00}50%{box-shadow:1px 1px 2px #0005,0 0 calc(var(--cw)*.12) #f9d56e}}.xpb{display:inline-flex;gap:3px;font-style:normal}.xpi{display:inline-flex;align-items:center;font-style:normal;filter:drop-shadow(0 1px 1px #000a)}.xpi .ic{width:14px;height:14px}.xpbm b{font:800 11px system-ui,sans-serif;margin-left:1px}.seat.xpfz .fan,#hand.xpfz{filter:saturate(.35) brightness(1.15) drop-shadow(0 0 10px #8fe3ff)}.seat.xpfz .pill{box-shadow:0 0 0 3px #bff4ff,0 0 14px #8fe3ff}.pas{display:flex;justify-content:space-between;gap:6px;text-align:center;font-size:11px;opacity:.9}.pas b{display:block;font:400 22px Lilita One,sans-serif}.pabar{height:8px;border-radius:99px;background:#ffffff1a;margin-top:12px;overflow:hidden}.pabar i{display:block;height:100%;background:linear-gradient(90deg,#e0a06a,#dfe7ee,#f9d56e)}.pag{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:10px 6px;margin-bottom:14px}.pac{display:flex;flex-direction:column;align-items:center;gap:4px}.pac small{font-size:10px;line-height:1.15;text-align:center;opacity:.85}.pac.no .card{filter:grayscale(1) brightness(.45)}.pac.no small{opacity:.4}
 .card .ftab{position:absolute;left:32%;top:calc(var(--cw)*-.07);width:36%;height:calc(var(--cw)*.13);border-radius:5px 5px 0 0;background:linear-gradient(90deg,#7a4bc2,#e0c4ff,#7a4bc2);box-shadow:0 -1px 4px #b88cff;z-index:3}.card[data-ch] .face{box-shadow:inset 0 0 0 calc(var(--cw)*.04) #b88cff;background-image:repeating-linear-gradient(135deg,#0000 0 7px,#ffffff16 7px 14px)}.fan .card.lfo{filter:drop-shadow(0 0 6px #b88cff) drop-shadow(0 4px 3px #0008)!important}
+#hand.multi{display:block;overflow:visible}#hand.multi .card{transition:transform .2s,filter .2s}
 #menu{z-index:30}
 #menu .panel,#mp .panel{margin:auto;max-height:min(84dvh,calc(100dvh - 32px));overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;touch-action:pan-y}
 @keyframes pin{from{transform:perspective(800px) rotateX(24deg) scale(.88);opacity:0}}.ov:not([hidden]) .panel{animation:pin .34s cubic-bezier(.2,.8,.2,1)}#end:not([hidden])>div{animation:pin .5s cubic-bezier(.2,.8,.2,1)}.seat.act .pill{transform:scale(1.14)}
@@ -557,7 +558,7 @@ async function draw0(i,n,pre){if(n>1)G.know[i].v.clear();const out=[];for(let k=
 async function drawUntil(i){if(S.mode==='attack'){const n=1+(Math.random()*4|0);toast((i?G.p[i].name+' launches ':'Launcher: ')+n+(n>1?' cards':' card'));await draw(i,n);return null}let c;do{[c]=await draw(i,1)}while(c&&S.until&&!ok(c));return c}
 async function doPlay(pi,c,col,claim){const p=G.p[pi];G.busy=1;G.pl=1;if(S.mode==='tri'&&!G.tc&&!tpOn(G.tn,c)){const n=G.lit.find(m=>tpOn(m,c));if(n!=null)usePile(n)}G.drew=null;if(S.mode==='flex')flexUse(pi,c);const nc=G.nc;G.nc=0;if(S.liar&&!claim&&!G.nb&&!nc&&(pi?Math.random()<.12:S.bluff))claim={c:c.c,v:c.v};const sc=claim?{id:c.id,c:claim.c,v:claim.v,real:c,ill:!ok(claim),lie:claim.c!==c.c||claim.v!==c.v}:c,pcol=G.col;if(claim)trackSt(pi,sc,c,p);
  const from=G.pf||(pi?R($('#s'+pi)):R([...$('#hand').children].find(e=>e.dataset.id==c.id)||$('#hand')));G.pf=null;
- if(claim)logBluff(pi,sc);p.hand.splice(p.hand.indexOf(c),1);caughtLie(pi,c);confirmClaims(pi,c);if(!claim)archSeen(pi,c);G.know.forEach(k=>k.c.delete(c.id));G.know[pi].h.delete(sc.c);(G.lastc=G.lastc||{})[pi]=sc.c;if(!claim&&c.c!=='k')G.know[pi].v.add('x'+c.c+c.v);if(pi===0){(G.hist=G.hist||[]).push(sc.c);if(!claim&&G.lie&&G.lie.has(c.c)){G.lie.delete(c.c);G.know[0].v.delete(c.c);G.p.forEach(b=>b.susp=Math.min(.95,(b.susp||.5)+.12));say(1+Math.random()*(G.p.length-1)|0,'Liar!')}}if(pi===0&&p.hand.length>2)G.called=0;render();
+ if(claim)logBluff(pi,sc);p.hand.splice(p.hand.indexOf(c),1);caughtLie(pi,c);confirmClaims(pi,c);if(!claim)archSeen(pi,c);G.know.forEach(k=>k.c.delete(c.id));G.know[pi].h.delete(sc.c);(G.lastc=G.lastc||{})[pi]=sc.c;if(!claim&&c.c!=='k')G.know[pi].v.add('x'+c.c+c.v);if(pi===0){(G.hist=G.hist||[]).push(sc.c);if(!claim&&G.lieSoft&&G.lieSoft.has(c.c)&&!(G.lie&&G.lie.has(c.c))){G.lieSoft.delete(c.c);G.p.forEach(b=>b.susp=Math.min(.95,(b.susp||.5)+.03))}if(!claim&&G.lie&&G.lie.has(c.c)){G.lie.delete(c.c);G.know[0].v.delete(c.c);G.p.forEach(b=>b.susp=Math.min(.95,(b.susp||.5)+.12));say(1+Math.random()*(G.p.length-1)|0,'Liar!')}}if(pi===0&&p.hand.length>2)G.called=0;render();
  if(typeof col==='function'){var hold=col;col=null}if(G.st||(!G.pq&&(sc.c==='k'||isNaN(sc.v)))){const q=await presentFx(c,!!claim,from,hold,G.st,pi);G.st=null;if(hold)col=q}else if(hold)col=await hold();AU.play('slide',pn(pi));await fly(c,!!claim,G.pf||from,R($('#disc')),G.pq?(G.pq=0,30):560,0,((360*pi/G.p.length+180)%360+360)%360-180,(sc.id*37%30)-15);G.pf=null;AU.play('land',0,LV(sc));G.disc.push(sc);sc._by=pi;G.col=sc.c==='k'?(col||pcol):sc.c;renderMid();$('#disc').animate([{transform:'perspective(700px) scale(1.12) rotateX(10deg)'},{transform:'perspective(700px) scale(1) rotateX(0deg)'}],{duration:240,easing:'cubic-bezier(.2,.8,.2,1)'});
  if(claim){const r=await challengePhase(pi,sc,c);if(r==='back'){G.disc.pop();G.col=pcol;if(G.lastc)delete G.lastc[pi];renderMid();await fly(c,0,R($('#disc')),pi?R($('#s'+pi)):R($('#hand')),420);p.hand.push(c);G.know.forEach(k=>k.c.add(c.id));render();const lp=G.lp||LIEPEN;G.lp=0;await draw(pi,lp);await gsleep(500);return endTurn(pi)}}
  c=sc;if(S.mode==='flex'&&(c.c==='k'||G.pw.every(x=>!x))){G.pw=G.pw.map(()=>1);toast('Power Cards reset')}reqCheck(pi,c,col);
@@ -769,12 +770,12 @@ function openCK(){const P=$('#ck .panel'),lbl=tg=>(tg==='k'?'wild':tgLbl(tg)).to
  let h='<button class="x" id="ckx" aria-label="Close">\u2715</button><div class="ckh">Checklist</div><div class="ckl">';
  G.p.forEach((q,i)=>{const K=G.know[i],me0=i===0,nm=me0?'You':esc(q.name),cl=me0?'claimed you have':'claims they have',open=[],done=[],was=me0?' were':' was',L=(G.cl||[]).filter(e=>e.who===i);
   const has=(k,t)=>L.some(e=>e.state==='open'&&e.kind===k&&e.tag===t);
-  L.filter(e=>e.state==='open').forEach(e=>open.push(hl(nm+' '+cl+' '+K0((e.kind==='no'?'NO ':'')+lbl(e.tag)))));
+  L.filter(e=>e.state==='open').forEach(e=>open.push(hl(nm+' '+cl+' '+K0((e.kind==='no'?'NO ':'')+lbl(e.tag))+(e.soft?' (cards drawn since)':''))));
   
   
   q.hand.filter(c=>K.c.has(c.id)).forEach(c=>open.push(hl(nm+was+' seen with '+K0(cn(c).toUpperCase()))));
   L.filter(e=>e.state!=='open').forEach(e=>{const w=lbl(e.tag),t=e.kind==='no'?'NO '+w:w;
-   done.push([e.state==='void'?hl(nm+' '+cl+' '+K0(t)+' (hands swapped)'):e.state==='true'?hl(nm+was+' telling the truth about '+K0(w)+(e.bonus?'':' (same turn, no credit)')):hl(nm+was+' lying about '+K0(w)),e.state==='void'?'\u2013':'\u2713'])});
+   done.push([e.state==='void'?hl(nm+' '+cl+' '+K0(t)+' (hands swapped)'):e.state==='true'?hl(nm+was+' telling the truth about '+K0(w)+(e.bonus?'':' (same turn, no credit)')):hl(nm+was+' lying about '+K0(w)+(e.soft?' (cards drawn since)':'')),e.state==='void'?'\u2013':'\u2713'])});
   ((G.sv&&G.sv[i])||[]).forEach(n=>done.push([hl(nm+was+' seen with '+K0(n.toUpperCase())),'\u2713']));
   const row=(r,d)=>'<div class="ckr'+(d?' done':'')+'"><span class="t">'+(d?r[0]:r)+'</span>'+(d?'<i class="ckv'+(r[1]==='\u2013'?' vd':'')+'">'+r[1]+'</i>':'')+'</div>';
   h+='<div class="ckn"><span>'+nm+'</span><em>'+q.hand.length+' cards</em></div>'+(open.length||done.length?open.map(r=>row(r,0)).join('')+done.map(r=>row(r,1)).join(''):'<div class="cke">Nothing recorded</div>')});
@@ -870,8 +871,8 @@ async function manipFx(pi,c){if(S.intel&&(c.v==='E'||c.v==='N'||c.v==='B'))retur
 async function obeyTurn(t,r,by=t){const p=G.p[t],m=()=>p.hand.filter(c=>fmatch(r,c));G.busy=1;G.nb=1;renderHand();
  try{
   toast(nmOf(t)+' must place '+fdesc(r));await gsleep(1600);
-  if(!m().length){say(t,"I can't!");toast((t?p.name+' draws':'You draw')+' until able (odds doubled)');await gsleep(1000);
-   let g=0;while(!p.out&&!G.over&&!m().length&&g++<30){biasDeck(r);const d=await draw(t,1);if(!d||!d.length)break}
+  if(!m().length){say(t,"I can't!");toast((t?p.name+' draws':'You draw')+' until able (odds doubled, up to '+(r.al?3:4)+')');await gsleep(1000);
+   let g=0;while(!p.out&&!G.over&&!m().length&&g++<(r.al?3:4)){biasDeck(r);const d=await draw(t,1);if(!d||!d.length)break}
    G.know[t].v.clear();if(G.over)return;if(p.out||!m().length)return endTurn(t)}
   let c,col=null;
   if(by===0){const x=await handPick(t,by===t?'Obey the request':'You control '+p.name,'Place '+fdesc(r)+'.',z=>fmatch(r,z));c=x.c;col=x.col}
@@ -886,7 +887,7 @@ async function controlPlay(pi){const al=alivePl(pi);if(!al.length)return;let t;
  await fxBadge(pi,'C',[t]);if(await shieldHit(t,pi))return;(G.ob=G.ob||{})[t]=r;
  toast('Control! '+nmOf(t)+' must place '+fdesc(r)+' on '+(t?'their':'your')+' turn');say(pi,G.p[t].name+', on your turn you place '+fdesc(r)+'!');await gsleep(2400)}
 async function almightyPlay(pi){const ord=Array.from({length:G.p.length-1},(_,k)=>nx(pi,k+1)).filter(k=>!G.p[k].out);if(!ord.length)return;
- const r=pi===0?await askReq('Almighty: everyone obeys'):botReqAll();
+ const r=pi===0?await askReq('Almighty: everyone obeys'):botReqAll();r.al=1;
  G.ob=G.ob||{};ord.forEach(t=>G.ob[t]=r);await fxBadge(pi,'A',ord);
  toast('Almighty! Everyone must place '+fdesc(r)+' on their turn');say(pi,'Everyone, on your turn you place '+fdesc(r)+'!');await gsleep(2400)}
 async function mindPlay(pi){const al=alivePl(pi);if(!al.length)return;let t;
@@ -1311,7 +1312,7 @@ async function intelPlay(pi,v){const al=alivePl(pi).filter(k=>v==='E'||G.p[k].ha
  if(v==='N'){const c=B.hand[Math.random()*B.hand.length|0];toast(nmOf(pi)+(pi?' steals from ':' steal from ')+nmOf(t).toLowerCase().replace(/^you$/,'you'));AU.play('swap');await mv(c,t,pi);take(B,A,c)}
  else{const g=pi===0?(await handPick(0,'Trade with '+B.name,'Pick a card to give.',()=>true)).c:A.hand.filter(c=>c.c!=='k').sort((a,b)=>PT(b)-PT(a))[0]||A.hand[0],r=B.hand[Math.random()*B.hand.length|0];
   toast(nmOf(pi)+(pi?' trades with ':' trade with ')+nmOf(t));AU.play('swap');await Promise.all([mv(g,pi,t),mv(r,t,pi)]);take(A,B,g);take(B,A,r)}
- G.know[pi].v.clear();G.know[t].v.clear();render();await gsleep(900)}
+ G.know[pi].v.clear();G.know[t].v.clear();handTouched(pi,'swap');handTouched(t,'swap');render();await gsleep(900)}
 const SPW=[['Draw Red','r'],['Draw Yellow','y'],['Draw Green','g'],['Draw Blue','b'],['Wild Color Draw','w'],['Color Discard','x'],['Swap Hands','s'],['2X','2']],SPC=['var(--r)','var(--y)','var(--g)','var(--b)','#fff','#8a8a8a','#9b5de5','#222'];
 async function spinWheel(pi){const p=G.p[pi],i=Math.random()*8|0,k=SPW[i][1],o=document.createElement('div');G.x2=0;o.style.cssText='position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;background:#0006';
  o.innerHTML=`<div style="position:relative"><div style="width:min(60vw,240px);aspect-ratio:1;border-radius:50%;border:6px solid #fff;background:conic-gradient(${SPC.map((c,j)=>c+' '+j*45+'deg '+(j+1)*45+'deg').join(',')})"></div><div style="position:absolute;top:-30px;left:50%;transform:translateX(-50%);font-size:28px;color:#fff">\u25BC</div></div><b style="margin-top:16px;font:400 26px 'Lilita One',sans-serif;color:#fff">&nbsp;</b>`;document.body.appendChild(o);AU.play('swap');
@@ -1552,7 +1553,7 @@ function fxRows0(){const m=S.mode,st=!!S.stack,dk=G.side==='D',c0=COLS[0],R=[],n
     if(m==='open')n.push('Everyone\'s cards are face up. Read the table and plan your plays.');
   if(m==='bluff'){R.push([{c:'k',v:'p'},'Lie Detector','Wild card. If the card before it was a bluff, that player draws 2.']);n.push('With Bluff on, you may claim a card you are not playing. Challenge a claim you doubt: a caught liar takes the card back and draws 2.')}}
  if(S.sz){R.push([{c:c0,v:'7'},'7','Swap hands with any player.']);if(m!=='flip')R.push([{c:c0,v:'0'},'0','Everyone passes their hand to the next player.'])}
-if(S.truth){if(S.calls)R.push([{c:c0,v:'T'},'Truth Syringe','Pick a player and make a call-out. They must answer truthfully.'],[{c:'k',v:'G'},'Truth Gas','Wild card. Choose a color, then make a call-out. Every other player must answer truthfully.']);R.push([{c:c0,v:'C'},'Control','Pick a player and request a color, a wild, or a special (you choose which one, and the color or the color on their turn). On their next turn they must place it, or draw until they can.'],[{c:c0,v:'M'},'Mind Control','Pick a player. On their next turn you play it for them and see their hand.'],[{c:'k',v:'A'},'Almighty','Wild card. Choose a color, then make a request like Control. Every other player must obey it on their next turn.']);n.push('Manipulation Pack: a request is obeyed on the target turn, once they are not facing a draw stack. The card is played normally, so its effect triggers.')}
+if(S.truth){if(S.calls)R.push([{c:c0,v:'T'},'Truth Syringe','Pick a player and make a call-out. They must answer truthfully.'],[{c:'k',v:'G'},'Truth Gas','Wild card. Choose a color, then make a call-out. Every other player must answer truthfully.']);R.push([{c:c0,v:'C'},'Control','Pick a player and request a color, a wild, or a special (you choose which one, and the color or the color on their turn). On their next turn they must place it, or draw until they can, up to 4 cards.'],[{c:c0,v:'M'},'Mind Control','Pick a player. On their next turn you play it for them and see their hand.'],[{c:'k',v:'A'},'Almighty','Wild card. Choose a color, then make a request like Control. Every other player must obey it on their next turn, drawing up to 3 cards if they cannot.']);n.push('Manipulation Pack: a request is obeyed on the target turn, once they are not facing a draw stack. The card is played normally, so its effect triggers.')}
  return{R,n}}
 let fxP=[],fxI=0;
 function fxShow(){const q=fxP[fxI];if(!q)return;const c=$('#fxc');c.innerHTML='';const e=q[0]?cardEl(q[0]):cardEl(0,1);e.removeAttribute('data-id');c.appendChild(e);$('#fxn').textContent=q[1];$('#fxd').textContent=q[2];$('#fxi').textContent=(fxI+1)+' / '+fxP.length}
@@ -1701,7 +1702,7 @@ async function xpPlay(pi,c){const v=c.v,p=G.p[pi];let sk=0;
 async function rewindPlay(pi){const k=G.disc.length-2,pv=G.disc[k],o=pv&&pv._by;await xpFx('rewind',pi);
  if(!pv||pv.fk||o==null||!G.p[o]||G.p[o].out){toast('Rewind: nothing to send back');return}
  const card=pv.real||pv;G.disc.splice(k,1);renderMid();toast('Rewind! '+cn(card)+' goes back to '+(o?G.p[o].name:'you'));AU.play('slide',pn(o));
- await fly(card,false,R($('#disc')),pos(o),560);G.p[o].hand.push(card);G.know[o].c.add(card.id);seeCard(o,card,'has');if(o===0)G.called=0;render();await gsleep(300)}
+ await fly(card,false,R($('#disc')),pos(o),560);G.p[o].hand.push(card);handTouched(o,'draw');G.know[o].c.add(card.id);seeCard(o,card,'has');if(o===0)G.called=0;render();await gsleep(300)}
 async function freezePlay(pi){const al=alivePl(pi);if(!al.length)return;let t;
  if(pi===0){do{t=await pickSeat('Freeze: pick a player')}while(!al.includes(t))}
  else{const s=[...al].sort((a,b)=>G.p[a].hand.length-G.p[b].hand.length);t=Math.random()<.65?s[0]:al[Math.random()*al.length|0]}
@@ -1717,7 +1718,7 @@ async function bombTick(){const b=G.bomb;if(!b||b.tk===(G.turns||0))return;b.tk=
  const t=b.h;G.bomb=null;toast('BOOM! '+nmOf(t)+(t?' draws ':' draw ')+b.dmg);await xpFx('boom',t);await draw(t,b.dmg);render()}
 
 /* insurance halves one big draw */
-var _xpD0=draw0;draw0=async function(i,n,pre){const q=G&&G.p[i];if(S.dfn&&q&&q.ins&&n>=4){q.ins=0;const m=Math.floor(n/2);toast('Insurance pays out! '+nmOf(i)+(i?' draws ':' draw ')+m+' instead of '+n);await xpFx('insPay',i);n=m}return _xpD0(i,n,pre)};
+var _xpD0=draw0;draw0=async function(i,n,pre){const q=G&&G.p[i];if(S.dfn&&q&&q.ins&&n>=4){q.ins=0;const m=Math.floor(n/2);toast('Insurance pays out! '+nmOf(i)+(i?' draws ':' draw ')+m+' instead of '+n);await xpFx('insPay',i);n=m}const out=await _xpD0(i,n,pre);if(G&&out&&out.length)handTouched(i,'draw');return out};
 /* bots: a few nudges for the new cards */
 var _xpKn=kn;kn=function(i,c){let s=_xpKn(i,c);const p=G.p[i];if(c.v==='X'&&!(G.bomb&&G.bomb.h===i))s-=2;if(c.v==='S'&&p.sh)s-=1.5;if(c.v==='I'&&p.ins)s-=1;if(c.v==='R'){const pv=tp();if(pv&&pv._by===i)s-=2}if(G.bomb&&G.bomb.h===i&&c.c===G.bomb.col)s+=2.5;return s};
 
@@ -1783,7 +1784,7 @@ peelCore=async function(pi,c){if(!S.pdx&&!c.dp)return _xpPeelCore(pi,c);const p=
 /* Double peel: the bottom-right corner hides a second special, which goes into the peeler's hand. */
 async function peelSecond(pi,t,c){const p=G.p[pi],r2=peelPick(t,c),D=R($('#disc'));
  toast('Double peel! '+(pi?p.name+' keeps a second card':'You keep '+cn(r2)));AU.play('turn',pn(pi));
- await fly(r2,pi!==0,{left:D.left,top:D.top-D.height*.6,width:D.width,height:D.height},pos(pi),620);p.hand.push(r2);if(pi===0){G.called=0;if(S.pdx)paRecord(r2,t,0,0)}render()}
+ await fly(r2,pi!==0,{left:D.left,top:D.top-D.height*.6,width:D.width,height:D.height},pos(pi),620);p.hand.push(r2);handTouched(pi,'draw');if(pi===0){G.called=0;if(S.pdx)paRecord(r2,t,0,0)}render()}
 var _xpClick=clickCard;clickCard=function(c){if(S.peel&&S.pdx&&c.pl===3&&!ok(c)&&G.cur===0&&!G.busy&&!G.over&&!G.pend&&!G.drew&&!G.mpr){if(pcl===c.id){clearTimeout(pct);pcl=0;return peelPlay(c)}pcl=c.id;clearTimeout(pct);pct=setTimeout(()=>{pcl=0;toast('Double-tap a gold card to peel it')},550);return}return _xpClick(c)};
 var _xpRH=renderHand;renderHand=function(){_xpRH();if(!G||!S.peel||!S.pdx||G.cur!==0||G.busy||G.over||G.pend||G.drew)return;[...$('#hand').children].forEach(e=>{if(e.dataset.pl==='3')e.classList.remove('dim')})};
 
@@ -1859,4 +1860,28 @@ var _lfRows=fxRows;fxRows=function(){const o=_lfRows();if(!lfOn())return o;const
  for(const [k,x] of Object.entries(S.lfp?{...CHX,...CHP}:CHX))o.R.push([{c:x[2]?'k':c0,v:k},x[0],x[1]]);if(S.lfp)o.n.push('Last Flip+: more cards have a tab, three wilder chaos cards join, and you can flip a tabbed card even when it does not match.');return o};
 $('#lfp').addEventListener('change',()=>{if($('#lfp').checked&&!$('#lfl').checked){$('#lfl').checked=true;saveS()}syncTruth()});
 $('#lfl').addEventListener('change',()=>{if(!$('#lfl').checked&&$('#lfp').checked){$('#lfp').checked=false;saveS()}syncTruth()});syncTruth();
+
+/* Claims after a hand changes. A swap, steal or trade voids the player's open claims and forgets their known lies:
+   the cards the claims were about may be gone. Drawing softens them: open claims are marked, and for you, a lie the
+   table caught becomes a soft one, so playing that color later adds only a little suspicion and no "Liar!". */
+function handTouched(i,kind){if(!G||!G.p[i])return;
+ if(kind==='swap'){voidClaims(i);if(G.bl)delete G.bl[i];if(i===0){G.lie&&G.lie.clear();G.lieSoft&&G.lieSoft.clear()}return}
+ (G.cl||[]).forEach(e=>{if(e.who===i&&e.state==='open')e.soft=1});if(G.bl)delete G.bl[i];
+ if(i===0&&G.lie&&G.lie.size){G.lieSoft=G.lieSoft||new Set();G.lie.forEach(t=>G.lieSoft.add(t));G.lie.clear()}}
+var _ofWC=wipeClaims;wipeClaims=function(...ps){_ofWC(...ps);if(!ps.length||ps.includes(0)){G.lie&&G.lie.clear();G.lieSoft&&G.lieSoft.clear()}};
+
+/* Big hands: squeeze a seat's cards to fit, and keep the fan on screen. */
+function fitFans(){if(!G)return;const W=innerWidth,maxW=Math.min(W*.33,220);G.p.forEach((q,i)=>{if(!i)return;const fan=document.querySelector('#s'+i+' .fan');if(!fan)return;fan.style.translate='';const cs=[...fan.children],n=cs.length;if(n<2)return;
+ const cw=cs[0].offsetWidth,sp0=cs[1].offsetLeft-cs[0].offsetLeft;if(sp0>0&&sp0*(n-1)+cw>maxW){const sp=Math.max(2,(maxW-cw)/(n-1));cs.forEach((e,k)=>{e.style.left='calc(50% + '+((k-(n-1)/2)*sp).toFixed(1)+'px - var(--cw)/2)'})}
+ let L=1e9,Rt=-1e9;cs.forEach(e=>{const b=e.getBoundingClientRect();L=Math.min(L,b.left);Rt=Math.max(Rt,b.right)});let dx=0;if(L<6)dx=6-L;else if(Rt>W-6)dx=W-6-Rt;if(dx)fan.style.translate=dx.toFixed(1)+'px 0'})}
+var _ofRS=renderSeats;renderSeats=function(){_ofRS();fitFans()};addEventListener('resize',()=>{try{fitFans()}catch(e){}});
+
+/* Big hands: when your cards no longer fit in one row, wrap them into up to 4 overlapping rows (sorted, so each color
+   stays together) instead of one long scrolling strip. Each lower row covers the one above it except its top corner. */
+var _mhRH=renderHand;renderHand=function(){_mhRH();const h=$('#hand'),cs=[...h.children],n=cs.length,bar=$('#bar');h.classList.remove('multi');h.style.height='';if(bar)bar.style.bottom='';if(n<2)return;
+ const w=cs[0].offsetWidth,ch=cs[0].offsetHeight,avail=h.clientWidth-24,fit=(avail-w)/(n-1);if(fit>=w*.36)return;
+ const per1=Math.max(2,Math.floor((avail-w)/(w*.36))+1),rows=Math.min(4,Math.ceil(n/per1)),per=Math.ceil(n/rows),step=Math.min(w*.62,(avail-w)/Math.max(1,per-1)),dy=ch*.4,H=ch+(rows-1)*dy;
+ h.classList.remove('scroll');h.classList.add('multi');h.style.height=H+'px';
+ cs.forEach((e,k)=>{const r=Math.floor(k/per),c=k%per,inRow=Math.min(per,n-r*per),x0=(h.clientWidth-((inRow-1)*step+w))/2;e.style.position='absolute';e.style.margin='0';e.style.left=Math.max(6,x0+c*step).toFixed(1)+'px';e.style.bottom=((rows-1-r)*dy).toFixed(1)+'px';e.style.zIndex=1+r*100+c;e.style.setProperty('--rot','0deg');e.style.setProperty('--ty','0px')});
+ if(bar)bar.style.bottom='calc('+(H+34)+'px + env(safe-area-inset-bottom,0px))'};
 </script></body></html>
