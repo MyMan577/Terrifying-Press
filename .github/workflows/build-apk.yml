@@ -108,8 +108,9 @@ jobs:
           # QNN: only the HTP (NPU) backend is used, so drop the old-DSP and GPU backends (~10 MB). Libraries are
           # unpacked on install (legacy packaging) because the NPU loads its skel library from a real folder.
           sed -i '/^android {/a\    packaging { jniLibs { useLegacyPackaging = true\n        excludes += ["lib/arm64-v8a/libQnnDsp.so", "lib/arm64-v8a/libQnnDspV66Skel.so", "lib/arm64-v8a/libQnnDspV66Stub.so", "lib/arm64-v8a/libQnnGpu.so"] } }' android/app/build.gradle
-          # LiteRT-LM (chat models in .litertlm files). Pin this to an exact version after the first green build.
-          sed -i '/^dependencies {/a\    implementation "com.google.ai.edge.litertlm:litertlm-android:latest.release"' android/app/build.gradle
+          # LiteRT-LM (chat models in .litertlm files). Newest release below 0.20.0: 0.20.0 ships Java 25 class files
+          # (major version 69) that this build's D8 can't dex. Raise the upper bound once a release dexes again.
+          sed -i '/^dependencies {/a\    implementation "com.google.ai.edge.litertlm:litertlm-android:[0.1,0.20.0)"' android/app/build.gradle
           # ML Kit on-device translation + language detection (TranslatePlugin). Language packs download on first use.
           sed -i '/^dependencies {/a\    implementation "com.google.mlkit:translate:17.0.3"\n    implementation "com.google.mlkit:language-id:17.0.6"' android/app/build.gradle
           # VLC engine (libVLC, LGPL 2.1; needs compileSdk 36, set up above): plays the formats ExoPlayer and the WebView cannot, and reads network shares
