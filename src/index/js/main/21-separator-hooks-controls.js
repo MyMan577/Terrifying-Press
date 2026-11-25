@@ -624,7 +624,7 @@
   }
   function onEnded(e){
     if (e.target !== media()) return;
-    if (window.PPXpApi) window.PPXpApi.recordCompletion(e.target.duration);
+    if (window.PPXpApi && !e.ppSkip) window.PPXpApi.recordCompletion(e.target.duration);   // ppSkip: Next pressed with the app hidden (native-bridge.js)
     if (rememberPlaybackPosition && currentIndex !== -1) savePlaybackPosition(tracks[currentIndex].dbId, null);
     if (sleepTimer.mode === 'track'){
       cancelResumeOnReturn();
