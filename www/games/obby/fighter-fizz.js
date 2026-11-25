@@ -91,6 +91,42 @@
 
   const SEQ = {
     // ---- CHARGED SPECIALS (hold S to full) ----
+    // in the air
+    nova(p, dt, S, q) {   // BUBBLE NOVA: a bubble swells around her, bigger and bigger, then pops in a ring that soaks everyone twice
+      S.target = PO.spin; S.rate = 40; p.vy = Math.min(p.vy, 0.6); p.vx *= 0.9;
+      S.nova = Math.min(1, q.t / 0.45);
+      if (Math.floor(q.t * 10) !== q.d) { q.d = Math.floor(q.t * 10); FK.tone(300 + q.t * 900, { dur: 0.08, vol: 0.06, type: 'sine' }); }
+      if (q.t >= 0.45) {
+        for (const e of FK.within(pcx(p), pcy(p), 2.7)) { const d = Math.sign(ex(e) - pcx(p)) || 1; FK.hit(S, e, 4, { kx: d * 10, ky: -10, stun: 0.5, c: C_PINK, big: true, stop: 0.08 }); soakCount(S, p, e, 2, d); }
+        S.fx.push({ k: 'ring', x: pcx(p), y: pcy(p), R: 2.8, c: C_PINK, t: 0, life: 0.4 }); S.fx.push({ k: 'ring', x: pcx(p), y: pcy(p), R: 2.2, c: C_FX, t: 0, life: 0.3 });
+        for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; shoot(S, pcx(p), pcy(p), Math.cos(a) * 9, Math.sin(a) * 9, { life: 0.35, dmg: 0.6 }); }
+        pop(true); FK.shake(7); S.nova = 0; p.vy = -5; S.seq = null;
+      }
+    },
+    cork(p, dt, S, q) {   // CHAMPAGNE CORK: she shoots off like a popped cork, far and flat, in a fountain of foam
+      const f = q.f;
+      if (q.t < 0.18) { S.target = pose(Object.assign({}, PO.shake, { lean: PO.shake.lean + Math.sin(q.t * 110) * 0.2 })); S.rate = 60; p.vy = Math.min(p.vy, 0.3); p.vx = 0; return; }
+      if (!q.go) { q.go = 1; FK.noise({ dur: 0.08, cut: 900, q: 1, vol: 0.4 }); FK.tone(1400, { dur: 0.1, vol: 0.15, type: 'sine', slide: 300 }); }
+      S.target = PO.jet; S.rate = 60; S.selfMove = true;
+      const sp = 28 * (1 - 0.6 * FK.ease((q.t - 0.18) / 0.4));
+      if (!FK.moveX(p, f * sp * dt)) q.t = 9;
+      p.vx = f * 4; p.vy = Math.min(p.vy, 0) * 0.3;
+      if (Math.floor(q.t * 40) !== q.d) { q.d = Math.floor(q.t * 40); S.mines.push({ x: pcx(p) - f * 0.6, y: pcy(p) + (Math.random() - 0.5) * 0.7, t: 0, life: 1.4, r: 0.22 + Math.random() * 0.12, ph: Math.random() * 6 }); }
+      for (const e of FK.within(pcx(p) + f * 0.4, pcy(p), 1.0)) if (!q.hits.has(e)) { q.hits.add(e); FK.hit(S, e, 4, { kx: f * 14, ky: -7, stun: 0.5, c: C_FX, big: true, stop: 0.08 }); soakCount(S, p, e, 2, f); FK.smack(true); }
+      if (q.t > 0.58) { S.seq = null; S.airSide = true; }
+    },
+    raft(p, dt, S, q) {   // BUBBLE BALLOON: she blows a giant bubble over her head and it carries her up and up; foes it touches are sealed
+      const k = FK.keys(); S.target = PO.ride; S.rate = 30; S.balloonB = 1;
+      p.vy = -7.5; p.vx = ((k.right ? 1 : 0) - (k.left ? 1 : 0)) * 5; p.onGround = false;
+      if (!q.snd) { q.snd = 1; FK.tone(220, { dur: 0.6, vol: 0.12, type: 'sine', slide: 880 }); }
+      for (const e of FK.within(pcx(p), p.y - 0.9, 1.4)) if (!q.hits.has(e)) { q.hits.add(e); FK.hit(S, e, 2, { kx: 0, ky: -8, stun: 0.4, c: C_FX }); soakCount(S, p, e, 4, 1); }
+      if (q.t > 1.1 || FK.blocked(p.x, p.y - 1.9, p.w, 0.2)) { S.balloonB = 0; pop(true); S.fx.push({ k: 'ring', x: pcx(p), y: p.y - 1, R: 1.6, c: C_FX, t: 0, life: 0.3 }); p.vy = -4; S.seq = null; }
+    },
+    bombard(p, dt, S, q) {   // BUBBLE BOMBARD: she hangs in the air and drops a line of heavy water bubbles that burst into splashes below
+      S.target = PO.dive; S.rate = 40; p.vy = Math.min(p.vy, 0.5); p.vx *= 0.92;
+      while (q.t >= 0.05 + q.n * 0.08 && q.n < 6) { q.n++; S.drops.push({ x: pcx(p) + (q.n - 3.5) * 0.55 * q.f, y: p.y + p.h, vy: 4, t: 0, hits: new Set() }); FK.tone(300 - q.n * 20, { dur: 0.08, vol: 0.08, type: 'sine', slide: 150 }); }
+      if (q.t > 0.6) S.seq = null;
+    },
     prison(p, dt, S, q) {   // BUBBLE PRISON: one huge slow bubble; the first foe it touches is sealed at once
       S.target = q.t < 0.3 ? PO.blowA : PO.blowB; S.rate = 30;
       if (q.t < 0.3) { if (!q.snd) { q.snd = 1; FK.tone(200, { dur: 0.3, vol: 0.12, type: 'sine', slide: 500 }); } return; }
@@ -258,6 +294,15 @@
       if (!gone && m.t > 0.08) for (const e of foes) if (Math.abs(ex(e) - m.x) < m.r + (e.w || 0.9) / 2 && Math.abs(ey(e) - m.y) < m.r + (e.h || 0.9) / 2) { soak(S, p, e, { vx: Math.sign(ex(e) - m.x) || 1, dmg: 0.7 }); gone = true; break; }
       if (gone) { S.fx.push({ k: 'pip', x: m.x, y: m.y, t: 0, life: 0.18 }); S.mines.splice(i, 1); }
     }
+    // water bombs from the Bubble Bombard: fall, hit what they pass, splash on the floor
+    for (let i = S.drops.length - 1; i >= 0; i--) {
+      const d = S.drops[i]; d.t += dt; d.vy += 30 * dt; d.y += d.vy * dt;
+      for (const e of foes) if (!d.hits.has(e) && Math.abs(ex(e) - d.x) < 0.65 && Math.abs(ey(e) - d.y) < 0.75) { d.hits.add(e); FK.hit(S, e, 2, { kx: 0, ky: 12, stun: 0.4, c: C_FX }); soakCount(S, p, e, 1, 1); }
+      if (FK.blocked(d.x - 0.15, d.y, 0.3, 0.2) || d.t > 2) {
+        for (const e of FK.within(d.x, d.y - 0.3, 1.1)) if (!d.hits.has(e)) { FK.hit(S, e, 1.5, { kx: (Math.sign(ex(e) - d.x) || 1) * 4, ky: -9, stun: 0.35, c: C_FX }); soakCount(S, p, e, 1, 1); }
+        S.fx.push({ k: 'ring', x: d.x, y: d.y - 0.1, R: 1.1, c: C_FX, t: 0, life: 0.3 }); pop(false); S.drops.splice(i, 1);
+      }
+    }
     // soda geysers: a column that lifts and soaks whoever stands in it
     for (let i = S.geysers.length - 1; i >= 0; i--) {
       const g = S.geysers[i]; g.t += dt;
@@ -371,13 +416,13 @@
       desc: 'A kid in a raincoat with a bubble wand. Every attack is a stream of fast little bubbles from far away; four on one foe SEAL it in a bubble that floats up, and the next hit POPS it. Lift Bubble (↑) floats upward with you standing on it, Foam Pad (↓) is a trampoline for you and for foes, Suds Slide skids along the floor. In the air: Soap Orbit (bubbles circle you and soak anyone close while you keep moving), Fizz Jet (shake the wand and rocket forward on the spray, leaving foam that pops on foes; once per jump), Bubble Ride (float up inside one) and Splashdown (dive in a heavy bubble that spikes foes, then two splash waves run along the floor).' },
     stats: { speed: 1.12, jump: 1.1, maxJumps: 2, maxDashes: 1, hp: 3 },
     moves: MOVES, mfd: MFD,
-    fresh: () => ({ seq: null, pose: PO.idle, target: PO.idle, rate: 18, run: 0, shots: [], traps: [], lifts: [], pads: [], mines: [], waves: [], geysers: [], bombs: [], orbit: null, airUp: false, airSide: false, inBubble: false, heavy: false, riding: false }),
+    fresh: () => ({ seq: null, pose: PO.idle, target: PO.idle, rate: 18, run: 0, shots: [], traps: [], lifts: [], pads: [], mines: [], waves: [], geysers: [], bombs: [], drops: [], nova: 0, balloonB: 0, orbit: null, airUp: false, airSide: false, inBubble: false, heavy: false, riding: false }),
     busy: S => !!S.seq,
     charged: {
-      neutral: (p, f, S) => { startSeq(S, 'prison', { f }); return 'BUBBLE PRISON'; },
-      side: (p, f, S) => { startSeq(S, 'geyser', { f }); return 'SODA GEYSER'; },
-      up: (p, f, S) => { startSeq(S, 'fountain', { f }); return 'FIZZ FOUNTAIN'; },
-      down: (p, f, S, air) => { startSeq(S, 'bathbomb', { f, air }); return 'BATH BOMB'; },
+      neutral: (p, f, S, air) => { if (air) { startSeq(S, 'nova', { f }); return 'BUBBLE NOVA'; } startSeq(S, 'prison', { f }); return 'BUBBLE PRISON'; },
+      side: (p, f, S, air) => { if (air) { startSeq(S, 'cork', { f }); return 'CHAMPAGNE CORK'; } startSeq(S, 'geyser', { f }); return 'SODA GEYSER'; },
+      up: (p, f, S, air) => { if (air) { S.airUp = true; startSeq(S, 'raft', { f }); return 'BUBBLE BALLOON'; } startSeq(S, 'fountain', { f }); return 'FIZZ FOUNTAIN'; },
+      down: (p, f, S, air) => { if (air) { startSeq(S, 'bombard', { f }); return 'BUBBLE BOMBARD'; } startSeq(S, 'bathbomb', { f }); return 'BATH BOMB'; },
     },
     can(key, S) { if (key === 'air_up' && S.airUp) return 'Bubble Ride comes back when you land'; if (key === 'air_side' && S.airSide) return 'Fizz Jet comes back when you land'; return null; },
     act: {
@@ -390,9 +435,10 @@
       air_up: (p, f, pw, S) => { S.airUp = true; startSeq(S, 'ride', { f, pw }); },
       air_down: (p, f, pw, S) => startSeq(S, 'splash', { f, pw }),
     },
-    onTeleport(p, S) { S.seq = null; S.inBubble = false; S.heavy = false; S.orbit = null; S.lifts.length = 0; S.pads.length = 0; S.traps.length = 0; S.mines.length = 0; S.waves.length = 0; S.geysers.length = 0; S.bombs.length = 0; },
+    onTeleport(p, S) { S.seq = null; S.inBubble = false; S.heavy = false; S.orbit = null; S.lifts.length = 0; S.pads.length = 0; S.traps.length = 0; S.mines.length = 0; S.waves.length = 0; S.geysers.length = 0; S.bombs.length = 0; S.drops.length = 0; S.nova = 0; S.balloonB = 0; },
     step(p, dt, S, k) {
       if (p.hitstun > 0 && S.seq) { S.seq = null; S.inBubble = false; S.heavy = false; }
+      if (!S.seq) { S.nova = 0; S.balloonB = 0; }
       S.rate = 18;
       if (S.seq) { S.seq.t += dt; const fn = SEQ[S.seq.kind]; if (fn) fn(p, dt, S, S.seq); else S.seq = null; }
       stepWorld(p, dt, S);
@@ -458,6 +504,9 @@
         const grow = Math.min(1, L.t / 0.25), left = L.life - L.t, wob = left < 0.9 ? Math.sin(V.now * 40) * 0.06 : 0;
         bubble(ctx, V.SX(L.x), V.SY(L.y), L.r * T * grow * (1 + wob), left < 0.9 ? 0.6 + 0.4 * Math.sin(V.now * 30) : 1, L.on ? C_PINK : C_FX);
       }
+      for (const d of S.drops) bubble(ctx, V.SX(d.x), V.SY(d.y), T * 0.3, 1, '#4fb6ff');
+      if (S.nova) { const r = T * (0.9 + 1.8 * S.nova) * (1 + 0.03 * Math.sin(V.now * 40)); bubble(ctx, V.SX(pcx(p)), V.SY(pcy(p)), r, 0.6 + 0.4 * S.nova, S.nova > 0.8 && Math.sin(V.now * 50) > 0 ? C_PINK : C_FX); }
+      if (S.balloonB) { const x = V.SX(pcx(p)), y = V.SY(p.y - 0.9); bubble(ctx, x, y, T * 1.25, 1, C_PINK); FK.solid(ctx, '#ffffff', 0.8); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x, y + T * 1.25); ctx.lineTo(V.SX(pcx(p)), V.SY(p.y + 0.3)); ctx.stroke(); }
       for (const g of S.geysers) {   // soda geyser: a foaming column bursting up out of the floor
         const u = g.t / g.life, h = T * 3.6 * Math.sin(Math.min(1, u * 2.2) * Math.PI / 2) * (1 - Math.max(0, u - 0.7) / 0.3), x = V.SX(g.x), y = V.SY(g.fy), a = 1 - Math.max(0, u - 0.7) / 0.3;
         const gr = ctx.createLinearGradient(0, y - h, 0, y); gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(1, 'rgba(143,233,255,0.55)');
