@@ -35331,15 +35331,72 @@ window._claimLBro = function() {
 
   function lerp(a, b, t) { return a + (b - a) * t; }
 
+  // Colosseum line-ups. Every fighter drops a key and the exit door needs them all;
+  // doors only come as 1, 2 and 4 keys, so an arena holds 2 or 4 fighters.
+  const ARENA_ROSTER = {
+    easy:   { count: 2, late: 2, pool: ['enemy_walker', 'enemy_walker', 'enemy_jumper'] },
+    medium: { count: 2, late: 4, pool: ['enemy_walker', 'enemy_jumper', 'enemy_shooter', 'enemy_slasher'] },
+    hard:   { count: 4, late: 4, pool: ['enemy_walker', 'enemy_jumper', 'enemy_charger', 'enemy_shielder', 'enemy_slasher', 'enemy_bomber'] },
+    insane: { count: 4, late: 4, pool: ['enemy_charger', 'enemy_shielder', 'enemy_slasher', 'enemy_vampire', 'enemy_berserker'], champion: 'enemy_boss' },
+  };
+  const ARENAS_PER_LENGTH = { short: 1, medium: 1, long: 2, marathon: 3 };
+
+  // ---- Can a player make this jump? ----
+  // Worked out from the game's own movement: run 9.5 tiles/s, jump 14 tiles/s, gravity 42,
+  // a second jump in the air. Run and jump are taken a little under the real values, so
+  // every jump the generator keeps has room to spare for the plainest characters.
+  const PHYS = { run: 9.5 * 0.9, jump: 14 * 0.95, grav: 42 };
+  const SPRING_LAUNCH = 18;
+  const _reachMemo = new Map();
+  // gap: empty columns between the two platforms. climb: rows up (negative = down).
+  // launch: starting upward speed when it is not a normal jump (a spring).
+  function canReach(gap, climb, launch) {
+    const key = gap + '|' + climb + '|' + (launch || 0);
+    if (_reachMemo.has(key)) return _reachMemo.get(key);
+    const need = Math.max(gap, 0.4);
+    const v0 = launch || PHYS.jump;
+    const dt = 1 / 240;
+    let ok = false;
+    outer:
+    for (const f of [1, 0.8, 0.6, 0.4, 0.25]) {
+      for (let d = 0.05; d <= 1.0; d += 0.05) {
+        const vx = PHYS.run * f;
+        // after a spring both jumps are still there: the second is taken at the top of the first
+        let x = 0, h = 0, vy = v0, t = 0, used = false, extra = launch ? 1 : 0;
+        while (t < 3) {
+          if (!used && t >= d) { vy = PHYS.jump; used = true; }
+          else if (used && extra && vy <= 0) { vy = PHYS.jump; extra = 0; }
+          vy -= PHYS.grav * dt; h += vy * dt; x += vx * dt; t += dt;
+          if (x >= need) { if (h >= climb + 0.05) { ok = true; break outer; } break; }
+          if (used && !extra && vy < 0 && h < climb) break;
+        }
+      }
+    }
+    _reachMemo.set(key, ok);
+    return ok;
+  }
+
+  // The kinds of set piece, with how many columns each needs before the lane runs out.
+  const PIECE_ROOM = {
+    hop: 12, stairs: 20, drop: 12, spikeRun: 18, lavaMoat: 20, springLaunch: 14,
+    moverBridge: 20, conveyorRun: 20, crumbleBridge: 22, iceSlide: 22, windLift: 12,
+    rest: 10, arena: 34,
+  };
+
   function generateCourse(opts) {
     const rng = makeRng(opts.seed);
-    const diff = DIFFS[opts.difficulty] || DIFFS.medium;
-    const numSegments = LENGTHS[opts.length] || LENGTHS.medium;
+    const diffName = DIFFS[opts.difficulty] ? opts.difficulty : 'medium';
+    const diff = DIFFS[diffName];
+    const target = LENGTHS[opts.length] || LENGTHS.medium;
     const WORLD_W = window._WORLD_W || 400;
-    const baseY = 50, minY = 16, maxY = 66;
 
-    
-    
+    // The world is 400 tiles wide, too short for a long course in one line. The course
+    // runs in lanes that snake upward: right along the bottom, up a climbing tower at the
+    // edge, left along the next lane, and so on. Lanes are 15 rows apart and each keeps
+    // to a 10-row band, so no lane can be jumped into from the one below.
+    const LANE_BASE = [58, 43, 28, 13];
+    const X_MIN = 2, X_MAX = WORLD_W - 3, TOWER_ROOM = 10;
+
     const vertMult = VERT_MULT[opts.verticality] || 1;
     const widthAdj = WIDTH_ADJ[opts.platformWidth] || 0;
     const gapAdj = GAP_ADJ[opts.gapSize] || 0;
@@ -35348,129 +35405,458 @@ window._claimLBro = function() {
     const gapMinBase = Math.max(1, diff.gapMin + gapAdj);
     const gapMaxBase = Math.max(gapMinBase + 1, diff.gapMax + gapAdj);
 
-    const maxX = Math.min(WORLD_W - 12, 4 + numSegments * (platMaxBase + gapMaxBase + 4));
-
     const tiles = [];
+    const byKey = new Map();
     const moversOut = [];
-    const seen = new Set();
+    const jumps = [];
+    const pieces = [];
 
     function addTile(px, py, type, extra) {
       px = Math.round(px); py = Math.round(py);
       const k = px + ',' + py;
-      if (seen.has(k)) return null; 
-      seen.add(k);
+      if (byKey.has(k)) return null;
       const t = Object.assign({ x: px, y: py, w: 1, h: 1, type: type, id: k, t: rng() * Math.PI * 2 }, extra || {});
-      tiles.push(t);
+      tiles.push(t); byKey.set(k, t);
       return t;
     }
-    function replaceTile(px, py, type, extra) {
-      px = Math.round(px); py = Math.round(py);
-      const idx = tiles.findIndex(t => t.x === px && t.y === py);
-      if (idx === -1) return addTile(px, py, type, extra);
-      tiles[idx] = Object.assign(tiles[idx], { type: type }, extra || {});
-      return tiles[idx];
+    function setTile(px, py, type, extra) {
+      const k = Math.round(px) + ',' + Math.round(py);
+      const old = byKey.get(k);
+      if (!old) return addTile(px, py, type, extra);
+      delete old.crumbleState; delete old.crumbleTimer; delete old.active;
+      return Object.assign(old, { type: type }, extra || {});
     }
     function pick(arr) { return arr[Math.floor(rng() * arr.length) % arr.length]; }
-    function ramped(base, t) { return opts.ramp ? lerp(base * 0.55, base, t) : base; }
+    function rnd(a, b) { return a + Math.floor(rng() * (b - a + 1)); }
+    function chance(p) { return rng() < p; }
 
-    let x = 0, y = baseY;
-    const startW = 5;
-    for (let i = 0; i < startW; i++) addTile(x + i, y, 'solid');
-    x += startW;
+    // Where the course has got to. x is the first free column ahead of the last platform
+    // (ahead = in the lane's direction); y is the row that platform stands on.
+    const st = { x: 0, y: LANE_BASE[0], dir: 1, lane: 0, last: null, platforms: 0, sinceCP: 0 };
+    function col(f) { return st.x + st.dir * f; }
+    function band() { const b = LANE_BASE[st.lane]; return [b - 5, b + 4]; }
+    function clampY(y) { const b = band(); return Math.max(b[0], Math.min(b[1], y)); }
+    function room() { return st.dir > 0 ? (X_MAX - TOWER_ROOM) - st.x : st.x - (X_MIN + TOWER_ROOM); }
+    function gapCols(gap) { const out = []; for (let i = 0; i < gap; i++) out.push(col(i)); return out; }
 
-    let sinceCheckpoint = 0;
-    let platformCount = 0;
-
-    for (let seg = 0; seg < numSegments && x < maxX; seg++) {
-      const t = numSegments <= 1 ? 1 : seg / (numSegments - 1);
-      const gapMin = Math.round(ramped(gapMinBase, t));
-      const gapMax = Math.max(gapMin + 1, Math.round(ramped(gapMaxBase, t)));
-      const dyMax = Math.max(1, Math.round(ramped(diff.dyMax, t) * vertMult));
-      const hazardChance = ramped(diff.hazardChance, t);
-      const movingChance = ramped(diff.movingChance, t);
-      const enemyChance = ramped(diff.hazardChance, t) * 0.6;
-
-      let gap = gapMin + Math.floor(rng() * (gapMax - gapMin + 1));
-      const prevEndX = x - 1, prevY = y;
-      let usedMover = false;
-
-      if (opts.moving && rng() < movingChance) {
-        usedMover = true;
-        const moverSpan = gap + 3;
-        const mvX = x;
-        addTile(mvX, y, 'mover', { active: true });
-        moversOut.push({ id: mvX + ',' + y, x: mvX, x0: mvX, x1: mvX + moverSpan, dir: 1, speed: +(1.1 + rng() * 0.7).toFixed(2) });
-        x = mvX + moverSpan + 1;
-      } else {
-        
-        
-        
-        if (opts.hazards && gap >= 2 && rng() < hazardChance) {
-          const midX = prevEndX + Math.max(1, Math.floor(gap / 2));
-          const pitY = Math.max(prevY, y) + 1;
-          const hType = pick(['spike', 'spike', 'lava', 'sawH']);
-          if (hType === 'sawH') addTile(midX, Math.max(prevY, y), 'sawH', { sawOffset: rng(), sawDir: rng() < 0.5 ? 1 : -1, sawRange: 2 + Math.floor(rng() * 2) });
-          else addTile(midX, pitY, hType);
-        }
-        x += gap;
+    function params(t) {
+      const r = (b) => opts.ramp ? lerp(b * 0.55, b, t) : b;
+      const gapMin = Math.max(1, Math.round(r(gapMinBase)));
+      const gapMax = Math.max(gapMin + 1, Math.round(r(gapMaxBase)));
+      return {
+        t: t, gapMin: gapMin, gapMax: gapMax,
+        dyMax: Math.max(1, Math.round(r(diff.dyMax) * vertMult)),
+        hazard: r(diff.hazardChance), moving: r(diff.movingChance),
+        platMin: platMinBase, platMax: platMaxBase,
+      };
+    }
+    function nextY(P) {
+      let dy = Math.round((rng() * 2 - 1) * P.dyMax);
+      const b = band();
+      if (st.y + dy < b[0] || st.y + dy > b[1]) dy = -dy;
+      return clampY(st.y + dy);
+    }
+    // Make a jump possible: drop the landing first, then shorten the gap.
+    function fit(gap, y, launch) {
+      y = clampY(y);
+      let g = Math.max(1, gap);
+      for (let guard = 0; guard < 60; guard++) {
+        if (canReach(g, st.y - y, launch)) return { gap: g, y: y };
+        if (st.y - y > 0) y++;
+        else if (g > 1) g--;
+        else break;
       }
-
-      let dy = Math.round((rng() * 2 - 1) * dyMax);
-      y = Math.max(minY, Math.min(maxY, y + dy));
-
-      const width = platMinBase + Math.floor(rng() * (platMaxBase - platMinBase + 1));
-      let material = 'solid';
-      if (opts.terrain && rng() < 0.22) material = pick(['ice', 'crumble']);
-
-      for (let i = 0; i < width; i++) {
-        addTile(x + i, y, material, material === 'crumble' ? { crumbleState: 'active', crumbleTimer: 0 } : undefined);
-      }
-      platformCount++;
-
-      if (opts.springs && !usedMover && rng() < movingChance * 0.7) {
-        replaceTile(x + width - 1, y, 'spring');
-      }
-      if (opts.moving && !usedMover && width >= 2 && rng() < movingChance * 0.5) {
-        replaceTile(x + Math.floor(rng() * width), y, rng() < 0.5 ? 'conveyor' : 'conveyor_l', { active: true });
-      }
-      if (opts.wind && rng() < movingChance * 0.4) {
-        addTile(x + Math.floor(width / 2), y - 1, rng() < 0.5 ? 'windUp' : 'windRight', { active: true });
-      }
-      if (opts.coins && rng() < 0.35) {
-        addTile(x + Math.floor(width / 2), y - 1, 'coin');
-      }
-      if (opts.enemies && !usedMover && width >= 2 && rng() < enemyChance) {
-        addTile(x + Math.floor(rng() * width), y - 1, pickEnemyType(opts.difficulty, rng));
-      }
-
-      sinceCheckpoint++;
-      if (opts.checkpoints && sinceCheckpoint >= opts.checkpointEvery) {
-        
-        
-        
-        replaceTile(x + width - 1, y - 1, 'checkpoint');
-        sinceCheckpoint = 0;
-      }
-
-      x += width;
+      return { gap: 1, y: st.y };
     }
 
-    x += 3;
-    addTile(x, y, 'goal');
+    function matExtra(mat) {
+      if (mat === 'crumble') return { crumbleState: 'active', crumbleTimer: 0 };
+      if (mat === 'conveyor' || mat === 'conveyor_l') return { active: true };
+      return undefined;
+    }
+    // Lay a platform `gap` columns ahead. Cells are kept in travel order.
+    function plat(gap, y, width, mat, how) {
+      how = how || {};
+      if (mat === 'forward') mat = st.dir > 0 ? 'conveyor' : 'conveyor_l';
+      const cells = [];
+      for (let i = 0; i < width; i++) {
+        const cx = col(gap + i);
+        addTile(cx, y, mat, matExtra(mat));
+        cells.push(cx);
+      }
+      jumps.push({ gap: gap, climb: st.y - y, launch: how.launch || 0, kind: how.kind || 'jump' });
+      const p = { cells: cells, y: y, mat: mat, used: new Set() };
+      st.x = col(gap + width); st.y = y; st.last = p;
+      st.platforms++; st.sinceCP++;
+      return p;
+    }
+    function slot(p, where) {
+      const free = p.cells.filter(c => !p.used.has(c));
+      if (!free.length) return null;
+      let c;
+      if (where === 'mid') c = free[Math.floor(free.length / 2)];
+      else if (where === 'front') c = free[free.length - 1];
+      else c = free[Math.floor(rng() * free.length)];
+      p.used.add(c);
+      return c;
+    }
+    function decorate(p, P) {
+      if (p.mat !== 'solid' && p.mat !== 'ice') return;
+      if (opts.coins && chance(0.3)) {
+        const c = slot(p, 'mid');
+        if (c != null) addTile(c, p.y - 1, 'coin');
+      }
+      if (opts.enemies && p.mat === 'solid' && p.cells.length >= 4 && chance(P.hazard * 0.7)) {
+        const inner = p.cells.slice(1, -1).filter(c => !p.used.has(c));
+        if (inner.length) {
+          const c = pick(inner); p.used.add(c);
+          addTile(c, p.y - 1, pickEnemyType(diffName, rng));
+        }
+      }
+    }
+    function hop(P, mat) {
+      const f = fit(rnd(P.gapMin, P.gapMax), nextY(P));
+      return plat(f.gap, f.y, rnd(P.platMin, P.platMax), mat || 'solid');
+    }
 
+    // ---------------- Set pieces ----------------
+    const PIECES = {
+      // A plain jump, sometimes over a saw that sweeps through the jump's arc.
+      hop(P) {
+        const y0 = st.y;
+        const f = fit(rnd(P.gapMin, P.gapMax), nextY(P));
+        const gc = gapCols(f.gap);
+        const mat = opts.terrain && chance(0.15) ? pick(['ice', 'crumble']) : 'solid';
+        const p = plat(f.gap, f.y, rnd(P.platMin, P.platMax), mat);
+        let saw = false;
+        if (opts.hazards && f.gap >= 3 && chance(P.hazard * 1.5)) {
+          const x0 = Math.min.apply(null, gc);
+          addTile(x0, Math.min(y0, f.y) - 2, 'sawH', { sawOffset: rng() * (f.gap - 1), sawDir: chance(0.5) ? 1 : -1, sawRange: f.gap - 1 });
+          saw = true;
+        }
+        if (!saw && opts.coins && f.gap >= 2 && chance(0.3)) addTile(gc[Math.floor(gc.length / 2)], Math.min(y0, f.y) - 2, 'coin');
+        decorate(p, P);
+      },
+
+      // Three to five narrow steps, climbing or dropping.
+      stairs(P) {
+        const b = band();
+        const rise = P.dyMax >= 2 && chance(0.5) ? 2 : 1;
+        const upRoom = Math.floor((st.y - b[0]) / rise), downRoom = Math.floor((b[1] - st.y) / rise);
+        const up = upRoom >= 3 && (downRoom < 3 || chance(0.65));
+        const n = Math.min(rnd(3, 5), up ? upRoom : downRoom);
+        if (n < 2) return PIECES.hop(P);
+        for (let i = 0; i < n; i++) {
+          const f = fit(rnd(1, 2), st.y + (up ? -rise : rise));
+          const p = plat(f.gap, f.y, 2, 'solid');
+          if (opts.coins && i === n - 1) { const c = slot(p, 'front'); if (c != null) addTile(c, p.y - 1, 'coin'); }
+        }
+      },
+
+      // A long fall to a lower ledge, with a trail of coins down the drop.
+      drop(P) {
+        const b = band();
+        if (b[1] - st.y < 4) return PIECES.stairs(P);
+        const y0 = st.y;
+        const f = fit(rnd(1, 3), Math.min(b[1], st.y + rnd(4, 7)));
+        const gc = gapCols(f.gap);
+        const p = plat(f.gap, f.y, rnd(Math.max(3, P.platMin), Math.max(4, P.platMax)), 'solid');
+        if (opts.coins) for (let r = y0 + 1; r < f.y - 1; r += 2) addTile(gc[gc.length - 1], r, 'coin');
+        decorate(p, P);
+      },
+
+      // A long platform with spikes standing on it to hop over.
+      spikeRun(P) {
+        const f = fit(rnd(1, P.gapMin + 1), st.y + rnd(-1, 1));
+        const W = rnd(9, 12);
+        const p = plat(f.gap, f.y, W, 'solid');
+        const count = Math.max(1, Math.min(3, Math.round(P.hazard * 8)));
+        const wide = P.hazard > 0.25;
+        let i = 2;
+        for (let k = 0; k < count && i <= W - 4; k++) {
+          const two = wide && chance(0.5) && i + 1 <= W - 4;
+          addTile(p.cells[i], p.y - 1, 'spike'); p.used.add(p.cells[i]);
+          if (two) { addTile(p.cells[i + 1], p.y - 1, 'spike'); p.used.add(p.cells[i + 1]); i++; }
+          i += rnd(3, 4);
+        }
+        if (opts.coins) { const c = slot(p, 'front'); if (c != null) addTile(c, p.y - 1, 'coin'); }
+      },
+
+      // Lava set into the floor: jump it, or hop a stepping stone in the middle.
+      lavaMoat(P) {
+        const f = fit(rnd(1, 2), st.y + rnd(-1, 1));
+        plat(f.gap, f.y, 3, 'solid');
+        const stone = P.hazard > 0.12 && chance(0.6);
+        const pools = stone ? [rnd(2, 3), rnd(2, 3)] : [rnd(2, Math.min(4, 2 + Math.round(P.hazard * 6)))];
+        pools.forEach((len, idx) => {
+          const lf = fit(len, st.y);
+          const cols = gapCols(lf.gap);
+          const last = idx === pools.length - 1;
+          plat(lf.gap, lf.y, last ? 3 : 1, 'solid');
+          cols.forEach(c => addTile(c, lf.y, 'lava'));
+        });
+        if (opts.coins && st.last) { const c = slot(st.last, 'mid'); if (c != null) addTile(c, st.y - 1, 'coin'); }
+      },
+
+      // A spring at the edge of a platform throws you up to a high ledge.
+      springLaunch(P) {
+        const f = fit(rnd(1, 2), st.y + rnd(0, 2));
+        const p = plat(f.gap, f.y, 3, 'solid');
+        const front = p.cells[p.cells.length - 1];
+        setTile(front, p.y, 'spring'); p.used.add(front);
+        const b = band();
+        const want = Math.max(b[0], st.y - rnd(5, 7));
+        if (st.y - want < 4) return; // no headroom here: the spring just gives a bounce
+        const y0 = st.y;
+        const g = rnd(1, 2);
+        const lf = fit(g, want, SPRING_LAUNCH);
+        const gc = gapCols(lf.gap);
+        const top = plat(lf.gap, lf.y, rnd(3, 4), 'solid', { launch: SPRING_LAUNCH, kind: 'spring' });
+        if (opts.coins) for (let r = y0 - 2; r > lf.y; r -= 2) addTile(gc[0], r, 'coin');
+        decorate(top, P);
+      },
+
+      // A two-wide moving platform ferries you over a long gap.
+      moverBridge(P) {
+        const f = fit(rnd(1, 2), st.y + rnd(-1, 1));
+        plat(f.gap, f.y, 3, 'solid');
+        const span = rnd(4, 5 + Math.round(P.moving * 10));
+        const speed = +(1.2 + P.moving * 2 + rng() * 0.5).toFixed(2);
+        const y = st.y;
+        for (let k = 0; k < 2; k++) {
+          const tx = col(k);
+          addTile(tx, y, 'mover', { active: true });
+          if (st.dir > 0) moversOut.push({ id: tx + ',' + y, x: tx, x0: tx, x1: tx + span, dir: 1, speed: speed });
+          else moversOut.push({ id: tx + ',' + y, x: tx, x0: tx - span, x1: tx, dir: -1, speed: speed });
+        }
+        jumps.push({ kind: 'mover', gap: span, climb: 0 });
+        st.x = col(2 + span);
+        st.platforms++; st.sinceCP++;
+        const p = plat(0, y, rnd(3, 4), 'solid', { kind: 'mover-land' });
+        decorate(p, P);
+      },
+
+      // A belt that carries you toward a longer jump.
+      conveyorRun(P) {
+        const f = fit(rnd(1, 2), st.y + rnd(-1, 1));
+        plat(f.gap, f.y, rnd(5, 7), 'forward');
+        const lf = fit(P.gapMax + 1, nextY(P));
+        const p = plat(lf.gap, lf.y, rnd(Math.max(2, P.platMin), Math.max(3, P.platMax)), 'solid');
+        decorate(p, P);
+      },
+
+      // Single crumbling blocks: keep moving or fall.
+      crumbleBridge(P) {
+        const n = rnd(3, 5);
+        for (let i = 0; i < n; i++) {
+          const f = fit(rnd(1, 2), st.y + (P.dyMax > 1 ? rnd(-1, 1) : 0));
+          plat(f.gap, f.y, 1, 'crumble');
+        }
+        const lf = fit(rnd(1, 2), st.y);
+        decorate(plat(lf.gap, lf.y, rnd(3, 4), 'solid'), P);
+      },
+
+      // A long sheet of ice and a jump off the end of it.
+      iceSlide(P) {
+        const f = fit(rnd(1, 2), st.y + rnd(0, 1));
+        const ice = plat(f.gap, f.y, rnd(6, 9), 'ice');
+        if (opts.coins) { const c = slot(ice, 'mid'); if (c != null) addTile(c, ice.y - 1, 'coin'); }
+        const lf = fit(rnd(P.gapMin, P.gapMax + 1), nextY(P));
+        decorate(plat(lf.gap, lf.y, rnd(Math.max(2, P.platMin), Math.max(3, P.platMax)), 'solid'), P);
+      },
+
+      // Wind in the gap lifts you to a higher ledge (or, going right, pushes you across).
+      windLift(P) {
+        const y0 = st.y;
+        if (st.dir > 0 && chance(0.4)) {
+          const lf = fit(rnd(5, 6), st.y);
+          const gc = gapCols(lf.gap);
+          const p = plat(lf.gap, lf.y, rnd(3, 4), 'solid');
+          gc.slice(0, -1).forEach(c => { addTile(c, y0 - 1, 'windRight', { active: true }); addTile(c, y0 - 2, 'windRight', { active: true }); });
+          return decorate(p, P);
+        }
+        const b = band();
+        const lf = fit(rnd(2, 3), Math.max(b[0], st.y - 4));
+        const gc = gapCols(lf.gap);
+        const p = plat(lf.gap, lf.y, rnd(3, 4), 'solid');
+        const wc = gc[Math.floor(gc.length / 2)];
+        for (let r = y0 + 1; r >= lf.y - 2; r--) addTile(wc, r, 'windUp', { active: true });
+        decorate(p, P);
+      },
+
+      // A wide, safe platform. Holds the checkpoint when one is due.
+      rest(P) {
+        const f = fit(rnd(1, 2), st.y + rnd(-1, 1));
+        const p = plat(f.gap, f.y, rnd(4, 5), 'solid');
+        if (opts.checkpoints) {
+          const c = slot(p, 'mid');
+          addTile(c, p.y - 1, 'checkpoint');
+          st.sinceCP = 0;
+        }
+        if (opts.coins) { const c = slot(p, 'front'); if (c != null) addTile(c, p.y - 1, 'coin'); }
+      },
+
+      // The Colosseum: a walled arena. You walk in through a one-way gate, and the only
+      // way out is a door that needs a key from every fighter inside. Spikes line the
+      // roof so it can't be climbed over.
+      arena(P, arenaIdx) {
+        const base = LANE_BASE[st.lane];
+        const b = band();
+        const F = Math.max(base - 1, Math.min(b[1], st.y));
+        for (let guard = 0; guard < 8 && Math.abs(st.y - F) > 2; guard++) {
+          const f = fit(2, st.y + Math.sign(F - st.y) * 2);
+          plat(f.gap, f.y, 2, 'solid');
+        }
+        const APPROACH = 6, INNER = 12, EXIT = 5;
+        const LW = APPROACH, RW = APPROACH + INNER + 1, LEN = RW + 1 + EXIT;
+        const floor = plat(fit(rnd(1, 2), F).gap, F, LEN, 'solid', { kind: 'arena' });
+        const at = (i) => floor.cells[i];
+        const H = 7;
+        // walls and roof
+        for (let r = F - H; r <= F - 1; r++) {
+          if (r >= F - 2) addTile(at(LW), r, st.dir > 0 ? 'oneWayR' : 'oneWayL');
+          else addTile(at(LW), r, 'solid');
+          addTile(at(RW), r, 'solid');
+        }
+        for (let i = LW + 1; i < RW; i++) addTile(at(i), F - H, 'solid');
+        for (let i = LW; i <= RW; i++) addTile(at(i), F - H - 1, 'spike');
+        for (let i = LW; i <= RW; i++) floor.used.add(at(i));
+        // the fighters
+        const late = opts.ramp ? P.t > 0.6 : true;
+        const R = ARENA_ROSTER[diffName];
+        const count = late ? R.late : R.count;
+        const spots = count === 4 ? [LW + 5, LW + 7, LW + 9, LW + 11] : [LW + 7, LW + 10];
+        spots.forEach((i, k) => {
+          let type = pick(R.pool);
+          if (R.champion && k === spots.length - 1 && late) type = R.champion;
+          addTile(at(i), F - 1, type, { dropItem: 'key' });
+        });
+        // the way out
+        const pairId = 'gen_arena_' + arenaIdx + '_' + opts.seed;
+        const door = 'door' + count;
+        addTile(at(RW - 1), F - 1, door, { pairId: pairId });
+        addTile(at(RW + 3), F - 1, door, { pairId: pairId });
+        if (opts.checkpoints) { addTile(at(2), F - 1, 'checkpoint'); st.sinceCP = 0; }
+        if (opts.coins) addTile(at(RW + 5 <= LEN - 1 ? RW + 5 : LEN - 1), F - 1, 'coin');
+        st.platforms += 2;
+        return { fighters: count };
+      },
+    };
+
+    // Turn around at the end of a lane: a zig-zag tower of steps up to the next lane.
+    function tower() {
+      const nextBase = LANE_BASE[st.lane + 1];
+      const X = st.x, d = st.dir;
+      const rise = st.y - nextBase;
+      let n = Math.ceil(rise / 3);
+      if (n % 2 === 0) n++;
+      const climbs = [];
+      for (let i = 0; i < n; i++) climbs.push(Math.floor(rise / n) + (i < rise % n ? 1 : 0));
+      let y = st.y;
+      for (let i = 0; i < n; i++) {
+        const off = i % 2 === 0 ? 1 : 5;
+        const ny = y - climbs[i];
+        const last = i === n - 1;
+        // the last step (always on the near column) doubles as the new lane's first platform
+        const cells = last ? [2, 1, 0, -1] : [off, off + 1];
+        cells.forEach(o => addTile(X + d * o, ny, 'solid'));
+        jumps.push({ gap: i === 0 ? 1 : 2, climb: climbs[i], launch: 0, kind: 'tower' });
+        y = ny;
+        st.platforms++; st.sinceCP++;
+      }
+      pieces.push({ name: 'tower', x: X, y: y });
+      st.lane++;
+      st.dir = -d;
+      st.x = X - d * 2;
+      st.y = y;
+      st.last = { cells: [2, 1, 0, -1].map(o => X + d * o), y: y, mat: 'solid', used: new Set() };
+    }
+
+    // ---------------- Lay the course ----------------
+    const base0 = LANE_BASE[0];
+    for (let i = 0; i < 5; i++) addTile(i, base0, 'solid');
+    st.x = 5; st.y = base0;
+    st.last = { cells: [0, 1, 2, 3, 4], y: base0, mat: 'solid', used: new Set([0, 1, 2, 3, 4]) };
+
+    const arenaMarks = [];
+    if (opts.arena) {
+      const n = ARENAS_PER_LENGTH[opts.length] || 1;
+      for (let i = 0; i < n; i++) arenaMarks.push(Math.round(target * (i + 0.6) / n));
+    }
+    let arenasBuilt = 0, fighters = 0, lastName = '';
+
+    function choosePiece(P) {
+      if (opts.only && PIECES[opts.only]) return lastName === opts.only ? 'hop' : opts.only;
+      const haz = Math.min(1.2, P.hazard * 3 + 0.25);
+      const w = [['hop', 3], ['stairs', 1.3], ['drop', 0.6]];
+      if (opts.hazards) { w.push(['spikeRun', 1.4 * haz]); w.push(['lavaMoat', 1.2 * haz]); }
+      if (opts.springs) w.push(['springLaunch', 1.1]);
+      if (opts.moving) { w.push(['moverBridge', 1.1]); w.push(['conveyorRun', 0.8]); }
+      if (opts.terrain) { w.push(['crumbleBridge', 1]); w.push(['iceSlide', 0.8]); }
+      if (opts.wind) w.push(['windLift', 1.1]);
+      const pool = w.filter(e => e[0] === 'hop' || e[0] !== lastName);
+      let sum = 0; pool.forEach(e => sum += e[1]);
+      let r = rng() * sum;
+      for (const e of pool) { r -= e[1]; if (r <= 0) return e[0]; }
+      return 'hop';
+    }
+
+    let ended = false;
+    for (let guard = 0; guard < 400 && st.platforms < target; guard++) {
+      const t = Math.min(1, st.platforms / target);
+      const P = params(t);
+      let name;
+      if (arenaMarks.length && st.platforms >= arenaMarks[0]) name = 'arena';
+      else if (opts.only === 'arena' && lastName !== 'arena' && lastName !== 'rest') name = 'arena';
+      else if (opts.checkpoints && st.sinceCP >= opts.checkpointEvery) name = 'rest';
+      else name = choosePiece(P);
+      if (room() < PIECE_ROOM[name] + 8) {
+        if (st.lane + 1 < LANE_BASE.length) { tower(); lastName = 'tower'; continue; }
+        if (name !== 'hop' && room() >= PIECE_ROOM.hop + 8) name = 'hop';
+        else { ended = true; break; }
+      }
+      const startX = st.x, startY = st.y;
+      const res = PIECES[name](P, arenasBuilt);
+      if (name === 'arena') { arenaMarks.shift(); arenasBuilt++; fighters += res.fighters; }
+      pieces.push({ name: name, x: startX, y: startY, endX: st.x, endY: st.y, dir: st.dir });
+      lastName = name;
+    }
+
+    // the finish
+    const ff = fit(2, st.y);
+    const fin = plat(ff.gap, ff.y, 5, 'solid');
+    const gx = fin.cells[2];
+    addTile(gx, fin.y - 1, 'goal');
+
+    // Every jump the course relies on is checked again here.
+    const bad = jumps.filter(j => (j.kind === 'jump' || j.kind === 'spring' || j.kind === 'tower' || j.kind === 'arena' || j.kind === 'mover-land')
+      && !canReach(j.gap, j.climb, j.launch));
+
+    let maxX = 0;
+    tiles.forEach(t => { if (t.x > maxX) maxX = t.x; });
     return {
       tiles: tiles,
       movers: moversOut,
-      goal: { x: x, y: y, w: 1, h: 1 },
-      spawn: { x: 2.5, y: baseY },
-      platformCount: platformCount,
-      lengthTiles: x,
+      goal: { x: gx, y: fin.y - 1, w: 1, h: 1 },
+      spawn: { x: 2.5, y: base0 },
+      platformCount: st.platforms,
+      lengthTiles: maxX,
+      lanes: st.lane + 1,
+      arenas: arenasBuilt,
+      fighters: fighters,
+      pieces: pieces,
+      jumps: jumps,
+      verified: bad.length === 0,
+      badJumps: bad,
+      truncated: ended,
     };
   }
 
   function generateLevelId() {
     return 'genlvl_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
   }
+
+  window._obGen = { generateCourse: (o) => generateCourse(o), canReach: canReach, buildLevelJSON: (c, o) => buildLevelJSON(c, o) };
 
   function buildLevelJSON(course, opts) {
     const levelData = {
@@ -35539,6 +35925,7 @@ window._claimLBro = function() {
               <button data-val="coins" class="active">🪙 Coins</button>
               <button data-val="checkpoints" class="active">🚩 Checkpoints</button>
               <button data-val="enemies">👾 Patrol Enemies</button>
+              <button data-val="arena" class="active">⚔️ Colosseum</button>
             </div>
             <div class="spacer"></div>
             <div class="row" id="obGenCPRow">
@@ -35547,6 +35934,7 @@ window._claimLBro = function() {
               <span class="hint" id="obGenCPFreqVal" style="margin:0; min-width:16px; text-align:right;">6</span>
             </div>
             <div class="hint" style="margin-top:8px;">Patrol enemy danger scales with Difficulty - Easy stays mostly harmless, Insane leans deadly.</div>
+            <div class="hint" style="margin-top:6px;">⚔️ Colosseum: walled arenas along the course. Beat every fighter inside to earn the keys for the exit door.</div>
           </div>
 
           <div class="section">
@@ -35741,6 +36129,7 @@ window._claimLBro = function() {
       windUp: '#7cdbff', windRight: '#7cdbff', coin: '#ffd166',
       checkpoint: '#9cff9a', goal: '#ff6b6b',
       enemy_patrol_safe: '#22c55e', enemy_patrol_hurt: '#eab308', enemy_patrol_kill: '#dc2626',
+      door2: '#f59e0b', door4: '#f59e0b', oneWayR: '#38bdf8', oneWayL: '#38bdf8',
     };
     let previewOpts = null; 
 
@@ -35758,6 +36147,7 @@ window._claimLBro = function() {
         checkpoints: featureOn('checkpoints'),
         checkpointEvery: parseInt(cpFreq.value, 10) || 6,
         enemies: featureOn('enemies'),
+        arena: featureOn('arena'),
         verticality: currentVal(vertGroup),
         platformWidth: currentVal(widthGroup),
         gapSize: currentVal(gapGroup),
@@ -35780,11 +36170,13 @@ window._claimLBro = function() {
       }
 
       
-      let minX = 0, maxX = course.goal.x + 1, minY = 16, maxY = 66;
+      let minX = 0, maxX = 1, minY = 999, maxY = 0;
+      for (const t of course.tiles) { if (t.x + 1 > maxX) maxX = t.x + 1; if (t.y < minY) minY = t.y; if (t.y > maxY) maxY = t.y; }
+      minY -= 1; maxY += 1;
       const PAD = 2;
       const spanX = (maxX - minX) + PAD * 2;
       const spanY = (maxY - minY) + PAD * 2;
-      const scale = 8; 
+      const scale = course.lanes > 1 ? 3 : 8;
       previewCanvas.width = Math.max(previewWrap.clientWidth || 400, Math.round(spanX * scale));
       previewCanvas.height = 130;
       const px = previewCanvas.width / spanX;
@@ -35798,7 +36190,7 @@ window._claimLBro = function() {
 
       const tileW = Math.max(1, px), tileH = Math.max(1, py);
       for (const t of course.tiles) {
-        const color = PREVIEW_COLORS[t.type] || '#6b7280';
+        const color = PREVIEW_COLORS[t.type] || (t.type && t.type.startsWith('enemy_') ? '#f43f5e' : '#6b7280');
         pctx.fillStyle = color;
         if (t.type === 'coin') {
           pctx.beginPath();
@@ -35831,7 +36223,11 @@ window._claimLBro = function() {
       previewWrap.classList.add('has-preview');
       
       previewWrap.scrollLeft = 0;
-      previewStats.textContent = course.platformCount + ' platforms · ' + Math.round(course.lengthTiles) + ' tiles long · seed ' + opts.seed;
+      previewStats.textContent = course.platformCount + ' platforms'
+        + (course.lanes > 1 ? ' · ' + course.lanes + ' levels' : '')
+        + (course.arenas ? ' · ' + course.arenas + ' colosseum' + (course.arenas > 1 ? 's' : '') + ' (' + course.fighters + ' fighters)' : '')
+        + (course.verified ? ' · ✓ every jump checked' : ' · ⚠️ ' + course.badJumps.length + ' jump(s) may be too far')
+        + ' · seed ' + opts.seed;
     }
 
     let previewTimer = null;
