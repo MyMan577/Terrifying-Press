@@ -95,6 +95,7 @@
     if (o.res) { e._ppRes = Math.min(4, (e._ppRes || 0) + o.res); e._ppResT = 5; }   // one short of the Prodigy's own shatter
     fxp({ k: 'spark', x: ex(e), y: ey(e), c: o.c || '#ffffff', life: 0.3, big: !!o.big });
     if (o.big) { hitstop(0.07); shake(7); }
+    if (window.selectedCharacter === 'brawler' && window.__brCombo) window.__brCombo.land();   // the Brawler's specials build his combo
     if (e.hp <= 0 && window._killEnemy) window._killEnemy(e);
   }
   // each foe once per `gap` seconds of this entity's life (once ever without a gap)
@@ -740,10 +741,12 @@
           if (q._smRecUsed) { msg('💨 ' + name + ' comes back when you land or grab a ledge'); return; }
           q._smRecUsed = true;
         }
-        const k = { pw: P2, m, air, dmg: b => Math.round((b + 3 * P2) * m) };
+        // the Brawler's charged specials cash in his combo: +1 damage per 3 hits (up to +5)
+        const cash = ch === 'brawler' && window.__brCombo ? window.__brCombo.cashOut() : null, cb = cash && cash.n >= 2 ? cash.dmg : 0;
+        const k = { pw: P2, m, air, dmg: b => Math.round((b + 3 * P2) * m) + cb };
         go(q, f, k);
         label(q, name, col[0]);
-        msg('💥 ' + name + '! (charged ' + Math.round(P2 * 100) + '%' + (s.beat ? ', ON BEAT' : '') + ')');
+        msg('💥 ' + name + '! (charged ' + Math.round(P2 * 100) + '%' + (s.beat ? ', ON BEAT' : '') + (cb ? ', x' + cash.n + ' COMBO +' + cb + ' dmg' : '') + ')');
         shake(4 + 4 * P2);
       },
     };

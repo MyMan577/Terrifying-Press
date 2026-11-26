@@ -2250,7 +2250,7 @@ input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; u
       <div class='small'>🌪️ Tempest - 30 HP, hovering wind spirit; 15% chance to dodge-dash away when struck</div>
       <div class='small'>🐍 Serpent - 45 HP, lunging slitherer; 20% chance to coil on hit, reducing knockback received</div>
       <div class='small'>💀 Lich - 38 HP, floating sorcerer; 15% chance to blink (teleport) away when struck</div>
-      <div class='small' style='margin-top:4px;color:#fbbf24'>👊 Everyone can punch with S.</div>      <div class='small' style='margin-top:4px;color:#fbbf24'>🥊 Brawler: S attacks. Hold a direction for different moves. Jump or land to chain faster.</div>
+      <div class='small' style='margin-top:4px;color:#fbbf24'>👊 Everyone can punch with S.</div>      <div class='small' style='margin-top:4px;color:#fbbf24'>🥊 Brawler: S attacks, a direction picks the string. Every hit that lands builds one COMBO (mix strings for +1), a hit lets the next press skip recovery, and a finisher CASHES IN the combo for extra damage and launch (x10+: SUPER FINISH).</div>
       <div class='small' style='margin-top:4px;color:#ff6b35'>🔥 Form Switcher: direction + S attacks. Tap S again on the glowing ring for a follow-up. Each form fights differently.</div>
       <div class='small' style='margin-top:4px;color:#7cdbff'>⚡ Conduit: direction + S attacks, on the ground or in the air. Play well and stronger forms kick in by themselves.<br>⚡🛡️ Every 5s you get a charge (max 3) that auto-dodges an attack or bounces a shot back.</div>
 
@@ -3120,7 +3120,7 @@ input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; u
       color: '#f97316',
       emoji: '🥊',
       ability: 'rangePunch',
-      description: 'S punches. Keep pressing for a 5-hit combo.',
+      description: 'The COMBO KING. Every hit builds one combo; mix directions for bonus hits, and cash it in with a finisher for big damage.',
       stats: { speed: 1.0, jump: 1.0, dashRegen: 0, maxDashes: 1 }
     },
     
@@ -5880,22 +5880,67 @@ function performJump() {
     'U-Air 2':      { windup:0.09, active:0.10, endlag:0.18, root:false, tip:[0.0, 1.6], tipAny:true, sweetDmg:2, sweetKb:1.5, sweetStop:0.11 },
   };
   window.BRAWLER_FD = BRAWLER_FD;
+  // ===== BRAWLER: the COMBO KING =====
+  // Every string (direction + S, ground / air / out of a dash) still ends in a FINISHER, but the combo is one counter:
+  //  - COMBO: every hit that lands counts, whatever move it is. It stays alive 1.5s after the last hit (+0.3s Combo Addict).
+  //    Switching to a different string mid-combo is a MIX and counts one extra hit.
+  //  - Strings remember where they were: switching direction (or ground / air) no longer starts them over, so
+  //    Jab, Jab, Sweep, Up Jab, Hook... all flow. They only start over when you stop pressing for a moment.
+  //  - STICKY HITS: hits before the finisher keep the foe close and in hitstun (airborne foes float), so strings connect.
+  //  - HIT-CONFIRM CANCEL: a hit that lands lets the next press skip the recovery.
+  //  - CASH OUT: a finisher (or a charged special) spends the combo: +1 damage per 3 hits (up to +5) and up to +60%
+  //    knockback. At x10 or more it's a SUPER FINISH with a shockwave. 5 / 10 / 20 hits call out NICE / GREAT / UNSTOPPABLE.
+  const BR_STR_KEYS = ['ground_neutral', 'ground_fwd', 'ground_back', 'ground_down', 'ground_up', 'aerial_neutral', 'aerial_fwd', 'aerial_back', 'aerial_down', 'aerial_up'];
+  function brWindow() { return 1.5 + (hasUpgrade('br2') ? 0.3 : 0); }
+  function brPick(variant, inAir, dashing) {
+    if (dashing) return { mode: 'dash', hit: DASH_MOVES[variant] || DASH_MOVES.neutral, idx: 0, table: null };
+    const mode = inAir ? 'aerial' : 'ground', set = inAir ? AERIAL_MOVES : GROUND_MOVES, table = set[variant] || set.neutral;
+    const idx = (player._brStrT || 0) > 0 ? Math.min(player['_brI_' + mode + '_' + variant] || 0, table.length - 1) : 0;
+    return { mode, hit: table[idx], idx, table };
+  }
+  function brCash() { const n = player._brCombo || 0; return { n, dmg: Math.min(5, Math.floor(n / 3)), kb: 1 + Math.min(0.6, n * 0.04) }; }
+  function brSay(text) { if (!window._fighterPass) setMessage(text); }
+  // a hit landed: count it (a MIX counts double), keep the combo alive, open the cancel window
+  function brLand(key) {
+    const was = player._brCombo || 0, mix = was > 0 && player._brLastKey && player._brLastKey !== key;
+    player._brCombo = was + 1 + (mix ? 1 : 0); player._brLastKey = key;
+    player._brComboT = brWindow(); player._brCancel = 0.35;
+    if (player._brCombo > (player._brBest || 0)) player._brBest = player._brCombo;
+    const n = player._brCombo, cx = (player.x + player.w / 2) * TILE, cy = player.y * TILE;
+    for (const [m, t, c] of [[5, 'NICE!', '#22c55e'], [10, 'GREAT!', '#fbbf24'], [20, 'UNSTOPPABLE!', '#ef4444']]) {
+      if (was < m && n >= m) { player._brShout = { t: 1.1, text: t, c }; screenShake = Math.max(screenShake, 5); for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2; particles.push({ x: cx, y: cy, vx: Math.cos(a) * 8, vy: Math.sin(a) * 8, life: 0.5, color: c, size: 4 }); } }
+    }
+    return mix;
+  }
+  function brCashOut(name) {
+    const c = brCash(); if (c.n < 2) return c;
+    player._brCombo = 0; player._brComboT = 0; player._brLastKey = '';
+    player._brShout = { t: 1.3, text: 'x' + c.n + ' ' + (c.n >= 10 ? 'SUPER FINISH!' : 'CASHED IN!'), c: c.n >= 10 ? '#ff4d4d' : '#ffd166' };
+    return c;
+  }
+  // the charged specials (charged-own.js) count their hits and cash in the combo too
+  window.__brCombo = { land: () => brLand('special'), cashOut: () => brCashOut(), get: () => player._brCombo || 0 };
+  function brTick(dt) {
+    if (player._brCancel > 0) player._brCancel = Math.max(0, player._brCancel - dt);
+    if (player._brShout && (player._brShout.t -= dt) <= 0) player._brShout = null;
+    if (player._brStrT > 0 && (player._brStrT -= dt) <= 0) { player._brStrT = 0; for (const k of BR_STR_KEYS) player['_brI_' + k] = 0; }
+    if (player._brComboT > 0 && (player._brComboT -= dt) <= 0) {
+      player._brComboT = 0;
+      if ((player._brCombo || 0) >= 5) brSay('🥊 Combo dropped at x' + player._brCombo + ' (best x' + (player._brBest || 0) + '). Cash in with a finisher next time!');
+      player._brCombo = 0; player._brLastKey = '';
+    }
+  }
   // which move the next press would throw (no state changes), so the strike engine can use its frame data
   function brawlerPreview() {
     const inAir = !player.onGround, dashing = player.isDashing || (player.brawlerDashWindow > 0), variant = getBrawlerVariant();
-    let hit;
-    if (dashing) hit = DASH_MOVES[variant] || DASH_MOVES.neutral;
-    else {
-      const mode = inAir ? 'aerial' : 'ground', table = (inAir ? AERIAL_MOVES : GROUND_MOVES)[variant] || (inAir ? AERIAL_MOVES : GROUND_MOVES).neutral;
-      const reset = player.comboExpiry <= 0 || player._lastAttackMode !== mode || player._lastVariant !== variant;
-      hit = table[Math.min(reset ? 0 : player.comboCount, table.length - 1)];
-    }
+    const hit = brPick(variant, inAir, dashing).hit;
     let dir = player.lastMoveDir || 1;
     if (variant === 'back' && !inAir) dir = -dir;
     return { hit, dir, variant };
   }
   function performPunch() {
     if (selectedCharacter !== 'brawler') return;
+    if (window.PPStrike && (player._brCancel || 0) > 0) window.PPStrike.cancelEndlag();   // hit-confirm cancel
     if (window.PPStrike) {
       // windup, sweet spot and end lag come from the strike engine; holding S charges the punch
       window.PPStrike.press(() => {
@@ -5920,65 +5965,33 @@ function performJump() {
     const variant  = getBrawlerVariant();
 
     
-    let hit, idx, table, attackMode;
-
-    if (dashing) {
-      
-      attackMode = 'dash';
-      hit = player.DASH_MOVES[variant] || player.DASH_MOVES.neutral;
-      idx = 0;
-      player.comboCount = 0; 
-      player.brawlerDashWindow = 0; 
-    } else if (inAir) {
-      
-      attackMode = 'aerial';
-      table = player.AERIAL_MOVES[variant] || player.AERIAL_MOVES.neutral;
-      
-      if (player.comboExpiry <= 0 || player._lastAttackMode !== 'aerial' || player._lastVariant !== variant) {
-        player.comboCount = 0; 
-      }
-      idx = Math.min(player.comboCount, table.length - 1);
-      hit = table[idx];
-    } else {
-      
-      attackMode = 'ground';
-      table = player.GROUND_MOVES[variant] || player.GROUND_MOVES.neutral;
-      if (player.comboExpiry <= 0 || player._lastAttackMode !== 'ground' || player._lastVariant !== variant) {
-        player.comboCount = 0;
-      }
-      idx = Math.min(player.comboCount, table.length - 1);
-      hit = table[idx];
-    }
+    const pk = brPick(variant, inAir, dashing);
+    const hit = pk.hit, idx = pk.idx, table = pk.table, attackMode = pk.mode;
+    if (attackMode === 'dash') player.brawlerDashWindow = 0;
 
     const isFinisher  = !!hit.finisher;
     const isUppercut  = !!hit.isUppercut;
     const isDownAir   = !!hit.isDownAir;
-    const isBack      = variant === 'back' && !inAir; 
+    const isBack      = variant === 'back' && !inAir;
 
-    
     let punchDir = player.lastMoveDir || 1;
-    if (isBack) punchDir = -punchDir; 
+    if (isBack) punchDir = -punchDir;
 
-    
-    const nextIdx = isFinisher ? 0 : idx + 1;
-    if (attackMode === 'dash') {
-      player.comboCount = 0;
-    } else {
-      player.comboCount = (table && nextIdx < table.length) ? nextIdx : 0;
-    }
+    // the string moves on (a finisher starts it over); the others keep their place
+    if (table) player['_brI_' + attackMode + '_' + variant] = (isFinisher || idx + 1 >= table.length) ? 0 : idx + 1;
+    player._brStrT = hit.dur + 0.9 + (hasUpgrade('br2') ? 0.3 : 0);
+    const strKey = attackMode + '_' + variant;
+    const cash = isFinisher ? brCash() : null;
 
     player._lastAttackMode = attackMode;
     player._lastVariant    = variant;
     player.punchTimer      = hit.dur;
     player.punchDir        = punchDir;
     player.currentHitIdx   = idx;
-    player.currentHit      = hit; 
-
-    
-    player.punchCooldown = isFinisher ? 0.45 : (attackMode === 'dash' ? 0.18 : 0.08);
-    
-    const comboWindowBonus = hasUpgrade('br2') ? 0.3 : 0;
-    player.comboExpiry   = isFinisher ? 0 : hit.dur + 0.55 + comboWindowBonus;
+    player.currentHit      = hit;
+    player.comboCount      = idx;
+    player.comboExpiry     = player._brStrT;
+    player.punchCooldown = isFinisher ? 0.3 : (attackMode === 'dash' ? 0.15 : 0.06);
 
     
     
@@ -6034,7 +6047,7 @@ function performJump() {
         continue;
       }
 
-      e.hp -= hit.dmg + (selectedCharacter === 'brawler' && hasUpgrade('br1') ? 1 : 0);
+      e.hp -= hit.dmg + (selectedCharacter === 'brawler' && hasUpgrade('br1') ? 1 : 0) + (cash ? cash.dmg : 0);
       e.hitFlash = 0.25;
       e.alertTimer = 0.5;
       if (e.type === 'enemy_trickster') e._tricksterHit = true;
@@ -6053,7 +6066,7 @@ function performJump() {
         if (e.slowHitsLeft <= 0) e.slowTimer = 0; 
       }
       
-      e.stunTimer = isFinisher ? 1.6 : 0.30 + idx * 0.12;
+      e.stunTimer = isFinisher ? 1.6 : Math.min(0.9, 0.45 + 0.03 * (player._brCombo || 0));
       hitAny = true;
 
       
@@ -6061,23 +6074,22 @@ function performJump() {
       
       
       const kbDir = Math.sign((e.x + (e.w ?? 0.9)/2) - (player.x + player.w/2)) || punchDir;
-      e.vx = kbDir * hit.knockX;
-      e.vy = hit.knockY;
+      if (isFinisher) {
+        // the finisher launches, harder the bigger the combo it cashes in
+        e.vx = kbDir * Math.abs(hit.knockX) * cash.kb;
+        e.vy = hit.knockY < 0 ? hit.knockY * cash.kb : hit.knockY;
+        if (variant === 'fwd') e.vx = kbDir * Math.abs(hit.knockX) * cash.kb * (hasUpgrade('br3') ? 1.85 : 1.55);
+        if (variant === 'up') e.vy = hit.knockY * 1.4 * cash.kb;
+      } else {
+        // STICKY: the foe stays in reach for the next hit; airborne foes float
+        const airborne = e.onGround === false || isUppercut || inAir;
+        e.vx = kbDir * Math.min(Math.abs(hit.knockX), attackMode === 'dash' ? 5 : 3.2);
+        e.vy = isDownAir ? 5 : isUppercut ? Math.max(hit.knockY, -10) : airborne ? -5.5 : -1.5;
+      }
       if (!isDownAir) e.onGround = false;
-
-      
-      
       if (variant === 'down') {
-        e.slowTimer = 4.0;        
-        e.slowHitsLeft = 2;       
-      }
-      
-      if (variant === 'fwd') {
-        e.vx = kbDir * hit.knockX * (hasUpgrade('br3') ? 1.85 : 1.55);
-      }
-      
-      if (variant === 'up') {
-        e.vy = hit.knockY * 1.4;
+        e.slowTimer = 4.0;
+        e.slowHitsLeft = 2;
       }
 
       if (e.hp <= 0) killEnemy(e);
@@ -6126,6 +6138,17 @@ function performJump() {
       particles.push({ x: tipX, y: tipY, vx: vx2*spd2, vy: vy2*spd2,
         life: isFinisher ? 0.55 : 0.35, color: pColor, size: isFinisher ? 6 : 4 });
     }
+    let brMix = false, brCashed = null;
+    if (hitAny) {
+      if (isFinisher) { brCashed = brCashOut(); }
+      else brMix = brLand(strKey);
+      if (brCashed && brCashed.n >= 10) {   // SUPER FINISH: a shockwave round the finisher
+        const sx = tipX / TILE, sy = tipY / TILE;
+        for (const e of enemies) { if (e.dead) continue; const dx = (e.x + e.w / 2) - sx, dy = (e.y + e.h / 2) - sy; if (dx * dx + dy * dy < 9) { e.hp -= 2; e.hitFlash = 0.4; e.vx = (Math.sign(dx) || punchDir) * 12; e.vy = -9; e.stunTimer = Math.max(e.stunTimer || 0, 1); e.onGround = false; if (e.hp <= 0) killEnemy(e); } }
+        for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2; particles.push({ x: tipX, y: tipY, vx: Math.cos(a) * 20, vy: Math.sin(a) * 20, life: 0.5, color: i % 2 ? '#ff4d4d' : '#ffd166', size: 6 }); }
+        screenShake = Math.max(screenShake, 14);
+      }
+    }
     if (isFinisher && hitAny) {
       for (let i = 0; i < 10; i++) {
         const a = (i / 10) * Math.PI * 2;
@@ -6145,8 +6168,8 @@ function performJump() {
     
     if (hitAny) {
       const modeTag = attackMode === 'aerial' ? '✈️' : attackMode === 'dash' ? '⚡' : '🥊';
-      const effectTag = variant === 'down' ? ' 🐢 SLOWED!' : variant === 'up' ? ' 🚀 LAUNCHED!' : variant === 'fwd' ? ' 💨 BLASTED!' : '';
-      setMessage(`${modeTag} ${hit.label.toUpperCase()}${isFinisher ? ' 💥' : ''}${hit.dmg > 1 ? ` - ${hit.dmg} DMG!` : ''}${effectTag}`);
+      if (isFinisher) setMessage(`${modeTag} ${hit.label.toUpperCase()} 💥${brCashed && brCashed.n >= 2 ? ` x${brCashed.n} COMBO CASHED IN! +${brCashed.dmg} dmg` : ''}${brCashed && brCashed.n >= 10 ? ' - SUPER FINISH!' : ''}`);
+      else setMessage(`${modeTag} ${hit.label.toUpperCase()} · COMBO x${player._brCombo || 0}${brMix ? ' (MIX +1)' : ''}`);
     }
   }
 
@@ -6166,7 +6189,6 @@ function performJump() {
     
     if (player._lastAttackMode === 'aerial' && player.punchTimer > 0) {
       player.punchTimer = 0;
-      player.comboCount = 0;
       player._lastAttackMode = 'ground';
     }
     player.airLaunchCount = 0; 
@@ -9671,7 +9693,7 @@ function resetPlayer() {
   
   grapple.active = false; grapple.mode = null; grapple.pullTimer = 0; grapple.flashTimer = 0; grapple.shakeMag = 0;
   delete grapple.swingAngle; delete grapple.swingOmega;
-  player.punchTimer = 0; player.punchCooldown = 0; player.comboCount = 0; player.comboExpiry = 0; player.currentHitIdx = 0; player.brawlerDashWindow = 0; 
+  player.punchTimer = 0; player.punchCooldown = 0; player.comboCount = 0; player.comboExpiry = 0; player.currentHitIdx = 0; player.brawlerDashWindow = 0; player._brCombo = 0; player._brComboT = 0; player._brStrT = 0; player._brCancel = 0; 
   player.gravityFlipped = false; 
   player.enemyKnockbackInvuln = 0; 
   player.hp = player.maxHp; 
@@ -18025,6 +18047,7 @@ d.vy *= Math.pow(0.85, _k);
       
       if (player.punchCooldown > 0) { player.punchCooldown -= dt; if (player.punchCooldown < 0) player.punchCooldown = 0; }
       if (player.comboExpiry > 0) { player.comboExpiry -= dt; if (player.comboExpiry <= 0) { player.comboExpiry = 0; player.comboCount = 0; } }
+      if (selectedCharacter === 'brawler') brTick(dt);
       if (player.punchTimer > 0) player.punchTimer -= dt;
       if (player.brawlerDashWindow > 0) { player.brawlerDashWindow -= dt; if (player.brawlerDashWindow < 0) player.brawlerDashWindow = 0; }
       
@@ -21526,7 +21549,7 @@ function resolveCollisions(axis, dt) {
       drawEyes(cx, 10, 2.8, '#431407', lookDir);
       
       if (player.comboExpiry > 0 && player.comboCount > 0) {
-        const frac = player.comboExpiry / 0.55;
+        const frac = Math.min(1, player.comboExpiry / 1.2);
         ctx.save();
         ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 2.5; ctx.globalAlpha = 0.7 * frac;
         ctx.beginPath(); ctx.arc(cx, H/2, 16, -Math.PI/2, -Math.PI/2 + Math.PI*2*frac);
@@ -24764,6 +24787,18 @@ function resolveCollisions(axis, dt) {
     }
   }
   function _fxBrawler() {
+    if (selectedCharacter === 'brawler' && mode === 'play' && ((player._brCombo || 0) >= 2 || player._brShout)) {
+      const hx = (player.x + player.w / 2) * TILE - cam.x, hy = player.y * TILE - cam.y - 18, n = player._brCombo || 0;
+      ctx.save(); ctx.textAlign = 'center'; ctx.lineJoin = 'round';
+      if (n >= 2) {
+        const big = n >= 20 ? 22 : n >= 10 ? 19 : 16, col = n >= 20 ? '#ef4444' : n >= 10 ? '#fbbf24' : n >= 5 ? '#22c55e' : '#ffffff';
+        ctx.font = '900 ' + big + 'px system-ui'; ctx.lineWidth = 4; ctx.strokeStyle = '#1a1a1a'; ctx.strokeText('x' + n, hx, hy); ctx.fillStyle = col; ctx.fillText('x' + n, hx, hy);
+        const fr = Math.max(0, Math.min(1, (player._brComboT || 0) / brWindow()));
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(hx - 16, hy + 4, 32, 4); ctx.fillStyle = col; ctx.fillRect(hx - 16, hy + 4, 32 * fr, 4);
+      }
+      if (player._brShout) { const u = player._brShout.t; ctx.globalAlpha = Math.min(1, u * 2); ctx.font = '900 15px system-ui'; ctx.lineWidth = 4; ctx.strokeStyle = '#1a1a1a'; ctx.strokeText(player._brShout.text, hx, hy - 22 - (1.2 - u) * 14); ctx.fillStyle = player._brShout.c; ctx.fillText(player._brShout.text, hx, hy - 22 - (1.2 - u) * 14); }
+      ctx.restore();
+    }
     if (selectedCharacter === 'brawler' && player.punchTimer > 0 && mode === 'play') {
       const hit = player.currentHit || player.COMBO_HITS[player.currentHitIdx ?? 0] || player.COMBO_HITS[0];
       const isUppercut = !!(hit?.isUppercut);
@@ -26412,14 +26447,16 @@ function resolveCollisions(axis, dt) {
       const varLabel   = { neutral:'·', fwd:'→', back:'←', down:'↓', up:'↑' }[variant] || '·';
 
       const comboReady = player.punchCooldown <= 0 && player.punchTimer <= 0;
-      const inCombo    = player.comboCount > 0 && player.comboExpiry > 0;
+      const inCombo    = (player._brCombo || 0) > 0;
       const nextHit    = player.currentHit;
+      const cashTxt    = (player._brCombo || 0) >= 3 ? ` · finisher +${Math.min(5, Math.floor(player._brCombo / 3))} dmg` : '';
       const comboStr   = inCombo
-        ? `<b style='color:#a78bfa'>[${player.comboCount}]</b> → <span style='color:#fbbf24'>${nextHit?.label?.toUpperCase() || '?'}</span>`
+        ? `<b style='color:#fbbf24'>COMBO x${player._brCombo}</b> <span style='color:#94a3b8'>(${(player._brComboT || 0).toFixed(1)}s${cashTxt})</span>`
         : (comboReady
           ? `<span style='color:#22c55e'>READY</span>`
           : `<span style='color:#f97316'>(${Math.max(player.punchCooldown, 0).toFixed(1)}s)</span>`);
       _hudH += `<br>${modeLabel} <span style='color:#94a3b8'>${varLabel}</span>: ${comboStr}`;
+      if (player._brBest) _hudH += ` · best x${player._brBest}`;
       const alive = enemies.filter(e=>!e.dead).length;
       if (alive > 0) _hudH += `<br>👾 Enemies: <b>${alive}</b>`;
     }
