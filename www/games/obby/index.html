@@ -12028,27 +12028,23 @@ function resetPlayer() {
     
     
     
-    if (selectedCharacter === 'cb_slugger' && !_onGnd && window.PPStrike && !_sluggerViaStrike && window.performSluggerAir) {
-      // in the air: a tap is one of his aerials (neutral keeps the glove jabs), a held S lets loose HOME RUN /
-      // SKYLINE UPPERCUT / POUND TOWN like on the ground
+    if (selectedCharacter === 'cb_slugger' && window.PPStrike && !_sluggerViaStrike && (_onGnd || window.performSluggerAir)) {
+      // The move is picked when S is let go, from where he is THEN: a press started on the ground and let go in the air
+      // (or the other way round) still goes off instead of being dropped, and so does a held S's charged special.
+      //  ground: windup, sweet spot and end lag per punch come from the strike engine; holding S charges it
+      //  air: a tap is one of his aerials (neutral keeps the glove jabs); a held S lets loose his air specials
       window.PPStrike.press(() => {
         if (selectedCharacter !== 'cb_slugger') return null;
         const kUp = keys.has('arrowup') || keys.has('w') || mobileKeys.up, kDn = keys.has('arrowdown') || mobileKeys.down;
         const kR = keys.has('arrowright') || keys.has('d') || mobileKeys.right, kL = keys.has('arrowleft') || keys.has('a') || mobileKeys.left;
-        const kind = kUp ? 'up' : kDn ? 'down' : (kR || kL) ? 'side' : 'neutral';
-        if (kR) player.lastMoveDir = 1; else if (kL) player.lastMoveDir = -1;
-        return { fd: { windup: 0.04, endlag: kind === 'neutral' ? 0.08 : 0.16 }, dir: kR ? 1 : kL ? -1 : (player.lastMoveDir || 1), color: '#ffcf40', aim: kind === 'neutral' ? 'side' : kind,
-          fire: () => { if (kind === 'neutral') window.performSluggerAtk(); else window.performSluggerAir(kind); } };
-      }, true);
-      return;
-    }
-    if (selectedCharacter === 'cb_slugger' && _onGnd && window.PPStrike && !_sluggerViaStrike) {
-      // windup, sweet spot and end lag per punch come from the strike engine; holding S charges it
-      window.PPStrike.press(() => {
-        if (selectedCharacter !== 'cb_slugger' || !player.onGround) return null;
+        if (!player.onGround) {
+          if (!window.performSluggerAir) return null;
+          const kind = kUp ? 'up' : kDn ? 'down' : (kR || kL) ? 'side' : 'neutral';
+          if (kR) player.lastMoveDir = 1; else if (kL) player.lastMoveDir = -1;
+          return { fd: { windup: 0.04, endlag: kind === 'neutral' ? 0.08 : 0.16 }, dir: kR ? 1 : kL ? -1 : (player.lastMoveDir || 1), color: '#ffcf40', aim: kind === 'neutral' ? 'side' : kind,
+            fire: () => { if (kind === 'neutral') window.performSluggerAtk(); else window.performSluggerAir(kind); } };
+        }
         const ac = (player._sluggerChain && player._sluggerChain.windowTimer > 0) ? player._sluggerChain : null;
-        const kUp = keys.has('arrowup') || keys.has('w') || mobileKeys.up, kDn = keys.has('arrowdown') || mobileKeys.down;
-        const kR = keys.has('arrowright') || keys.has('d') || mobileKeys.right, kL = keys.has('arrowleft') || keys.has('a') || mobileKeys.left;
         const atk = ac ? ac.atk : kUp ? 'up' : kDn ? 'down' : (kR || kL) ? 'side' : 'neutral';
         const chain = SLUGGER_CHAINS[atk] || SLUGGER_CHAINS.neutral, mv = chain[Math.min(ac ? ac.idx : 0, chain.length - 1)];
         return { fd: SLUGGER_FD[mv.name] || { windup:0.05, endlag:0.1 }, dir: kR ? 1 : kL ? -1 : (player.dashDir || 1), color: mv.color, aim: atk,
@@ -39458,18 +39454,24 @@ window._claimLBro = function() {
     if (window.selectedCharacter !== ID) { if (_prevSlash) return _prevSlash.apply(this, arguments); return; }
     const p = window._gamePlayer;
     if (!p || drop || atkCD > 0) return;
-    const keys = window._gameKeys || new Set(), mk = window.mobileKeys || {};
-    const up = keys.has('arrowup') || keys.has('w') || !!mk.up;
-    const down = keys.has('arrowdown') || !!mk.down;
-    const right = keys.has('arrowright') || keys.has('d') || !!mk.right;
-    const left = keys.has('arrowleft') || keys.has('a') || !!mk.left;
-    const stance = p.onGround ? 'ground' : 'air';
-    const dir = (down && !up) ? 'down' : (up && !down) ? 'up' : (left || right) ? 'side' : 'neutral';
-    const face = right ? 1 : left ? -1 : ((p.dashDir || p.lastMoveDir || 1) >= 0 ? 1 : -1);
-    const md = curMode();
-    const mv = MOVES[md.id][stance][dir];
-    if (stance === 'air' && dir === 'up' && airUpUsed) { msg(md.icon + ' ' + mv.name + ' is used up until you land'); return; }
+    // which move: read from the direction held and ground / air at the moment it goes off (S let go), like the
+    // other fighters, so a direction pressed a moment after S (or the side you turned to) still counts
+    const pickMove = (q) => {
+      const keys = window._gameKeys || new Set(), mk = window.mobileKeys || {};
+      const up = keys.has('arrowup') || keys.has('w') || !!mk.up;
+      const down = keys.has('arrowdown') || !!mk.down;
+      const right = keys.has('arrowright') || keys.has('d') || !!mk.right;
+      const left = keys.has('arrowleft') || keys.has('a') || !!mk.left;
+      const stance = q.onGround ? 'ground' : 'air';
+      const dir = (down && !up) ? 'down' : (up && !down) ? 'up' : (left || right) ? 'side' : 'neutral';
+      const face = right && !left ? 1 : left && !right ? -1 : ((q.dashDir || q.lastMoveDir || 1) >= 0 ? 1 : -1);
+      if (right !== left) q.lastMoveDir = face;
+      const md = curMode();
+      return { stance, dir, face, md, mv: MOVES[md.id][stance][dir], key: md.id + '_' + stance + '_' + dir };
+    };
+    { const pk = pickMove(p); if (!window.PPStrike && pk.stance === 'air' && pk.dir === 'up' && airUpUsed) { msg(pk.md.icon + ' ' + pk.mv.name + ' is used up until you land'); return; } }
     if (window.PPStrike && !window.PPStrike.canQueue()) return;   // still winding up or recovering
+    const md = curMode();
     const b = beatInfo();
     if (b.on) { streak = (b.idx - lastBeatIdx <= 2) ? streak + 1 : 1; lastBeatIdx = b.idx; addHype(1); }
     else streak = 0;
@@ -39483,19 +39485,27 @@ window._claimLBro = function() {
       p.dashInvuln = Math.max(p.dashInvuln || 0, 0.35);   // unshakable while it hits
       if (b.on) { aftershocks.push({ idx: b.idx + 1, x: pcx(p), y: p.y + p.h }); tag = ' + AFTERSHOCK'; }
     } else if (b.on) tag = ' +1 RESONANCE';
-    atkCD = mv.cd;
-    // the beat is judged on the press; the move itself lands after its windup (strike engine)
-    const key = md.id + '_' + stance + '_' + dir, ni = b.on ? Math.min(streak, 7) : 0, on = b.on;
+    atkCD = 0.15;   // the move's own cooldown is set when it is picked
+    // the beat is judged on the press; the move itself is picked when S is let go and lands after its windup
+    const ni = b.on ? Math.min(streak, 7) : 0, on = b.on;
     const lbl = (streak > 1 ? 'ON BEAT x' + streak : 'ON BEAT') + (md.id === 'cres' && dyn ? ' ' + DYN[dyn] : '');
-    const text = md.icon + ' ' + mv.name.toUpperCase() + '!' + (b.on ? ' ✨ ON BEAT' + (streak > 1 ? ' x' + streak : '') : '') + tag;
-    const go = () => {
-      const q = window._gamePlayer; if (!q || window.selectedCharacter !== ID || drop) return;
-      ACT[key](q, face, m, ni, on, sc);
-      if (on) fx.push({ k: 'label', x: pcx(q), y: q.y - 0.5, t: 0, life: 0.7, text: lbl });
-      msg(text);
+    const resolve = () => {
+      const q = window._gamePlayer; if (!q || window.selectedCharacter !== ID || drop) return null;
+      const pk = pickMove(q);
+      if (pk.md.id !== md.id) return null;   // switched EQ mode mid-press
+      if (pk.stance === 'air' && pk.dir === 'up' && airUpUsed) { msg(pk.md.icon + ' ' + pk.mv.name + ' is used up until you land'); return null; }
+      atkCD = pk.mv.cd;
+      const text = pk.md.icon + ' ' + pk.mv.name.toUpperCase() + '!' + (on ? ' ✨ ON BEAT' + (streak > 1 ? ' x' + streak : '') : '') + tag;
+      const go = () => {
+        const r = window._gamePlayer; if (!r || window.selectedCharacter !== ID || drop) return;
+        ACT[pk.key](r, pk.face, m, ni, on, sc);
+        if (on) fx.push({ k: 'label', x: pcx(r), y: r.y - 0.5, t: 0, life: 0.7, text: lbl });
+        msg(text);
+      };
+      return { fd: PFD[pk.key], dir: pk.face, color: md.pal[1], aim: pk.dir, variant: md.id, beat: on, fire: go };
     };
-    // the beat was judged on the press above; holding S instead lets loose a charged special
-    if (window.PPStrike) window.PPStrike.press(() => ({ fd: PFD[key], dir: face, color: md.pal[1], aim: dir, variant: md.id, beat: on, fire: go }), true); else go();
+    // holding S instead lets loose a charged special
+    if (window.PPStrike) window.PPStrike.press(resolve, true); else { const sp = resolve(); if (sp) sp.fire(); }
   };
 
   // ---- EQ switch (G / 🎛️) ----
