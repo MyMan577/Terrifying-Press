@@ -37887,7 +37887,8 @@ window._claimLBro = function() {
       },
     };
   }
-  function specialFor(ch, s) {
+  function specialFor(ch, s, pw) {
+    const own = window.__ppOwn; if (own && own.has(ch)) return own.spec(ch, s, pw);   // their own specials: charged-own.js
     const rec = smashRec(ch, s); if (rec) return rec;
     if (ch === 'formSwitcher' && window.__spirit) return null;
     let set = SPECIALS[ch]; if (!set) return null;
@@ -37911,6 +37912,7 @@ window._claimLBro = function() {
   function tickSpecials(dt) {
     const now = nowS();
     { const q = P(); if (q && q._smRecUsed && q.onGround) q._smRecUsed = false; }
+    if (window.__ppOwn) window.__ppOwn.tick(dt);
     for (let i = timers.length - 1; i >= 0; i--) { const tm = timers[i]; if (tm.poll ? tm.poll() : now >= tm.at) { timers.splice(i, 1); try { tm.run(); } catch (e) {} } }
     for (let i = sprojs.length - 1; i >= 0; i--) {
       const q = sprojs[i]; q.life -= dt;
@@ -37952,6 +37954,7 @@ window._claimLBro = function() {
   }
   // drawing the specials (screen space; called from the engine's draw hook)
   function drawSpecials(ctx, SX, SY, T) {
+    if (window.__ppOwn) { ctx.save(); try { window.__ppOwn.draw(ctx, SX, SY, T); } catch (e) {} ctx.restore(); }
     const lit = (c, a) => { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = a; ctx.strokeStyle = c; ctx.fillStyle = c; };
     const rainbow = (i, t) => 'hsl(' + ((i * 60 + t * 400) % 360) + ',90%,60%)';
     for (const f of sfx) {
@@ -38057,7 +38060,7 @@ window._claimLBro = function() {
       const s = c.resolve(); if (!s) return;
       if (held < CHARGE_MIN) { begin(s, 0); return; }
       const pw = Math.min(1, (held - CHARGE_MIN) / (CHARGE_FULL - CHARGE_MIN));
-      begin(specialFor(window.selectedCharacter, s) || s, pw);   // a held S lets loose the fighter's charged special
+      begin(specialFor(window.selectedCharacter, s, pw) || s, pw);   // a held S lets loose the fighter's charged special
     },
     // the body's pose for the current phase, applied around the feet before the player is drawn:
     // windup leans back, crouches and draws back (heavier moves further, with a tremble at the end),
@@ -38076,6 +38079,7 @@ window._claimLBro = function() {
     _swap(s) {
       const out = { cur, buffered, charge, lastPX, lastPY, lastChar, teleported, fx: fx.splice(0), sfx: sfx.splice(0), timers: timers.splice(0), sprojs: sprojs.splice(0), vortexes: vortexes.splice(0) };
       s = s || {};
+      if (window.__ppOwn) out.own = window.__ppOwn.swap(s.own);
       cur = s.cur || null; buffered = s.buffered || null; charge = s.charge || null;
       lastPX = s.lastPX != null ? s.lastPX : null; lastPY = s.lastPY != null ? s.lastPY : null; lastChar = s.lastChar != null ? s.lastChar : null; teleported = !!s.teleported;
       if (s.fx) fx.push(...s.fx); if (s.sfx) sfx.push(...s.sfx); if (s.timers) timers.push(...s.timers); if (s.sprojs) sprojs.push(...s.sprojs); if (s.vortexes) vortexes.push(...s.vortexes);
@@ -38083,6 +38087,8 @@ window._claimLBro = function() {
     },
     // some fighters (the Brawler) may jump out of their recovery
     cancelEndlag() { if (cur && cur.phase === 'endlag') cur = null; },
+    // a special moved you on purpose (a blink): don't read it as a respawn
+    _tele() { teleported = true; },
     chargePower() { return charge ? Math.max(0, Math.min(1, (nowS() - charge.start - CHARGE_MIN) / (CHARGE_FULL - CHARGE_MIN))) : 0; },
     phase() { return cur ? cur.phase : charge ? 'charge' : null; },
     state() { return styleState(); },
@@ -38091,7 +38097,7 @@ window._claimLBro = function() {
 
   (window._rafHubTickers = window._rafHubTickers || []).push(API._tick = function _ppStrikeTick(dt) {
     const p = P();
-    if (!p || !playing() || window.selectedCharacter !== lastChar) { lastChar = window.selectedCharacter; API.cancel(); lastPX = null; fx.length = 0; sfx.length = 0; timers.length = 0; sprojs.length = 0; vortexes.length = 0; return; }
+    if (!p || !playing() || window.selectedCharacter !== lastChar) { lastChar = window.selectedCharacter; API.cancel(); lastPX = null; fx.length = 0; sfx.length = 0; timers.length = 0; sprojs.length = 0; vortexes.length = 0; if (window.__ppOwn) window.__ppOwn.reset(); return; }
     // respawned or teleported
     if (!teleported && lastPX != null && (Math.abs(p.x - lastPX) > 4 || Math.abs(p.y - lastPY) > 4)) API.cancel();
     teleported = false;
@@ -38148,7 +38154,7 @@ window._claimLBro = function() {
   };
   API._draw = function (ctx, now2, cam) {
     const p = P(); if (!p || !playing()) return;
-    if (!cur && !charge && !fx.length && !sfx.length && !sprojs.length && !vortexes.length && !foes().some(e => e._ppBurn > 0 || e._ppFrozen > 0)) return;
+    if (!cur && !charge && !fx.length && !sfx.length && !sprojs.length && !vortexes.length && !(window.__ppOwn && window.__ppOwn.busy()) && !foes().some(e => e._ppBurn > 0 || e._ppFrozen > 0)) return;
     try {
       const T = window._TILE || 40, SX = x => x * T - (cam ? cam.x : 0), SY = y => y * T - (cam ? cam.y : 0);
       ctx.save(); ctx.lineCap = 'round';
@@ -39412,7 +39418,7 @@ window._claimLBro = function() {
       msg(text);
     };
     // the beat was judged on the press above; holding S instead lets loose a charged special
-    if (window.PPStrike) window.PPStrike.press(() => ({ fd: PFD[key], dir: face, color: md.pal[1], aim: dir, variant: md.id, fire: go }), true); else go();
+    if (window.PPStrike) window.PPStrike.press(() => ({ fd: PFD[key], dir: face, color: md.pal[1], aim: dir, variant: md.id, beat: on, fire: go }), true); else go();
   };
 
   // ---- EQ switch (G / 🎛️) ----
@@ -41030,9 +41036,10 @@ window._claimLBro = function() {
       if (held) { const a = throwAim(p); throwHeld(p, a.dx, a.dy); atkCD = 0.3 * cdM; return; }
       if (yanks.some(y => y.grab)) return;   // still reeling one in
       if (cast && !cast.back) return;
-      const a = aimFromKeys(p);
-      shootRibbon(p, a.dx, a.dy, 'grapple');
-      atkCD = 0.22 * cdM;
+      const shoot = () => { const q = window._gamePlayer; if (!q || window.selectedCharacter !== ID || curForm().id !== 'r' || held || (cast && !cast.back)) return; const a = aimFromKeys(q); shootRibbon(q, a.dx, a.dy, 'grapple'); atkCD = 0.22 * cdM; };
+      // a tap shoots the ribbon; holding S lets loose one of the Ribbon's own charged specials (charged-own.js)
+      if (window.PPStrike) { window.PPStrike.press(() => { const q = window._gamePlayer; if (!q || window.selectedCharacter !== ID || curForm().id !== 'r') return null; const k = keyDirs(); return { fd: { windup: 0, sweet: 0, active: 0.05, endlag: 0.05, root: false, hang: false, quiet: true }, dir: facing(q, k), color: PALETTE[0], aim: 'side', variant: 'r', fire: shoot }; }, true); return; }
+      shoot();
       return;
     }
     const pick = () => {
@@ -41054,7 +41061,7 @@ window._claimLBro = function() {
     };
     if (window.PPStrike) {
       // windup, sweet spot and end lag per move; holding S charges Side A moves
-      window.PPStrike.press(() => { const sel = pick(); return sel && { fd: MFD[sel.key], dir: sel.f, color: PALETTE[0], aim: sel.key.split('_')[1], fire: () => fire(sel) }; }, true);
+      window.PPStrike.press(() => { const sel = pick(); return sel && { fd: MFD[sel.key], dir: sel.f, color: PALETTE[0], aim: sel.key.split('_')[1], variant: 'a', fire: () => fire(sel) }; }, true);
       return;
     }
     const sel = pick(); if (sel) fire(sel);
@@ -41692,6 +41699,7 @@ window._claimLBro = function() {
 <script src="fighter-kprincess.js"></script>
 <script src="fighter-pebble.js"></script>
 <script src="fighter-spirit.js"></script>
+<script src="charged-own.js"></script>
 <script>
 // Free mystery boxes and character capsules bought in the Press Play shop open one after another.
 // Each is taken from the shop only as it opens, so leaving mid-way keeps the rest for next time.
