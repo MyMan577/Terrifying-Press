@@ -3140,8 +3140,8 @@ input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; u
       color: '#a78bfa',
       emoji: '🧙',
       ability: 'arcaneSpells',
-      description: 'Direction + S casts a spell: up ice, down walls, right rocket, none fire.',
-      stats: { speed: 0.9, jump: 1.1, dashRegen: 0, maxDashes: 2 }
+      description: 'Direction + S casts a spell: up ice, down walls, side rocket, none fire. Mix different spells to WEAVE them (+dmg, x3 calls a Mini-Wizard). Hold jump while falling to levitate.',
+      stats: { speed: 1.0, jump: 1.1, dashRegen: 0, maxDashes: 2 }
     },
     
     phantomace: {
@@ -5120,8 +5120,8 @@ let srEchoFrames = [];
     // is then the real one, and the fighter's targets are whatever it is given (in Smash: you).
     // The base fighters keep their kit in game-wide variables (spells, wizards, beams, forms, shockwaves...).
     // A second fighter gets its own set of all of them; yours are put aside during its turn.
-    _csGet() { return { archmageWizards, archmageSpells, archmageFlameBomb, archmageFlameBombCooldown, archmageWallCount, archmageWallTimer, archmageSpearFollowUp, archmageSpearTimer, archmageSpellEndlag, archmageSacrificeCutscene, archmageSacrificeTimer, archmageSacrificeTarget, archmageSacrificePhase, archmageSacrificeArrows, archmageSacrificeFirebombs, conduitProjectiles, conduitHazards, conduitBeam, conduitSpikes, conduitLiftBeam, conduitAttackCooldowns, conduitAttackEndlag, conduitLifeDamageDealt, conduitSpikeDragCount, conduitRecentMoves, conduitResonanceMeter, conduitLastHitTime, conduitBeamLockTotal, conduitActiveForms, conduitFormParticles, conduitSpikeTideTracking, conduitReactCharges, conduitReactChargeTimer, conduitDodgeInvuln, conduitParryInvuln, conduitReactFlash, conduitReactFlashColor, formSwitcherIndex, formSwitchCooldown, formSwitchAura, formSwitchFlash, aceAfterimages, aceSlashCount, aceSlashTimer, aceSlashCooldown, aceShockwaves, aceDashRegenTimer, fsAttackEndlag, fsFollowUpWindow, fsFollowUpPending, fsProjectiles, fsHazards, fsAttackEffects }; },
-    _csSet(s) { archmageWizards = s.archmageWizards; archmageSpells = s.archmageSpells; archmageFlameBomb = s.archmageFlameBomb; archmageFlameBombCooldown = s.archmageFlameBombCooldown; archmageWallCount = s.archmageWallCount; archmageWallTimer = s.archmageWallTimer; archmageSpearFollowUp = s.archmageSpearFollowUp; archmageSpearTimer = s.archmageSpearTimer; archmageSpellEndlag = s.archmageSpellEndlag; archmageSacrificeCutscene = s.archmageSacrificeCutscene; archmageSacrificeTimer = s.archmageSacrificeTimer; archmageSacrificeTarget = s.archmageSacrificeTarget; archmageSacrificePhase = s.archmageSacrificePhase; archmageSacrificeArrows = s.archmageSacrificeArrows; archmageSacrificeFirebombs = s.archmageSacrificeFirebombs; conduitProjectiles = s.conduitProjectiles; conduitHazards = s.conduitHazards; conduitBeam = s.conduitBeam; conduitSpikes = s.conduitSpikes; conduitLiftBeam = s.conduitLiftBeam; conduitAttackCooldowns = s.conduitAttackCooldowns; conduitAttackEndlag = s.conduitAttackEndlag; conduitLifeDamageDealt = s.conduitLifeDamageDealt; conduitSpikeDragCount = s.conduitSpikeDragCount; conduitRecentMoves = s.conduitRecentMoves; conduitResonanceMeter = s.conduitResonanceMeter; conduitLastHitTime = s.conduitLastHitTime; conduitBeamLockTotal = s.conduitBeamLockTotal; conduitActiveForms = s.conduitActiveForms; conduitFormParticles = s.conduitFormParticles; conduitSpikeTideTracking = s.conduitSpikeTideTracking; conduitReactCharges = s.conduitReactCharges; conduitReactChargeTimer = s.conduitReactChargeTimer; conduitDodgeInvuln = s.conduitDodgeInvuln; conduitParryInvuln = s.conduitParryInvuln; conduitReactFlash = s.conduitReactFlash; conduitReactFlashColor = s.conduitReactFlashColor; formSwitcherIndex = s.formSwitcherIndex; formSwitchCooldown = s.formSwitchCooldown; formSwitchAura = s.formSwitchAura; formSwitchFlash = s.formSwitchFlash; aceAfterimages = s.aceAfterimages; aceSlashCount = s.aceSlashCount; aceSlashTimer = s.aceSlashTimer; aceSlashCooldown = s.aceSlashCooldown; aceShockwaves = s.aceShockwaves; aceDashRegenTimer = s.aceDashRegenTimer; fsAttackEndlag = s.fsAttackEndlag; fsFollowUpWindow = s.fsFollowUpWindow; fsFollowUpPending = s.fsFollowUpPending; fsProjectiles = s.fsProjectiles; fsHazards = s.fsHazards; fsAttackEffects = s.fsAttackEffects; },
+    _csGet() { return { archmageWeave, archmageWeaveT, archmageLastSpell, archmageHopUsed, archmageLevT, archmageWizards, archmageSpells, archmageFlameBomb, archmageFlameBombCooldown, archmageWallCount, archmageWallTimer, archmageSpearFollowUp, archmageSpearTimer, archmageSpellEndlag, archmageSacrificeCutscene, archmageSacrificeTimer, archmageSacrificeTarget, archmageSacrificePhase, archmageSacrificeArrows, archmageSacrificeFirebombs, conduitProjectiles, conduitHazards, conduitBeam, conduitSpikes, conduitLiftBeam, conduitAttackCooldowns, conduitAttackEndlag, conduitLifeDamageDealt, conduitSpikeDragCount, conduitRecentMoves, conduitResonanceMeter, conduitLastHitTime, conduitBeamLockTotal, conduitActiveForms, conduitFormParticles, conduitSpikeTideTracking, conduitReactCharges, conduitReactChargeTimer, conduitDodgeInvuln, conduitParryInvuln, conduitReactFlash, conduitReactFlashColor, formSwitcherIndex, formSwitchCooldown, formSwitchAura, formSwitchFlash, aceAfterimages, aceSlashCount, aceSlashTimer, aceSlashCooldown, aceShockwaves, aceDashRegenTimer, fsAttackEndlag, fsFollowUpWindow, fsFollowUpPending, fsProjectiles, fsHazards, fsAttackEffects }; },
+    _csSet(s) { archmageWeave = s.archmageWeave || 0; archmageWeaveT = s.archmageWeaveT || 0; archmageLastSpell = s.archmageLastSpell || ''; archmageHopUsed = !!s.archmageHopUsed; archmageLevT = s.archmageLevT || 0; archmageWizards = s.archmageWizards; archmageSpells = s.archmageSpells; archmageFlameBomb = s.archmageFlameBomb; archmageFlameBombCooldown = s.archmageFlameBombCooldown; archmageWallCount = s.archmageWallCount; archmageWallTimer = s.archmageWallTimer; archmageSpearFollowUp = s.archmageSpearFollowUp; archmageSpearTimer = s.archmageSpearTimer; archmageSpellEndlag = s.archmageSpellEndlag; archmageSacrificeCutscene = s.archmageSacrificeCutscene; archmageSacrificeTimer = s.archmageSacrificeTimer; archmageSacrificeTarget = s.archmageSacrificeTarget; archmageSacrificePhase = s.archmageSacrificePhase; archmageSacrificeArrows = s.archmageSacrificeArrows; archmageSacrificeFirebombs = s.archmageSacrificeFirebombs; conduitProjectiles = s.conduitProjectiles; conduitHazards = s.conduitHazards; conduitBeam = s.conduitBeam; conduitSpikes = s.conduitSpikes; conduitLiftBeam = s.conduitLiftBeam; conduitAttackCooldowns = s.conduitAttackCooldowns; conduitAttackEndlag = s.conduitAttackEndlag; conduitLifeDamageDealt = s.conduitLifeDamageDealt; conduitSpikeDragCount = s.conduitSpikeDragCount; conduitRecentMoves = s.conduitRecentMoves; conduitResonanceMeter = s.conduitResonanceMeter; conduitLastHitTime = s.conduitLastHitTime; conduitBeamLockTotal = s.conduitBeamLockTotal; conduitActiveForms = s.conduitActiveForms; conduitFormParticles = s.conduitFormParticles; conduitSpikeTideTracking = s.conduitSpikeTideTracking; conduitReactCharges = s.conduitReactCharges; conduitReactChargeTimer = s.conduitReactChargeTimer; conduitDodgeInvuln = s.conduitDodgeInvuln; conduitParryInvuln = s.conduitParryInvuln; conduitReactFlash = s.conduitReactFlash; conduitReactFlashColor = s.conduitReactFlashColor; formSwitcherIndex = s.formSwitcherIndex; formSwitchCooldown = s.formSwitchCooldown; formSwitchAura = s.formSwitchAura; formSwitchFlash = s.formSwitchFlash; aceAfterimages = s.aceAfterimages; aceSlashCount = s.aceSlashCount; aceSlashTimer = s.aceSlashTimer; aceSlashCooldown = s.aceSlashCooldown; aceShockwaves = s.aceShockwaves; aceDashRegenTimer = s.aceDashRegenTimer; fsAttackEndlag = s.fsAttackEndlag; fsFollowUpWindow = s.fsFollowUpWindow; fsFollowUpPending = s.fsFollowUpPending; fsProjectiles = s.fsProjectiles; fsHazards = s.fsHazards; fsAttackEffects = s.fsAttackEffects; },
     _csFresh() { return { archmageWizards: [], archmageSpells: [], archmageFlameBomb: null, archmageFlameBombCooldown: 0, archmageWallCount: 0, archmageWallTimer: 0, archmageSpearFollowUp: false, archmageSpearTimer: 0, archmageSpellEndlag: 0, archmageSacrificeCutscene: false, archmageSacrificeTimer: 0, archmageSacrificeTarget: null, archmageSacrificePhase: 0, archmageSacrificeArrows: [], archmageSacrificeFirebombs: [], conduitProjectiles: [], conduitHazards: [], conduitBeam: null, conduitSpikes: [], conduitLiftBeam: null, conduitAttackCooldowns: {}, conduitAttackEndlag: 0, conduitLifeDamageDealt: 0, conduitSpikeDragCount: 0, conduitRecentMoves: [], conduitResonanceMeter: 0, conduitLastHitTime: -Infinity, conduitBeamLockTotal: 0, conduitActiveForms: {}, conduitFormParticles: [], conduitSpikeTideTracking: { active: false, enemyEnteredAt: null, wasDragged: false }, conduitReactCharges: 0, conduitReactChargeTimer: 0, conduitDodgeInvuln: 0, conduitParryInvuln: 0, conduitReactFlash: 0, conduitReactFlashColor: '#7cdbff', formSwitcherIndex: 0, formSwitchCooldown: 0, formSwitchAura: [], formSwitchFlash: 0, aceAfterimages: [], aceSlashCount: 0, aceSlashTimer: 0, aceSlashCooldown: 0, aceShockwaves: [], aceDashRegenTimer: 0, fsAttackEndlag: 0, fsFollowUpWindow: 0, fsFollowUpPending: '', fsProjectiles: [], fsHazards: [], fsAttackEffects: [] }; },
     fighterNew(char, x, y) {
       const st = {};
@@ -6179,42 +6179,84 @@ function performJump() {
   
   
   
+  // ===== ARCH MAGE =====
+  // Eight spells (direction + S, ground or air). Reworked to play quicker and reward mixing spells:
+  //  - SPELL WEAVE: cast a DIFFERENT spell within 1.8s of the last to weave it (up to x3). Each weave step adds +1 damage
+  //    to every spell hit; reaching x3 calls a Mini-Wizard to your side (in Smash too). Repeating a spell starts over.
+  //  - Short recovery after every spell (it used to be up to 2.5s), and delayed spells run on the game clock.
+  //  - LEVITATE: hold jump while falling to float down slowly (1.4s per airtime). Spirit Bomb's summon also lifts you
+  //    once per airtime, so he can get back to the stage.
+  //  Ground: neutral FIRE SPEAR (again: TRIPLE SPEARS), side ROCKET DRIVE (bursts on the first thing it hits),
+  //          up ICE PILLAR (rises under the nearest foe ahead and freezes), down EARTH WALLS (3 in a row, the 3rd launches).
+  //  Air:    neutral ARROW OVERDRIVE (rains on the nearest foe), side ARCANE BURST (5 homing bolts),
+  //          up SPIRIT BOMB (summon + lift; S again throws it at the nearest foe), down SPEAR PLUMMET (pops you up).
+  let archmageWeave = 0, archmageWeaveT = 0, archmageLastSpell = '', archmageHopUsed = false, archmageLevT = 0;
+  const ARCH_WEAVE_WINDOW = 1.8;
+  function archWeaveBonus() { return archmageWeaveT > 0 ? Math.max(0, archmageWeave - 1) : 0; }
+  // spells that go off a moment later (on the game clock, so they belong to whoever cast them)
+  function archQueue(delay, run) { archmageSpells.push({ type: 'archDelay', x: 0, y: 0, life: 99, at: delay, run }); }
+  function archNearest(maxD, dir) {
+    const px = player.x + player.w / 2, py = _moveCenterY(); let best = null, bd = maxD;
+    for (const e of enemies) {
+      if (e.dead) continue;
+      const dx = (e.x + e.w / 2) - px, dy = (e.y + e.h / 2) - py;
+      if (dir && dx * dir < -0.5) continue;
+      const d = Math.hypot(dx, dy); if (d < bd) { bd = d; best = e; }
+    }
+    return best;
+  }
+  function archWeave(spell) {
+    if (archmageWeaveT > 0 && spell !== archmageLastSpell && archmageWeave < 3) archmageWeave++;
+    else archmageWeave = 1;
+    archmageLastSpell = spell; archmageWeaveT = ARCH_WEAVE_WINDOW;
+    const cx = (player.x + player.w / 2) * TILE, cy = _moveTopY() * TILE;
+    if (archmageWeave === 3) {
+      spawnMiniWizard(player.x + player.w / 2, _moveTopY());
+      screenShake = Math.max(screenShake, 6);
+      for (let k = 0; k < 22; k++) { const a = k / 22 * Math.PI * 2; particles.push({ x: cx, y: cy, vx: Math.cos(a) * 9, vy: Math.sin(a) * 9, life: 0.6, color: ['#ffd700', '#a78bfa', '#7cdbff'][k % 3], size: 4 }); }
+      return ' ✨ WEAVE x3! +2 dmg, a Mini-Wizard joins!';
+    }
+    if (archmageWeave === 2) { for (let k = 0; k < 8; k++) particles.push({ x: cx, y: cy, vx: (Math.random() - 0.5) * 6, vy: -Math.random() * 5, life: 0.45, color: '#c4b5fd', size: 3 }); return ' ✨ WEAVE x2 (+1 dmg)'; }
+    return '';
+  }
+
   function performArchmageSpell() {
     if (selectedCharacter !== 'archmage') return;
     if (mode !== 'play') return;
-    if (archmageSpellEndlag > 0) return; 
+    if (archmageSpellEndlag > 0) return;
 
     const inAir   = !player.onGround;
     const movingUp   = keys.has('arrowup')   || keys.has('w') || mobileKeys.up;
     const movingDown = keys.has('arrowdown') || mobileKeys.down;
-    const movingFwd  = (player.lastMoveDir > 0 && (keys.has('d') || keys.has('arrowright') || mobileKeys.right)) ||
-                       (player.lastMoveDir < 0 && (keys.has('a') || keys.has('arrowleft')  || mobileKeys.left));
+    // either side casts the side spell, and turns him that way
+    const kRight = keys.has('d') || keys.has('arrowright') || mobileKeys.right, kLeft = keys.has('a') || keys.has('arrowleft') || mobileKeys.left;
+    const movingFwd  = kRight !== kLeft;
+    if (movingFwd) player.lastMoveDir = kRight ? 1 : -1;
     const dir = player.lastMoveDir || player.dashDir || 1;
     const cx = (player.x + player.w/2) * 40;
     const cy = (_moveCenterY()) * 40;
 
-    
-    
+    // S again while the Spirit Bomb hangs over you: throw it at the nearest foe (or diagonally down ahead)
     if (archmageFlameBomb && !archmageFlameBomb.launched) {
-      archmageFlameBomb.launched = true;
-      archmageFlameBomb.vx = dir * 14;
-      archmageFlameBomb.vy = 10; 
-      archmageFlameBomb.travelTime = 0; 
-      setMessage('🔥 SPIRIT BOMB LAUNCHED! Flying diagonally down!');
+      const fb = archmageFlameBomb, tg = archNearest(11);
+      fb.launched = true; fb.travelTime = 0;
+      if (tg) { const dx = (tg.x + tg.w / 2) - fb.x, dy = (tg.y + tg.h / 2) - fb.y, d = Math.hypot(dx, dy) || 1; fb.vx = dx / d * 16; fb.vy = dy / d * 16 - 2; }
+      else { fb.vx = dir * 14; fb.vy = 10; }
+      setMessage('🔥 SPIRIT BOMB THROWN!' + archWeave('bombThrow'));
       screenShake = Math.max(screenShake, 5);
-      archmageSpellEndlag = 1.0; 
+      archmageSpellEndlag = 0.35;
       return;
     }
 
     if (inAir) {
-      
+      // SPIRIT BOMB: a burning orb gathers over your head and the summon lifts you (once per airtime)
       if (movingUp) {
-        
+        if (!archmageHopUsed) { archmageHopUsed = true; player.vy = Math.min(player.vy, -13); for (let k = 0; k < 10; k++) particles.push({ x: cx + (Math.random() - 0.5) * 16, y: cy + 20, vx: (Math.random() - 0.5) * 4, vy: 4 + Math.random() * 4, life: 0.4, color: '#ffd166', size: 4 }); }
         if (archmageFlameBombCooldown > 0) {
-          setMessage(`🔥 Spirit Bomb cooling down (${archmageFlameBombCooldown.toFixed(1)}s)`);
+          setMessage(`🔥 Spirit Bomb recharging (${archmageFlameBombCooldown.toFixed(1)}s)`);
+          archmageSpellEndlag = 0.2;
           return;
         }
-        
         archmageFlameBomb = {
           x: player.x + player.w/2,
           y: _moveTopY() - 1.5,
@@ -6222,106 +6264,108 @@ function performJump() {
           life: 5.0, launched: false,
           phase: Math.random() * Math.PI * 2
         };
-        setMessage('🔥 Spirit Bomb summoned! Press S again to launch!');
+        setMessage('🔥 Spirit Bomb! Press S again to throw it!' + archWeave('bomb'));
         screenShake = Math.max(screenShake, 3);
         for (let k=0;k<16;k++) particles.push({x:cx+(Math.random()-0.5)*28,y:cy+(Math.random()-0.5)*28,vx:(Math.random()-0.5)*8,vy:(Math.random()-0.5)*8-3,life:0.7,color:k%2===0?'#ff6b35':'#ffd166',size:5+Math.random()*4});
-        archmageSpellEndlag = 0.30; 
+        archmageSpellEndlag = 0.2;
         return;
       }
 
+      // ARCANE BURST: five homing bolts
       if (movingFwd) {
-        
         for (let i = 0; i < 5; i++) {
-          setTimeout(() => {
+          archQueue(i * 0.06, () => {
             archmageSpells.push({
               type:'arcaneBolt', x: player.x + player.w/2, y: _moveCenterY(),
-              vx: dir * 20, vy: (Math.random()-0.5) * 2,
-              life: 1.2, dir
+              vx: dir * 19, vy: (i - 2) * 1.6,
+              life: 1.0, dir, home: true
             });
             if (i === 0) screenShake = Math.max(screenShake, 3);
             const bx = (player.x + player.w/2) * 40, by = (_moveCenterY()) * 40;
             for (let k=0;k<4;k++) particles.push({x:bx,y:by,vx:dir*(8+Math.random()*6),vy:(Math.random()-0.5)*4,life:0.25,color:k%2===0?'#c4b5fd':'#7c3aed',size:4});
-          }, i * 70);
+          });
         }
-        setMessage('✨ Arcane Burst! 5 bolts!');
-        archmageSpellEndlag = 0.90; 
+        player.vy = Math.min(player.vy, 1);
+        setMessage('✨ Arcane Burst! 5 homing bolts!' + archWeave('burst'));
+        archmageSpellEndlag = 0.4;
         return;
       }
 
+      // SPEAR PLUMMET: hurl a spear down ahead; the throw pops you back up a little
       if (movingDown) {
-        
-        
         archmageSpells.push({
           type:'spearPlummet', x:player.x+player.w/2, y:_moveTopY() - 0.5,
-          vx: dir * 11, vy: 9, life:2.5, dir, exploded:false, travelTime:0
+          vx: dir * 9, vy: 12, life:2.5, dir, exploded:false, travelTime:0
         });
-        setMessage('🔱 Spear Plummet!');
+        player.vy = Math.min(player.vy, -7);
+        setMessage('🔱 Spear Plummet!' + archWeave('plummet'));
         screenShake = Math.max(screenShake, 3);
         for (let k=0;k<8;k++) particles.push({x:cx,y:cy,vx:dir*(4+Math.random()*5),vy:2+Math.random()*5,life:0.4,color:'#a78bfa',size:4});
-        archmageSpellEndlag = 0.90; 
+        archmageSpellEndlag = 0.35;
         return;
       }
 
-      
-      
-      const arrowCenterX = player.x + player.w/2;
-      const arrowCenterY = _moveTopY();
-      setMessage('🏹 Arrow Overdrive! Arrows incoming in 3s…');
-      setTimeout(() => {
-        for (let i = 0; i < 10; i++) {
-          setTimeout(() => {
-            archmageSpells.push({
-              type:'arrow', x: arrowCenterX + (Math.random()-0.5)*6,
-              y: arrowCenterY - 8, 
-              vx: 4, vy: 14, life: 3.0
-            });
-          }, i * 80);
-        }
-      }, 3000);
+      // ARROW OVERDRIVE: a volley of golden arrows rains on the nearest foe (or just ahead of you)
+      const tgA = archNearest(9);
+      const arrowCenterX = tgA ? tgA.x + tgA.w / 2 : player.x + player.w/2 + dir * 3;
+      const arrowTopY = (tgA ? tgA.y : _moveTopY()) - 7;
+      setMessage('🏹 Arrow Overdrive!' + archWeave('arrows'));
+      for (let i = 0; i < 10; i++) {
+        archQueue(0.3 + i * 0.06, () => {
+          archmageSpells.push({
+            type:'arrow', x: arrowCenterX + (Math.random()-0.5)*3,
+            y: arrowTopY + (Math.random() - 0.5),
+            vx: (Math.random() - 0.5) * 2, vy: 18, life: 1.5
+          });
+        });
+      }
       for (let k=0;k<10;k++) particles.push({x:cx+(Math.random()-0.5)*20,y:cy-20,vx:(Math.random()-0.5)*6,vy:-(Math.random()*3+1),life:0.6,color:'#ffd166',size:3});
-      archmageSpellEndlag = 2.55; 
+      for (let k=0;k<10;k++) particles.push({x:arrowCenterX*40+(Math.random()-0.5)*50,y:arrowTopY*40,vx:(Math.random()-0.5)*3,vy:Math.random()*2,life:0.5,color:'#ffd700',size:3});
+      archmageSpellEndlag = 0.4;
       return;
     }
 
-    
+    // ICE PILLAR: rises under the nearest foe in front of you (or at your feet), launches and freezes
     if (movingUp) {
-      
+      const tgI = archNearest(4.5, dir);
+      const pxI = tgI ? tgI.x + tgI.w / 2 : player.x + player.w / 2 + dir * 0.8;
+      const floorI = tgI && tgI.onGround !== false ? tgI.y + tgI.h : _moveFloorY();
       archmageSpells.push({
-        type:'icePillar', x: player.x + player.w/2, y: _moveFloorY(),
+        type:'icePillar', x: pxI, y: floorI,
         life: 0.6, dir
       });
-      
-      const pillarRect = { x: player.x + player.w/2 - 0.5, y: _moveTopY() - 4, w: 1, h: 4.5 };
+      const pillarRect = { x: pxI - 0.6, y: floorI - 4.5, w: 1.2, h: 4.6 };
+      const freeze = hasUpgrade('am3') ? 3.0 : 1.2;
       let hit = false;
       for (const e of enemies) {
         if (e.dead) continue;
         if (!rectsOverlap(pillarRect, {x:e.x,y:e.y,w:e.w,h:e.h})) continue;
-        e.hp -= 2; e.hitFlash = 0.3;
-        e.stunTimer = 1.0;
+        e.hp -= 3 + archWeaveBonus(); e.hitFlash = 0.4;
+        e.stunTimer = Math.max(e.stunTimer || 0, freeze);
         e.vx = (Math.random()-0.5) * 2;
-        e.vy = -16; 
+        e.vy = -17;
         e.onGround = false;
         if (e.hp <= 0) killEnemy(e);
         hit = true;
       }
-      setMessage(`❄️ Ice Pillar!${hit ? ' Launched!' : ''}`);
-      screenShake = Math.max(screenShake, hit ? 6 : 2);
-      for (let k=0;k<14;k++) particles.push({x:cx+(Math.random()-0.5)*18,y:cy+(Math.random()-0.5)*18,vx:(Math.random()-0.5)*6,vy:-(Math.random()*8+3),life:0.6,color:k%2===0?'#bae6fd':'#7dd3fc',size:4+Math.random()*3});
-      archmageSpellEndlag = 0.85; 
+      setMessage(`❄️ Ice Pillar!${hit ? ' Launched and frozen!' : ''}` + archWeave('ice'));
+      screenShake = Math.max(screenShake, hit ? 7 : 2);
+      const ipx = pxI * 40, ipy = floorI * 40;
+      for (let k=0;k<16;k++) particles.push({x:ipx+(Math.random()-0.5)*22,y:ipy-Math.random()*120,vx:(Math.random()-0.5)*6,vy:-(Math.random()*8+3),life:0.6,color:k%2===0?'#bae6fd':'#7dd3fc',size:4+Math.random()*3});
+      archmageSpellEndlag = 0.4;
       return;
     }
 
+    // EARTH WALLS: three in a row, each further out and taller; the third one launches hard
     if (movingDown) {
-      
-      
       const playerFeet = { x: player.x, y: player.y + player.h - 0.05, w: player.w, h: 0.1 };
       const standingOnWall = archmageSpells.some(sp => sp.type === 'earthWall' &&
         rectsOverlap(playerFeet, { x: sp.x - 0.5, y: sp.y, w: 1, h: sp.h }));
       if (standingOnWall) { setMessage('🧱 Can\'t cast from on top of a wall!'); return; }
       const wallX = player.x + dir * (1.5 + archmageWallCount * 1.8);
       const wallY = _moveTopY();
-      let wallH = 2 + archmageWallCount; 
-      let wallDmg = archmageWallCount >= 2 ? 3 : 2;
+      let wallH = 2 + archmageWallCount;
+      let wallDmg = (archmageWallCount >= 2 ? 4 : 2) + archWeaveBonus();
       let wallLife = archmageWallCount >= 2 ? 3.5 : 3.0;
       let bigLaunch = archmageWallCount >= 2;
       let bigStun = archmageWallCount >= 2;
@@ -6333,97 +6377,94 @@ function performJump() {
         life: wallLife, wallLife, hitsApplied: false, bigLaunch, dmg: wallDmg, id: wallId
       });
 
-      
       const wallRect = { x: wallX - 0.5, y: wallY - wallH + 1, w: 2, h: wallH };
       let hit = false;
       for (const e of enemies) {
         if (e.dead) continue;
         if (!rectsOverlap(wallRect, {x:e.x,y:e.y,w:e.w,h:e.h})) continue;
         e.hp -= wallDmg; e.hitFlash = 0.4;
-        
-        
         if (bigStun) {
-          e.stunTimer = 2.0;
+          e.stunTimer = 1.2;
           e.vx = dir * 6;
           e.vy = -18;
           e._lastWallHitId = wallId;
         } else {
-          e.stunTimer = 0.18; 
-          e.vx = dir * 18;   
-          e.vy = -10;        
-          e._lastWallHitId = wallId; 
+          e.stunTimer = 0.35;
+          e.vx = dir * 16;
+          e.vy = -10;
+          e._lastWallHitId = wallId;
         }
         e.onGround = false;
         if (e.hp <= 0) killEnemy(e);
         hit = true;
       }
 
+      const wv = archmageWallCount === 0 ? archWeave('wall') : '';   // the three walls count as one spell for the weave
       if (archmageWallCount < 2) {
         archmageWallCount++;
-        archmageWallTimer = 2.5; 
-        setMessage(`🧱 Wall ${archmageWallCount}/3! Cast again for next wall!`);
-        archmageSpellEndlag = 0.20; 
+        archmageWallTimer = 2.5;
+        setMessage(`🧱 Wall ${archmageWallCount}/3! Cast again for the next one!` + wv);
+        archmageSpellEndlag = 0.2;
       } else {
         archmageWallCount = 0; archmageWallTimer = 0;
-        setMessage(`🧱 FINAL WALL! 3 damage + mega launch!`);
+        setMessage(`🧱 FINAL WALL! Mega launch!`);
         screenShake = Math.max(screenShake, 10);
-        archmageSpellEndlag = 1.0; 
+        archmageSpellEndlag = 0.5;
       }
       if (hit) screenShake = Math.max(screenShake, 5);
       for (let k=0;k<12;k++) particles.push({x:wallX*40+(Math.random()-0.5)*24,y:wallY*40+(Math.random()-0.5)*24,vx:(Math.random()-0.5)*8,vy:-(Math.random()*5+2),life:0.6,color:k%2===0?'#a3e635':'#d4a853',size:4+Math.random()*4});
       return;
     }
 
+    // ROCKET DRIVE: a rocket that bursts on the first foe or wall it hits
     if (movingFwd) {
-      
       archmageSpells.push({
         type:'rocket', x: player.x + player.w/2, y: _moveCenterY(),
-        vx: dir * 18, vy: 0, life: 2.5, dir, hitCount: 0, exploded: false
+        vx: dir * 19, vy: 0, life: 1.2, dir, hitCount: 0, exploded: false
       });
-      setMessage('🚀 Rocket Drive!');
+      player.vx = -dir * 4;
+      setMessage('🚀 Rocket Drive!' + archWeave('rocket'));
       screenShake = Math.max(screenShake, 3);
       for (let k=0;k<10;k++) particles.push({x:cx+(Math.random()-0.5)*16,y:cy+(Math.random()-0.5)*16,vx:dir*(5+Math.random()*6)+(Math.random()-0.5)*3,vy:(Math.random()-0.5)*5,life:0.5,color:k%2===0?'#ff6b35':'#ffd166',size:4+Math.random()*3});
-      archmageSpellEndlag = 0.85; 
+      archmageSpellEndlag = 0.45;
       return;
     }
 
-    
+    // FIRE SPEAR, then (within 2s) TRIPLE SPEARS
     if (archmageSpearFollowUp) {
-      
       archmageSpearFollowUp = false;
       archmageSpearTimer = 0;
       for (let i = 0; i < 3; i++) {
-        setTimeout(() => {
+        archQueue(i * 0.09, () => {
           archmageSpells.push({
             type:'fireSpear', x: player.x + player.w/2, y: _moveCenterY(),
-            vx: dir * 16, vy: (i-1) * 0.5, life: 2.5, dir, piercing: true, bonus: true
+            vx: dir * 18, vy: (i-1) * 1.2, life: 1.6, dir, piercing: true, bonus: true
           });
           screenShake = Math.max(screenShake, 4);
           const bx = (player.x + player.w/2) * 40;
           const by = (_moveCenterY()) * 40;
           for (let k=0;k<8;k++) particles.push({x:bx+(Math.random()-0.5)*14,y:by+(Math.random()-0.5)*14,vx:dir*(6+Math.random()*5),vy:(Math.random()-0.5)*6,life:0.4,color:'#ff6b35',size:5});
-        }, i * 120);
+        });
       }
-      setMessage('🔱 TRIPLE SPEARS!');
-      archmageSpellEndlag = 1.0; 
+      setMessage('🔱 TRIPLE SPEARS!' + archWeave('spear3'));
+      archmageSpellEndlag = 0.45;
     } else {
-      
       archmageSpells.push({
         type:'fireSpear', x: player.x + player.w/2, y: _moveCenterY(),
-        vx: dir * 16, vy: 0, life: 2.5, dir, piercing: true, bonus: false
+        vx: dir * 18, vy: 0, life: 1.6, dir, piercing: true, bonus: false
       });
       archmageSpearFollowUp = true;
       archmageSpearTimer = 2.0;
-      setMessage('🔱 Fire Spear! Cast again for triple spears!');
+      setMessage('🔱 Fire Spear! Again for triple spears!' + archWeave('spear'));
       screenShake = Math.max(screenShake, 2);
       for (let k=0;k<8;k++) particles.push({x:cx,y:cy,vx:dir*(6+Math.random()*5),vy:(Math.random()-0.5)*4,life:0.4,color:k%2===0?'#ff6b35':'#ef4444',size:5});
-      archmageSpellEndlag = 0.20; 
+      archmageSpellEndlag = 0.2;
     }
   }
 
   function hitEnemyWithArchSpell(e, dmg, stunTime, knockMag, knockY, originX) {
     if (e.dead) return false;
-    e.hp -= dmg; e.hitFlash = 0.3;
+    e.hp -= dmg + archWeaveBonus(); e.hitFlash = 0.3;
     e.stunTimer = stunTime;
     
     
@@ -8116,6 +8157,13 @@ const SOLID_TYPES = new Set(['solid','mover','ice','crumble','half','oneWayL','o
     if (selectedCharacter !== 'archmage') return;
 
     
+    // SPELL WEAVE window, and LEVITATE (hold jump while falling)
+    if (archmageWeaveT > 0) { archmageWeaveT -= dt; if (archmageWeaveT <= 0) { archmageWeave = 0; archmageLastSpell = ''; } }
+    if (player.onGround) { archmageHopUsed = false; archmageLevT = 0; }
+    else if ((jumpPressed || mobileKeys.jump) && player.vy > 2.2 && archmageLevT < 1.4 && !player.isDashing) {
+      player.vy = 2.2; archmageLevT += dt;
+      if (Math.random() < 0.5) particles.push({ x: (player.x + player.w / 2) * TILE + (Math.random() - 0.5) * 18, y: (player.y + player.h) * TILE, vx: (Math.random() - 0.5) * 2, vy: 2 + Math.random() * 2, life: 0.4, color: Math.random() < 0.5 ? '#a78bfa' : '#fef3c7', size: 3 });
+    }
     if (archmageFlameBombCooldown > 0) archmageFlameBombCooldown -= dt;
     if (archmageSpellEndlag > 0) { archmageSpellEndlag -= dt; if (archmageSpellEndlag < 0) archmageSpellEndlag = 0; }
     if (archmageWallTimer > 0) {
@@ -8157,15 +8205,15 @@ const SOLID_TYPES = new Set(['solid','mover','ice','crumble','half','oneWayL','o
             if (e.dead) continue;
             const dx = (e.x+e.w/2) - fb.x, dy = (e.y+e.h/2) - fb.y;
             if (Math.sqrt(dx*dx+dy*dy) < 4) {
-              e.hp -= 8; e.hitFlash = 0.6; e.stunTimer = 5.0;
+              e.hp -= 8 + archWeaveBonus(); e.hitFlash = 0.6; e.stunTimer = 2.0;
               e.vx = (Math.random()-0.5) * 6; e.vy = -6; e.onGround = false;
               if (e.hp <= 0) killEnemy(e);
             }
           }
           archmageFlameBomb = null;
-          archmageFlameBombCooldown = 20.0;
+          archmageFlameBombCooldown = 7.0;
           screenShake = Math.max(screenShake, 14);
-          setMessage('🔥 SPIRIT BOMB DETONATED! 8 dmg + 5s stun!');
+          setMessage('🔥 SPIRIT BOMB DETONATED!');
           for (let k=0;k<30;k++) particles.push({x:fbpx+(Math.random()-0.5)*40,y:fbpy+(Math.random()-0.5)*40,vx:(Math.random()-0.5)*18,vy:(Math.random()-0.5)*18-5,life:0.9,color:k%3===0?'#ff6b35':k%3===1?'#ffd166':'#ef4444',size:6+Math.random()*5});
         } else {
           
@@ -8196,7 +8244,7 @@ const SOLID_TYPES = new Set(['solid','mover','ice','crumble','half','oneWayL','o
         }
         if (fb.life <= 0) {
           archmageFlameBomb = null;
-          archmageFlameBombCooldown = 20.0;
+          archmageFlameBombCooldown = 7.0;
           setMessage('🔥 Flame Bomb dissipated!');
         }
       }
@@ -8205,6 +8253,11 @@ const SOLID_TYPES = new Set(['solid','mover','ice','crumble','half','oneWayL','o
     
     for (let i = archmageSpells.length - 1; i >= 0; i--) {
       const sp = archmageSpells[i];
+      if (sp.type === 'archDelay') {
+        sp.at -= dt;
+        if (sp.at <= 0) { archmageSpells.splice(i, 1); try { sp.run(); } catch (err) {} }
+        continue;
+      }
       sp.life -= dt;
 
       if (sp.type === 'fireSpear') {
@@ -8218,7 +8271,7 @@ const SOLID_TYPES = new Set(['solid','mover','ice','crumble','half','oneWayL','o
           if (Math.sqrt(dx*dx+dy*dy) < 0.8) {
             sp._hitSet.add(e);
             const bonusDmg = hasUpgrade('am1') ? 0 : 0; 
-            hitEnemyWithArchSpell(e, 1, 0.5, 5, -3, sp.x);
+            hitEnemyWithArchSpell(e, sp.bonus ? 2 : 3, 0.5, sp.bonus ? 7 : 6, -4, sp.x);
             screenShake = Math.max(screenShake, sp.bonus ? 5 : 2);
             if (sp.bonus) {
               for (let k=0;k<12;k++) particles.push({x:sp.x*40+(Math.random()-0.5)*16,y:sp.y*40+(Math.random()-0.5)*16,vx:(Math.random()-0.5)*8+sp.dir*4,vy:(Math.random()-0.5)*6,life:0.4,color:'#ff6b35',size:5+Math.random()*3});
@@ -8246,21 +8299,21 @@ const SOLID_TYPES = new Set(['solid','mover','ice','crumble','half','oneWayL','o
             if (Math.sqrt(dx*dx+dy*dy) < 0.8) {
               sp._hitSet.add(e);
               sp.hitCount++;
-              hitEnemyWithArchSpell(e, 2, 0.5, 7, -4, sp.x);
+              hitEnemyWithArchSpell(e, 3, 0.5, 7, -4, sp.x);
               screenShake = Math.max(screenShake, 5);
-              if (sp.hitCount >= 5) {
+              if (sp.hitCount >= 1) {
                 
                 sp.exploded = true;
                 const rx = sp.x * 40, ry = sp.y * 40;
                 for (const e2 of enemies) {
                   if (e2.dead) continue;
                   const dx2 = (e2.x+e2.w/2)-sp.x, dy2 = (e2.y+e2.h/2)-sp.y;
-                  if (Math.sqrt(dx2*dx2+dy2*dy2) < 3.5) {
-                    hitEnemyWithArchSpell(e2, 4, 1.0, 8, -8, sp.x);
+                  if (Math.sqrt(dx2*dx2+dy2*dy2) < 3.0) {
+                    hitEnemyWithArchSpell(e2, 4, 0.8, 11, -9, sp.x);
                   }
                 }
                 screenShake = Math.max(screenShake, 14);
-                setMessage('🚀 ROCKET EXPLODED! 4 dmg AOE!');
+                setMessage('🚀 ROCKET BURST!');
                 for (let k=0;k<25;k++) particles.push({x:rx+(Math.random()-0.5)*30,y:ry+(Math.random()-0.5)*30,vx:(Math.random()-0.5)*16,vy:(Math.random()-0.5)*16-4,life:0.8,color:k%3===0?'#ff6b35':k%3===1?'#ffd166':'#ef4444',size:6+Math.random()*5});
                 sp.life = 0; break;
               }
@@ -8271,6 +8324,12 @@ const SOLID_TYPES = new Set(['solid','mover','ice','crumble','half','oneWayL','o
         for (const tile of world.tiles.values()) {
           if (!WALL_BLOCKING_TYPES.has(tile.type)) continue;
           if (rectsOverlap({x:sp.x-0.3,y:sp.y-0.3,w:0.6,h:0.6},{x:tile.x,y:tile.y,w:1,h:1})) { sp.life = 0; break; }
+        }
+        if (sp.life <= 0 && !sp.exploded) {   // a wall or the end of its flight: it still bursts
+          sp.exploded = true;
+          for (const e2 of enemies) { if (e2.dead) continue; if (Math.hypot((e2.x+e2.w/2)-sp.x, (e2.y+e2.h/2)-sp.y) < 3.0) hitEnemyWithArchSpell(e2, 4, 0.8, 11, -9, sp.x); }
+          screenShake = Math.max(screenShake, 9);
+          for (let k=0;k<18;k++) particles.push({x:sp.x*40+(Math.random()-0.5)*30,y:sp.y*40+(Math.random()-0.5)*30,vx:(Math.random()-0.5)*14,vy:(Math.random()-0.5)*14-3,life:0.6,color:k%3===0?'#ff6b35':k%3===1?'#ffd166':'#ef4444',size:5+Math.random()*4});
         }
         if (Math.random() < 0.4) particles.push({x:sp.x*40,y:sp.y*40,vx:(Math.random()-0.5)*4+(-sp.dir)*3,vy:(Math.random()-0.5)*4,life:0.3,color:'#ff6b35',size:4});
       }
@@ -8283,7 +8342,7 @@ const SOLID_TYPES = new Set(['solid','mover','ice','crumble','half','oneWayL','o
           if (e.dead) continue;
           const dx = (e.x+e.w/2) - sp.x, dy = (e.y+e.h/2) - sp.y;
           if (Math.sqrt(dx*dx+dy*dy) < 0.6) {
-            hitEnemyWithArchSpell(e, 1, 0.5, 2, -3, sp.x);
+            hitEnemyWithArchSpell(e, 2, 0.4, 2, -3, sp.x);
             screenShake = Math.max(screenShake, 2);
             particles.push({x:sp.x*40,y:sp.y*40,vx:(Math.random()-0.5)*6,vy:(Math.random()-0.5)*6,life:0.3,color:'#ffd166',size:3});
             hit = true; sp.life = 0; break;
@@ -8320,6 +8379,13 @@ const SOLID_TYPES = new Set(['solid','mover','ice','crumble','half','oneWayL','o
       }
 
       else if (sp.type === 'arcaneBolt') {
+        if (sp.home) {
+          let tg = null, bd = 9;
+          for (const e of enemies) { if (e.dead) continue; const d = Math.hypot((e.x+e.w/2)-sp.x, (e.y+e.h/2)-sp.y); if (d < bd) { bd = d; tg = e; } }
+          if (tg) { const a = Math.atan2((tg.y+tg.h/2)-sp.y, (tg.x+tg.w/2)-sp.x), cur = Math.atan2(sp.vy, sp.vx), spd = Math.hypot(sp.vx, sp.vy);
+            let da = a - cur; while (da > Math.PI) da -= Math.PI*2; while (da < -Math.PI) da += Math.PI*2;
+            const na = cur + Math.max(-7*dt, Math.min(7*dt, da)); sp.vx = Math.cos(na)*spd; sp.vy = Math.sin(na)*spd; }
+        }
         sp.x += sp.vx * dt;
         sp.y += sp.vy * dt;
         for (const e of enemies) {
@@ -8361,11 +8427,11 @@ const SOLID_TYPES = new Set(['solid','mover','ice','crumble','half','oneWayL','o
               if (e.dead) continue;
               const dx = (e.x+e.w/2) - sp.x, dy = (e.y+e.h/2) - sp.y;
               if (Math.sqrt(dx*dx+dy*dy) < 3.0) {
-                hitEnemyWithArchSpell(e, 3, 0.5, 14, -10, sp.x);
+                hitEnemyWithArchSpell(e, 4, 0.5, 14, -10, sp.x);
               }
             }
             screenShake = Math.max(screenShake, 10);
-            setMessage('🔱 Spear Plummet exploded! 3 dmg AOE!');
+            setMessage('🔱 Spear Plummet burst!');
             for (let k=0;k<20;k++) particles.push({x:sp.x*40+(Math.random()-0.5)*28,y:sp.y*40+(Math.random()-0.5)*28,vx:(Math.random()-0.5)*14,vy:(Math.random()-0.5)*14-4,life:0.7,color:k%2===0?'#a78bfa':'#7c3aed',size:5+Math.random()*4});
             sp.life = 0;
           }
@@ -11341,16 +11407,16 @@ function resetPlayer() {
     burst: { windup:0.16, sweet:0.08, active:0.2, endlag:0.36, push:2, sweetDmg:2, sweetKb:1.5, sweetStop:0.12, sweetShake:14 },
   };
   const ARCHMAGE_FD = {
-    ground_up:      { windup:0.16, sweet:0.08, active:0.25, endlag:0, sweetDmg:2, sweetStop:0.12, sweetShake:12 },   // Ice Pillar
+    ground_up:      { windup:0.11, sweet:0.08, active:0.25, endlag:0, sweetDmg:2, sweetStop:0.12, sweetShake:12 },   // Ice Pillar
     ground_down:    { windup:0.10, sweet:0.08, active:0.20, endlag:0, sweetDmg:1 },                                   // Wall (1st and 2nd)
-    ground_down3:   { windup:0.20, sweet:0.10, active:0.25, endlag:0, sweetDmg:2, sweetKb:1.6, sweetStop:0.13, sweetShake:14 },   // FINAL WALL
-    ground_fwd:     { windup:0.14, sweet:0.10, active:0.30, endlag:0, sweetDmg:2, sweetKb:1.6, sweetStop:0.11 },      // Rocket Drive
+    ground_down3:   { windup:0.14, sweet:0.10, active:0.25, endlag:0, sweetDmg:2, sweetKb:1.6, sweetStop:0.13, sweetShake:14 },   // FINAL WALL
+    ground_fwd:     { windup:0.10, sweet:0.10, active:0.30, endlag:0, sweetDmg:2, sweetKb:1.6, sweetStop:0.11 },      // Rocket Drive
     ground_neutral: { windup:0.08, sweet:0.06, active:0.30, endlag:0, sweetDmg:1 },                                   // Fire Spear
     air_up:         { windup:0.10, sweet:0,    active:0.20, endlag:0 },                                               // Spirit Bomb (summon)
     air_launch:     { windup:0.06, sweet:0,    active:1.50, endlag:0, stop:0.08, shake:6 },                           // Spirit Bomb launch
     air_fwd:        { windup:0.12, sweet:0.10, active:0.50, endlag:0, sweetDmg:1 },                                   // Arcane Burst
     air_down:       { windup:0.10, sweet:0,    active:0.80, endlag:0, stop:0.06 },                                    // Spear Plummet
-    air_neutral:    { windup:0.20, sweet:0,    active:0,    endlag:0 },                                               // Arrow Overdrive
+    air_neutral:    { windup:0.10, sweet:0,    active:0.8,  endlag:0 },                                               // Arrow Overdrive
   };
   const CONDUIT_FD = {
     ground_up:      { key:'overchargeBurst', windup:0.14, sweet:0.08, active:0.20, endlag:0, sweetDmg:3, sweetStop:0.12, sweetShake:13 },
@@ -11962,27 +12028,23 @@ function resetPlayer() {
     
     
     
-    if (selectedCharacter === 'cb_slugger' && !_onGnd && window.PPStrike && !_sluggerViaStrike && window.performSluggerAir) {
-      // in the air: a tap is one of his aerials (neutral keeps the glove jabs), a held S lets loose HOME RUN /
-      // SKYLINE UPPERCUT / POUND TOWN like on the ground
+    if (selectedCharacter === 'cb_slugger' && window.PPStrike && !_sluggerViaStrike && (_onGnd || window.performSluggerAir)) {
+      // The move is picked when S is let go, from where he is THEN: a press started on the ground and let go in the air
+      // (or the other way round) still goes off instead of being dropped, and so does a held S's charged special.
+      //  ground: windup, sweet spot and end lag per punch come from the strike engine; holding S charges it
+      //  air: a tap is one of his aerials (neutral keeps the glove jabs); a held S lets loose his air specials
       window.PPStrike.press(() => {
         if (selectedCharacter !== 'cb_slugger') return null;
         const kUp = keys.has('arrowup') || keys.has('w') || mobileKeys.up, kDn = keys.has('arrowdown') || mobileKeys.down;
         const kR = keys.has('arrowright') || keys.has('d') || mobileKeys.right, kL = keys.has('arrowleft') || keys.has('a') || mobileKeys.left;
-        const kind = kUp ? 'up' : kDn ? 'down' : (kR || kL) ? 'side' : 'neutral';
-        if (kR) player.lastMoveDir = 1; else if (kL) player.lastMoveDir = -1;
-        return { fd: { windup: 0.04, endlag: kind === 'neutral' ? 0.08 : 0.16 }, dir: kR ? 1 : kL ? -1 : (player.lastMoveDir || 1), color: '#ffcf40', aim: kind === 'neutral' ? 'side' : kind,
-          fire: () => { if (kind === 'neutral') window.performSluggerAtk(); else window.performSluggerAir(kind); } };
-      }, true);
-      return;
-    }
-    if (selectedCharacter === 'cb_slugger' && _onGnd && window.PPStrike && !_sluggerViaStrike) {
-      // windup, sweet spot and end lag per punch come from the strike engine; holding S charges it
-      window.PPStrike.press(() => {
-        if (selectedCharacter !== 'cb_slugger' || !player.onGround) return null;
+        if (!player.onGround) {
+          if (!window.performSluggerAir) return null;
+          const kind = kUp ? 'up' : kDn ? 'down' : (kR || kL) ? 'side' : 'neutral';
+          if (kR) player.lastMoveDir = 1; else if (kL) player.lastMoveDir = -1;
+          return { fd: { windup: 0.04, endlag: kind === 'neutral' ? 0.08 : 0.16 }, dir: kR ? 1 : kL ? -1 : (player.lastMoveDir || 1), color: '#ffcf40', aim: kind === 'neutral' ? 'side' : kind,
+            fire: () => { if (kind === 'neutral') window.performSluggerAtk(); else window.performSluggerAir(kind); } };
+        }
         const ac = (player._sluggerChain && player._sluggerChain.windowTimer > 0) ? player._sluggerChain : null;
-        const kUp = keys.has('arrowup') || keys.has('w') || mobileKeys.up, kDn = keys.has('arrowdown') || mobileKeys.down;
-        const kR = keys.has('arrowright') || keys.has('d') || mobileKeys.right, kL = keys.has('arrowleft') || keys.has('a') || mobileKeys.left;
         const atk = ac ? ac.atk : kUp ? 'up' : kDn ? 'down' : (kR || kL) ? 'side' : 'neutral';
         const chain = SLUGGER_CHAINS[atk] || SLUGGER_CHAINS.neutral, mv = chain[Math.min(ac ? ac.idx : 0, chain.length - 1)];
         return { fd: SLUGGER_FD[mv.name] || { windup:0.05, endlag:0.1 }, dir: kR ? 1 : kL ? -1 : (player.dashDir || 1), color: mv.color, aim: atk,
@@ -24206,6 +24268,17 @@ function resolveCollisions(axis, dt) {
   function _fxArchmage() {
     if (selectedCharacter === 'archmage') {
       const spellNow = Date.now() * 0.001;
+      if (archmageWeaveT > 0 && archmageWeave > 0) {   // SPELL WEAVE: one orb per step, fading as the window runs out
+        const wx = (player.x + player.w / 2) * TILE - cam.x, wy = player.y * TILE - cam.y - 14;
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 3; i++) {
+          const on = i < archmageWeave, a = spellNow * 4 + i * 2.1;
+          ctx.globalAlpha = on ? 0.5 + 0.5 * Math.min(1, archmageWeaveT / 0.6) : 0.18;
+          ctx.fillStyle = ['#ff6b35', '#7dd3fc', '#a78bfa'][i];
+          ctx.beginPath(); ctx.arc(wx + Math.cos(a) * 12, wy + Math.sin(a) * 4, on ? 4 : 2.5, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      }
       
       
       if (archmageFlameBomb) {
@@ -39381,18 +39454,24 @@ window._claimLBro = function() {
     if (window.selectedCharacter !== ID) { if (_prevSlash) return _prevSlash.apply(this, arguments); return; }
     const p = window._gamePlayer;
     if (!p || drop || atkCD > 0) return;
-    const keys = window._gameKeys || new Set(), mk = window.mobileKeys || {};
-    const up = keys.has('arrowup') || keys.has('w') || !!mk.up;
-    const down = keys.has('arrowdown') || !!mk.down;
-    const right = keys.has('arrowright') || keys.has('d') || !!mk.right;
-    const left = keys.has('arrowleft') || keys.has('a') || !!mk.left;
-    const stance = p.onGround ? 'ground' : 'air';
-    const dir = (down && !up) ? 'down' : (up && !down) ? 'up' : (left || right) ? 'side' : 'neutral';
-    const face = right ? 1 : left ? -1 : ((p.dashDir || p.lastMoveDir || 1) >= 0 ? 1 : -1);
-    const md = curMode();
-    const mv = MOVES[md.id][stance][dir];
-    if (stance === 'air' && dir === 'up' && airUpUsed) { msg(md.icon + ' ' + mv.name + ' is used up until you land'); return; }
+    // which move: read from the direction held and ground / air at the moment it goes off (S let go), like the
+    // other fighters, so a direction pressed a moment after S (or the side you turned to) still counts
+    const pickMove = (q) => {
+      const keys = window._gameKeys || new Set(), mk = window.mobileKeys || {};
+      const up = keys.has('arrowup') || keys.has('w') || !!mk.up;
+      const down = keys.has('arrowdown') || !!mk.down;
+      const right = keys.has('arrowright') || keys.has('d') || !!mk.right;
+      const left = keys.has('arrowleft') || keys.has('a') || !!mk.left;
+      const stance = q.onGround ? 'ground' : 'air';
+      const dir = (down && !up) ? 'down' : (up && !down) ? 'up' : (left || right) ? 'side' : 'neutral';
+      const face = right && !left ? 1 : left && !right ? -1 : ((q.dashDir || q.lastMoveDir || 1) >= 0 ? 1 : -1);
+      if (right !== left) q.lastMoveDir = face;
+      const md = curMode();
+      return { stance, dir, face, md, mv: MOVES[md.id][stance][dir], key: md.id + '_' + stance + '_' + dir };
+    };
+    { const pk = pickMove(p); if (!window.PPStrike && pk.stance === 'air' && pk.dir === 'up' && airUpUsed) { msg(pk.md.icon + ' ' + pk.mv.name + ' is used up until you land'); return; } }
     if (window.PPStrike && !window.PPStrike.canQueue()) return;   // still winding up or recovering
+    const md = curMode();
     const b = beatInfo();
     if (b.on) { streak = (b.idx - lastBeatIdx <= 2) ? streak + 1 : 1; lastBeatIdx = b.idx; addHype(1); }
     else streak = 0;
@@ -39406,19 +39485,27 @@ window._claimLBro = function() {
       p.dashInvuln = Math.max(p.dashInvuln || 0, 0.35);   // unshakable while it hits
       if (b.on) { aftershocks.push({ idx: b.idx + 1, x: pcx(p), y: p.y + p.h }); tag = ' + AFTERSHOCK'; }
     } else if (b.on) tag = ' +1 RESONANCE';
-    atkCD = mv.cd;
-    // the beat is judged on the press; the move itself lands after its windup (strike engine)
-    const key = md.id + '_' + stance + '_' + dir, ni = b.on ? Math.min(streak, 7) : 0, on = b.on;
+    atkCD = 0.15;   // the move's own cooldown is set when it is picked
+    // the beat is judged on the press; the move itself is picked when S is let go and lands after its windup
+    const ni = b.on ? Math.min(streak, 7) : 0, on = b.on;
     const lbl = (streak > 1 ? 'ON BEAT x' + streak : 'ON BEAT') + (md.id === 'cres' && dyn ? ' ' + DYN[dyn] : '');
-    const text = md.icon + ' ' + mv.name.toUpperCase() + '!' + (b.on ? ' ✨ ON BEAT' + (streak > 1 ? ' x' + streak : '') : '') + tag;
-    const go = () => {
-      const q = window._gamePlayer; if (!q || window.selectedCharacter !== ID || drop) return;
-      ACT[key](q, face, m, ni, on, sc);
-      if (on) fx.push({ k: 'label', x: pcx(q), y: q.y - 0.5, t: 0, life: 0.7, text: lbl });
-      msg(text);
+    const resolve = () => {
+      const q = window._gamePlayer; if (!q || window.selectedCharacter !== ID || drop) return null;
+      const pk = pickMove(q);
+      if (pk.md.id !== md.id) return null;   // switched EQ mode mid-press
+      if (pk.stance === 'air' && pk.dir === 'up' && airUpUsed) { msg(pk.md.icon + ' ' + pk.mv.name + ' is used up until you land'); return null; }
+      atkCD = pk.mv.cd;
+      const text = pk.md.icon + ' ' + pk.mv.name.toUpperCase() + '!' + (on ? ' ✨ ON BEAT' + (streak > 1 ? ' x' + streak : '') : '') + tag;
+      const go = () => {
+        const r = window._gamePlayer; if (!r || window.selectedCharacter !== ID || drop) return;
+        ACT[pk.key](r, pk.face, m, ni, on, sc);
+        if (on) fx.push({ k: 'label', x: pcx(r), y: r.y - 0.5, t: 0, life: 0.7, text: lbl });
+        msg(text);
+      };
+      return { fd: PFD[pk.key], dir: pk.face, color: md.pal[1], aim: pk.dir, variant: md.id, beat: on, fire: go };
     };
-    // the beat was judged on the press above; holding S instead lets loose a charged special
-    if (window.PPStrike) window.PPStrike.press(() => ({ fd: PFD[key], dir: face, color: md.pal[1], aim: dir, variant: md.id, beat: on, fire: go }), true); else go();
+    // holding S instead lets loose a charged special
+    if (window.PPStrike) window.PPStrike.press(resolve, true); else { const sp = resolve(); if (sp) sp.fire(); }
   };
 
   // ---- EQ switch (G / 🎛️) ----
